@@ -524,3 +524,15 @@ class FociDriver:
                     optimal,
                 )
             )
+
+    def cmd_FOCI_SELFTEST(self, gcmd) -> None:
+        """Handler for FOCI_SELFTEST GCode command.
+
+        Sends the tmc_selftest command to the firmware and informs the
+        user that results will appear in the console via defmt/RTT.
+        """
+        self.selftest_cmd.send([self.oid])
+        gcmd.respond_info(
+            "FOCI self-test started for %s."
+            " Results will appear in the console." % self.stepper_name
+        )
