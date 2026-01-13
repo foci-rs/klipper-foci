@@ -497,3 +497,30 @@ class FociDriver:
                 val = self._read_register(reg_name)
                 lines.append(self.fields.pretty_format(reg_name, val))
         gcmd.respond_info("\n".join(lines))
+
+    def _handle_connect(self) -> None:
+        """Send configuration to firmware and check microstep alignment.
+
+        Converts run_current to milliamps and sends it with the encoder
+        PPR to the firmware. Warns if the configured microstep resolution
+        does not match the encoder's natural resolution.
+        """
+        run_ma: int = int(self.run_current * 1000.0)
+        self.set_current_cmd.send([self.oid, run_ma])
+        self.set_encoder_cmd.send([self.oid, self.encoder_ppr])
+        encoder_steps: int = self.encoder_ppr * 4
+        configured_steps: int = self.microsteps * self.full_steps
+        if configured_steps != encoder_steps:
+            optimal: int = encoder_steps // self.full_steps
+            gcode = self.printer.lookup_object("gcode")
+            gcode.respond_info(
+                "[foci %s] Note: microsteps=%d gives %d steps/rev,"
+                " encoder resolves %d. Consider microsteps=%d"
+                % (
+                    self.stepper_name,
+                    self.microsteps,
+                    configured_steps,
+                    encoder_steps,
+                    optimal,
+                )
+            )
