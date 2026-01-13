@@ -466,3 +466,34 @@ class FociDriver:
 
         # Lifecycle event
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+
+    def _read_register(self, reg_name: str) -> int:
+        """Read a single TMC4671 register via the firmware.
+
+        Args:
+            reg_name: Name of the register to read (must be in REGISTERS).
+
+        Returns:
+            The 32-bit register value returned by the firmware.
+        """
+        addr = REGISTERS[reg_name]
+        params = self.read_reg_cmd.send([self.oid, addr])
+        return params["value"]
+
+    def cmd_DUMP_FOCI(self, gcmd) -> None:
+        """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
+
+        Reads all registers in DUMP_GROUPS from the firmware and prints
+        them formatted to the GCode console.
+        """
+        lines: list[str] = []
+        for group_name, regs in DUMP_GROUPS:
+            if "%s" in group_name:
+                header = group_name % self.stepper_name
+            else:
+                header = group_name
+            lines.append("========== %s ==========" % header)
+            for reg_name in regs:
+                val = self._read_register(reg_name)
+                lines.append(self.fields.pretty_format(reg_name, val))
+        gcmd.respond_info("\n".join(lines))
