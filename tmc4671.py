@@ -368,3 +368,101 @@ class FieldHelper:
             if sval and sval != "0":
                 parts.append(" %s=%s" % (field_name, sval))
         return "%-30s %08x%s" % (reg_name + ":", reg_value, "".join(parts))
+
+
+######################################################################
+# FociDriver - per-axis driver instance
+######################################################################
+
+STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
+
+
+class FociDriver:
+    """Klipper extras driver for a single TMC4671 FOC channel."""
+
+    cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
+    cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
+
+    def __init__(self, config) -> None:
+        # Parse section name: [foci stepper_x]
+        parts = config.get_name().split(None, 1)
+        self.stepper_name: str = parts[1] if len(parts) > 1 else parts[0]
+        self.name: str = config.get_name()
+
+        self.printer = config.get_printer()
+
+        # Required motor config
+        self.run_current: float = config.getfloat("run_current", above=0.0)
+        self.encoder_ppr: int = config.getint("encoder_ppr", minval=1)
+        # Optional motor parameters
+        self.motor_resistance: float | None = config.getfloat(
+            "motor_resistance", None, above=0.0
+        )
+        self.motor_inductance: float | None = config.getfloat(
+            "motor_inductance", None, above=0.0
+        )
+
+        # Read stepper config for microsteps and full_steps_per_rotation
+        stepper_config = config.getsection(self.stepper_name)
+        self.microsteps: int = stepper_config.getint("microsteps")
+        self.full_steps: int = stepper_config.getint("full_steps_per_rotation", 200)
+
+        # Resolve MCU and channel from step_pin
+        step_pin: str = stepper_config.get("step_pin")
+        ppins = self.printer.lookup_object("pins")
+        pin_params = ppins.parse_pin(step_pin, can_invert=True)
+        pin_name: str = pin_params["pin"]
+        if pin_name not in STEP_PINS:
+            raise config.error(
+                "[%s] step_pin '%s' is not a FOCI STEP pin (expected one"
+                " of: %s)" % (self.name, pin_name, ", ".join(sorted(STEP_PINS)))
+            )
+        self.mcu = pin_params["chip"]
+        self.channel: int = STEP_PINS[pin_name]
+
+        # Allocate an OID for this axis
+        self.oid: int = self.mcu.create_oid()
+
+        # Look up MCU commands (fire-and-forget)
+        self.set_current_cmd = self.mcu.lookup_command(
+            "tmc_set_current oid=%c run_ma=%u"
+        )
+        self.set_encoder_cmd = self.mcu.lookup_command("tmc_set_encoder oid=%c ppr=%u")
+        self.selftest_cmd = self.mcu.lookup_command("tmc_selftest oid=%c")
+
+        # Look up query command (request + response)
+        self.read_reg_cmd = self.mcu.lookup_query_command(
+            "tmc_read_register oid=%c addr=%c",
+            "tmc_register_value oid=%c addr=%c value=%u",
+            oid=self.oid,
+        )
+
+        # Field formatting helper
+        self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
+
+        # Register GCode commands
+        gcode = self.printer.lookup_object("gcode")
+        gcode.register_mux_command(
+            "DUMP_FOCI",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_DUMP_FOCI,
+            desc=self.cmd_DUMP_FOCI_help,
+        )
+        gcode.register_mux_command(
+            "DUMP_TMC",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_DUMP_FOCI,
+            desc=self.cmd_DUMP_FOCI_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SELFTEST",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SELFTEST,
+            desc=self.cmd_FOCI_SELFTEST_help,
+        )
+
+        # Lifecycle event
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
