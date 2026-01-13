@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+# Unit tests for TMC4671 field formatting.
+# Run: cd foci/klipper-foci && python test_fields.py
+#
+# Copyright (C) 2026 Morton Jonuschat
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+import unittest
+
+from tmc4671 import (
+    FieldHelper,
+    Fields,
+    SIGNED_FIELDS,
+    FIELD_FORMATTERS,
+    _ffs,
+    _fmt_q4_12,
+    _fmt_q8_8,
+    _fmt_motor_type,
+    _fmt_phi_e,
+    _fmt_motion_mode,
+)
+
+
+class TestFFS(unittest.TestCase):
+    def test_bit0(self):
+        self.assertEqual(_ffs(0x01), 0)
+
+    def test_bit8(self):
+        self.assertEqual(_ffs(0xFF00), 8)
+
+    def test_bit16(self):
+        self.assertEqual(_ffs(0xFFFF0000), 16)
+
+    def test_single_high_bit(self):
+        self.assertEqual(_ffs(1 << 31), 31)
+
+
+class TestFieldExtraction(unittest.TestCase):
+    def setUp(self):
+        self.fh = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
+
+    def test_unsigned_lower_half(self):
+        val = self.fh.get_field("n_pole_pairs", "MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
+        self.assertEqual(val, 50)
+
+    def test_unsigned_upper_half(self):
+        val = self.fh.get_field("motor_type", "MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
+        self.assertEqual(val, 2)
+
+    def test_unsigned_3bit_field(self):
+        val = self.fh.get_field("phi_e", "PHI_E_SELECTION", 0x00000003)
+        self.assertEqual(val, 3)
+
+    def test_signed_positive(self):
+        val = self.fh.get_field("torque_actual", "PID_TORQUE_FLUX_ACTUAL", 0x00C80000)
+        self.assertEqual(val, 200)
+
+    def test_signed_negative(self):
+        val = self.fh.get_field("flux_actual", "PID_TORQUE_FLUX_ACTUAL", 0x0000FFFA)
+        self.assertEqual(val, -6)
+
+    def test_signed_zero(self):
+        val = self.fh.get_field("flux_actual", "PID_TORQUE_FLUX_ACTUAL", 0x00C80000)
+        self.assertEqual(val, 0)
+
+    def test_single_bit_set(self):
+        val = self.fh.get_field("abn_direction", "ABN_DECODER_MODE", 0x00001000)
+        self.assertEqual(val, 1)
+
+    def test_single_bit_clear(self):
+        val = self.fh.get_field("abn_direction", "ABN_DECODER_MODE", 0x00000000)
+        self.assertEqual(val, 0)
+
+
+class TestFormatters(unittest.TestCase):
+    def test_q4_12(self):
+        self.assertEqual(_fmt_q4_12(4096), "1.000")
+
+    def test_q4_12_fractional(self):
+        self.assertEqual(_fmt_q4_12(404), "0.099")
+
+    def test_q8_8(self):
+        self.assertEqual(_fmt_q8_8(256), "1.000")
+
+    def test_q8_8_integer(self):
+        self.assertEqual(_fmt_q8_8(25600), "100.000")
+
+    def test_motor_type_stepper(self):
+        self.assertEqual(_fmt_motor_type(2), "2(stepper)")
+
+    def test_motor_type_bldc(self):
+        self.assertEqual(_fmt_motor_type(3), "3(bldc)")
+
+    def test_phi_e_abn(self):
+        self.assertEqual(_fmt_phi_e(3), "abn")
+
+    def test_motion_mode_position(self):
+        self.assertEqual(_fmt_motion_mode(3), "position")
+
+    def test_motion_mode_stopped(self):
+        self.assertEqual(_fmt_motion_mode(0), "stopped")
+
+
+class TestPrettyFormat(unittest.TestCase):
+    def setUp(self):
+        self.fh = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
+
+    def test_all_zeros_no_fields(self):
+        out = self.fh.pretty_format("STATUS_FLAGS", 0x00000000)
+        self.assertIn("STATUS_FLAGS:", out)
+        self.assertIn("00000000", out)
+        self.assertNotIn("=", out)
+
+    def test_motor_type_fields(self):
+        out = self.fh.pretty_format("MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
+        self.assertIn("motor_type=2(stepper)", out)
+        self.assertIn("n_pole_pairs=50", out)
+
+    def test_signed_negative_shown(self):
+        out = self.fh.pretty_format("PID_TORQUE_FLUX_ACTUAL", 0x00C8FFFA)
+        self.assertIn("flux_actual=-6", out)
+        self.assertIn("torque_actual=200", out)
+
+    def test_zero_fields_hidden(self):
+        out = self.fh.pretty_format("PID_TORQUE_FLUX_ACTUAL", 0x0000FFFA)
+        self.assertNotIn("torque_actual", out)
+        self.assertIn("flux_actual=-6", out)
+
+    def test_pid_q_format(self):
+        out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x10000800)
+        self.assertIn("flux_p=", out)
+        self.assertIn("flux_i=", out)
+
+    def test_register_without_fields(self):
+        fh = FieldHelper({}, [], {})
+        out = fh.pretty_format("UNKNOWN_REG", 0xDEADBEEF)
+        self.assertIn("UNKNOWN_REG:", out)
+        self.assertIn("deadbeef", out)
+
+
+if __name__ == "__main__":
+    unittest.main()
