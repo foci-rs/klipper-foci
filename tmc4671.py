@@ -423,19 +423,12 @@ class FociDriver:
         # Allocate an OID for this axis
         self.oid: int = self.mcu.create_oid()
 
-        # Look up MCU commands (fire-and-forget)
-        self.set_current_cmd = self.mcu.lookup_command(
-            "tmc_set_current oid=%c run_ma=%u"
-        )
-        self.set_encoder_cmd = self.mcu.lookup_command("tmc_set_encoder oid=%c ppr=%u")
-        self.selftest_cmd = self.mcu.lookup_command("tmc_selftest oid=%c")
-
-        # Look up query command (request + response)
-        self.read_reg_cmd = self.mcu.lookup_query_command(
-            "tmc_read_register oid=%c addr=%c",
-            "tmc_register_value oid=%c addr=%c value=%u",
-            oid=self.oid,
-        )
+        # Command handles — resolved in _handle_mcu_identify after
+        # the MCU data dictionary is loaded.
+        self.set_current_cmd = None
+        self.set_encoder_cmd = None
+        self.selftest_cmd = None
+        self.read_reg_cmd = None
 
         # Field formatting helper
         self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
@@ -464,8 +457,24 @@ class FociDriver:
             desc=self.cmd_FOCI_SELFTEST_help,
         )
 
-        # Lifecycle event
+        # Lifecycle events
+        self.printer.register_event_handler(
+            "klippy:mcu_identify", self._handle_mcu_identify
+        )
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+
+    def _handle_mcu_identify(self) -> None:
+        """Look up MCU commands after data dictionary is loaded."""
+        self.set_current_cmd = self.mcu.lookup_command(
+            "tmc_set_current oid=%c run_ma=%u"
+        )
+        self.set_encoder_cmd = self.mcu.lookup_command("tmc_set_encoder oid=%c ppr=%u")
+        self.selftest_cmd = self.mcu.lookup_command("tmc_selftest oid=%c")
+        self.read_reg_cmd = self.mcu.lookup_query_command(
+            "tmc_read_register oid=%c addr=%c",
+            "tmc_register_value oid=%c addr=%c value=%u",
+            oid=self.oid,
+        )
 
     def _read_register(self, reg_name: str) -> int:
         """Read a single TMC4671 register via the firmware.
