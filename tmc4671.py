@@ -90,6 +90,8 @@ REGISTERS: dict[str, int] = {
     "ABN_DECODER_PPR": 0x26,
     "ABN_DECODER_COUNT": 0x27,
     "ABN_DECODER_PHI_E_PHI_M": 0x2A,
+    "PID_POSITION_TARGET": 0x68,
+    "PID_POSITION_ACTUAL": 0x6B,
     "STATUS_FLAGS": 0x7C,
     "PWM_SV_CHOP": 0x1A,
 }
@@ -279,6 +281,13 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_TORQUE_P_TORQUE_I",
             "PID_VELOCITY_P_VELOCITY_I",
             "PID_POSITION_P_POSITION_I",
+        ],
+    ),
+    (
+        "Position",
+        [
+            "PID_POSITION_TARGET",
+            "PID_POSITION_ACTUAL",
         ],
     ),
     (
