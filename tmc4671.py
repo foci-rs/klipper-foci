@@ -394,6 +394,17 @@ class FociDriver:
         # Required motor config
         self.run_current: float = config.getfloat("run_current", above=0.0)
         self.encoder_ppr: int = config.getint("encoder_ppr", minval=1)
+        # Encoder count direction relative to motor rotation.
+        # "default" = encoder counts up when motor drives forward.
+        # "reversed" = encoder counts down when motor drives forward
+        #              (swap A/B wiring or mount orientation).
+        dir_choice: str = config.getchoice(
+            "encoder_direction",
+            {"default": False, "reversed": True},
+            default="default",
+        )
+        self.encoder_reversed: bool = dir_choice
+
         # Optional motor parameters
         self.motor_resistance: float | None = config.getfloat(
             "motor_resistance", None, above=0.0
@@ -427,6 +438,7 @@ class FociDriver:
         # the MCU data dictionary is loaded.
         self.set_current_cmd = None
         self.set_encoder_cmd = None
+        self.set_encoder_dir_cmd = None
         self.selftest_cmd = None
         self.read_reg_cmd = None
 
@@ -468,7 +480,12 @@ class FociDriver:
         self.set_current_cmd = self.mcu.lookup_command(
             "tmc_set_current oid=%c run_ma=%u"
         )
-        self.set_encoder_cmd = self.mcu.lookup_command("tmc_set_encoder oid=%c ppr=%u")
+        self.set_encoder_cmd = self.mcu.lookup_command(
+            "tmc_set_encoder oid=%c channel=%c ppr=%u"
+        )
+        self.set_encoder_dir_cmd = self.mcu.lookup_command(
+            "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
+        )
         self.selftest_cmd = self.mcu.lookup_command("tmc_selftest oid=%c")
         self.read_reg_cmd = self.mcu.lookup_query_command(
             "tmc_read_register oid=%c addr=%c",
@@ -516,7 +533,10 @@ class FociDriver:
         """
         run_ma: int = int(self.run_current * 1000.0)
         self.set_current_cmd.send([self.oid, run_ma])
-        self.set_encoder_cmd.send([self.oid, self.encoder_ppr])
+        self.set_encoder_cmd.send([self.oid, self.channel, self.encoder_ppr])
+        self.set_encoder_dir_cmd.send(
+            [self.oid, self.channel, int(self.encoder_reversed)]
+        )
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
