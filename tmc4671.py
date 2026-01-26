@@ -391,6 +391,7 @@ class FociDriver:
 
     cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
+    cmd_FOCI_CALIBRATE_help = "Calibrate FOCI motor (ADC, encoder, closed-loop)"
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -450,6 +451,11 @@ class FociDriver:
         self.set_encoder_dir_cmd = None
         self.selftest_cmd = None
         self.read_reg_cmd = None
+        self.calibrate_cmd = None
+
+        # Calibration state
+        self.is_calibrated = False
+        self._calibration_completion = None
 
         # Field formatting helper
         self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
@@ -477,15 +483,26 @@ class FociDriver:
             self.cmd_FOCI_SELFTEST,
             desc=self.cmd_FOCI_SELFTEST_help,
         )
+        gcode.register_mux_command(
+            "FOCI_CALIBRATE",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_CALIBRATE,
+            desc=self.cmd_FOCI_CALIBRATE_help,
+        )
 
         # Lifecycle events
         self.printer.register_event_handler(
             "klippy:mcu_identify", self._handle_mcu_identify
         )
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+        self.printer.register_event_handler(
+            "homing:home_rails_begin", self._handle_home_rails_begin
+        )
 
     def _handle_mcu_identify(self) -> None:
         """Look up MCU commands after data dictionary is loaded."""
+        cmd_queue = self.mcu.alloc_command_queue()
         self.set_current_cmd = self.mcu.lookup_command(
             "tmc_set_current oid=%c run_ma=%u"
         )
@@ -500,6 +517,12 @@ class FociDriver:
             "tmc_read_register oid=%c addr=%c",
             "tmc_register_value oid=%c addr=%c value=%u",
             oid=self.oid,
+        )
+        self.calibrate_cmd = self.mcu.lookup_command(
+            "foci_calibrate oid=%c", cq=cmd_queue
+        )
+        self.mcu.register_response(
+            self._handle_calibrate_response, "foci_calibrate_response", self.oid
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -562,6 +585,115 @@ class FociDriver:
                     optimal,
                 )
             )
+        stepper_enable = self.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.stepper_name)
+        enable_line.register_state_callback(self._handle_stepper_enable)
+        force_move = self.printer.lookup_object("force_move", None)
+        if force_move is not None:
+            orig_force_enable = force_move._force_enable
+            foci_driver = self
+
+            def _wrapped_force_enable(stepper, _orig=orig_force_enable):
+                name = stepper.get_name()
+                if name == foci_driver.stepper_name:
+                    foci_driver._ensure_calibrated()
+                return _orig(stepper)
+
+            force_move._force_enable = _wrapped_force_enable
+        for name, ms in self.printer.lookup_objects("manual_stepper"):
+            steppers = getattr(ms, "steppers", [])
+            if steppers and steppers[0].get_name() == self.stepper_name:
+                orig_do_enable = ms.do_enable
+                foci_ms = self
+
+                def _wrapped_do_enable(enable, _orig=orig_do_enable, _foci=foci_ms):
+                    if enable:
+                        _foci._ensure_calibrated()
+                    _orig(enable)
+
+                ms.do_enable = _wrapped_do_enable
+
+    def _handle_calibrate_response(self, params) -> None:
+        """Handle foci_calibrate_response message from firmware.
+
+        Args:
+            params: Message parameters dict from the MCU response.
+        """
+        if self._calibration_completion is not None:
+            self._calibration_completion.complete(params)
+
+    def _ensure_calibrated(self) -> None:
+        """Run calibration if not already calibrated. Blocks until complete.
+
+        Sends foci_calibrate to the firmware and waits up to 5 seconds for
+        the foci_calibrate_response. Raises command_error on timeout or
+        non-zero status.
+        """
+        if self.is_calibrated:
+            return
+        reactor = self.printer.get_reactor()
+        self._calibration_completion = reactor.completion()
+        self.calibrate_cmd.send([self.oid])
+        params = self._calibration_completion.wait(reactor.monotonic() + 5.0)
+        self._calibration_completion = None
+        if params is None:
+            raise self.printer.command_error(
+                "FOCI %s: calibration timed out (no response from firmware)" % self.name
+            )
+        status = params.get("status", 255)
+        if status == 5:
+            # ALREADY_ENABLED: firmware auto-calibrated on enable before
+            # this foci_calibrate arrived. Motor is calibrated and running.
+            self.is_calibrated = True
+            logging.info("FOCI %s: already calibrated (firmware auto-cal)", self.name)
+            return
+        if status != 0:
+            status_names = {
+                1: "SPI_ERROR (TMC4671 not responding)",
+                2: "ADC_FAULT (ADC offsets out of range: I0=%d I1=%d)"
+                % (params.get("adc_i0", 0), params.get("adc_i1", 0)),
+                3: "ENCODER_FAULT (encoder not connected or unstable)",
+                4: "PID_FAULT (control loop not converging)",
+            }
+            msg = status_names.get(status, "UNKNOWN(%d)" % status)
+            raise self.printer.command_error(
+                "FOCI %s calibration failed: %s" % (self.name, msg)
+            )
+        self.is_calibrated = True
+        logging.info(
+            "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
+            self.name,
+            params.get("adc_i0", 0),
+            params.get("adc_i1", 0),
+            params.get("encoder_count", 0),
+        )
+
+    def _handle_home_rails_begin(self, homing_state, rails) -> None:
+        """Ensure calibration before homing any rail that includes this stepper.
+
+        Args:
+            homing_state: Current homing state object.
+            rails: List of PrinterRail objects being homed.
+        """
+        dominated_steppers = set()
+        for rail in rails:
+            for stepper in rail.get_steppers():
+                dominated_steppers.add(stepper.get_name())
+        if self.stepper_name in dominated_steppers:
+            self._ensure_calibrated()
+
+    def _handle_stepper_enable(self, print_time, is_enable) -> None:
+        """Reset calibration state when the stepper is disabled.
+
+        On disable: clears calibration state so the next enable triggers
+        recalibration via the firmware's auto-calibrate-on-enable path.
+
+        Args:
+            print_time: Timestamp of the enable/disable event.
+            is_enable: True if enabling, False if disabling.
+        """
+        if not is_enable:
+            self.is_calibrated = False
 
     def cmd_FOCI_SELFTEST(self, gcmd) -> None:
         """Handler for FOCI_SELFTEST GCode command.
@@ -574,3 +706,13 @@ class FociDriver:
             "FOCI self-test started for %s."
             " Results will appear in the console." % self.stepper_name
         )
+
+    def cmd_FOCI_CALIBRATE(self, gcmd) -> None:
+        """Handler for FOCI_CALIBRATE GCode command.
+
+        Forces recalibration regardless of current calibration state.
+        Reports success or failure to the GCode console.
+        """
+        self.is_calibrated = False
+        self._ensure_calibrated()
+        gcmd.respond_info("FOCI %s: calibration OK" % self.name)
