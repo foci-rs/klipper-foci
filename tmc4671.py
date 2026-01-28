@@ -452,10 +452,15 @@ class FociDriver:
         self.selftest_cmd = None
         self.read_reg_cmd = None
         self.calibrate_cmd = None
+        self.dump_cmd = None
 
         # Calibration state
         self.is_calibrated = False
         self._calibration_completion = None
+
+        # Dump state
+        self._dump_buffer: dict[int, int] = {}
+        self._dump_complete = False
 
         # Field formatting helper
         self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
@@ -513,14 +518,20 @@ class FociDriver:
             "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
         )
         self.selftest_cmd = self.mcu.lookup_command("tmc_selftest oid=%c")
-        self.read_reg_cmd = self.mcu.lookup_query_command(
-            "tmc_read_register oid=%c addr=%c",
-            "tmc_register_value oid=%c addr=%c value=%u",
-            oid=self.oid,
-        )
+        try:
+            self.read_reg_cmd = self.mcu.lookup_query_command(
+                "tmc_read_register oid=%c addr=%c",
+                "tmc_register_value oid=%c addr=%c value=%u",
+                oid=self.oid,
+            )
+        except Exception:
+            self.read_reg_cmd = None
         self.calibrate_cmd = self.mcu.lookup_command(
             "foci_calibrate oid=%c", cq=cmd_queue
         )
+        self.dump_cmd = self.mcu.lookup_command("foci_dump_registers oid=%c")
+        self.mcu.register_response(self._handle_dump_value, "foci_dump_value", self.oid)
+        self.mcu.register_response(self._handle_dump_done, "foci_dump_done", self.oid)
         self.mcu.register_response(
             self._handle_calibrate_response, "foci_calibrate_response", self.oid
         )
@@ -533,17 +544,51 @@ class FociDriver:
 
         Returns:
             The 32-bit register value returned by the firmware.
+
+        Raises:
+            command_error: If raw register access is not available in this
+                firmware build.
         """
+        if self.read_reg_cmd is None:
+            raise self.printer.command_error(
+                "Raw register access requires dev firmware build"
+            )
         addr = REGISTERS[reg_name]
         params = self.read_reg_cmd.send([self.oid, addr])
         return params["value"]
 
+    def _handle_dump_value(self, params: dict) -> None:
+        """Handle a single register value from the firmware dump."""
+        self._dump_buffer[params["addr"]] = params["value"]
+
+    def _handle_dump_done(self, params: dict) -> None:
+        """Handle dump completion signal from firmware."""
+        self._dump_complete = True
+
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
 
-        Reads all registers in DUMP_GROUPS from the firmware and prints
-        them formatted to the GCode console.
+        Sends a single foci_dump_registers command to the firmware and
+        waits for all register values to be streamed back via the
+        FOCI:DUMP: output protocol, then prints them formatted to the
+        GCode console.
         """
+        import time
+
+        self._dump_buffer.clear()
+        self._dump_complete = False
+        self.dump_cmd.send([self.oid])
+
+        # Wait for dump to complete. The serial reader thread calls
+        # _handle_dump_done which sets _dump_complete.
+        deadline = time.monotonic() + 5.0
+        while not self._dump_complete and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+        if not self._dump_complete:
+            gcmd.respond_info("FOCI register dump timed out")
+            return
+
         lines: list[str] = []
         for group_name, regs in DUMP_GROUPS:
             if "%s" in group_name:
@@ -552,8 +597,12 @@ class FociDriver:
                 header = group_name
             lines.append("========== %s ==========" % header)
             for reg_name in regs:
-                val = self._read_register(reg_name)
-                lines.append(self.fields.pretty_format(reg_name, val))
+                addr = REGISTERS[reg_name]
+                if addr in self._dump_buffer:
+                    val = self._dump_buffer[addr]
+                    lines.append(self.fields.pretty_format(reg_name, val))
+                else:
+                    lines.append("  %-30s = (not in dump)" % reg_name)
         gcmd.respond_info("\n".join(lines))
 
     def _handle_connect(self) -> None:
