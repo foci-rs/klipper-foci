@@ -462,6 +462,11 @@ class FociDriver:
         self._dump_buffer: dict[int, int] = {}
         self._dump_complete = False
 
+        # Selftest state
+        self._selftest_results: list[dict] = []
+        self._selftest_complete = False
+        self._selftest_status = 0
+
         # Field formatting helper
         self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
 
@@ -517,7 +522,7 @@ class FociDriver:
         self.set_encoder_dir_cmd = self.mcu.lookup_command(
             "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
         )
-        self.selftest_cmd = self.mcu.lookup_command("tmc_selftest oid=%c")
+        self.selftest_cmd = self.mcu.lookup_command("foci_selftest oid=%c")
         try:
             self.read_reg_cmd = self.mcu.lookup_query_command(
                 "tmc_read_register oid=%c addr=%c",
@@ -534,6 +539,12 @@ class FociDriver:
         self.mcu.register_response(self._handle_dump_done, "foci_dump_done", self.oid)
         self.mcu.register_response(
             self._handle_calibrate_response, "foci_calibrate_response", self.oid
+        )
+        self.mcu.register_response(
+            self._handle_selftest_result, "foci_selftest_result", self.oid
+        )
+        self.mcu.register_response(
+            self._handle_selftest_done, "foci_selftest_done", self.oid
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -564,6 +575,21 @@ class FociDriver:
     def _handle_dump_done(self, params: dict) -> None:
         """Handle dump completion signal from firmware."""
         self._dump_complete = True
+
+    def _handle_selftest_result(self, params: dict) -> None:
+        """Handle a single selftest stage result from firmware."""
+        self._selftest_results.append(
+            {
+                "stage": params["stage"],
+                "status": params["status"],
+                "value": params["value"],
+            }
+        )
+
+    def _handle_selftest_done(self, params: dict) -> None:
+        """Handle selftest completion signal from firmware."""
+        self._selftest_complete = True
+        self._selftest_status = params["status"]
 
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
@@ -744,17 +770,99 @@ class FociDriver:
         if not is_enable:
             self.is_calibrated = False
 
+    # Selftest stage names for human-readable reporting
+    SELFTEST_STAGES = {
+        1: "ADC calibration",
+        2: "Motor coil A",
+        3: "Motor coil B",
+        4: "Phase wiring",
+        5: "Encoder",
+        6: "Encoder direction",
+        7: "Resistance",
+        8: "Inductance",
+    }
+
     def cmd_FOCI_SELFTEST(self, gcmd) -> None:
         """Handler for FOCI_SELFTEST GCode command.
 
-        Sends the tmc_selftest command to the firmware and informs the
-        user that results will appear in the console via defmt/RTT.
+        Sends foci_selftest command and collects streaming results.
+        Formats a human-readable report to the GCode console.
         """
+        import time
+
+        self._selftest_results.clear()
+        self._selftest_complete = False
+        self._selftest_status = 0
+
         self.selftest_cmd.send([self.oid])
-        gcmd.respond_info(
-            "FOCI self-test started for %s."
-            " Results will appear in the console." % self.stepper_name
-        )
+
+        # Wait for completion (10s timeout)
+        deadline = time.monotonic() + 10.0
+        while not self._selftest_complete:
+            if time.monotonic() > deadline:
+                raise self.printer.command_error(
+                    "FOCI self-test timeout for %s" % self.stepper_name
+                )
+            time.sleep(0.05)
+
+        # Format report
+        lines = ["FOCI Self-Test: %s" % self.stepper_name]
+        status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
+        passed = 0
+        total = len(self._selftest_results)
+        for r in self._selftest_results:
+            stage = r["stage"]
+            status = r["status"]
+            value = r["value"]
+            name = self.SELFTEST_STAGES.get(stage, "Stage %d" % stage)
+            status_str = status_names.get(status, "?")
+            detail = self._format_selftest_value(stage, status, value)
+            dots = "." * max(1, 35 - len(name))
+            lines.append("  %s %s %s%s" % (name, dots, status_str, detail))
+            if status == 0:
+                passed += 1
+            elif status == 1 and stage <= 5:
+                lines.append("  [ABORTED] %s" % self._selftest_error_hint(stage))
+                break
+
+        overall = "PASS" if self._selftest_status == 0 else "FAIL"
+        if self._selftest_status == 2:
+            overall = "ABORTED (motor was enabled)"
+        lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
+        gcmd.respond_info("\n".join(lines))
+
+    def _format_selftest_value(self, stage: int, status: int, value: int) -> str:
+        """Format a stage-specific value for display."""
+        if status != 0:
+            return " (value: %d)" % value if value else ""
+        if stage == 1:
+            return " (offset: %d)" % value
+        if stage in (2, 3):
+            return " (current: %d)" % value
+        if stage == 5:
+            return " (delta: %d)" % value
+        if stage == 6:
+            return " (forward)" if value == 0 else " (reversed)"
+        if stage == 7:
+            a = (value >> 16) & 0xFFFF
+            b = value & 0xFFFF
+            return " coil A: %d mohm, coil B: %d mohm" % (a, b)
+        if stage == 8:
+            a = (value >> 16) & 0xFFFF
+            b = value & 0xFFFF
+            return " coil A: %d uH, coil B: %d uH" % (a, b)
+        return ""
+
+    def _selftest_error_hint(self, stage: int) -> str:
+        """Return a human-readable hint for a failed stage."""
+        hints = {
+            1: "ADC calibration failed - check current sense hardware",
+            2: "Motor not detected on coil A - check wiring",
+            3: "Motor not detected on coil B - check wiring",
+            4: "Phase wiring error - coils may be swapped at connector",
+            5: "Encoder not responding - check encoder cable",
+        }
+        return hints.get(stage, "Stage %d failed" % stage)
 
     def cmd_FOCI_CALIBRATE(self, gcmd) -> None:
         """Handler for FOCI_CALIBRATE GCode command.
