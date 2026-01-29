@@ -844,13 +844,13 @@ class FociDriver:
         if stage == 6:
             return " (forward)" if value == 0 else " (reversed)"
         if stage == 7:
-            a = (value >> 16) & 0xFFFF
-            b = value & 0xFFFF
-            return " coil A: %d mohm, coil B: %d mohm" % (a, b)
+            a = ((value >> 16) & 0xFFFF) / 1000.0
+            b = (value & 0xFFFF) / 1000.0
+            return " (coil A: %.1f ohm, coil B: %.1f ohm)" % (a, b)
         if stage == 8:
-            a = (value >> 16) & 0xFFFF
-            b = value & 0xFFFF
-            return " coil A: %d uH, coil B: %d uH" % (a, b)
+            a = ((value >> 16) & 0xFFFF) / 1000.0
+            b = (value & 0xFFFF) / 1000.0
+            return " (coil A: %.1f mH, coil B: %.1f mH)" % (a, b)
         return ""
 
     def _selftest_error_hint(self, stage: int) -> str:
