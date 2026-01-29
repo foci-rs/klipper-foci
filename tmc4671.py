@@ -777,7 +777,7 @@ class FociDriver:
         3: "Motor coil B",
         4: "Phase wiring",
         5: "Encoder",
-        6: "Encoder direction",
+        6: "Encoder direction (physical)",
         7: "Resistance",
         8: "Inductance",
     }
@@ -842,7 +842,7 @@ class FociDriver:
         if stage == 5:
             return " (delta: %d)" % value
         if stage == 6:
-            return " (forward)" if value == 0 else " (reversed)"
+            return " (increasing)" if value == 0 else " (decreasing)"
         if stage == 7:
             a = ((value >> 16) & 0xFFFF) / 1000.0
             b = (value & 0xFFFF) / 1000.0
