@@ -586,13 +586,16 @@ class FociDriver:
         """Handle a single selftest stage result from firmware."""
         if len(self._selftest_results) >= self.MAX_SELFTEST_RESULTS:
             return
-        self._selftest_results.append(
-            {
-                "stage": params["stage"],
-                "status": params["status"],
-                "value": params["value"],
-            }
-        )
+        try:
+            self._selftest_results.append(
+                {
+                    "stage": params["stage"],
+                    "status": params["status"],
+                    "value": params["value"],
+                }
+            )
+        except KeyError:
+            return
 
     def _handle_selftest_done(self, params: dict) -> None:
         """Handle selftest completion signal from firmware."""
