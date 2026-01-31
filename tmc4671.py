@@ -467,6 +467,9 @@ class FociDriver:
         self._selftest_complete = False
         self._selftest_status = 0
 
+        # Track whether enable methods have been monkey-patched
+        self._enable_patched = False
+
         # Field formatting helper
         self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
 
@@ -663,30 +666,32 @@ class FociDriver:
         stepper_enable = self.printer.lookup_object("stepper_enable")
         enable_line = stepper_enable.lookup_enable(self.stepper_name)
         enable_line.register_state_callback(self._handle_stepper_enable)
-        force_move = self.printer.lookup_object("force_move", None)
-        if force_move is not None:
-            orig_force_enable = force_move._force_enable
-            foci_driver = self
+        if not self._enable_patched:
+            self._enable_patched = True
+            force_move = self.printer.lookup_object("force_move", None)
+            if force_move is not None:
+                orig_force_enable = force_move._force_enable
+                foci_driver = self
 
-            def _wrapped_force_enable(stepper, _orig=orig_force_enable):
-                name = stepper.get_name()
-                if name == foci_driver.stepper_name:
-                    foci_driver._ensure_calibrated()
-                return _orig(stepper)
+                def _wrapped_force_enable(stepper, _orig=orig_force_enable):
+                    name = stepper.get_name()
+                    if name == foci_driver.stepper_name:
+                        foci_driver._ensure_calibrated()
+                    return _orig(stepper)
 
-            force_move._force_enable = _wrapped_force_enable
-        for name, ms in self.printer.lookup_objects("manual_stepper"):
-            steppers = getattr(ms, "steppers", [])
-            if steppers and steppers[0].get_name() == self.stepper_name:
-                orig_do_enable = ms.do_enable
-                foci_ms = self
+                force_move._force_enable = _wrapped_force_enable
+            for name, ms in self.printer.lookup_objects("manual_stepper"):
+                steppers = getattr(ms, "steppers", [])
+                if steppers and steppers[0].get_name() == self.stepper_name:
+                    orig_do_enable = ms.do_enable
+                    foci_ms = self
 
-                def _wrapped_do_enable(enable, _orig=orig_do_enable, _foci=foci_ms):
-                    if enable:
-                        _foci._ensure_calibrated()
-                    _orig(enable)
+                    def _wrapped_do_enable(enable, _orig=orig_do_enable, _foci=foci_ms):
+                        if enable:
+                            _foci._ensure_calibrated()
+                        _orig(enable)
 
-                ms.do_enable = _wrapped_do_enable
+                    ms.do_enable = _wrapped_do_enable
 
     def _handle_calibrate_response(self, params) -> None:
         """Handle foci_calibrate_response message from firmware.
