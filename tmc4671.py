@@ -836,7 +836,9 @@ class FociDriver:
         if status != 0:
             return " (value: %d)" % value if value else ""
         if stage == 1:
-            return " (offset: %d)" % value
+            i0 = (value >> 16) & 0xFFFF
+            i1 = value & 0xFFFF
+            return " (I0: %d, I1: %d)" % (i0, i1)
         if stage in (2, 3):
             return " (current: %d)" % value
         if stage == 5:
