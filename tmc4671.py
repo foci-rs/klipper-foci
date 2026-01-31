@@ -579,8 +579,13 @@ class FociDriver:
         """Handle dump completion signal from firmware."""
         self._dump_complete = True
 
+    # Maximum number of selftest stage results to accept per run.
+    MAX_SELFTEST_RESULTS = 16
+
     def _handle_selftest_result(self, params: dict) -> None:
         """Handle a single selftest stage result from firmware."""
+        if len(self._selftest_results) >= self.MAX_SELFTEST_RESULTS:
+            return
         self._selftest_results.append(
             {
                 "stage": params["stage"],
