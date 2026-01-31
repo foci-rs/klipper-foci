@@ -729,6 +729,7 @@ class FociDriver:
                 % (params.get("adc_i0", 0), params.get("adc_i1", 0)),
                 3: "ENCODER_FAULT (encoder not connected or unstable)",
                 4: "PID_FAULT (control loop not converging)",
+                6: "INTERNAL_ERROR (firmware command queue full)",
             }
             msg = status_names.get(status, "UNKNOWN(%d)" % status)
             raise self.printer.command_error(
