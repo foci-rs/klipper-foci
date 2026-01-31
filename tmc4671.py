@@ -532,7 +532,7 @@ class FociDriver:
                 "tmc_register_value oid=%c addr=%c value=%u",
                 oid=self.oid,
             )
-        except Exception:
+        except KeyError:
             self.read_reg_cmd = None
         self.calibrate_cmd = self.mcu.lookup_command(
             "foci_calibrate oid=%c", cq=cmd_queue
