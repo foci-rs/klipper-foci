@@ -667,11 +667,11 @@ class FociDriver:
                     optimal,
                 )
             )
-        stepper_enable = self.printer.lookup_object("stepper_enable")
-        enable_line = stepper_enable.lookup_enable(self.stepper_name)
-        enable_line.register_state_callback(self._handle_stepper_enable)
         if not self._enable_patched:
             self._enable_patched = True
+            stepper_enable = self.printer.lookup_object("stepper_enable")
+            enable_line = stepper_enable.lookup_enable(self.stepper_name)
+            enable_line.register_state_callback(self._handle_stepper_enable)
             force_move = self.printer.lookup_object("force_move", None)
             if force_move is not None:
                 orig_force_enable = force_move._force_enable
