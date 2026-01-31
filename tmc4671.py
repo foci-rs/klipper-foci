@@ -827,7 +827,7 @@ class FociDriver:
 
         overall = "PASS" if self._selftest_status == 0 else "FAIL"
         if self._selftest_status == 2:
-            overall = "ABORTED (motor was enabled)"
+            overall = "ABORTED (motor enabled or selftest already running)"
         lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
         gcmd.respond_info("\n".join(lines))
 
