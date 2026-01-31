@@ -607,17 +607,16 @@ class FociDriver:
         FOCI:DUMP: output protocol, then prints them formatted to the
         GCode console.
         """
-        import time
-
+        reactor = self.printer.get_reactor()
         self._dump_buffer.clear()
         self._dump_complete = False
         self.dump_cmd.send([self.oid])
 
         # Wait for dump to complete. The serial reader thread calls
         # _handle_dump_done which sets _dump_complete.
-        deadline = time.monotonic() + 5.0
-        while not self._dump_complete and time.monotonic() < deadline:
-            time.sleep(0.05)
+        deadline = reactor.monotonic() + 5.0
+        while not self._dump_complete and reactor.monotonic() < deadline:
+            reactor.pause(reactor.monotonic() + 0.05)
 
         if not self._dump_complete:
             gcmd.respond_info("FOCI register dump timed out")
@@ -799,8 +798,7 @@ class FociDriver:
         Sends foci_selftest command and collects streaming results.
         Formats a human-readable report to the GCode console.
         """
-        import time
-
+        reactor = self.printer.get_reactor()
         self._selftest_results.clear()
         self._selftest_complete = False
         self._selftest_status = 0
@@ -808,13 +806,13 @@ class FociDriver:
         self.selftest_cmd.send([self.oid])
 
         # Wait for completion (10s timeout)
-        deadline = time.monotonic() + 10.0
+        deadline = reactor.monotonic() + 10.0
         while not self._selftest_complete:
-            if time.monotonic() > deadline:
+            if reactor.monotonic() > deadline:
                 raise self.printer.command_error(
                     "FOCI self-test timeout for %s" % self.stepper_name
                 )
-            time.sleep(0.05)
+            reactor.pause(reactor.monotonic() + 0.05)
 
         # Format report
         lines = ["FOCI Self-Test: %s" % self.stepper_name]
