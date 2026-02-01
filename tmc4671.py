@@ -599,8 +599,11 @@ class FociDriver:
 
     def _handle_selftest_done(self, params: dict) -> None:
         """Handle selftest completion signal from firmware."""
+        try:
+            self._selftest_status = params["status"]
+        except KeyError:
+            self._selftest_status = 1  # FAIL
         self._selftest_complete = True
-        self._selftest_status = params["status"]
 
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
