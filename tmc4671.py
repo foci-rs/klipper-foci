@@ -526,13 +526,15 @@ class FociDriver:
             "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
         )
         self.selftest_cmd = self.mcu.lookup_command("foci_selftest oid=%c")
+        # tmc_read_register is only available in dev firmware builds
+        # (#[cfg(feature = "dev")]). Gracefully degrade on release builds.
         try:
             self.read_reg_cmd = self.mcu.lookup_query_command(
                 "tmc_read_register oid=%c addr=%c",
                 "tmc_register_value oid=%c addr=%c value=%u",
                 oid=self.oid,
             )
-        except KeyError:
+        except Exception:
             self.read_reg_cmd = None
         self.calibrate_cmd = self.mcu.lookup_command(
             "foci_calibrate oid=%c", cq=cmd_queue
