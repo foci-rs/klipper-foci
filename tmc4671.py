@@ -245,14 +245,14 @@ FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "mode_pid_type": _fmt_pid_type,
     "abn_direction": _fmt_direction,
     "pwm_sv": _fmt_on_off,
-    "flux_p": _fmt_q4_12,
-    "flux_i": _fmt_q4_12,
-    "torque_p": _fmt_q4_12,
-    "torque_i": _fmt_q4_12,
+    "flux_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
+    "flux_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
+    "torque_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
+    "torque_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
     "velocity_p": _fmt_q8_8,
-    "velocity_i": _fmt_q4_12,
+    "velocity_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
     "position_p": _fmt_q8_8,
-    "position_i": _fmt_q4_12,
+    "position_i": _fmt_q4_12,  # position I stays Q4.12 per DS 4.7.8
 }
 
 
