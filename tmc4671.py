@@ -92,6 +92,7 @@ REGISTERS: dict[str, int] = {
     "ABN_DECODER_PHI_E_PHI_M": 0x2A,
     "PID_POSITION_TARGET": 0x68,
     "PID_POSITION_ACTUAL": 0x6B,
+    "ADC_VM_LIMITS": 0x75,
     "STATUS_FLAGS": 0x7C,
     "PWM_SV_CHOP": 0x1A,
 }
@@ -186,6 +187,11 @@ Fields["ABN_DECODER_COUNT"] = {
 Fields["ABN_DECODER_PHI_E_PHI_M"] = {
     "abn_phi_m": 0xFFFF,
     "abn_phi_e": 0xFFFF << 16,
+}
+
+Fields["ADC_VM_LIMITS"] = {
+    "adc_vm_limit_low": 0xFFFF,
+    "adc_vm_limit_high": 0xFFFF << 16,
 }
 
 Fields["STATUS_FLAGS"] = {
@@ -297,6 +303,12 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "ABN_DECODER_PPR",
             "ABN_DECODER_COUNT",
             "ABN_DECODER_PHI_E_PHI_M",
+        ],
+    ),
+    (
+        "Voltage / Brake",
+        [
+            "ADC_VM_LIMITS",
         ],
     ),
     (
