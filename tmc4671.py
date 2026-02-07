@@ -428,14 +428,6 @@ class FociDriver:
         )
         self.encoder_reversed: bool = dir_choice
 
-        # Optional motor parameters
-        self.motor_resistance: float | None = config.getfloat(
-            "motor_resistance", None, above=0.0
-        )
-        self.motor_inductance: float | None = config.getfloat(
-            "motor_inductance", None, above=0.0
-        )
-
         # Optional PID gains (from FOCI_AUTOTUNE + SAVE_CONFIG or manual)
         self.pid_flux_p: int | None = config.getint(
             "pid_flux_p", None, minval=0, maxval=65535
@@ -481,7 +473,6 @@ class FociDriver:
         self.calibrate_cmd = None
         self.dump_cmd = None
         self.set_pid_gains_cmd = None
-        self.set_motor_params_cmd = None
         self.autotune_cmd = None
 
         # Calibration state
@@ -594,9 +585,6 @@ class FociDriver:
         )
         self.set_pid_gains_cmd = self.mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
-        )
-        self.set_motor_params_cmd = self.mcu.lookup_command(
-            "tmc_set_motor_params oid=%c resistance_mohm=%u inductance_uh=%u"
         )
         self.autotune_cmd = self.mcu.lookup_command("foci_autotune oid=%c")
         self.mcu.register_response(
@@ -737,10 +725,6 @@ class FociDriver:
                     self.pid_torque_i,
                 ]
             )
-        elif self.motor_resistance is not None and self.motor_inductance is not None:
-            r_mohm = int(self.motor_resistance * 1000.0)
-            l_uh = int(self.motor_inductance * 1000.0)
-            self.set_motor_params_cmd.send([self.oid, r_mohm, l_uh])
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
@@ -1029,8 +1013,6 @@ class FociDriver:
             "  Torque I: %d (Q8.8 = %.3f)\n"
             "\n"
             "To persist these values, add to your [%s] section:\n"
-            "  motor_resistance: %.3f\n"
-            "  motor_inductance: %.3f\n"
             "  pid_flux_p: %d\n"
             "  pid_flux_i: %d\n"
             "  pid_torque_p: %d\n"
@@ -1050,8 +1032,6 @@ class FociDriver:
                 torque_i,
                 torque_i / 256.0,
                 self.name,
-                r_mohm / 1000.0,
-                l_uh / 1000.0,
                 flux_p,
                 flux_i,
                 torque_p,
