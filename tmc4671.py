@@ -404,6 +404,7 @@ class FociDriver:
     cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_CALIBRATE_help = "Calibrate FOCI motor (ADC, encoder, closed-loop)"
+    cmd_FOCI_AUTOTUNE_help = "Measure motor R/L and compute PID gains"
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -433,6 +434,20 @@ class FociDriver:
         )
         self.motor_inductance: float | None = config.getfloat(
             "motor_inductance", None, above=0.0
+        )
+
+        # Optional PID gains (from FOCI_AUTOTUNE + SAVE_CONFIG or manual)
+        self.pid_flux_p: int | None = config.getint(
+            "pid_flux_p", None, minval=0, maxval=65535
+        )
+        self.pid_flux_i: int | None = config.getint(
+            "pid_flux_i", None, minval=0, maxval=65535
+        )
+        self.pid_torque_p: int | None = config.getint(
+            "pid_torque_p", None, minval=0, maxval=65535
+        )
+        self.pid_torque_i: int | None = config.getint(
+            "pid_torque_i", None, minval=0, maxval=65535
         )
 
         # Read stepper config for microsteps and full_steps_per_rotation
@@ -465,6 +480,9 @@ class FociDriver:
         self.read_reg_cmd = None
         self.calibrate_cmd = None
         self.dump_cmd = None
+        self.set_pid_gains_cmd = None
+        self.set_motor_params_cmd = None
+        self.autotune_cmd = None
 
         # Calibration state
         self.is_calibrated = False
@@ -478,6 +496,10 @@ class FociDriver:
         self._selftest_results: list[dict] = []
         self._selftest_complete = False
         self._selftest_status = 0
+
+        # Autotune state
+        self._autotune_result: dict | None = None
+        self._autotune_complete: bool = False
 
         # Track whether enable methods have been monkey-patched
         self._enable_patched = False
@@ -514,6 +536,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_CALIBRATE,
             desc=self.cmd_FOCI_CALIBRATE_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_AUTOTUNE",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_AUTOTUNE,
+            desc=self.cmd_FOCI_AUTOTUNE_help,
         )
 
         # Lifecycle events
@@ -562,6 +591,16 @@ class FociDriver:
         )
         self.mcu.register_response(
             self._handle_selftest_done, "foci_selftest_done", self.oid
+        )
+        self.set_pid_gains_cmd = self.mcu.lookup_command(
+            "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
+        )
+        self.set_motor_params_cmd = self.mcu.lookup_command(
+            "tmc_set_motor_params oid=%c resistance_mohm=%u inductance_uh=%u"
+        )
+        self.autotune_cmd = self.mcu.lookup_command("foci_autotune oid=%c")
+        self.mcu.register_response(
+            self._handle_autotune_result, "foci_autotune_result", self.oid
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -619,6 +658,11 @@ class FociDriver:
             self._selftest_status = 1  # FAIL
         self._selftest_complete = True
 
+    def _handle_autotune_result(self, params: dict) -> None:
+        """Handle foci_autotune_result message from firmware."""
+        self._autotune_result = params
+        self._autotune_complete = True
+
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
 
@@ -671,6 +715,32 @@ class FociDriver:
         self.set_encoder_dir_cmd.send(
             [self.oid, self.channel, int(self.encoder_reversed)]
         )
+        # Three-tier PID gain resolution:
+        # 1. Explicit gains from config -> send directly
+        # 2. R/L from config -> send for firmware-side computation
+        # 3. Neither -> firmware uses conservative defaults
+        if all(
+            v is not None
+            for v in [
+                self.pid_flux_p,
+                self.pid_flux_i,
+                self.pid_torque_p,
+                self.pid_torque_i,
+            ]
+        ):
+            self.set_pid_gains_cmd.send(
+                [
+                    self.oid,
+                    self.pid_flux_p,
+                    self.pid_flux_i,
+                    self.pid_torque_p,
+                    self.pid_torque_i,
+                ]
+            )
+        elif self.motor_resistance is not None and self.motor_inductance is not None:
+            r_mohm = int(self.motor_resistance * 1000.0)
+            l_uh = int(self.motor_inductance * 1000.0)
+            self.set_motor_params_cmd.send([self.oid, r_mohm, l_uh])
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
@@ -904,3 +974,87 @@ class FociDriver:
         self.is_calibrated = False
         self._ensure_calibrated()
         gcmd.respond_info("FOCI %s: calibration OK" % self.name)
+
+    def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
+        """Measure motor R/L, compute PI gains, report results.
+
+        On success, prompts user to add values to printer.cfg
+        and run SAVE_CONFIG to persist.
+        """
+        reactor = self.printer.get_reactor()
+        self._autotune_complete = False
+        self._autotune_result = None
+
+        self.autotune_cmd.send([self.oid])
+
+        # Wait for completion (15s timeout)
+        deadline = reactor.monotonic() + 15.0
+        while not self._autotune_complete:
+            if reactor.monotonic() > deadline:
+                raise self.printer.command_error(
+                    "FOCI autotune timeout for %s" % self.stepper_name
+                )
+            reactor.pause(reactor.monotonic() + 0.05)
+
+        result = self._autotune_result
+        status = result.get("status", 255)
+
+        if status != 0:
+            status_names = {
+                1: "internal error (firmware command queue full)",
+                2: "motor already enabled",
+                3: "current limit not configured",
+                4: "R/L measurement failed",
+                5: "SPI error (TMC4671 not responding)",
+            }
+            reason = status_names.get(status, "unknown error %d" % status)
+            raise self.printer.command_error(
+                "FOCI autotune failed for %s: %s" % (self.stepper_name, reason)
+            )
+
+        r_mohm = result["resistance_mohm"]
+        l_uh = result["inductance_uh"]
+        flux_p = result["flux_p"]
+        flux_i = result["flux_i"]
+        torque_p = result["torque_p"]
+        torque_i = result["torque_i"]
+
+        gcmd.respond_info(
+            "FOCI autotune results for %s:\n"
+            "  Resistance: %.3f ohm\n"
+            "  Inductance: %.3f mH\n"
+            "  Flux P: %d (Q8.8 = %.3f)\n"
+            "  Flux I: %d (Q8.8 = %.3f)\n"
+            "  Torque P: %d (Q8.8 = %.3f)\n"
+            "  Torque I: %d (Q8.8 = %.3f)\n"
+            "\n"
+            "To persist these values, add to your [%s] section:\n"
+            "  motor_resistance: %.3f\n"
+            "  motor_inductance: %.3f\n"
+            "  pid_flux_p: %d\n"
+            "  pid_flux_i: %d\n"
+            "  pid_torque_p: %d\n"
+            "  pid_torque_i: %d\n"
+            "\n"
+            "Then run SAVE_CONFIG to persist."
+            % (
+                self.stepper_name,
+                r_mohm / 1000.0,
+                l_uh / 1000.0,
+                flux_p,
+                flux_p / 256.0,
+                flux_i,
+                flux_i / 256.0,
+                torque_p,
+                torque_p / 256.0,
+                torque_i,
+                torque_i / 256.0,
+                self.name,
+                r_mohm / 1000.0,
+                l_uh / 1000.0,
+                flux_p,
+                flux_i,
+                torque_p,
+                torque_i,
+            )
+        )
