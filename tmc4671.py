@@ -428,7 +428,8 @@ class FociDriver:
         )
         self.encoder_reversed: bool = dir_choice
 
-        # Optional PID gains (from FOCI_AUTOTUNE + SAVE_CONFIG or manual)
+        # Optional PID gains (from FOCI_AUTOTUNE + SAVE_CONFIG or manual).
+        # All four must be set together or not at all.
         self.pid_flux_p: int | None = config.getint(
             "pid_flux_p", None, minval=0, maxval=65535
         )
@@ -441,6 +442,19 @@ class FociDriver:
         self.pid_torque_i: int | None = config.getint(
             "pid_torque_i", None, minval=0, maxval=65535
         )
+        pid_gains = [
+            self.pid_flux_p,
+            self.pid_flux_i,
+            self.pid_torque_p,
+            self.pid_torque_i,
+        ]
+        pid_set = [v for v in pid_gains if v is not None]
+        if pid_set and len(pid_set) != 4:
+            raise config.error(
+                "PID gains must be set as a complete group"
+                " (pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i)."
+                " Found %d of 4 in [%s]" % (len(pid_set), self.name)
+            )
 
         # Read stepper config for microsteps and full_steps_per_rotation
         stepper_config = config.getsection(self.stepper_name)
@@ -703,19 +717,9 @@ class FociDriver:
         self.set_encoder_dir_cmd.send(
             [self.oid, self.channel, int(self.encoder_reversed)]
         )
-        # Three-tier PID gain resolution:
-        # 1. Explicit gains from config -> send directly
-        # 2. R/L from config -> send for firmware-side computation
-        # 3. Neither -> firmware uses conservative defaults
-        if all(
-            v is not None
-            for v in [
-                self.pid_flux_p,
-                self.pid_flux_i,
-                self.pid_torque_p,
-                self.pid_torque_i,
-            ]
-        ):
+        # Send saved PID gains if present (all-or-none validated at config time).
+        # Otherwise firmware uses conservative defaults.
+        if self.pid_flux_p is not None:
             self.set_pid_gains_cmd.send(
                 [
                     self.oid,
@@ -1003,6 +1007,13 @@ class FociDriver:
         torque_p = result["torque_p"]
         torque_i = result["torque_i"]
 
+        # Stage gains for SAVE_CONFIG
+        configfile = self.printer.lookup_object("configfile")
+        configfile.set(self.name, "pid_flux_p", "%d" % flux_p)
+        configfile.set(self.name, "pid_flux_i", "%d" % flux_i)
+        configfile.set(self.name, "pid_torque_p", "%d" % torque_p)
+        configfile.set(self.name, "pid_torque_i", "%d" % torque_i)
+
         gcmd.respond_info(
             "FOCI autotune results for %s:\n"
             "  Resistance: %.3f ohm\n"
@@ -1012,13 +1023,8 @@ class FociDriver:
             "  Torque P: %d (Q8.8 = %.3f)\n"
             "  Torque I: %d (Q8.8 = %.3f)\n"
             "\n"
-            "To persist these values, add to your [%s] section:\n"
-            "  pid_flux_p: %d\n"
-            "  pid_flux_i: %d\n"
-            "  pid_torque_p: %d\n"
-            "  pid_torque_i: %d\n"
-            "\n"
-            "Then run SAVE_CONFIG to persist."
+            "The SAVE_CONFIG command will update the printer config\n"
+            "file and restart the printer."
             % (
                 self.stepper_name,
                 r_mohm / 1000.0,
@@ -1031,10 +1037,5 @@ class FociDriver:
                 torque_p / 256.0,
                 torque_i,
                 torque_i / 256.0,
-                self.name,
-                flux_p,
-                flux_i,
-                torque_p,
-                torque_i,
             )
         )
