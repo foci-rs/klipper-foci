@@ -456,6 +456,16 @@ class FociDriver:
                 " Found %d of 4 in [%s]" % (len(pid_set), self.name)
             )
 
+        # Optional velocity feedback low-pass filter
+        self.velocity_filter_hz: int = config.getint(
+            "velocity_filter_hz", 0, minval=0, maxval=1000
+        )
+        if self.velocity_filter_hz != 0 and self.velocity_filter_hz < 10:
+            raise config.error(
+                "velocity_filter_hz must be 0 (disabled) or 10..1000 in [%s]"
+                % self.name
+            )
+
         # Read stepper config for microsteps and full_steps_per_rotation
         stepper_config = config.getsection(self.stepper_name)
         self.microsteps: int = stepper_config.getint("microsteps")
@@ -488,6 +498,7 @@ class FociDriver:
         self.dump_cmd = None
         self.set_pid_gains_cmd = None
         self.autotune_cmd = None
+        self.set_velocity_filter_cmd = None
 
         # Calibration state
         self.is_calibrated = False
@@ -603,6 +614,9 @@ class FociDriver:
         self.autotune_cmd = self.mcu.lookup_command("foci_autotune oid=%c")
         self.mcu.register_response(
             self._handle_autotune_result, "foci_autotune_result", self.oid
+        )
+        self.set_velocity_filter_cmd = self.mcu.lookup_command(
+            "tmc_set_velocity_filter oid=%c filter_hz=%hu"
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -729,6 +743,8 @@ class FociDriver:
                     self.pid_torque_i,
                 ]
             )
+        if self.velocity_filter_hz > 0:
+            self.set_velocity_filter_cmd.send([self.oid, self.velocity_filter_hz])
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
