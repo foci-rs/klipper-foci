@@ -456,7 +456,7 @@ class FociDriver:
                 " Found %d of 4 in [%s]" % (len(pid_set), self.name)
             )
 
-        # Optional velocity feedback low-pass filter
+        # Optional biquad low-pass filters (0 = disabled, 10..1000 Hz)
         self.velocity_filter_hz: int = config.getint(
             "velocity_filter_hz", 0, minval=0, maxval=1000
         )
@@ -464,6 +464,28 @@ class FociDriver:
             raise config.error(
                 "velocity_filter_hz must be 0 (disabled) or 10..1000 in [%s]"
                 % self.name
+            )
+        self.torque_filter_hz: int = config.getint(
+            "torque_filter_hz", 0, minval=0, maxval=1000
+        )
+        if self.torque_filter_hz != 0 and self.torque_filter_hz < 10:
+            raise config.error(
+                "torque_filter_hz must be 0 (disabled) or 10..1000 in [%s]" % self.name
+            )
+        self.position_filter_hz: int = config.getint(
+            "position_filter_hz", 0, minval=0, maxval=1000
+        )
+        if self.position_filter_hz != 0 and self.position_filter_hz < 10:
+            raise config.error(
+                "position_filter_hz must be 0 (disabled) or 10..1000 in [%s]"
+                % self.name
+            )
+        self.flux_filter_hz: int = config.getint(
+            "flux_filter_hz", 0, minval=0, maxval=1000
+        )
+        if self.flux_filter_hz != 0 and self.flux_filter_hz < 10:
+            raise config.error(
+                "flux_filter_hz must be 0 (disabled) or 10..1000 in [%s]" % self.name
             )
 
         # Read stepper config for microsteps and full_steps_per_rotation
@@ -618,6 +640,15 @@ class FociDriver:
         self.set_velocity_filter_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_filter oid=%c filter_hz=%hu"
         )
+        self.set_torque_filter_cmd = self.mcu.lookup_command(
+            "tmc_set_torque_filter oid=%c filter_hz=%hu"
+        )
+        self.set_position_filter_cmd = self.mcu.lookup_command(
+            "tmc_set_position_filter oid=%c filter_hz=%hu"
+        )
+        self.set_flux_filter_cmd = self.mcu.lookup_command(
+            "tmc_set_flux_filter oid=%c filter_hz=%hu"
+        )
 
     def _read_register(self, reg_name: str) -> int:
         """Read a single TMC4671 register via the firmware.
@@ -745,6 +776,12 @@ class FociDriver:
             )
         if self.velocity_filter_hz > 0:
             self.set_velocity_filter_cmd.send([self.oid, self.velocity_filter_hz])
+        if self.torque_filter_hz > 0:
+            self.set_torque_filter_cmd.send([self.oid, self.torque_filter_hz])
+        if self.position_filter_hz > 0:
+            self.set_position_filter_cmd.send([self.oid, self.position_filter_hz])
+        if self.flux_filter_hz > 0:
+            self.set_flux_filter_cmd.send([self.oid, self.flux_filter_hz])
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
