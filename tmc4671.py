@@ -252,7 +252,7 @@ FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "velocity_p": _fmt_q8_8,
     "velocity_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
     "position_p": _fmt_q8_8,
-    "position_i": _fmt_q4_12,  # position I stays Q4.12 per DS 4.7.8
+    "position_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
 }
 
 
@@ -488,6 +488,38 @@ class FociDriver:
                 "flux_filter_hz must be 0 (disabled) or 10..1000 in [%s]" % self.name
             )
 
+        # Optional position/velocity PID gains (Q8.8 raw register values)
+        self.pid_position_p: int | None = config.getint(
+            "pid_position_p", None, minval=0, maxval=32767
+        )
+        self.pid_position_i: int | None = config.getint(
+            "pid_position_i", None, minval=0, maxval=32767
+        )
+        self.pid_velocity_p: int | None = config.getint(
+            "pid_velocity_p", None, minval=0, maxval=32767
+        )
+        self.pid_velocity_i: int | None = config.getint(
+            "pid_velocity_i", None, minval=0, maxval=32767
+        )
+        pos_gains = [
+            self.pid_position_p,
+            self.pid_position_i,
+            self.pid_velocity_p,
+            self.pid_velocity_i,
+        ]
+        pos_set = [v for v in pos_gains if v is not None]
+        if pos_set and len(pos_set) != 4:
+            raise config.error(
+                "pid_position_p/i and pid_velocity_p/i must be set together"
+                " (pid_position_p, pid_position_i, pid_velocity_p, pid_velocity_i)."
+                " Found %d of 4 in [%s]" % (len(pos_set), self.name)
+            )
+
+        # Velocity feedforward (boolean, default disabled)
+        self.velocity_feedforward: bool = config.getboolean(
+            "velocity_feedforward", False
+        )
+
         # Read stepper config for microsteps and full_steps_per_rotation
         stepper_config = config.getsection(self.stepper_name)
         self.microsteps: int = stepper_config.getint("microsteps")
@@ -521,6 +553,8 @@ class FociDriver:
         self.set_pid_gains_cmd = None
         self.autotune_cmd = None
         self.set_velocity_filter_cmd = None
+        self.set_position_gains_cmd = None
+        self.set_velocity_feedforward_cmd = None
 
         # Calibration state
         self.is_calibrated = False
@@ -648,6 +682,13 @@ class FociDriver:
         )
         self.set_flux_filter_cmd = self.mcu.lookup_command(
             "tmc_set_flux_filter oid=%c filter_hz=%hu"
+        )
+        self.set_position_gains_cmd = self.mcu.lookup_command(
+            "tmc_set_position_gains oid=%c position_p=%hu position_i=%hu"
+            " velocity_p=%hu velocity_i=%hu"
+        )
+        self.set_velocity_feedforward_cmd = self.mcu.lookup_command(
+            "tmc_set_velocity_feedforward oid=%c enable=%c"
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -782,6 +823,18 @@ class FociDriver:
             self.set_position_filter_cmd.send([self.oid, self.position_filter_hz])
         if self.flux_filter_hz > 0:
             self.set_flux_filter_cmd.send([self.oid, self.flux_filter_hz])
+        if self.pid_position_p is not None:
+            self.set_position_gains_cmd.send(
+                [
+                    self.oid,
+                    self.pid_position_p,
+                    self.pid_position_i,
+                    self.pid_velocity_p,
+                    self.pid_velocity_i,
+                ]
+            )
+        if self.velocity_feedforward:
+            self.set_velocity_feedforward_cmd.send([self.oid, 1])
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
