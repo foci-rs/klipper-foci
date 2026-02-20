@@ -69,7 +69,11 @@ def _fmt_on_off(val: int) -> str:
 
 
 ######################################################################
-# Register addresses (7-bit, no sub-registers for dump set)
+# Register addresses
+#
+# Regular registers use 7-bit addresses (0x00-0x7F).
+# Sub-registers use synthetic addresses 0x80+ matching the firmware's
+# DUMP_SUB_REGISTERS encoding.
 ######################################################################
 
 REGISTERS: dict[str, int] = {
@@ -86,6 +90,7 @@ REGISTERS: dict[str, int] = {
     "PID_TORQUE_P_TORQUE_I": 0x56,
     "PID_VELOCITY_P_VELOCITY_I": 0x58,
     "PID_POSITION_P_POSITION_I": 0x5A,
+    "PID_VELOCITY_LIMIT": 0x60,
     "ABN_DECODER_MODE": 0x25,
     "ABN_DECODER_PPR": 0x26,
     "ABN_DECODER_COUNT": 0x27,
@@ -95,6 +100,10 @@ REGISTERS: dict[str, int] = {
     "ADC_VM_LIMITS": 0x75,
     "STATUS_FLAGS": 0x7C,
     "PWM_SV_CHOP": 0x1A,
+    # Sub-registers (synthetic addresses 0x80+, match firmware encoding)
+    "INTERIM_PIDIN_TARGET_VELOCITY": 0x80,
+    "INTERIM_PIDOUT_TARGET_VELOCITY": 0x81,
+    "PID_POSITION_ERROR_SUM": 0x82,
 }
 
 
@@ -223,6 +232,24 @@ Fields["PWM_SV_CHOP"] = {
     "pwm_sv": 1 << 8,
 }
 
+Fields["PID_VELOCITY_LIMIT"] = {
+    "velocity_limit": 0xFFFFFFFF,
+}
+
+# Sub-register fields (synthetic addresses 0x80+). These are raw s32
+# values displayed as a single field.
+Fields["INTERIM_PIDIN_TARGET_VELOCITY"] = {
+    "pidin_target_velocity": 0xFFFFFFFF,
+}
+
+Fields["INTERIM_PIDOUT_TARGET_VELOCITY"] = {
+    "pidout_target_velocity": 0xFFFFFFFF,
+}
+
+Fields["PID_POSITION_ERROR_SUM"] = {
+    "position_error_sum": 0xFFFFFFFF,
+}
+
 
 ######################################################################
 # Signed fields and formatters
@@ -236,6 +263,9 @@ SIGNED_FIELDS: list[str] = [
     "flux_actual",
     "torque_actual",
     "voltage_limit",
+    "pidin_target_velocity",
+    "pidout_target_velocity",
+    "position_error_sum",
 ]
 
 FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
@@ -287,6 +317,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_TORQUE_P_TORQUE_I",
             "PID_VELOCITY_P_VELOCITY_I",
             "PID_POSITION_P_POSITION_I",
+            "PID_VELOCITY_LIMIT",
         ],
     ),
     (
@@ -294,6 +325,14 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         [
             "PID_POSITION_TARGET",
             "PID_POSITION_ACTUAL",
+        ],
+    ),
+    (
+        "PID Cascade",
+        [
+            "INTERIM_PIDIN_TARGET_VELOCITY",
+            "INTERIM_PIDOUT_TARGET_VELOCITY",
+            "PID_POSITION_ERROR_SUM",
         ],
     ),
     (
