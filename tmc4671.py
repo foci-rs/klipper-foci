@@ -520,6 +520,13 @@ class FociDriver:
             "velocity_feedforward", False
         )
 
+        # PID velocity limit (caps position PID output, anti-windup).
+        # 0 or unset = unconstrained (0x7FFFFFFF). Units: TMC4671 internal
+        # velocity. Appropriate value depends on motor/encoder config.
+        self.pid_velocity_limit: int | None = config.getint(
+            "pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
+        )
+
         # Read stepper config for microsteps and full_steps_per_rotation
         stepper_config = config.getsection(self.stepper_name)
         self.microsteps: int = stepper_config.getint("microsteps")
@@ -555,6 +562,7 @@ class FociDriver:
         self.set_velocity_filter_cmd = None
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
+        self.set_velocity_limit_cmd = None
 
         # Calibration state
         self.is_calibrated = False
@@ -689,6 +697,9 @@ class FociDriver:
         )
         self.set_velocity_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_feedforward oid=%c enable=%c"
+        )
+        self.set_velocity_limit_cmd = self.mcu.lookup_command(
+            "tmc_set_velocity_limit oid=%c limit=%u"
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -835,6 +846,8 @@ class FociDriver:
             )
         if self.velocity_feedforward:
             self.set_velocity_feedforward_cmd.send([self.oid, 1])
+        if self.pid_velocity_limit is not None:
+            self.set_velocity_limit_cmd.send([self.oid, self.pid_velocity_limit])
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
