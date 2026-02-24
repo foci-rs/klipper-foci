@@ -447,8 +447,7 @@ class FociDriver:
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
-        parts = config.get_name().split(None, 1)
-        self.stepper_name: str = parts[1] if len(parts) > 1 else parts[0]
+        self.stepper_name: str = " ".join(config.get_name().split()[1:])
         self.name: str = config.get_name()
 
         self.printer = config.get_printer()
@@ -566,8 +565,17 @@ class FociDriver:
             "pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
         )
 
-        # Read stepper config for microsteps and full_steps_per_rotation
+        # Find stepper config section. The stepper may be defined as
+        # [manual_stepper stepper_x], [stepper stepper_x], or [stepper_x]
+        # depending on kinematics. The foci section always uses the short
+        # name: [foci stepper_x].
+        if not config.has_section(self.stepper_name):
+            raise config.error(
+                "[%s] cannot find stepper section for '%s'"
+                % (self.name, self.stepper_name)
+            )
         stepper_config = config.getsection(self.stepper_name)
+
         self.microsteps: int = stepper_config.getint("microsteps")
         self.full_steps: int = stepper_config.getint("full_steps_per_rotation", 200)
 
@@ -700,22 +708,26 @@ class FociDriver:
             "foci_calibrate oid=%c", cq=cmd_queue
         )
         self.dump_cmd = self.mcu.lookup_command("foci_dump_registers oid=%c")
-        self.mcu.register_response(self._handle_dump_value, "foci_dump_value", self.oid)
-        self.mcu.register_response(self._handle_dump_done, "foci_dump_done", self.oid)
-        self.mcu.register_response(
+        self.mcu._serial.register_response(
+            self._handle_dump_value, "foci_dump_value", self.oid
+        )
+        self.mcu._serial.register_response(
+            self._handle_dump_done, "foci_dump_done", self.oid
+        )
+        self.mcu._serial.register_response(
             self._handle_calibrate_response, "foci_calibrate_response", self.oid
         )
-        self.mcu.register_response(
+        self.mcu._serial.register_response(
             self._handle_selftest_result, "foci_selftest_result", self.oid
         )
-        self.mcu.register_response(
+        self.mcu._serial.register_response(
             self._handle_selftest_done, "foci_selftest_done", self.oid
         )
         self.set_pid_gains_cmd = self.mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
         )
         self.autotune_cmd = self.mcu.lookup_command("foci_autotune oid=%c")
-        self.mcu.register_response(
+        self.mcu._serial.register_response(
             self._handle_autotune_result, "foci_autotune_result", self.oid
         )
         self.set_velocity_filter_cmd = self.mcu.lookup_command(
