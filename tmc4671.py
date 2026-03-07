@@ -443,7 +443,7 @@ class FociDriver:
     cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_CALIBRATE_help = "Calibrate FOCI motor (ADC, encoder, closed-loop)"
-    cmd_FOCI_AUTOTUNE_help = "Measure motor R/L and compute PID gains"
+    cmd_FOCI_AUTOTUNE_help = "Run full motor commissioning (inner + outer autotuning)"
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -605,7 +605,8 @@ class FociDriver:
         self.calibrate_cmd = None
         self.dump_cmd = None
         self.set_pid_gains_cmd = None
-        self.autotune_cmd = None
+        self.commission_inner_cmd = None
+        self.commission_outer_cmd = None
         self.set_velocity_filter_cmd = None
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
@@ -624,9 +625,13 @@ class FociDriver:
         self._selftest_complete = False
         self._selftest_status = 0
 
-        # Autotune state
-        self._autotune_result: dict | None = None
-        self._autotune_complete: bool = False
+        # Commissioning state
+        self._last_phase_id: int | None = None
+        self._commission_inner_result: dict | None = None
+        self._commission_inner_done: bool = False
+        self._commission_outer_result: dict | None = None
+        self._commission_outer_done: bool = False
+        self._commission_error_code: int = 0
 
         # Track whether enable methods have been monkey-patched
         self._enable_patched = False
@@ -726,9 +731,25 @@ class FociDriver:
         self.set_pid_gains_cmd = self.mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
         )
-        self.autotune_cmd = self.mcu.lookup_command("foci_autotune oid=%c")
+        self.commission_inner_cmd = self.mcu.lookup_command(
+            "foci_commission_inner oid=%c profile=%c"
+        )
+        self.commission_outer_cmd = self.mcu.lookup_command(
+            "foci_commission_outer oid=%c profile=%c mode=%c"
+            " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
+        )
         self.mcu._serial.register_response(
-            self._handle_autotune_result, "foci_autotune_result", self.oid
+            self._handle_commission_phase, "foci_commission_phase", self.oid
+        )
+        self.mcu._serial.register_response(
+            self._handle_commission_inner_result,
+            "foci_commission_inner_result",
+            self.oid,
+        )
+        self.mcu._serial.register_response(
+            self._handle_commission_outer_result,
+            "foci_commission_outer_result",
+            self.oid,
         )
         self.set_velocity_filter_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_filter oid=%c filter_hz=%hu"
@@ -808,10 +829,84 @@ class FociDriver:
             self._selftest_status = 1  # FAIL
         self._selftest_complete = True
 
-    def _handle_autotune_result(self, params: dict) -> None:
-        """Handle foci_autotune_result message from firmware."""
-        self._autotune_result = params
-        self._autotune_complete = True
+    # -----------------------------------------------------------------
+    # Commissioning phase/error/profile/mode maps
+    # -----------------------------------------------------------------
+
+    PHASE_NAMES: dict[int, str] = {
+        1: "ADC calibration",
+        2: "Coil check",
+        3: "Phase wiring",
+        4: "Encoder check",
+        5: "Electrical ID",
+        6: "Current tune",
+        7: "Current validation",
+        9: "Mechanical ID",
+        10: "Velocity tune",
+        11: "Velocity validation",
+        12: "Position tune",
+        13: "Filter selection",
+        14: "Commit",
+    }
+
+    COMMISSION_ERROR_NAMES: dict[int, str] = {
+        1: "motor already enabled",
+        2: "no current detected",
+        3: "SPI communication error",
+        4: "ADC calibration fault",
+        5: "coil connectivity fault",
+        6: "phase wiring fault",
+        7: "encoder fault",
+        8: "electrical identification failed",
+        9: "current validation failed",
+        10: "mechanical identification failed",
+        11: "velocity validation failed",
+        12: "position tune failed",
+        13: "encoder not aligned",
+        14: "shutdown requested",
+        15: "commissioning already running",
+        16: "command queue full",
+    }
+
+    PROFILE_MAP: dict[str, int] = {
+        "conservative": 0,
+        "balanced": 1,
+        "stiff": 2,
+    }
+
+    MODE_MAP: dict[str, int] = {
+        "unloaded": 0,
+        "nominal": 1,
+        "high_inertia": 2,
+    }
+
+    def _handle_commission_phase(self, params: dict) -> None:
+        """Handle foci_commission_phase message from firmware.
+
+        Caches the most recent phase ID for failure reporting and
+        reports phase transitions to the Klipper console. A message with
+        phase=0 and nonzero status signals a commissioning failure —
+        sets the error code so the poll loop breaks immediately.
+        """
+        phase_id = params.get("phase", 0)
+        status = params.get("status", 0)
+        if phase_id > 0 and status == 0:
+            self._last_phase_id = phase_id
+            phase_name = self.PHASE_NAMES.get(phase_id, "Phase %d" % phase_id)
+            gcode = self.printer.lookup_object("gcode")
+            gcode.respond_info("FOCI %s autotune: %s" % (self.stepper_name, phase_name))
+        elif phase_id == 0 and status != 0:
+            self._commission_error_code = status
+
+    def _handle_commission_inner_result(self, params: dict) -> None:
+        """Handle foci_commission_inner_result message from firmware."""
+        self._commission_inner_result = params
+        self._commission_inner_done = True
+
+    def _handle_commission_outer_result(self, params: dict) -> None:
+        """Handle foci_commission_outer_result message from firmware."""
+        self._commission_outer_result = params
+        self._commission_outer_done = True
 
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
@@ -1133,79 +1228,643 @@ class FociDriver:
         self._ensure_calibrated()
         gcmd.respond_info("FOCI %s: calibration OK" % self.name)
 
-    def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
-        """Measure motor R/L, compute PI gains, report results.
+    def _build_commission_error(
+        self, stepper_name: str, stage: str, status: int
+    ) -> str:
+        """Build a human-readable commissioning error message.
 
-        On success, prompts user to add values to printer.cfg
-        and run SAVE_CONFIG to persist.
+        Args:
+            stepper_name: Name of the stepper that failed.
+            stage: "inner" or "outer" commissioning stage.
+            status: Firmware error status code.
+
+        Returns:
+            Formatted error string with phase name (if available)
+            and error description.
+        """
+        error_name = self.COMMISSION_ERROR_NAMES.get(
+            status, "unknown error %d" % status
+        )
+        if self._last_phase_id is not None:
+            phase_name = self.PHASE_NAMES.get(
+                self._last_phase_id, "Phase %d" % self._last_phase_id
+            )
+            return "FOCI %s: %s commissioning failed at %s: %s (code %d)" % (
+                stepper_name,
+                stage,
+                phase_name,
+                error_name,
+                status,
+            )
+        return "FOCI %s: %s commissioning failed: %s (code %d)" % (
+            stepper_name,
+            stage,
+            error_name,
+            status,
+        )
+
+    def _run_inner_commission(self, profile_code: int, gcmd) -> dict:
+        """Run inner (electrical) commissioning and return the result.
+
+        Sends the foci_commission_inner command, monitors phase transitions,
+        and waits for the inner result reply.
+
+        Args:
+            profile_code: Commissioning profile (0=conservative, 1=balanced,
+                2=stiff).
+            gcmd: GCode command context for error reporting.
+
+        Returns:
+            The inner result dict from firmware on success.
+
+        Raises:
+            command_error: On timeout or non-zero status.
         """
         reactor = self.printer.get_reactor()
-        self._autotune_complete = False
-        self._autotune_result = None
+        self._last_phase_id = None
+        self._commission_inner_result = None
+        self._commission_inner_done = False
+        self._commission_error_code = 0
 
-        self.autotune_cmd.send([self.oid])
+        self.commission_inner_cmd.send([self.oid, profile_code])
 
-        # Wait for completion (15s timeout)
         deadline = reactor.monotonic() + 15.0
-        while not self._autotune_complete:
+        while not self._commission_inner_done:
+            if self._commission_error_code != 0:
+                raise self.printer.command_error(
+                    self._build_commission_error(
+                        self.stepper_name, "inner", self._commission_error_code
+                    )
+                )
             if reactor.monotonic() > deadline:
                 raise self.printer.command_error(
-                    "FOCI autotune timeout for %s" % self.stepper_name
+                    "FOCI %s: commissioning timed out waiting for"
+                    " inner result" % self.stepper_name
                 )
             reactor.pause(reactor.monotonic() + 0.05)
 
-        result = self._autotune_result
+        result = self._commission_inner_result
         status = result.get("status", 255)
-
-        if status != 0:
-            status_names = {
-                1: "internal error (firmware command queue full)",
-                2: "motor already enabled",
-                3: "current limit not configured",
-                4: "R/L measurement failed",
-                5: "SPI error (TMC4671 not responding)",
-            }
-            reason = status_names.get(status, "unknown error %d" % status)
+        # 0 = Accepted, 1 = AcceptedWithWarnings — both are success.
+        if status > 1:
             raise self.printer.command_error(
-                "FOCI autotune failed for %s: %s" % (self.stepper_name, reason)
+                self._build_commission_error(self.stepper_name, "inner", status)
             )
+        return result
 
-        r_mohm = result["resistance_mohm"]
-        l_uh = result["inductance_uh"]
-        flux_p = result["flux_p"]
-        flux_i = result["flux_i"]
-        torque_p = result["torque_p"]
-        torque_i = result["torque_i"]
+    def _run_outer_commission(
+        self,
+        profile_code: int,
+        mode_code: int,
+        inner_result: dict,
+        gcmd,
+    ) -> dict:
+        """Run outer (mechanical) commissioning and return the result.
 
-        # Stage gains for SAVE_CONFIG
+        Sends the foci_commission_outer command with bandwidth parameters
+        from the inner result, monitors phase transitions, and waits for
+        the outer result reply.
+
+        Args:
+            profile_code: Commissioning profile code.
+            mode_code: Operating mode code (0=unloaded, 1=nominal,
+                2=high_inertia).
+            inner_result: Dict from successful inner commissioning containing
+                lambda_us, theta_e_us, ringing_count, bandwidth_hz.
+            gcmd: GCode command context for error reporting.
+
+        Returns:
+            The outer result dict from firmware on success.
+
+        Raises:
+            command_error: On timeout or non-zero status.
+        """
+        reactor = self.printer.get_reactor()
+        self._last_phase_id = None
+        self._commission_outer_result = None
+        self._commission_outer_done = False
+        self._commission_error_code = 0
+
+        self.commission_outer_cmd.send(
+            [
+                self.oid,
+                profile_code,
+                mode_code,
+                inner_result["lambda_us"],
+                inner_result["theta_e_us"],
+                inner_result["ringing_count"],
+                inner_result["bandwidth_hz"],
+            ]
+        )
+
+        deadline = reactor.monotonic() + 20.0
+        while not self._commission_outer_done:
+            if self._commission_error_code != 0:
+                raise self.printer.command_error(
+                    self._build_commission_error(
+                        self.stepper_name, "outer", self._commission_error_code
+                    )
+                )
+            if reactor.monotonic() > deadline:
+                raise self.printer.command_error(
+                    "FOCI %s: commissioning timed out waiting for"
+                    " outer result" % self.stepper_name
+                )
+            reactor.pause(reactor.monotonic() + 0.05)
+
+        result = self._commission_outer_result
+        status = result.get("status", 255)
+        # 0 = Accepted, 1 = AcceptedWithWarnings — both are success.
+        if status > 1:
+            raise self.printer.command_error(
+                self._build_commission_error(self.stepper_name, "outer", status)
+            )
+        return result
+
+    def _persist_inner_results(
+        self,
+        result: dict,
+        profile_name: str,
+        mode_name: str,
+        status_name: str,
+    ) -> None:
+        """Persist inner commissioning results for SAVE_CONFIG.
+
+        Args:
+            result: Inner result dict from firmware.
+            profile_name: Human-readable profile name.
+            mode_name: Human-readable mode name.
+            status_name: Status string (accepted/inner_only).
+        """
         configfile = self.printer.lookup_object("configfile")
-        configfile.set(self.name, "pid_flux_p", "%d" % flux_p)
-        configfile.set(self.name, "pid_flux_i", "%d" % flux_i)
-        configfile.set(self.name, "pid_torque_p", "%d" % torque_p)
-        configfile.set(self.name, "pid_torque_i", "%d" % torque_i)
+        configfile.set(self.name, "pid_flux_p", "%d" % result["flux_p"])
+        configfile.set(self.name, "pid_flux_i", "%d" % result["flux_i"])
+        configfile.set(self.name, "pid_torque_p", "%d" % result["torque_p"])
+        configfile.set(self.name, "pid_torque_i", "%d" % result["torque_i"])
+        configfile.set(self.name, "identified_r_mohm", "%d" % result["r_mohm"])
+        configfile.set(self.name, "identified_l_uh", "%d" % result["l_uh"])
+        configfile.set(self.name, "autotune_profile", profile_name)
+        configfile.set(self.name, "autotune_mode", mode_name)
+        configfile.set(self.name, "autotune_status", status_name)
 
+    def _persist_outer_results(self, result: dict) -> None:
+        """Persist outer commissioning results for SAVE_CONFIG.
+
+        Args:
+            result: Outer result dict from firmware.
+        """
+        configfile = self.printer.lookup_object("configfile")
+        configfile.set(self.name, "pid_velocity_p", "%d" % result["velocity_p"])
+        configfile.set(self.name, "pid_velocity_i", "%d" % result["velocity_i"])
+        configfile.set(
+            self.name,
+            "pid_velocity_limit",
+            "%d" % result["velocity_limit"],
+        )
+        configfile.set(self.name, "pid_position_p", "%d" % result["position_p"])
+        configfile.set(self.name, "pid_position_i", "%d" % result["position_i"])
+        configfile.set(
+            self.name,
+            "velocity_filter_hz",
+            "%d" % result["velocity_filter_hz"],
+        )
+        configfile.set(
+            self.name,
+            "position_filter_hz",
+            "%d" % result["position_filter_hz"],
+        )
+        configfile.set(self.name, "flux_filter_hz", "%d" % result["flux_filter_hz"])
+        configfile.set(
+            self.name,
+            "torque_filter_hz",
+            "%d" % result["torque_filter_hz"],
+        )
+        configfile.set(self.name, "identified_j_eff", "%d" % result["j_eff"])
+        configfile.set(self.name, "identified_b_eff", "%d" % result["b_eff"])
+
+    def _lookup_foci_driver(self, stepper_name: str):
+        """Look up another FociDriver instance by stepper name.
+
+        Args:
+            stepper_name: The stepper name to search for (e.g. "stepper_y").
+
+        Returns:
+            The FociDriver instance, or None if not found.
+        """
+        for obj_name in self.printer.lookup_objects("foci"):
+            driver = obj_name[1]
+            if hasattr(driver, "stepper_name") and driver.stepper_name == stepper_name:
+                return driver
+        return None
+
+    def _report_inner_results(self, gcmd, stepper_name: str, result: dict) -> None:
+        """Report inner commissioning results to the GCode console.
+
+        Args:
+            gcmd: GCode command context.
+            stepper_name: Name of the stepper.
+            result: Inner result dict from firmware.
+        """
         gcmd.respond_info(
-            "FOCI autotune results for %s:\n"
+            "FOCI %s inner commissioning complete:\n"
             "  Resistance: %.3f ohm\n"
             "  Inductance: %.3f mH\n"
             "  Flux P: %d (Q8.8 = %.3f)\n"
             "  Flux I: %d (Q8.8 = %.3f)\n"
             "  Torque P: %d (Q8.8 = %.3f)\n"
             "  Torque I: %d (Q8.8 = %.3f)\n"
-            "\n"
-            "The SAVE_CONFIG command will update the printer config\n"
-            "file and restart the printer."
+            "  Bandwidth: %d Hz"
             % (
-                self.stepper_name,
-                r_mohm / 1000.0,
-                l_uh / 1000.0,
-                flux_p,
-                flux_p / 256.0,
-                flux_i,
-                flux_i / 256.0,
-                torque_p,
-                torque_p / 256.0,
-                torque_i,
-                torque_i / 256.0,
+                stepper_name,
+                result["r_mohm"] / 1000.0,
+                result["l_uh"] / 1000.0,
+                result["flux_p"],
+                result["flux_p"] / 256.0,
+                result["flux_i"],
+                result["flux_i"] / 256.0,
+                result["torque_p"],
+                result["torque_p"] / 256.0,
+                result["torque_i"],
+                result["torque_i"] / 256.0,
+                result["bandwidth_hz"],
             )
         )
+
+    def _report_outer_results(self, gcmd, stepper_name: str, result: dict) -> None:
+        """Report outer commissioning results to the GCode console.
+
+        Args:
+            gcmd: GCode command context.
+            stepper_name: Name of the stepper.
+            result: Outer result dict from firmware.
+        """
+        gcmd.respond_info(
+            "FOCI %s outer commissioning complete:\n"
+            "  Velocity P: %d (Q8.8 = %.3f)\n"
+            "  Velocity I: %d (Q8.8 = %.3f)\n"
+            "  Velocity limit: %d\n"
+            "  Position P: %d (Q8.8 = %.3f)\n"
+            "  Position I: %d (Q8.8 = %.3f)\n"
+            "  Velocity filter: %d Hz\n"
+            "  Position filter: %d Hz\n"
+            "  Flux filter: %d Hz\n"
+            "  Torque filter: %d Hz\n"
+            "  J_eff: %d, B_eff: %d"
+            % (
+                stepper_name,
+                result["velocity_p"],
+                result["velocity_p"] / 256.0,
+                result["velocity_i"],
+                result["velocity_i"] / 256.0,
+                result["velocity_limit"],
+                result["position_p"],
+                result["position_p"] / 256.0,
+                result["position_i"],
+                result["position_i"] / 256.0,
+                result["velocity_filter_hz"],
+                result["position_filter_hz"],
+                result["flux_filter_hz"],
+                result["torque_filter_hz"],
+                result["j_eff"],
+                result["b_eff"],
+            )
+        )
+
+    def _run_single_stepper_autotune(
+        self,
+        profile_code: int,
+        mode_code: int,
+        profile_name: str,
+        mode_name: str,
+        gcmd,
+    ) -> None:
+        """Run single-stepper commissioning (inner + outer).
+
+        Args:
+            profile_code: Commissioning profile code.
+            mode_code: Operating mode code.
+            profile_name: Human-readable profile name for persistence.
+            mode_name: Human-readable mode name for persistence.
+            gcmd: GCode command context.
+        """
+        # --- Inner commissioning ---
+        inner_result = self._run_inner_commission(profile_code, gcmd)
+        self._report_inner_results(gcmd, self.stepper_name, inner_result)
+
+        # --- Outer commissioning ---
+        try:
+            outer_result = self._run_outer_commission(
+                profile_code, mode_code, inner_result, gcmd
+            )
+        except Exception:
+            # Outer failed — persist inner gains as inner_only
+            self._persist_inner_results(
+                inner_result, profile_name, mode_name, "inner_only"
+            )
+            gcmd.respond_info(
+                "FOCI %s: outer commissioning failed."
+                " Inner gains saved as inner_only.\n"
+                "The SAVE_CONFIG command will update the printer"
+                " config file and restart the printer." % self.stepper_name
+            )
+            raise
+
+        # Both succeeded — persist everything.
+        # Firmware status: 0 = Accepted, 1 = AcceptedWithWarnings.
+        status_name = "accepted"
+        inner_status = inner_result.get("status", 0)
+        outer_status = outer_result.get("status", 0)
+        if inner_status == 1 or outer_status == 1:
+            status_name = "accepted_with_warnings"
+        self._persist_inner_results(inner_result, profile_name, mode_name, status_name)
+        self._persist_outer_results(outer_result)
+        self._report_outer_results(gcmd, self.stepper_name, outer_result)
+        gcmd.respond_info(
+            "FOCI %s: commissioning complete.\n"
+            "The SAVE_CONFIG command will update the printer"
+            " config file and restart the printer." % self.stepper_name
+        )
+
+    def _run_dual_stepper_autotune(
+        self,
+        partner,
+        profile_code: int,
+        mode_code: int,
+        profile_name: str,
+        mode_name: str,
+        gcmd,
+    ) -> None:
+        """Run dual-stepper commissioning with partner-hold orchestration.
+
+        Phase 1: inner commission both steppers independently.
+        Phase 2: outer commission each stepper while partner holds position.
+
+        Args:
+            partner: The partner FociDriver instance.
+            profile_code: Commissioning profile code.
+            mode_code: Operating mode code.
+            profile_name: Human-readable profile name for persistence.
+            mode_name: Human-readable mode name for persistence.
+            gcmd: GCode command context.
+        """
+        # --- Phase 1: Inner commissioning (no partner needed) ---
+        gcmd.respond_info(
+            "FOCI dual-stepper autotune: inner commissioning %s" % self.stepper_name
+        )
+        inner_result_a = self._run_inner_commission(profile_code, gcmd)
+        self._report_inner_results(gcmd, self.stepper_name, inner_result_a)
+        self._persist_inner_results(
+            inner_result_a, profile_name, mode_name, "inner_only"
+        )
+
+        gcmd.respond_info(
+            "FOCI dual-stepper autotune: inner commissioning %s" % partner.stepper_name
+        )
+        inner_result_b = partner._run_inner_commission(profile_code, gcmd)
+        self._report_inner_results(gcmd, partner.stepper_name, inner_result_b)
+        partner._persist_inner_results(
+            inner_result_b, profile_name, mode_name, "inner_only"
+        )
+
+        # --- Phase 2: Outer commissioning with partner hold ---
+
+        # Outer commission stepper A while B holds
+        gcmd.respond_info(
+            "FOCI dual-stepper autotune: enabling %s for partner hold"
+            % partner.stepper_name
+        )
+        partner._enable_stepper_hold()
+
+        outer_failed_a = False
+        try:
+            gcmd.respond_info(
+                "FOCI dual-stepper autotune: outer commissioning %s" % self.stepper_name
+            )
+            outer_result_a = self._run_outer_commission(
+                profile_code, mode_code, inner_result_a, gcmd
+            )
+        except Exception:
+            outer_failed_a = True
+            outer_result_a = None
+            gcmd.respond_info(
+                "FOCI %s: outer commissioning failed."
+                " Inner gains saved as inner_only." % self.stepper_name
+            )
+
+        # Disable partner B in hardware after A's outer phase
+        partner._disable_stepper()
+
+        if outer_failed_a:
+            # A's outer failed. Per spec: disable partner, do not
+            # attempt B's outer. Both inner gains already persisted.
+            gcmd.respond_info(
+                "FOCI dual-stepper autotune: outer commissioning"
+                " failed for %s. Inner gains saved for both motors.\n"
+                "The SAVE_CONFIG command will update the printer"
+                " config file and restart the printer." % self.stepper_name
+            )
+            return
+
+        # Persist A's full results.
+        # Firmware status: 0 = Accepted, 1 = AcceptedWithWarnings.
+        status_name_a = "accepted"
+        if inner_result_a.get("status", 0) == 1:
+            status_name_a = "accepted_with_warnings"
+        if outer_result_a.get("status", 0) == 1:
+            status_name_a = "accepted_with_warnings"
+        self._persist_inner_results(
+            inner_result_a, profile_name, mode_name, status_name_a
+        )
+        self._persist_outer_results(outer_result_a)
+        self._report_outer_results(gcmd, self.stepper_name, outer_result_a)
+
+        # Outer commission stepper B while A holds
+        gcmd.respond_info(
+            "FOCI dual-stepper autotune: enabling %s for partner hold"
+            % self.stepper_name
+        )
+        self._enable_stepper_hold()
+
+        outer_failed_b = False
+        try:
+            gcmd.respond_info(
+                "FOCI dual-stepper autotune: outer commissioning %s"
+                % partner.stepper_name
+            )
+            outer_result_b = partner._run_outer_commission(
+                profile_code, mode_code, inner_result_b, gcmd
+            )
+        except Exception:
+            outer_failed_b = True
+            outer_result_b = None
+            gcmd.respond_info(
+                "FOCI %s: outer commissioning failed."
+                " Inner gains saved as inner_only." % partner.stepper_name
+            )
+
+        # Disable self in hardware after B's outer phase
+        self._disable_stepper()
+
+        if not outer_failed_b:
+            status_name_b = "accepted"
+            if inner_result_b.get("status", 0) == 1:
+                status_name_b = "accepted_with_warnings"
+            if outer_result_b.get("status", 0) == 1:
+                status_name_b = "accepted_with_warnings"
+            partner._persist_inner_results(
+                inner_result_b, profile_name, mode_name, status_name_b
+            )
+            partner._persist_outer_results(outer_result_b)
+            self._report_outer_results(gcmd, partner.stepper_name, outer_result_b)
+
+        # Summary
+        if outer_failed_b:
+            gcmd.respond_info(
+                "FOCI dual-stepper autotune: %s fully commissioned,"
+                " %s outer failed (inner gains saved).\n"
+                "The SAVE_CONFIG command will update the printer"
+                " config file and restart the printer."
+                % (self.stepper_name, partner.stepper_name)
+            )
+        else:
+            gcmd.respond_info(
+                "FOCI dual-stepper autotune: commissioning complete"
+                " for %s and %s.\n"
+                "The SAVE_CONFIG command will update the printer"
+                " config file and restart the printer."
+                % (self.stepper_name, partner.stepper_name)
+            )
+
+    # CoreXY-family kinematics where stepper_x and stepper_y are paired.
+    PAIRED_KINEMATICS: dict[str, tuple[str, str]] = {
+        "corexy": ("stepper_x", "stepper_y"),
+        "corexz": ("stepper_x", "stepper_z"),
+    }
+
+    def _detect_partner(self) -> "FociDriver | None":
+        """Auto-detect the paired stepper for CoreXY-family kinematics.
+
+        Returns the partner FociDriver if this stepper is part of a
+        paired kinematics set and the partner is also FOCI-controlled.
+        Returns None for cartesian or if the partner is not a FociDriver.
+        """
+        try:
+            printer_config = self.printer.lookup_object("configfile")
+            kin_name = printer_config.status_raw_config.get("printer", {}).get(
+                "kinematics", ""
+            )
+        except Exception:
+            return None
+        pair = self.PAIRED_KINEMATICS.get(kin_name)
+        if pair is None:
+            return None
+        if self.stepper_name not in pair:
+            return None
+        partner_name = pair[1] if self.stepper_name == pair[0] else pair[0]
+        return self._lookup_foci_driver(partner_name)
+
+    def _enable_stepper_hold(self) -> None:
+        """Calibrate and enable this stepper in closed-loop position hold.
+
+        Runs the firmware calibration sequence (ADC + encoder alignment),
+        then enables the motor in hardware so the firmware enters its
+        closed-loop position hold mode. Used to hold a partner motor
+        during outer commissioning of the other axis.
+        """
+        self._ensure_calibrated()
+        stepper_enable = self.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.stepper_name)
+        toolhead = self.printer.lookup_object("toolhead")
+        print_time = toolhead.get_last_move_time()
+        enable_line.motor_enable(print_time)
+        toolhead.dwell(0.100)
+
+    def _disable_stepper(self) -> None:
+        """Disable this stepper's motor in hardware and clear calibration."""
+        stepper_enable = self.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.stepper_name)
+        toolhead = self.printer.lookup_object("toolhead")
+        print_time = toolhead.get_last_move_time()
+        enable_line.motor_disable(print_time)
+        toolhead.dwell(0.050)
+        self.is_calibrated = False
+
+    def _check_autotune_preconditions(self, gcmd) -> None:
+        """Reject autotuning early if preconditions are not met.
+
+        Checks that the motor is not currently enabled and that no
+        moves are queued for this stepper. Raises command_error with
+        a clear message on failure.
+        """
+        # Motor must not be enabled (firmware will also reject, but
+        # catching it here gives a better error message).
+        stepper_enable = self.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.stepper_name)
+        if enable_line.is_motor_enabled():
+            raise gcmd.error(
+                "FOCI %s: motor is currently enabled"
+                " -- disable before autotuning" % self.stepper_name
+            )
+        # No queued moves for this stepper.
+        toolhead = self.printer.lookup_object("toolhead")
+        toolhead.wait_moves()
+
+    def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
+        """Run full motor commissioning (inner + outer autotuning).
+
+        Auto-detects CoreXY partner for dual-stepper orchestration.
+        Use PAIR=0 to skip partner detection and commission only this motor.
+        On success, stages results for SAVE_CONFIG.
+        """
+        # Parse and validate parameters
+        profile_name = gcmd.get("PROFILE", "balanced").lower()
+        if profile_name not in self.PROFILE_MAP:
+            raise gcmd.error(
+                "FOCI %s: unknown profile '%s' (expected: %s)"
+                % (
+                    self.stepper_name,
+                    profile_name,
+                    ", ".join(sorted(self.PROFILE_MAP)),
+                )
+            )
+        profile_code = self.PROFILE_MAP[profile_name]
+
+        mode_name = gcmd.get("MODE", "nominal").lower()
+        if mode_name not in self.MODE_MAP:
+            raise gcmd.error(
+                "FOCI %s: unknown mode '%s' (expected: %s)"
+                % (
+                    self.stepper_name,
+                    mode_name,
+                    ", ".join(sorted(self.MODE_MAP)),
+                )
+            )
+        mode_code = self.MODE_MAP[mode_name]
+
+        # Pre-condition checks (spec: reject early with clear error)
+        self._check_autotune_preconditions(gcmd)
+
+        # Auto-detect paired stepper from kinematics (opt-out with PAIR=0)
+        pair_enabled = gcmd.get_int("PAIR", 1, minval=0, maxval=1)
+        partner = self._detect_partner() if pair_enabled else None
+
+        if partner is not None:
+            partner._check_autotune_preconditions(gcmd)
+            gcmd.respond_info(
+                "FOCI %s: detected paired stepper %s from kinematics,"
+                " commissioning both (use PAIR=0 to skip)"
+                % (self.stepper_name, partner.stepper_name)
+            )
+            self._run_dual_stepper_autotune(
+                partner,
+                profile_code,
+                mode_code,
+                profile_name,
+                mode_name,
+                gcmd,
+            )
+        else:
+            # Single-stepper commissioning
+            self._run_single_stepper_autotune(
+                profile_code, mode_code, profile_name, mode_name, gcmd
+            )
