@@ -620,10 +620,9 @@ class FociDriver:
         self._dump_buffer: dict[int, int] = {}
         self._dump_complete = False
 
-        # Selftest state
-        self._selftest_results: list[dict] = []
-        self._selftest_complete = False
-        self._selftest_status = 0
+        # Selftest state (commissioning-engine based)
+        self._selftest_done: bool = False
+        self._selftest_in_flight: bool = False
 
         # Commissioning state
         self._last_phase_id: int | None = None
@@ -722,12 +721,6 @@ class FociDriver:
         self.mcu._serial.register_response(
             self._handle_calibrate_response, "foci_calibrate_response", self.oid
         )
-        self.mcu._serial.register_response(
-            self._handle_selftest_result, "foci_selftest_result", self.oid
-        )
-        self.mcu._serial.register_response(
-            self._handle_selftest_done, "foci_selftest_done", self.oid
-        )
         self.set_pid_gains_cmd = self.mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
         )
@@ -803,32 +796,6 @@ class FociDriver:
         """Handle dump completion signal from firmware."""
         self._dump_complete = True
 
-    # Maximum number of selftest stage results to accept per run.
-    MAX_SELFTEST_RESULTS = 16
-
-    def _handle_selftest_result(self, params: dict) -> None:
-        """Handle a single selftest stage result from firmware."""
-        if len(self._selftest_results) >= self.MAX_SELFTEST_RESULTS:
-            return
-        try:
-            self._selftest_results.append(
-                {
-                    "stage": params["stage"],
-                    "status": params["status"],
-                    "value": params["value"],
-                }
-            )
-        except KeyError:
-            return
-
-    def _handle_selftest_done(self, params: dict) -> None:
-        """Handle selftest completion signal from firmware."""
-        try:
-            self._selftest_status = params["status"]
-        except KeyError:
-            self._selftest_status = 1  # FAIL
-        self._selftest_complete = True
-
     # -----------------------------------------------------------------
     # Commissioning phase/error/profile/mode maps
     # -----------------------------------------------------------------
@@ -897,6 +864,8 @@ class FociDriver:
             gcode.respond_info("FOCI %s autotune: %s" % (self.stepper_name, phase_name))
         elif phase_id == 0 and status != 0:
             self._commission_error_code = status
+        elif phase_id == 0 and status == 0 and self._selftest_in_flight:
+            self._selftest_done = True
 
     def _handle_commission_inner_result(self, params: dict) -> None:
         """Handle foci_commission_inner_result message from firmware."""
@@ -1123,100 +1092,47 @@ class FociDriver:
         if not is_enable:
             self.is_calibrated = False
 
-    # Selftest stage names for human-readable reporting
-    SELFTEST_STAGES = {
-        1: "ADC calibration",
-        2: "Motor coil A",
-        3: "Motor coil B",
-        4: "Phase wiring",
-        5: "Encoder",
-        6: "Encoder direction (physical)",
-        7: "Resistance",
-        8: "Inductance",
-    }
-
     def cmd_FOCI_SELFTEST(self, gcmd) -> None:
         """Handler for FOCI_SELFTEST GCode command.
 
-        Sends foci_selftest command and collects streaming results.
-        Formats a human-readable report to the GCode console.
+        Sends foci_selftest command to create a commissioning-engine selftest
+        in firmware. The firmware streams foci_commission_phase messages for
+        progress and a terminal phase=0 status=0 on success.
         """
         reactor = self.printer.get_reactor()
-        self._selftest_results.clear()
-        self._selftest_complete = False
-        self._selftest_status = 0
+        self._selftest_done = False
+        self._selftest_in_flight = True
+        self._last_phase_id = None
+        self._commission_error_code = 0
 
+        # Send selftest command (firmware creates new_selftest engine)
         self.selftest_cmd.send([self.oid])
 
-        # Wait for completion (10s timeout)
-        deadline = reactor.monotonic() + 10.0
-        while not self._selftest_complete:
-            if reactor.monotonic() > deadline:
+        # Wait for completion (15s timeout -- selftest runs phases 0-4)
+        deadline = reactor.monotonic() + 15.0
+        while not self._selftest_done:
+            if self._commission_error_code != 0:
+                self._selftest_in_flight = False
+                phase_name = (
+                    self.PHASE_NAMES.get(self._last_phase_id, "unknown")
+                    if self._last_phase_id
+                    else "startup"
+                )
                 raise self.printer.command_error(
-                    "FOCI self-test timeout for %s" % self.stepper_name
+                    "FOCI %s: selftest failed at %s (code %d)"
+                    % (self.stepper_name, phase_name, self._commission_error_code)
+                )
+            if reactor.monotonic() > deadline:
+                self._selftest_in_flight = False
+                raise self.printer.command_error(
+                    "FOCI %s: selftest timed out" % self.stepper_name
                 )
             reactor.pause(reactor.monotonic() + 0.05)
 
-        # Format report
-        lines = ["FOCI Self-Test: %s" % self.stepper_name]
-        status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
-        passed = 0
-        total = len(self._selftest_results)
-        for r in self._selftest_results:
-            stage = r["stage"]
-            status = r["status"]
-            value = r["value"]
-            name = self.SELFTEST_STAGES.get(stage, "Stage %d" % stage)
-            status_str = status_names.get(status, "?")
-            detail = self._format_selftest_value(stage, status, value)
-            dots = "." * max(1, 35 - len(name))
-            lines.append("  %s %s %s%s" % (name, dots, status_str, detail))
-            if status == 0:
-                passed += 1
-            elif status == 1 and stage <= 5:
-                lines.append("  [ABORTED] %s" % self._selftest_error_hint(stage))
-                break
-
-        overall = "PASS" if self._selftest_status == 0 else "FAIL"
-        if self._selftest_status == 2:
-            overall = "ABORTED (motor enabled or selftest already running)"
-        lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
-        gcmd.respond_info("\n".join(lines))
-
-    def _format_selftest_value(self, stage: int, status: int, value: int) -> str:
-        """Format a stage-specific value for display."""
-        if status != 0:
-            return " (value: %d)" % value if value else ""
-        if stage == 1:
-            i0 = (value >> 16) & 0xFFFF
-            i1 = value & 0xFFFF
-            return " (I0: %d, I1: %d)" % (i0, i1)
-        if stage in (2, 3):
-            return " (current: %d)" % value
-        if stage == 5:
-            return " (delta: %d)" % value
-        if stage == 6:
-            return " (increasing)" if value == 0 else " (decreasing)"
-        if stage == 7:
-            a = ((value >> 16) & 0xFFFF) / 1000.0
-            b = (value & 0xFFFF) / 1000.0
-            return " (coil A: %.1f ohm, coil B: %.1f ohm)" % (a, b)
-        if stage == 8:
-            a = ((value >> 16) & 0xFFFF) / 1000.0
-            b = (value & 0xFFFF) / 1000.0
-            return " (coil A: %.1f mH, coil B: %.1f mH)" % (a, b)
-        return ""
-
-    def _selftest_error_hint(self, stage: int) -> str:
-        """Return a human-readable hint for a failed stage."""
-        hints = {
-            1: "ADC calibration failed - check current sense hardware",
-            2: "Motor not detected on coil A - check wiring",
-            3: "Motor not detected on coil B - check wiring",
-            4: "Phase wiring error - coils may be swapped at connector",
-            5: "Encoder not responding - check encoder cable",
-        }
-        return hints.get(stage, "Stage %d failed" % stage)
+        self._selftest_in_flight = False
+        gcmd.respond_info(
+            "FOCI %s: selftest passed (phases 0-4 complete)" % self.stepper_name
+        )
 
     def cmd_FOCI_CALIBRATE(self, gcmd) -> None:
         """Handler for FOCI_CALIBRATE GCode command.
