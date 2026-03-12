@@ -95,6 +95,8 @@ REGISTERS: dict[str, int] = {
     "ABN_DECODER_PPR": 0x26,
     "ABN_DECODER_COUNT": 0x27,
     "ABN_DECODER_PHI_E_PHI_M": 0x2A,
+    "PID_TORQUE_FLUX_OFFSET": 0x65,
+    "PID_VELOCITY_OFFSET": 0x67,
     "PID_POSITION_TARGET": 0x68,
     "PID_POSITION_ACTUAL": 0x6B,
     "ADC_VM_LIMITS": 0x75,
@@ -236,6 +238,15 @@ Fields["PID_VELOCITY_LIMIT"] = {
     "velocity_limit": 0xFFFFFFFF,
 }
 
+Fields["PID_TORQUE_FLUX_OFFSET"] = {
+    "flux_offset": 0xFFFF,
+    "torque_offset": 0xFFFF << 16,
+}
+
+Fields["PID_VELOCITY_OFFSET"] = {
+    "velocity_offset": 0xFFFFFFFF,
+}
+
 # Sub-register fields (synthetic addresses 0x80+). These are raw s32
 # values displayed as a single field.
 Fields["INTERIM_PIDIN_TARGET_VELOCITY"] = {
@@ -263,6 +274,9 @@ SIGNED_FIELDS: list[str] = [
     "flux_actual",
     "torque_actual",
     "voltage_limit",
+    "flux_offset",
+    "torque_offset",
+    "velocity_offset",
     "pidin_target_velocity",
     "pidout_target_velocity",
     "position_error_sum",
@@ -332,6 +346,8 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         [
             "INTERIM_PIDIN_TARGET_VELOCITY",
             "INTERIM_PIDOUT_TARGET_VELOCITY",
+            "PID_TORQUE_FLUX_OFFSET",
+            "PID_VELOCITY_OFFSET",
             "PID_POSITION_ERROR_SUM",
         ],
     ),
