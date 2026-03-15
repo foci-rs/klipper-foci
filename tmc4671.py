@@ -1067,6 +1067,8 @@ class FociDriver:
                 3: "ENCODER_FAULT (encoder not connected or unstable)",
                 4: "PID_FAULT (control loop not converging)",
                 6: "INTERNAL_ERROR (firmware command queue full)",
+                7: "CONFIG_FAULT (tmc_set_encoder not called before calibrate"
+                " — check printer.cfg foci section has encoder_ppr)",
             }
             msg = status_names.get(status, "UNKNOWN(%d)" % status)
             raise self.printer.command_error(
