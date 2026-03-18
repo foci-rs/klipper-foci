@@ -1432,7 +1432,7 @@ class FociDriver:
             stepper_name: Name of the stepper.
             result: Outer result dict from firmware.
         """
-        gcmd.respond_info(
+        message = (
             "FOCI %s outer commissioning complete:\n"
             "  Velocity P: %d (Q8.8 = %.3f)\n"
             "  Velocity I: %d (Q8.8 = %.3f)\n"
@@ -1463,6 +1463,39 @@ class FociDriver:
                 result["b_eff"],
             )
         )
+        warning_code = result.get("warning_code", 0)
+        if warning_code:
+            warning_names = {
+                1: "low-confidence mechanical ID, fallback gains applied",
+                2: "unsafe synthesized gains, fallback gains applied",
+            }
+            message += "\n  Warning: %s" % warning_names.get(
+                warning_code, "warning code %d" % warning_code
+            )
+        if "mech_torque_step" in result:
+            message += (
+                "\n  Mechanical ID: torque=%d, accel=%d/%d, peak=%d/%d, travel=%d/%d"
+                % (
+                    result["mech_torque_step"],
+                    result["mech_fwd_accel"],
+                    result["mech_rev_accel"],
+                    result["mech_fwd_peak_velocity"],
+                    result["mech_rev_peak_velocity"],
+                    result["mech_fwd_travel"],
+                    result["mech_rev_travel"],
+                )
+            )
+        if "synth_velocity_p" in result:
+            message += (
+                "\n  Synthesized before guard: vel P/I=%d/%d, pos P/I=%d/%d"
+                % (
+                    result["synth_velocity_p"],
+                    result["synth_velocity_i"],
+                    result["synth_position_p"],
+                    result["synth_position_i"],
+                )
+            )
+        gcmd.respond_info(message)
 
     def _run_single_stepper_autotune(
         self,
