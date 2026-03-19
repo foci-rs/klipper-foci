@@ -207,12 +207,16 @@ Fields["ADC_VM_LIMITS"] = {
 
 Fields["STATUS_FLAGS"] = {
     "pid_x_target_limit": 1 << 0,
+    "pid_x_errsum_limit": 1 << 2,
     "pid_x_output_limit": 1 << 3,
     "pid_v_target_limit": 1 << 4,
+    "pid_v_errsum_limit": 1 << 6,
     "pid_v_output_limit": 1 << 7,
     "pid_id_target_limit": 1 << 8,
+    "pid_id_errsum_limit": 1 << 10,
     "pid_id_output_limit": 1 << 11,
     "pid_iq_target_limit": 1 << 12,
+    "pid_iq_errsum_limit": 1 << 14,
     "pid_iq_output_limit": 1 << 15,
     "ipark_cirlim_limit_u_d": 1 << 16,
     "ipark_cirlim_limit_u_q": 1 << 17,

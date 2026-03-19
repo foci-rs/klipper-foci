@@ -111,6 +111,13 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertIn("00000000", out)
         self.assertNotIn("=", out)
 
+    def test_status_errsum_flags(self):
+        out = self.fh.pretty_format("STATUS_FLAGS", 0x00004488)
+        self.assertIn("pid_x_output_limit=1", out)
+        self.assertIn("pid_v_output_limit=1", out)
+        self.assertIn("pid_id_errsum_limit=1", out)
+        self.assertIn("pid_iq_errsum_limit=1", out)
+
     def test_motor_type_fields(self):
         out = self.fh.pretty_format("MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
         self.assertIn("motor_type=2(stepper)", out)
