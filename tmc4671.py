@@ -1466,8 +1466,8 @@ class FociDriver:
         warning_code = result.get("warning_code", 0)
         if warning_code:
             warning_names = {
-                1: "low-confidence mechanical ID, fallback gains applied",
-                2: "unsafe synthesized gains, fallback gains applied",
+                1: "low-confidence mechanical ID, response-tuned gains used",
+                2: "unsafe synthesized gains, response-tuned gains used",
             }
             message += "\n  Warning: %s" % warning_names.get(
                 warning_code, "warning code %d" % warning_code
@@ -1487,7 +1487,7 @@ class FociDriver:
             )
         if "synth_velocity_p" in result:
             message += (
-                "\n  Synthesized before guard: vel P/I=%d/%d, pos P/I=%d/%d"
+                "\n  Candidate before final guard: vel P/I=%d/%d, pos P/I=%d/%d"
                 % (
                     result["synth_velocity_p"],
                     result["synth_velocity_i"],
