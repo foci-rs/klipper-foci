@@ -106,6 +106,9 @@ REGISTERS: dict[str, int] = {
     "INTERIM_PIDIN_TARGET_VELOCITY": 0x80,
     "INTERIM_PIDOUT_TARGET_VELOCITY": 0x81,
     "PID_POSITION_ERROR_SUM": 0x82,
+    "PID_TORQUE_ERROR_SUM": 0x83,
+    "PID_FLUX_ERROR_SUM": 0x84,
+    "PID_VELOCITY_ERROR_SUM": 0x85,
 }
 
 
@@ -265,6 +268,18 @@ Fields["PID_POSITION_ERROR_SUM"] = {
     "position_error_sum": 0xFFFFFFFF,
 }
 
+Fields["PID_TORQUE_ERROR_SUM"] = {
+    "torque_error_sum": 0xFFFFFFFF,
+}
+
+Fields["PID_FLUX_ERROR_SUM"] = {
+    "flux_error_sum": 0xFFFFFFFF,
+}
+
+Fields["PID_VELOCITY_ERROR_SUM"] = {
+    "velocity_error_sum": 0xFFFFFFFF,
+}
+
 
 ######################################################################
 # Signed fields and formatters
@@ -284,6 +299,9 @@ SIGNED_FIELDS: list[str] = [
     "pidin_target_velocity",
     "pidout_target_velocity",
     "position_error_sum",
+    "torque_error_sum",
+    "flux_error_sum",
+    "velocity_error_sum",
 ]
 
 FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
@@ -353,6 +371,9 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_TORQUE_FLUX_OFFSET",
             "PID_VELOCITY_OFFSET",
             "PID_POSITION_ERROR_SUM",
+            "PID_TORQUE_ERROR_SUM",
+            "PID_FLUX_ERROR_SUM",
+            "PID_VELOCITY_ERROR_SUM",
         ],
     ),
     (

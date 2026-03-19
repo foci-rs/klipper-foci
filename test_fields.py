@@ -118,6 +118,10 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertIn("pid_id_errsum_limit=1", out)
         self.assertIn("pid_iq_errsum_limit=1", out)
 
+    def test_pid_error_sums_are_signed(self):
+        out = self.fh.pretty_format("PID_TORQUE_ERROR_SUM", 0xFFFFFFFE)
+        self.assertIn("torque_error_sum=-2", out)
+
     def test_motor_type_fields(self):
         out = self.fh.pretty_format("MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
         self.assertIn("motor_type=2(stepper)", out)
