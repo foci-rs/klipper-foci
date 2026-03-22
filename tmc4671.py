@@ -680,8 +680,8 @@ class FociDriver:
         self.calibrate_cmd = None
         self.dump_cmd = None
         self.set_pid_gains_cmd = None
-        self.commission_inner_cmd = None
-        self.commission_outer_cmd = None
+        self.commission_cmd = None
+        self.tune_cmd = None
         self.set_velocity_filter_cmd = None
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
@@ -807,24 +807,24 @@ class FociDriver:
         self.set_pid_gains_cmd = self.mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
         )
-        self.commission_inner_cmd = self.mcu.lookup_command(
-            "foci_commission_inner oid=%c profile=%c"
+        self.commission_cmd = self.mcu.lookup_command(
+            "foci_commission oid=%c profile=%c"
         )
-        self.commission_outer_cmd = self.mcu.lookup_command(
-            "foci_commission_outer oid=%c profile=%c mode=%c"
+        self.tune_cmd = self.mcu.lookup_command(
+            "foci_tune oid=%c profile=%c mode=%c"
             " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
         )
         self.mcu._serial.register_response(
             self._handle_commission_phase, "foci_commission_phase", self.oid
         )
         self.mcu._serial.register_response(
-            self._handle_commission_inner_result,
-            "foci_commission_inner_result",
+            self._handle_commission_result,
+            "foci_commission_result",
             self.oid,
         )
         self.mcu._serial.register_response(
-            self._handle_commission_outer_result,
-            "foci_commission_outer_result",
+            self._handle_tune_result,
+            "foci_tune_result",
             self.oid,
         )
         self.set_velocity_filter_cmd = self.mcu.lookup_command(
@@ -950,15 +950,15 @@ class FociDriver:
         elif phase_id == 0 and status == 0 and self._selftest_in_flight:
             self._selftest_done = True
 
-    def _handle_commission_inner_result(self, params: dict) -> None:
-        """Handle foci_commission_inner_result message from firmware."""
-        self._commission_inner_result = params
-        self._commission_inner_done = True
+    def _handle_commission_result(self, params: dict) -> None:
+        """Handle foci_commission_result from firmware (Stage 1 completion)."""
+        self._commission_result = params
+        self._commission_done = True
 
-    def _handle_commission_outer_result(self, params: dict) -> None:
-        """Handle foci_commission_outer_result message from firmware."""
-        self._commission_outer_result = params
-        self._commission_outer_done = True
+    def _handle_tune_result(self, params: dict) -> None:
+        """Handle foci_tune_result from firmware (Stage 2 completion)."""
+        self._commission_result = params
+        self._commission_done = True
 
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
