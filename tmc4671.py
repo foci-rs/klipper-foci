@@ -1436,38 +1436,54 @@ class FociDriver:
         Sends foci_selftest command to create a commissioning-engine selftest
         in firmware. The firmware streams foci_commission_phase messages for
         progress and a terminal phase=0 status=0 on success.
+
+        Selftest includes encoder alignment, so homing is invalidated at
+        command-accepted time.
         """
-        reactor = self.printer.get_reactor()
-        self._selftest_done = False
-        self._selftest_in_flight = True
-        self._last_phase_id = None
-        self._commission_error_code = 0
+        if not self._try_acquire_foci_lock():
+            raise gcmd.error(
+                "FOCI %s: another FOCI operation is in progress" % self.name
+            )
+        try:
+            self._invalidate_homing()
 
-        # Send selftest command (firmware creates new_selftest engine)
-        self.selftest_cmd.send([self.oid])
+            reactor = self.printer.get_reactor()
+            self._selftest_done = False
+            self._selftest_in_flight = True
+            self._last_phase_id = None
+            self._commission_error_code = 0
 
-        # Wait for completion (15s timeout -- selftest runs phases 0-4)
-        deadline = reactor.monotonic() + 15.0
-        while not self._selftest_done:
-            if self._commission_error_code != 0:
-                self._selftest_in_flight = False
-                phase_name = (
-                    self.PHASE_NAMES.get(self._last_phase_id, "unknown")
-                    if self._last_phase_id
-                    else "startup"
-                )
-                raise self.printer.command_error(
-                    "FOCI %s: selftest failed at %s (code %d)"
-                    % (self.stepper_name, phase_name, self._commission_error_code)
-                )
-            if reactor.monotonic() > deadline:
-                self._selftest_in_flight = False
-                raise self.printer.command_error(
-                    "FOCI %s: selftest timed out" % self.stepper_name
-                )
-            reactor.pause(reactor.monotonic() + 0.05)
+            # Send selftest command (firmware creates new_selftest engine)
+            self.selftest_cmd.send([self.oid])
 
-        self._selftest_in_flight = False
+            # Wait for completion (15s timeout -- selftest runs phases 0-4)
+            deadline = reactor.monotonic() + 15.0
+            while not self._selftest_done:
+                if self._commission_error_code != 0:
+                    self._selftest_in_flight = False
+                    phase_name = (
+                        self.PHASE_NAMES.get(self._last_phase_id, "unknown")
+                        if self._last_phase_id
+                        else "startup"
+                    )
+                    raise self.printer.command_error(
+                        "FOCI %s: selftest failed at %s (code %d)"
+                        % (
+                            self.stepper_name,
+                            phase_name,
+                            self._commission_error_code,
+                        )
+                    )
+                if reactor.monotonic() > deadline:
+                    self._selftest_in_flight = False
+                    raise self.printer.command_error(
+                        "FOCI %s: selftest timed out" % self.stepper_name
+                    )
+                reactor.pause(reactor.monotonic() + 0.05)
+
+            self._selftest_in_flight = False
+        finally:
+            self._release_foci_lock()
         gcmd.respond_info(
             "FOCI %s: selftest passed (phases 0-4 complete)" % self.stepper_name
         )
