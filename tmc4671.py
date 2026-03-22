@@ -484,7 +484,10 @@ class FociDriver:
     cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_CALIBRATE_help = "Calibrate FOCI motor (ADC, encoder, closed-loop)"
-    cmd_FOCI_AUTOTUNE_help = "Run full motor commissioning (inner + outer autotuning)"
+    cmd_FOCI_COMMISSION_help = "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)"
+    cmd_FOCI_AUTOTUNE_help = (
+        "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)"
+    )
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -750,6 +753,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_CALIBRATE,
             desc=self.cmd_FOCI_CALIBRATE_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_COMMISSION",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_COMMISSION,
+            desc=self.cmd_FOCI_COMMISSION_help,
         )
         gcode.register_mux_command(
             "FOCI_AUTOTUNE",
@@ -1473,6 +1483,174 @@ class FociDriver:
         self.is_calibrated = False
         self._ensure_calibrated()
         gcmd.respond_info("FOCI %s: calibration OK" % self.name)
+
+    def cmd_FOCI_COMMISSION(self, gcmd) -> None:
+        """Stage 1: commission motor for safe printer motion.
+
+        Runs full diagnostic chain, electrical ID, current tune, current
+        validation, and closed-loop entry with conservative fallback gains.
+        Does not require homing. Leaves motor enabled and holding.
+        """
+        profile_name = gcmd.get("PROFILE", "balanced").lower()
+        if profile_name not in self.PROFILE_MAP:
+            raise gcmd.error(
+                "Unknown profile '%s'. Options: %s"
+                % (profile_name, ", ".join(self.PROFILE_MAP.keys()))
+            )
+        profile_code = self.PROFILE_MAP[profile_name]
+
+        # Hard gates -- before any side effects
+        if not self._try_acquire_foci_lock():
+            raise gcmd.error(
+                "FOCI %s: another FOCI operation is in progress" % self.name
+            )
+        try:
+            # Setup sequence (lock held)
+            toolhead = self.printer.lookup_object("toolhead")
+            toolhead.wait_moves()
+
+            # Disable motor if enabled
+            stepper_enable = self.printer.lookup_object("stepper_enable")
+            enable_line = stepper_enable.lookup_enable(self.stepper_name)
+            if enable_line.is_motor_enabled():
+                enable_line.motor_disable(toolhead.get_last_move_time())
+
+            self.is_calibrated = False
+            self._invalidate_homing()
+
+            # Send commission command and wait
+            self._commission_done = False
+            self._commission_result = None
+            self._commission_error_code = 0
+            self._last_phase_id = None
+
+            self.commission_cmd.send([self.oid, profile_code])
+
+            # Wait for result (up to 30 seconds -- full commissioning takes time)
+            reactor = self.printer.get_reactor()
+            eventtime = reactor.monotonic()
+            timeout = eventtime + 30.0
+            while not self._commission_done:
+                eventtime = reactor.pause(eventtime + 0.1)
+                if eventtime > timeout:
+                    self._on_commission_failure()
+                    raise gcmd.error("FOCI %s: FOCI_COMMISSION timed out" % self.name)
+                if self._commission_error_code != 0:
+                    self._on_commission_failure()
+                    error_name = self.COMMISSION_ERROR_NAMES.get(
+                        self._commission_error_code,
+                        "UNKNOWN(%d)" % self._commission_error_code,
+                    )
+                    phase_name = self.PHASE_NAMES.get(
+                        self._last_phase_id or 0, "unknown"
+                    )
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_COMMISSION failed at %s: %s"
+                        % (self.name, phase_name, error_name)
+                    )
+
+            # Success -- update state
+            result = self._commission_result
+            status = result.get("status", 255)
+            if status > 1:
+                self._on_commission_failure()
+                raise gcmd.error(
+                    "FOCI %s: FOCI_COMMISSION failed (status=%d)" % (self.name, status)
+                )
+
+            # Terminal state: motor enabled, holding
+            enable_line.motor_enable(toolhead.get_last_move_time())
+            self.is_calibrated = True
+            self._inhibited = False
+            self._commissioned_result = result
+            self._active_gains = {
+                "flux_p": result["flux_p"],
+                "flux_i": result["flux_i"],
+                "torque_p": result["torque_p"],
+                "torque_i": result["torque_i"],
+                "velocity_p": result["fallback_velocity_p"],
+                "velocity_i": result["fallback_velocity_i"],
+                "position_p": result["fallback_position_p"],
+                "position_i": result["fallback_position_i"],
+                "velocity_limit": result["fallback_velocity_limit"],
+                "velocity_filter_hz": 0,
+                "torque_filter_hz": 0,
+                "position_filter_hz": 0,
+                "flux_filter_hz": 0,
+            }
+            self._runtime_status = "commissioned"
+
+            # Persist to config
+            self._persist_commission_results(result, profile_name)
+
+            status_str = "accepted" if status == 0 else "accepted with warnings"
+            gcmd.respond_info(
+                "FOCI %s commissioned (%s): R=%dmOhm L=%duH"
+                % (self.name, status_str, result["r_mohm"], result["l_uh"])
+            )
+        finally:
+            self._release_foci_lock()
+
+    def _on_commission_failure(self) -> None:
+        """Handle Stage 1 failure state transitions."""
+        self.is_calibrated = False
+        self._commissioned_result = None
+        self._active_gains = None
+        self._runtime_status = None
+        self._inhibited = True
+
+    def _persist_commission_results(self, result: dict, profile_name: str) -> None:
+        """Persist Stage 1 results to printer.cfg (pending SAVE_CONFIG)."""
+        configfile = self.printer.lookup_object("configfile")
+        configfile.set(self.name, "pid_flux_p", "%d" % result["flux_p"])
+        configfile.set(self.name, "pid_flux_i", "%d" % result["flux_i"])
+        configfile.set(self.name, "pid_torque_p", "%d" % result["torque_p"])
+        configfile.set(self.name, "pid_torque_i", "%d" % result["torque_i"])
+        configfile.set(
+            self.name,
+            "commissioned_velocity_p",
+            "%d" % result["fallback_velocity_p"],
+        )
+        configfile.set(
+            self.name,
+            "commissioned_velocity_i",
+            "%d" % result["fallback_velocity_i"],
+        )
+        configfile.set(
+            self.name,
+            "commissioned_position_p",
+            "%d" % result["fallback_position_p"],
+        )
+        configfile.set(
+            self.name,
+            "commissioned_position_i",
+            "%d" % result["fallback_position_i"],
+        )
+        configfile.set(
+            self.name,
+            "commissioned_velocity_limit",
+            "%d" % result["fallback_velocity_limit"],
+        )
+        configfile.set(self.name, "identified_r_mohm", "%d" % result["r_mohm"])
+        configfile.set(self.name, "identified_l_uh", "%d" % result["l_uh"])
+        configfile.set(self.name, "identified_lambda_us", "%d" % result["lambda_us"])
+        configfile.set(
+            self.name,
+            "identified_theta_e_us",
+            "%d" % result["theta_e_us"],
+        )
+        configfile.set(
+            self.name,
+            "identified_ringing_count",
+            "%d" % result["ringing_count"],
+        )
+        configfile.set(
+            self.name,
+            "identified_bandwidth_hz",
+            "%d" % result["bandwidth_hz"],
+        )
+        configfile.set(self.name, "autotune_profile", profile_name)
+        configfile.set(self.name, "autotune_status", "commissioned")
 
     def _build_commission_error(
         self, stepper_name: str, stage: str, status: int
