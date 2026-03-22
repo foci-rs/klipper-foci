@@ -606,6 +606,40 @@ class FociDriver:
             "pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
         )
 
+        # Commissioned fallback gains (from Stage 1, separate from tuned gains)
+        self.commissioned_velocity_p: int | None = config.getint(
+            "commissioned_velocity_p", None, minval=0, maxval=32767
+        )
+        self.commissioned_velocity_i: int | None = config.getint(
+            "commissioned_velocity_i", None, minval=0, maxval=32767
+        )
+        self.commissioned_position_p: int | None = config.getint(
+            "commissioned_position_p", None, minval=0, maxval=32767
+        )
+        self.commissioned_position_i: int | None = config.getint(
+            "commissioned_position_i", None, minval=0, maxval=32767
+        )
+        self.commissioned_velocity_limit: int | None = config.getint(
+            "commissioned_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
+        )
+
+        # Inner-tuning parameters (persisted by Stage 1 for Stage 2 restart)
+        self.identified_lambda_us: int | None = config.getint(
+            "identified_lambda_us", None, minval=0
+        )
+        self.identified_theta_e_us: int | None = config.getint(
+            "identified_theta_e_us", None, minval=0
+        )
+        self.identified_ringing_count: int | None = config.getint(
+            "identified_ringing_count", None, minval=0, maxval=255
+        )
+        self.identified_bandwidth_hz: int | None = config.getint(
+            "identified_bandwidth_hz", None, minval=0
+        )
+
+        # Autotune status (commissioned / tuned / tuned_conservative)
+        self.autotune_status: str | None = config.get("autotune_status", None)
+
         # Find stepper config section. The stepper may be defined as
         # [manual_stepper stepper_x], [stepper stepper_x], or [stepper_x]
         # depending on kinematics. The foci section always uses the short
@@ -965,6 +999,102 @@ class FociDriver:
                     lines.append("  %-30s = (not in dump)" % reg_name)
         gcmd.respond_info("\n".join(lines))
 
+    def _validate_and_load_config(self) -> None:
+        """Validate persisted config and populate _active_gains/_runtime_status.
+
+        Called from _handle_connect. Checks that all mandatory fields for the
+        claimed autotune_status are present. If any are missing, logs a warning
+        and leaves _active_gains and _runtime_status as None (motor cannot be
+        enabled until FOCI_COMMISSION is run).
+        """
+        status = self.autotune_status
+        if status is None:
+            # No prior commissioning -- virgin hardware
+            return
+
+        # Mandatory for all statuses: current-loop gains + inner-tuning params
+        required_base = [
+            ("pid_flux_p", self.pid_flux_p),
+            ("pid_flux_i", self.pid_flux_i),
+            ("pid_torque_p", self.pid_torque_p),
+            ("pid_torque_i", self.pid_torque_i),
+            ("identified_lambda_us", self.identified_lambda_us),
+            ("identified_theta_e_us", self.identified_theta_e_us),
+            ("identified_ringing_count", self.identified_ringing_count),
+            ("identified_bandwidth_hz", self.identified_bandwidth_hz),
+        ]
+        missing = [name for name, val in required_base if val is None]
+
+        # Status-specific outer gain requirements
+        if status == "commissioned":
+            commissioned_fields = [
+                ("commissioned_velocity_p", self.commissioned_velocity_p),
+                ("commissioned_velocity_i", self.commissioned_velocity_i),
+                ("commissioned_position_p", self.commissioned_position_p),
+                ("commissioned_position_i", self.commissioned_position_i),
+                ("commissioned_velocity_limit", self.commissioned_velocity_limit),
+            ]
+            missing.extend(name for name, val in commissioned_fields if val is None)
+        elif status in ("tuned", "tuned_conservative"):
+            tuned_fields = [
+                ("pid_velocity_p", self.pid_velocity_p),
+                ("pid_velocity_i", self.pid_velocity_i),
+                ("pid_velocity_limit", self.pid_velocity_limit),
+                ("pid_position_p", self.pid_position_p),
+                ("pid_position_i", self.pid_position_i),
+            ]
+            missing.extend(name for name, val in tuned_fields if val is None)
+
+        if missing:
+            logging.warning(
+                "FOCI %s: autotune_status='%s' but missing required fields: %s. "
+                "Motor cannot be enabled until FOCI_COMMISSION is run.",
+                self.name,
+                status,
+                ", ".join(missing),
+            )
+            return
+
+        # All required fields present -- build _active_gains
+        if status == "commissioned":
+            self._active_gains = {
+                "flux_p": self.pid_flux_p,
+                "flux_i": self.pid_flux_i,
+                "torque_p": self.pid_torque_p,
+                "torque_i": self.pid_torque_i,
+                "velocity_p": self.commissioned_velocity_p,
+                "velocity_i": self.commissioned_velocity_i,
+                "position_p": self.commissioned_position_p,
+                "position_i": self.commissioned_position_i,
+                "velocity_limit": self.commissioned_velocity_limit,
+                "velocity_filter_hz": self.velocity_filter_hz,
+                "torque_filter_hz": self.torque_filter_hz,
+                "position_filter_hz": self.position_filter_hz,
+                "flux_filter_hz": self.flux_filter_hz,
+            }
+        else:  # tuned or tuned_conservative
+            self._active_gains = {
+                "flux_p": self.pid_flux_p,
+                "flux_i": self.pid_flux_i,
+                "torque_p": self.pid_torque_p,
+                "torque_i": self.pid_torque_i,
+                "velocity_p": self.pid_velocity_p,
+                "velocity_i": self.pid_velocity_i,
+                "position_p": self.pid_position_p,
+                "position_i": self.pid_position_i,
+                "velocity_limit": self.pid_velocity_limit,
+                "velocity_filter_hz": self.velocity_filter_hz,
+                "torque_filter_hz": self.torque_filter_hz,
+                "position_filter_hz": self.position_filter_hz,
+                "flux_filter_hz": self.flux_filter_hz,
+            }
+        self._runtime_status = status
+        logging.info(
+            "FOCI %s: loaded config, status=%s, active gains ready",
+            self.name,
+            status,
+        )
+
     def _handle_connect(self) -> None:
         """Send configuration to firmware and check microstep alignment.
 
@@ -1028,6 +1158,7 @@ class FociDriver:
                     optimal,
                 )
             )
+        self._validate_and_load_config()
         if not self._enable_patched:
             self._enable_patched = True
             stepper_enable = self.printer.lookup_object("stepper_enable")
