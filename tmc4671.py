@@ -804,7 +804,7 @@ class FociDriver:
             self._handle_dump_done, "foci_dump_done", self.oid
         )
         self.mcu._serial.register_response(
-            self._handle_calibrate_response, "foci_calibrate_response", self.oid
+            self._handle_calibrate_response, "foci_calibrate_result", self.oid
         )
         self.set_pid_gains_cmd = self.mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
