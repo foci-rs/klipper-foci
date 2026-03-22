@@ -482,6 +482,7 @@ class FociDriver:
     """Klipper extras driver for a single TMC4671 FOC channel."""
 
     cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
+    cmd_FOCI_TRACE_help = "Fetch and display trace capture buffer"
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_COMMISSION_help = "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)"
     cmd_FOCI_AUTOTUNE_help = (
@@ -688,6 +689,12 @@ class FociDriver:
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
         self.set_velocity_limit_cmd = None
+        self.trace_info_cmd = None
+        self.trace_fetch_cmd = None
+
+        # Trace capture state
+        self._trace_info: dict | None = None
+        self._trace_info_received: bool = False
 
         # Calibration state
         self.is_calibrated = False
@@ -759,6 +766,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_AUTOTUNE,
             desc=self.cmd_FOCI_AUTOTUNE_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_TRACE",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_TRACE,
+            desc=self.cmd_FOCI_TRACE_help,
         )
 
         # Lifecycle events
@@ -850,6 +864,15 @@ class FociDriver:
         )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
+        )
+        self.trace_info_cmd = self.mcu.lookup_command("foci_trace_info oid=%c")
+        self.trace_fetch_cmd = self.mcu.lookup_command(
+            "foci_trace_fetch oid=%c offset=%hu gen=%c"
+        )
+        self.mcu._serial.register_response(
+            self._handle_trace_info_result,
+            "foci_trace_info_result",
+            self.oid,
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -1862,3 +1885,156 @@ class FociDriver:
         configfile.set(self.name, "identified_b_eff", "%d" % result["b_eff"])
         configfile.set(self.name, "autotune_mode", mode_name)
         configfile.set(self.name, "autotune_status", status)
+
+    def _handle_trace_info_result(self, params: dict) -> None:
+        """Handle foci_trace_info_result response from firmware."""
+        self._trace_info = params
+        self._trace_info_received = True
+
+    def cmd_FOCI_TRACE(self, gcmd) -> None:
+        """Fetch and display the trace capture buffer."""
+        import struct
+
+        format_name = gcmd.get("FORMAT", "table").lower()
+        phase_filter = gcmd.get_int("PHASE", None)
+
+        # Query trace buffer metadata
+        self._trace_info = None
+        self._trace_info_received = False
+        self.trace_info_cmd.send([self.oid])
+
+        reactor = self.printer.get_reactor()
+        deadline = reactor.monotonic() + 5.0
+        while not self._trace_info_received:
+            if reactor.monotonic() > deadline:
+                raise gcmd.error("FOCI %s: trace info timed out" % self.name)
+            reactor.pause(reactor.monotonic() + 0.05)
+
+        info = self._trace_info
+        state = info.get("state", 0)
+        count = info.get("count", 0)
+        gen = info.get("gen", 0)
+
+        if state != 2 or count == 0:
+            gcmd.respond_info("FOCI %s: no trace data available" % self.name)
+            return
+
+        preset = info.get("preset", 0)
+        dropped = info.get("dropped", 0)
+        sample_period = info.get("sample_period_us", 1000)
+
+        if preset == 1:  # Full
+            sample_size = 48
+            fmt = "<HBBiiIiIiIiiii"
+            headers = [
+                "tick",
+                "phase",
+                "flags",
+                "pos_tgt",
+                "pos_act",
+                "trq_act",
+                "flx_act",
+                "vel_act",
+                "status",
+                "abn",
+                "trq_tgt",
+                "flx_tgt",
+                "vel_ofs",
+                "esum_pos",
+                "esum_vel",
+                "esum_trq",
+            ]
+        else:  # Fast
+            sample_size = 28
+            fmt = "<HBBiiIiIi"
+            headers = [
+                "tick",
+                "phase",
+                "flags",
+                "pos_tgt",
+                "pos_act",
+                "trq_act",
+                "flx_act",
+                "vel_act",
+                "status",
+                "abn",
+            ]
+
+        def _i16(val: int) -> int:
+            """Convert unsigned 16-bit half to signed i16."""
+            return val - 0x10000 if val >= 0x8000 else val
+
+        # Fetch samples
+        samples = []
+        for i in range(count):
+            params = self.trace_fetch_cmd.send_with_response(
+                [self.oid, i, gen], "foci_trace_data"
+            )
+            status = params.get("status", 2)
+            if status != 0:
+                status_names = {1: "capture still active", 2: "invalid"}
+                gcmd.respond_info(
+                    "FOCI %s: trace fetch aborted at offset %d: %s"
+                    % (self.name, i, status_names.get(status, "unknown"))
+                )
+                return
+            data = params.get("data", b"")
+            if len(data) != sample_size:
+                gcmd.respond_info(
+                    "FOCI %s: unexpected sample size %d (expected %d)"
+                    % (self.name, len(data), sample_size)
+                )
+                return
+            fields = struct.unpack(fmt, data)
+
+            # Split torque/flux packed fields (halves are signed i16)
+            if preset == 1:
+                row = list(fields[:3])  # tick, phase, flags
+                row.extend(list(fields[3:5]))  # pos_tgt, pos_act
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
+                row.append(_i16(tf_act & 0xFFFF))  # flux_actual
+                row.extend(list(fields[6:9]))  # vel_act, status, abn
+                tf_tgt = fields[9]
+                row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
+                row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
+                row.extend(list(fields[10:]))  # vel_ofs, esum_pos/vel/trq
+            else:
+                row = list(fields[:3])  # tick, phase, flags
+                row.extend(list(fields[3:5]))  # pos_tgt, pos_act
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
+                row.append(_i16(tf_act & 0xFFFF))  # flux_actual
+                row.extend(list(fields[6:]))  # vel_act, status, abn
+            samples.append(row)
+
+        # Apply phase filter
+        if phase_filter is not None:
+            phase_col = 1  # phase is second column
+            samples = [s for s in samples if s[phase_col] == phase_filter]
+
+        if not samples:
+            gcmd.respond_info("FOCI %s: no samples match filter" % self.name)
+            return
+
+        # Format output
+        preset_name = "full" if preset == 1 else "fast"
+        header = "FOCI %s trace: %d samples" % (self.name, len(samples))
+        if dropped > 0:
+            header += " (%d dropped)" % dropped
+        header += ", %s preset, %dus period" % (preset_name, sample_period)
+
+        if format_name == "csv":
+            lines = [header, ",".join(headers)]
+            for row in samples:
+                lines.append(",".join(str(v) for v in row))
+        else:
+            lines = [header]
+            col_widths = [max(len(h), 8) for h in headers]
+            lines.append("  ".join(h.rjust(w) for h, w in zip(headers, col_widths)))
+            for row in samples:
+                lines.append(
+                    "  ".join(str(v).rjust(w) for v, w in zip(row, col_widths))
+                )
+
+        gcmd.respond_info("\n".join(lines))
