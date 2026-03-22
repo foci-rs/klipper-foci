@@ -2267,61 +2267,194 @@ class FociDriver:
         toolhead.wait_moves()
 
     def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
-        """Run full motor commissioning (inner + outer autotuning).
+        """Stage 2: installed tuning after commissioning and homing.
 
-        Auto-detects CoreXY partner for dual-stepper orchestration.
-        Use PAIR=0 to skip partner detection and commission only this motor.
-        On success, stages results for SAVE_CONFIG.
+        Runs mechanical ID, velocity/position tuning, filter selection,
+        and commit. Requires motor calibrated, enabled, in closed-loop
+        position mode, and printer fully homed.
         """
-        # Parse and validate parameters
         profile_name = gcmd.get("PROFILE", "balanced").lower()
+        mode_name = gcmd.get("MODE", "nominal").lower()
         if profile_name not in self.PROFILE_MAP:
             raise gcmd.error(
                 "FOCI %s: unknown profile '%s' (expected: %s)"
-                % (
-                    self.stepper_name,
-                    profile_name,
-                    ", ".join(sorted(self.PROFILE_MAP)),
-                )
+                % (self.name, profile_name, ", ".join(sorted(self.PROFILE_MAP)))
             )
-        profile_code = self.PROFILE_MAP[profile_name]
-
-        mode_name = gcmd.get("MODE", "nominal").lower()
         if mode_name not in self.MODE_MAP:
             raise gcmd.error(
                 "FOCI %s: unknown mode '%s' (expected: %s)"
+                % (self.name, mode_name, ", ".join(sorted(self.MODE_MAP)))
+            )
+
+        # Hard gates -- before any side effects
+        if not self._try_acquire_foci_lock():
+            raise gcmd.error(
+                "FOCI %s: another FOCI operation is in progress" % self.name
+            )
+
+        try:
+            if self._inhibited:
+                raise gcmd.error(
+                    "FOCI %s: inhibited after failed FOCI_COMMISSION" % self.name
+                )
+            if self._runtime_status is None:
+                raise gcmd.error(
+                    "FOCI %s: not commissioned. Run FOCI_COMMISSION first." % self.name
+                )
+            if not self.is_calibrated:
+                raise gcmd.error(
+                    "FOCI %s: not calibrated. Enable motor, re-home, then retry."
+                    % self.name
+                )
+
+            # Check homing
+            toolhead = self.printer.lookup_object("toolhead")
+            kin_status = toolhead.get_status(toolhead.get_last_move_time())
+            homed = set(kin_status.get("homed_axes", ""))
+            expected = set("xyz")  # full homing required
+            if not expected.issubset(homed):
+                missing = expected - homed
+                raise gcmd.error(
+                    "FOCI %s: printer not fully homed (missing: %s). Home first."
+                    % (self.name, "".join(sorted(missing)))
+                )
+
+            # Setup sequence (lock held)
+            toolhead.wait_moves()
+
+            # Post-wait revalidation
+            if not self.is_calibrated:
+                raise gcmd.error("FOCI %s: calibration lost during wait" % self.name)
+            kin_status = toolhead.get_status(toolhead.get_last_move_time())
+            if not expected.issubset(set(kin_status.get("homed_axes", ""))):
+                raise gcmd.error("FOCI %s: homing lost during wait" % self.name)
+
+            self._invalidate_homing()
+
+            # Get inner-tuning params from cache or config
+            if self._commissioned_result is not None:
+                inner_lambda = self._commissioned_result["lambda_us"]
+                theta_e = self._commissioned_result["theta_e_us"]
+                ringing = self._commissioned_result["ringing_count"]
+                bandwidth = self._commissioned_result["bandwidth_hz"]
+            else:
+                inner_lambda = self.identified_lambda_us
+                theta_e = self.identified_theta_e_us
+                ringing = self.identified_ringing_count
+                bandwidth = self.identified_bandwidth_hz
+
+            # Send tune command
+            self._commission_done = False
+            self._commission_result = None
+            self._commission_error_code = 0
+
+            self.tune_cmd.send(
+                [
+                    self.oid,
+                    self.PROFILE_MAP[profile_name],
+                    self.MODE_MAP[mode_name],
+                    inner_lambda,
+                    theta_e,
+                    ringing,
+                    bandwidth,
+                ]
+            )
+
+            # Wait for result (up to 30 seconds)
+            reactor = self.printer.get_reactor()
+            eventtime = reactor.monotonic()
+            timeout = eventtime + 30.0
+            while not self._commission_done:
+                eventtime = reactor.pause(eventtime + 0.1)
+                if eventtime > timeout:
+                    raise gcmd.error("FOCI %s: FOCI_AUTOTUNE timed out" % self.name)
+                if self._commission_error_code != 0:
+                    # Soft failure -- firmware restored entry gains
+                    error_name = self.COMMISSION_ERROR_NAMES.get(
+                        self._commission_error_code,
+                        "UNKNOWN(%d)" % self._commission_error_code,
+                    )
+                    phase_name = self.PHASE_NAMES.get(
+                        self._last_phase_id or 0, "unknown"
+                    )
+                    gcmd.respond_info(
+                        "FOCI %s: FOCI_AUTOTUNE failed at %s: %s "
+                        "(motor holding with entry gains)"
+                        % (self.name, phase_name, error_name)
+                    )
+                    return  # _runtime_status unchanged, gains preserved
+
+            # Success
+            result = self._commission_result
+            status = result.get("status", 255)
+            if status > 1:
+                gcmd.respond_info(
+                    "FOCI %s: tuning failed (status=%d), entry gains preserved"
+                    % (self.name, status)
+                )
+                return
+
+            # Determine tuned vs tuned_conservative
+            warning_code = result.get("warning_code", 0)
+            if status == 1 or warning_code != 0:
+                tune_status = "tuned_conservative"
+            else:
+                tune_status = "tuned"
+
+            # Update _active_gains with tuned outer gains + existing current-loop
+            self._active_gains = {
+                "flux_p": self._active_gains["flux_p"],
+                "flux_i": self._active_gains["flux_i"],
+                "torque_p": self._active_gains["torque_p"],
+                "torque_i": self._active_gains["torque_i"],
+                "velocity_p": result["velocity_p"],
+                "velocity_i": result["velocity_i"],
+                "position_p": result["position_p"],
+                "position_i": result["position_i"],
+                "velocity_limit": result["velocity_limit"],
+                "velocity_filter_hz": result["velocity_filter_hz"],
+                "torque_filter_hz": result["torque_filter_hz"],
+                "position_filter_hz": result["position_filter_hz"],
+                "flux_filter_hz": result["flux_filter_hz"],
+            }
+            self._runtime_status = tune_status
+
+            # Persist tuned gains
+            self._persist_tune_results(result, mode_name, tune_status)
+
+            gcmd.respond_info(
+                "FOCI %s tuned (%s): vel_p=%d pos_p=%d"
                 % (
-                    self.stepper_name,
-                    mode_name,
-                    ", ".join(sorted(self.MODE_MAP)),
+                    self.name,
+                    tune_status,
+                    result["velocity_p"],
+                    result["position_p"],
                 )
             )
-        mode_code = self.MODE_MAP[mode_name]
+        finally:
+            self._release_foci_lock()
 
-        # Pre-condition checks (spec: reject early with clear error)
-        self._check_autotune_preconditions(gcmd)
-
-        # Auto-detect paired stepper from kinematics (opt-out with PAIR=0)
-        pair_enabled = gcmd.get_int("PAIR", 1, minval=0, maxval=1)
-        partner = self._detect_partner() if pair_enabled else None
-
-        if partner is not None:
-            partner._check_autotune_preconditions(gcmd)
-            gcmd.respond_info(
-                "FOCI %s: detected paired stepper %s from kinematics,"
-                " commissioning both (use PAIR=0 to skip)"
-                % (self.stepper_name, partner.stepper_name)
-            )
-            self._run_dual_stepper_autotune(
-                partner,
-                profile_code,
-                mode_code,
-                profile_name,
-                mode_name,
-                gcmd,
-            )
-        else:
-            # Single-stepper commissioning
-            self._run_single_stepper_autotune(
-                profile_code, mode_code, profile_name, mode_name, gcmd
-            )
+    def _persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
+        """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
+        configfile = self.printer.lookup_object("configfile")
+        configfile.set(self.name, "pid_velocity_p", "%d" % result["velocity_p"])
+        configfile.set(self.name, "pid_velocity_i", "%d" % result["velocity_i"])
+        configfile.set(self.name, "pid_velocity_limit", "%d" % result["velocity_limit"])
+        configfile.set(self.name, "pid_position_p", "%d" % result["position_p"])
+        configfile.set(self.name, "pid_position_i", "%d" % result["position_i"])
+        configfile.set(
+            self.name,
+            "velocity_filter_hz",
+            "%d" % result["velocity_filter_hz"],
+        )
+        configfile.set(
+            self.name,
+            "position_filter_hz",
+            "%d" % result["position_filter_hz"],
+        )
+        configfile.set(self.name, "flux_filter_hz", "%d" % result["flux_filter_hz"])
+        configfile.set(self.name, "torque_filter_hz", "%d" % result["torque_filter_hz"])
+        configfile.set(self.name, "identified_j_eff", "%d" % result["j_eff"])
+        configfile.set(self.name, "identified_b_eff", "%d" % result["b_eff"])
+        configfile.set(self.name, "autotune_mode", mode_name)
+        configfile.set(self.name, "autotune_status", status)
