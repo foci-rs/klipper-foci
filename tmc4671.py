@@ -665,12 +665,20 @@ class FociDriver:
         self._selftest_done: bool = False
         self._selftest_in_flight: bool = False
 
-        # Commissioning state
+        # Two-stage commissioning volatile state (per-session, not persisted)
+        # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
+        self._inhibited: bool = False
+        self._commissioned_result: dict | None = None  # CommissionResult cache
+        self._active_gains: dict | None = None  # SavedGains for re-enable
+        self._runtime_status: str | None = (
+            None  # 'commissioned'|'tuned'|'tuned_conservative'
+        )
+        self._foci_lock: bool = False  # Operation lock (non-blocking try-acquire)
+
+        # Commissioning phase tracking (used by commission/tune progress callbacks)
         self._last_phase_id: int | None = None
-        self._commission_inner_result: dict | None = None
-        self._commission_inner_done: bool = False
-        self._commission_outer_result: dict | None = None
-        self._commission_outer_done: bool = False
+        self._commission_result: dict | None = None  # inner or outer result
+        self._commission_done: bool = False
         self._commission_error_code: int = 0
 
         # Track whether enable methods have been monkey-patched
