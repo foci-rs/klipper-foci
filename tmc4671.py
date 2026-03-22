@@ -1012,6 +1012,17 @@ class FociDriver:
             # No prior commissioning -- virgin hardware
             return
 
+        valid_statuses = ("commissioned", "tuned", "tuned_conservative")
+        if status not in valid_statuses:
+            logging.warning(
+                "FOCI %s: unknown autotune_status='%s' (expected one of: %s). "
+                "Motor cannot be enabled until FOCI_COMMISSION is run.",
+                self.name,
+                status,
+                ", ".join(valid_statuses),
+            )
+            return
+
         # Mandatory for all statuses: current-loop gains + inner-tuning params
         required_base = [
             ("pid_flux_p", self.pid_flux_p),
