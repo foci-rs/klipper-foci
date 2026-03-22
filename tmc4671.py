@@ -1267,7 +1267,15 @@ class FociDriver:
                 # Cartesian default: rail index = axis index
                 axes_to_clear.add(rail_index)
         if axes_to_clear:
-            kin.clear_homing_state(sorted(axes_to_clear))
+            # Build argument compatible with both Klipper and Kalico:
+            # Klipper checks `axis_name in clear_axes` (string membership),
+            # Kalico checks `i in axes` (integer membership). A set with
+            # both representations satisfies both `in` checks.
+            clear_arg = set()
+            for i in axes_to_clear:
+                clear_arg.add(i)
+                clear_arg.add("xyz"[i])
+            kin.clear_homing_state(clear_arg)
             axis_names = "".join("xyz"[i] for i in sorted(axes_to_clear))
             logging.info(
                 "FOCI %s: marked axes %s unhomed (encoder re-zeroed)",
