@@ -924,7 +924,9 @@ class FociDriver:
     # Error codes that indicate a hard-disable fault: firmware has
     # disabled the motor and cleared its state. The host must sync
     # its enable line and clear is_calibrated.
-    HARD_FAULT_CODES: frozenset[int] = frozenset({3, 14, 17})
+    # 3 = SPI error, 9 = current validation failed (post-restore
+    # stability check in Stage 2), 14 = shutdown, 17 = safety envelope.
+    HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
 
     PROFILE_MAP: dict[str, int] = {
         "conservative": 0,
