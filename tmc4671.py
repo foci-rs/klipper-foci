@@ -1254,51 +1254,114 @@ class FociDriver:
     def _ensure_calibrated(self) -> None:
         """Run calibration if not already calibrated. Blocks until complete.
 
-        Sends foci_calibrate to the firmware and waits up to 5 seconds for
-        the foci_calibrate_response. Raises command_error on timeout or
-        non-zero status.
+        The Calibrate sequence performs ADC calibration, encoder alignment,
+        and closed-loop entry using gains from _active_gains. It skips
+        diagnostic phases (coil check, wiring, encoder direction) that
+        were validated by Stage 1 commissioning.
+
+        Preconditions (hard gates):
+        - _active_gains is not None (requires prior FOCI_COMMISSION)
+        - _inhibited is False (no failed commission in this session)
+
+        Side effects:
+        - Marks kinematic axes unhomed (encoder re-zeroing)
+        - Preloads gains from _active_gains into firmware atomics
         """
         if self.is_calibrated:
             return
-        reactor = self.printer.get_reactor()
-        self._calibration_completion = reactor.completion()
-        self.calibrate_cmd.send([self.oid])
-        params = self._calibration_completion.wait(reactor.monotonic() + 5.0)
-        self._calibration_completion = None
-        if params is None:
+        if self._inhibited:
             raise self.printer.command_error(
-                "FOCI %s: calibration timed out (no response from firmware)" % self.name
+                "FOCI %s: operation inhibited after failed FOCI_COMMISSION. "
+                "Retry FOCI_COMMISSION or restart Klipper." % self.name
             )
-        status = params.get("status", 255)
-        if status == 5:
-            # ALREADY_ENABLED: firmware auto-calibrated on enable before
-            # this foci_calibrate arrived. Motor is calibrated and running.
+        if self._active_gains is None:
+            raise self.printer.command_error(
+                "FOCI %s: no commissioned gains available. "
+                "Run FOCI_COMMISSION first." % self.name
+            )
+        if not self._try_acquire_foci_lock():
+            raise self.printer.command_error(
+                "FOCI %s: another FOCI operation is in progress" % self.name
+            )
+        try:
+            # Preload gains from _active_gains into firmware atomics
+            gains = self._active_gains
+            self.set_pid_gains_cmd.send(
+                [
+                    self.oid,
+                    gains["flux_p"],
+                    gains["flux_i"],
+                    gains["torque_p"],
+                    gains["torque_i"],
+                ]
+            )
+            if gains.get("velocity_p") is not None:
+                self.set_position_gains_cmd.send(
+                    [
+                        self.oid,
+                        gains["position_p"],
+                        gains["position_i"],
+                        gains["velocity_p"],
+                        gains["velocity_i"],
+                    ]
+                )
+            if gains.get("velocity_limit"):
+                self.set_velocity_limit_cmd.send([self.oid, gains["velocity_limit"]])
+            for filter_name in ("velocity", "torque", "position", "flux"):
+                hz = gains.get("%s_filter_hz" % filter_name, 0)
+                if hz > 0:
+                    cmd = getattr(self, "set_%s_filter_cmd" % filter_name)
+                    cmd.send([self.oid, hz])
+
+            # Mark axes unhomed before sending calibrate (homing invalidation rule)
+            self._invalidate_homing()
+
+            # Send calibrate and wait for response
+            reactor = self.printer.get_reactor()
+            self._calibration_completion = reactor.completion()
+            self.calibrate_cmd.send([self.oid])
+            params = self._calibration_completion.wait(reactor.monotonic() + 5.0)
+            self._calibration_completion = None
+
+            if params is None:
+                raise self.printer.command_error(
+                    "FOCI %s: calibration timed out (no response from firmware)"
+                    % self.name
+                )
+            status = params.get("status", 255)
+            if status == 5:
+                # ALREADY_ENABLED: firmware auto-calibrated on enable before
+                # this foci_calibrate arrived. Motor is calibrated and running.
+                self.is_calibrated = True
+                logging.info(
+                    "FOCI %s: already calibrated (firmware auto-cal)", self.name
+                )
+                return
+            if status != 0:
+                status_names = {
+                    1: "SPI_ERROR (TMC4671 not responding)",
+                    2: "ADC_FAULT (ADC offsets out of range: I0=%d I1=%d)"
+                    % (params.get("adc_i0", 0), params.get("adc_i1", 0)),
+                    3: "ENCODER_FAULT (encoder not connected or unstable)",
+                    4: "PID_FAULT (control loop not converging)",
+                    6: "INTERNAL_ERROR (firmware command queue full)",
+                    7: "CONFIG_FAULT (tmc_set_encoder not called before calibrate"
+                    " -- check printer.cfg foci section has encoder_ppr)",
+                }
+                msg = status_names.get(status, "UNKNOWN(%d)" % status)
+                raise self.printer.command_error(
+                    "FOCI %s calibration failed: %s" % (self.name, msg)
+                )
             self.is_calibrated = True
-            logging.info("FOCI %s: already calibrated (firmware auto-cal)", self.name)
-            return
-        if status != 0:
-            status_names = {
-                1: "SPI_ERROR (TMC4671 not responding)",
-                2: "ADC_FAULT (ADC offsets out of range: I0=%d I1=%d)"
-                % (params.get("adc_i0", 0), params.get("adc_i1", 0)),
-                3: "ENCODER_FAULT (encoder not connected or unstable)",
-                4: "PID_FAULT (control loop not converging)",
-                6: "INTERNAL_ERROR (firmware command queue full)",
-                7: "CONFIG_FAULT (tmc_set_encoder not called before calibrate"
-                " — check printer.cfg foci section has encoder_ppr)",
-            }
-            msg = status_names.get(status, "UNKNOWN(%d)" % status)
-            raise self.printer.command_error(
-                "FOCI %s calibration failed: %s" % (self.name, msg)
+            logging.info(
+                "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
+                self.name,
+                params.get("adc_i0", 0),
+                params.get("adc_i1", 0),
+                params.get("encoder_count", 0),
             )
-        self.is_calibrated = True
-        logging.info(
-            "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
-            self.name,
-            params.get("adc_i0", 0),
-            params.get("adc_i1", 0),
-            params.get("encoder_count", 0),
-        )
+        finally:
+            self._release_foci_lock()
 
     def _handle_home_rails_begin(self, homing_state, rails) -> None:
         """Ensure calibration before homing any rail that includes this stepper.
