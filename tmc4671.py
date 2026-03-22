@@ -1067,6 +1067,23 @@ class FociDriver:
         if self._calibration_completion is not None:
             self._calibration_completion.complete(params)
 
+    def _try_acquire_foci_lock(self) -> bool:
+        """Non-blocking try-acquire of the FOCI operation lock.
+
+        Returns True if lock acquired, False if another operation holds it.
+        The lock prevents concurrent FOCI operations on this stepper.
+        Klipper is single-threaded (reactor pattern), so a boolean flag
+        is sufficient -- no mutex needed.
+        """
+        if self._foci_lock:
+            return False
+        self._foci_lock = True
+        return True
+
+    def _release_foci_lock(self) -> None:
+        """Release the FOCI operation lock. Must be called on every exit path."""
+        self._foci_lock = False
+
     def _ensure_calibrated(self) -> None:
         """Run calibration if not already calibrated. Blocks until complete.
 
