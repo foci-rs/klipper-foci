@@ -1215,40 +1215,53 @@ class FociDriver:
         """Release the FOCI operation lock. Must be called on every exit path."""
         self._foci_lock = False
 
+    # Kinematics coupling map: in coupled kinematics a single motor
+    # affects multiple Cartesian axes. Maps rail index -> affected axes.
+    # Cartesian (default): rail N -> axis N only.
+    COUPLED_AXES = {
+        "CoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
+        "CoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},
+        "HybridCoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
+        "HybridCoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},
+    }
+
     def _invalidate_homing(self) -> None:
         """Mark all kinematic axes affected by this stepper as unhomed.
 
         Called at command-accepted time for foci_commission, foci_tune,
-        foci_selftest, and foci_calibrate. CoreXY: either motor invalidates
-        both X and Y. CoreXZ: either motor invalidates X and Z.
-        Cartesian: only the directly driven axis.
+        foci_selftest, and foci_calibrate. Uses kinematics.clear_homing_state()
+        to actually clear homed status. Kinematics-aware: CoreXY marks both
+        X and Y for either motor, CoreXZ marks X and Z, Cartesian marks only
+        the directly driven axis.
         """
         toolhead = self.printer.lookup_object("toolhead", None)
         if toolhead is None:
             return
         kin = toolhead.get_kinematics()
-        # Find all axes that any of this stepper's rails contribute to.
-        # Klipper kinematics objects expose get_rails() which returns
-        # PrinterRail objects. Each rail has get_steppers().
-        axes_to_unhome = set()
+        # Find which rails contain this stepper
+        matched_rails = set()
         for i, rail in enumerate(kin.get_rails()):
             for stepper in rail.get_steppers():
                 if stepper.get_name() == self.stepper_name:
-                    # Map rail index to axis letter (0=X, 1=Y, 2=Z)
-                    if i < 3:
-                        axes_to_unhome.add("xyz"[i])
-        if axes_to_unhome:
-            # Klipper's internal homing invalidation API varies between
-            # Klipper and Kalico. The exact mechanism needs to be verified
-            # against the Kalico source. The axis mapping logic is correct;
-            # the actual API call may need adjustment during integration.
-            # TODO: implement proper Klipper/Kalico homing invalidation API call.
-            for axis in axes_to_unhome:
-                toolhead.note_kinematic_activity(toolhead.get_last_move_time())
+                    matched_rails.add(i)
+        if not matched_rails:
+            return
+        # Map matched rails to affected axes using coupling table
+        coupling = self.COUPLED_AXES.get(type(kin).__name__)
+        axes_to_clear = set()
+        for rail_index in matched_rails:
+            if coupling and rail_index in coupling:
+                axes_to_clear.update(coupling[rail_index])
+            elif rail_index < 3:
+                # Cartesian default: rail index = axis index
+                axes_to_clear.add(rail_index)
+        if axes_to_clear:
+            kin.clear_homing_state(sorted(axes_to_clear))
+            axis_names = "".join("xyz"[i] for i in sorted(axes_to_clear))
             logging.info(
-                "FOCI %s: marking axes %s unhomed (encoder re-zeroed)",
+                "FOCI %s: marked axes %s unhomed (encoder re-zeroed)",
                 self.name,
-                "".join(sorted(axes_to_unhome)),
+                axis_names,
             )
 
     def _ensure_calibrated(self) -> None:
