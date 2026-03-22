@@ -918,7 +918,13 @@ class FociDriver:
         14: "shutdown requested",
         15: "commissioning already running",
         16: "command queue full",
+        17: "safety envelope violation",
     }
+
+    # Error codes that indicate a hard-disable fault: firmware has
+    # disabled the motor and cleared its state. The host must sync
+    # its enable line and clear is_calibrated.
+    HARD_FAULT_CODES: frozenset[int] = frozenset({3, 14, 17})
 
     PROFILE_MAP: dict[str, int] = {
         "conservative": 0,
@@ -1737,7 +1743,6 @@ class FociDriver:
                 if eventtime > timeout:
                     raise gcmd.error("FOCI %s: FOCI_AUTOTUNE timed out" % self.name)
                 if self._commission_error_code != 0:
-                    # Soft failure -- firmware restored entry gains
                     error_name = self.COMMISSION_ERROR_NAMES.get(
                         self._commission_error_code,
                         "UNKNOWN(%d)" % self._commission_error_code,
@@ -1745,6 +1750,19 @@ class FociDriver:
                     phase_name = self.PHASE_NAMES.get(
                         self._last_phase_id or 0, "unknown"
                     )
+                    if self._commission_error_code in self.HARD_FAULT_CODES:
+                        # Hard fault: firmware disabled motor, cleared state.
+                        # Sync host-side enable line and calibration state.
+                        self.is_calibrated = False
+                        stepper_enable = self.printer.lookup_object("stepper_enable")
+                        enable_line = stepper_enable.lookup_enable(self.stepper_name)
+                        enable_line.motor_disable(toolhead.get_last_move_time())
+                        raise gcmd.error(
+                            "FOCI %s: FOCI_AUTOTUNE safety fault at %s: %s "
+                            "(motor disabled by firmware)"
+                            % (self.name, phase_name, error_name)
+                        )
+                    # Soft failure -- firmware restored entry gains
                     gcmd.respond_info(
                         "FOCI %s: FOCI_AUTOTUNE failed at %s: %s "
                         "(motor holding with entry gains)"
