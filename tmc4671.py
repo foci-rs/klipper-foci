@@ -866,8 +866,10 @@ class FociDriver:
             "tmc_set_velocity_limit oid=%c limit=%u"
         )
         self.trace_info_cmd = self.mcu.lookup_command("foci_trace_info oid=%c")
-        self.trace_fetch_cmd = self.mcu.lookup_command(
-            "foci_trace_fetch oid=%c offset=%hu gen=%c"
+        self.trace_fetch_cmd = self.mcu.lookup_query_command(
+            "foci_trace_fetch oid=%c offset=%hu gen=%c",
+            "foci_trace_data oid=%c offset=%hu status=%c data=%*s",
+            oid=self.oid,
         )
         self.mcu._serial.register_response(
             self._handle_trace_info_result,
@@ -1282,6 +1284,8 @@ class FociDriver:
         if toolhead is None:
             return
         kin = toolhead.get_kinematics()
+        if not hasattr(kin, "get_rails"):
+            return
         # Find which rails contain this stepper
         matched_rails = set()
         for i, rail in enumerate(kin.get_rails()):
@@ -1967,9 +1971,7 @@ class FociDriver:
         # Fetch samples
         samples = []
         for i in range(count):
-            params = self.trace_fetch_cmd.send_with_response(
-                [self.oid, i, gen], "foci_trace_data"
-            )
+            params = self.trace_fetch_cmd.send([self.oid, i, gen])
             status = params.get("status", 2)
             if status != 0:
                 status_names = {1: "capture still active", 2: "invalid"}
