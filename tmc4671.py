@@ -1514,7 +1514,8 @@ class FociDriver:
         finally:
             self._release_foci_lock()
         gcmd.respond_info(
-            "FOCI %s: selftest passed (phases 0-4 complete)" % self.stepper_name
+            "FOCI %s: selftest passed (ADC, coil, wiring, encoder,"
+            " alignment, electrical ID)" % self.stepper_name
         )
 
     def cmd_FOCI_COMMISSION(self, gcmd) -> None:
