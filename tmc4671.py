@@ -1727,17 +1727,20 @@ class FociDriver:
                     % self.name
                 )
 
-            # Check homing
+            # Check homing — skip for NoneKinematics (manual_stepper has
+            # no kinematic axes and never reports homed_axes).
             toolhead = self.printer.lookup_object("toolhead")
-            kin_status = toolhead.get_status(toolhead.get_last_move_time())
-            homed = set(kin_status.get("homed_axes", ""))
-            expected = set("xyz")  # full homing required
-            if not expected.issubset(homed):
-                missing = expected - homed
-                raise gcmd.error(
-                    "FOCI %s: printer not fully homed (missing: %s). Home first."
-                    % (self.name, "".join(sorted(missing)))
-                )
+            kinematics = toolhead.get_kinematics()
+            if hasattr(kinematics, "get_rails"):
+                kin_status = toolhead.get_status(toolhead.get_last_move_time())
+                homed = set(kin_status.get("homed_axes", ""))
+                expected = set("xyz")  # full homing required
+                if not expected.issubset(homed):
+                    missing = expected - homed
+                    raise gcmd.error(
+                        "FOCI %s: printer not fully homed (missing: %s). "
+                        "Home first." % (self.name, "".join(sorted(missing)))
+                    )
 
             # Setup sequence (lock held)
             toolhead.wait_moves()
@@ -1745,9 +1748,12 @@ class FociDriver:
             # Post-wait revalidation
             if not self.is_calibrated:
                 raise gcmd.error("FOCI %s: calibration lost during wait" % self.name)
-            kin_status = toolhead.get_status(toolhead.get_last_move_time())
-            if not expected.issubset(set(kin_status.get("homed_axes", ""))):
-                raise gcmd.error("FOCI %s: homing lost during wait" % self.name)
+            if hasattr(kinematics, "get_rails"):
+                kin_status = toolhead.get_status(toolhead.get_last_move_time())
+                if not expected.issubset(set(kin_status.get("homed_axes", ""))):
+                    raise gcmd.error(
+                        "FOCI %s: homing lost during wait" % self.name
+                    )
 
             self._invalidate_homing()
 
