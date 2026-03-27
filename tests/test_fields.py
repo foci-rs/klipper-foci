@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Unit tests for TMC4671 field formatting.
-# Run: cd foci/klipper-foci && python test_fields.py
+# Run: cd foci/klipper-foci && python -m pytest tests/ -v
 #
 # Copyright (C) 2026 Morton Jonuschat
 # SPDX-License-Identifier: GPL-3.0-or-later
