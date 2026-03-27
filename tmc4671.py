@@ -918,12 +918,16 @@ class FociDriver:
         5: "Electrical ID",
         6: "Current tune",
         7: "Current validation",
+        8: "Inner done",
         9: "Mechanical ID",
         10: "Velocity tune",
         11: "Velocity validation",
         12: "Position tune",
         13: "Filter selection",
         14: "Commit",
+        15: "Outer done",
+        16: "Encoder alignment",
+        17: "Closed-loop entry",
     }
 
     COMMISSION_ERROR_NAMES: dict[int, str] = {
