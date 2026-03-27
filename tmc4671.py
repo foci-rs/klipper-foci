@@ -1392,9 +1392,18 @@ class FociDriver:
             # Send calibrate and wait for response
             reactor = self.printer.get_reactor()
             self._calibration_completion = reactor.completion()
+            t_start = reactor.monotonic()
             self.calibrate_cmd.send([self.oid])
-            params = self._calibration_completion.wait(reactor.monotonic() + 5.0)
+            params = self._calibration_completion.wait(t_start + 5.0)
+            t_elapsed = reactor.monotonic() - t_start
             self._calibration_completion = None
+
+            logging.info(
+                "FOCI %s: calibrate response after %.3fs: %s",
+                self.name,
+                t_elapsed,
+                params,
+            )
 
             if params is None:
                 raise self.printer.command_error(
@@ -1411,15 +1420,20 @@ class FociDriver:
                 )
                 return
             if status != 0:
+                # Raw CommissionError status codes (1-17) from firmware.
                 status_names = {
-                    1: "SPI_ERROR (TMC4671 not responding)",
-                    2: "ADC_FAULT (ADC offsets out of range: I0=%d I1=%d)"
+                    1: "MOTOR_ENABLED",
+                    2: "NO_CURRENT (current limit not configured)",
+                    3: "SPI_ERROR (TMC4671 not responding)",
+                    4: "ADC_FAULT (ADC offsets out of range: I0=%d I1=%d)"
                     % (params.get("adc_i0", 0), params.get("adc_i1", 0)),
-                    3: "ENCODER_FAULT (encoder not connected or unstable)",
-                    4: "PID_FAULT (control loop not converging)",
-                    6: "INTERNAL_ERROR (firmware command queue full)",
-                    7: "CONFIG_FAULT (tmc_set_encoder not called before calibrate"
-                    " -- check printer.cfg foci section has encoder_ppr)",
+                    5: "COIL_FAULT (coil not connected)",
+                    6: "PHASE_FAULT (phase wiring error)",
+                    7: "ENCODER_FAULT (encoder not connected or unstable)",
+                    8: "ELECTRICAL_ID_FAILED",
+                    9: "CURRENT_VALIDATION_FAILED",
+                    13: "ENCODER_NOT_ALIGNED",
+                    16: "QUEUE_FULL (firmware command queue full)",
                 }
                 msg = status_names.get(status, "UNKNOWN(%d)" % status)
                 raise self.printer.command_error(
