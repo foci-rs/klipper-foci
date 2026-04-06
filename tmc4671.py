@@ -1513,13 +1513,13 @@ class FociDriver:
                         if self._last_phase_id
                         else "startup"
                     )
+                    error_name = self.COMMISSION_ERROR_NAMES.get(
+                        self._commission_error_code,
+                        "unknown error (code %d)" % self._commission_error_code,
+                    )
                     raise self.printer.command_error(
-                        "FOCI %s: selftest failed at %s (code %d)"
-                        % (
-                            self.stepper_name,
-                            phase_name,
-                            self._commission_error_code,
-                        )
+                        "FOCI %s: selftest failed at %s: %s"
+                        % (self.stepper_name, phase_name, error_name)
                     )
                 if reactor.monotonic() > deadline:
                     self._selftest_in_flight = False
@@ -1607,7 +1607,8 @@ class FociDriver:
             if status > 1:
                 self._on_commission_failure()
                 raise gcmd.error(
-                    "FOCI %s: FOCI_COMMISSION failed (status=%d)" % (self.name, status)
+                    "FOCI %s: FOCI_COMMISSION failed (unexpected status %d)"
+                    % (self.name, status)
                 )
 
             # Terminal state: motor enabled, holding
@@ -1769,9 +1770,7 @@ class FociDriver:
             if hasattr(kinematics, "get_rails"):
                 kin_status = toolhead.get_status(toolhead.get_last_move_time())
                 if not expected.issubset(set(kin_status.get("homed_axes", ""))):
-                    raise gcmd.error(
-                        "FOCI %s: homing lost during wait" % self.name
-                    )
+                    raise gcmd.error("FOCI %s: homing lost during wait" % self.name)
 
             self._invalidate_homing()
 
