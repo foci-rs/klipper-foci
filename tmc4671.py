@@ -1288,11 +1288,14 @@ class FociDriver:
         if toolhead is None:
             return
         kin = toolhead.get_kinematics()
-        if not hasattr(kin, "get_rails"):
+        if not hasattr(kin, "clear_homing_state"):
+            return
+        rails = getattr(kin, "rails", None)
+        if rails is None:
             return
         # Find which rails contain this stepper
         matched_rails = set()
-        for i, rail in enumerate(kin.get_rails()):
+        for i, rail in enumerate(rails):
             for stepper in rail.get_steppers():
                 if stepper.get_name() == self.stepper_name:
                     matched_rails.add(i)
@@ -1385,9 +1388,6 @@ class FociDriver:
                 if hz > 0:
                     cmd = getattr(self, "set_%s_filter_cmd" % filter_name)
                     cmd.send([self.oid, hz])
-
-            # Mark axes unhomed before sending calibrate (homing invalidation rule)
-            self._invalidate_homing()
 
             # Send calibrate and wait for response
             reactor = self.printer.get_reactor()
@@ -1750,7 +1750,7 @@ class FociDriver:
             # no kinematic axes and never reports homed_axes).
             toolhead = self.printer.lookup_object("toolhead")
             kinematics = toolhead.get_kinematics()
-            if hasattr(kinematics, "get_rails"):
+            if hasattr(kinematics, "rails"):
                 kin_status = toolhead.get_status(toolhead.get_last_move_time())
                 homed = set(kin_status.get("homed_axes", ""))
                 expected = set("xyz")  # full homing required
@@ -1767,7 +1767,7 @@ class FociDriver:
             # Post-wait revalidation
             if not self.is_calibrated:
                 raise gcmd.error("FOCI %s: calibration lost during wait" % self.name)
-            if hasattr(kinematics, "get_rails"):
+            if hasattr(kinematics, "rails"):
                 kin_status = toolhead.get_status(toolhead.get_last_move_time())
                 if not expected.issubset(set(kin_status.get("homed_axes", ""))):
                     raise gcmd.error("FOCI %s: homing lost during wait" % self.name)

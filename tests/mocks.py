@@ -57,17 +57,21 @@ class MockNoneKinematics:
 
 
 class MockCartesianKinematics:
-    """Cartesian kinematics with configurable rails."""
+    """Cartesian kinematics with configurable rails.
+
+    Matches both Klipper and Kalico: exposes ``rails`` attribute
+    (used by _invalidate_homing) and ``get_steppers()`` (flattened).
+    """
 
     def __init__(self, stepper_names=None):
         stepper_names = stepper_names or [["stepper_x"], ["stepper_y"], ["stepper_z"]]
-        self._rails = []
+        self.rails = []
         for names in stepper_names:
-            self._rails.append(MockRail(names))
+            self.rails.append(MockRail(names))
         self._cleared_axes = None
 
-    def get_rails(self):
-        return self._rails
+    def get_steppers(self):
+        return [s for rail in self.rails for s in rail.get_steppers()]
 
     def clear_homing_state(self, axes):
         self._cleared_axes = axes

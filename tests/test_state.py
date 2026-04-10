@@ -336,8 +336,24 @@ class TestHomingInvalidation(unittest.TestCase):
 
     def test_noop_for_none_kinematics(self):
         d = make_driver(kinematics=MockNoneKinematics())
-        # NoneKinematics has no get_rails — should be a no-op
+        # NoneKinematics has no rails or clear_homing_state — should be a no-op
         d._invalidate_homing()
+
+    def test_noop_when_no_rails_attribute(self):
+        """Kinematics with clear_homing_state but no rails attribute."""
+
+        class MinimalKin:
+            def clear_homing_state(self, axes):
+                raise AssertionError("should not be called")
+
+        d = make_driver(kinematics=MinimalKin())
+        d._invalidate_homing()
+
+    def test_noop_when_stepper_not_on_any_rail(self):
+        kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_a", kinematics=kin)
+        d._invalidate_homing()
+        self.assertIsNone(kin._cleared_axes)
 
     def test_cartesian_clears_matched_axis(self):
         kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
@@ -350,6 +366,23 @@ class TestHomingInvalidation(unittest.TestCase):
         self.assertIn(0, kin._cleared_axes)
         self.assertIn("x", kin._cleared_axes)
         self.assertNotIn(1, kin._cleared_axes)
+
+    def test_cartesian_clears_y_axis(self):
+        kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_y", kinematics=kin)
+        d._invalidate_homing()
+        self.assertIn(1, kin._cleared_axes)
+        self.assertIn("y", kin._cleared_axes)
+        self.assertNotIn(0, kin._cleared_axes)
+        self.assertNotIn(2, kin._cleared_axes)
+
+    def test_cartesian_clears_z_axis(self):
+        kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_z", kinematics=kin)
+        d._invalidate_homing()
+        self.assertIn(2, kin._cleared_axes)
+        self.assertIn("z", kin._cleared_axes)
+        self.assertNotIn(0, kin._cleared_axes)
 
     def test_corexy_clears_both_axes_for_either_motor(self):
         kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
@@ -364,6 +397,24 @@ class TestHomingInvalidation(unittest.TestCase):
         self.assertIn("x", kin._cleared_axes)
         self.assertIn("y", kin._cleared_axes)
         self.assertNotIn(2, kin._cleared_axes)
+
+    def test_corexy_clears_both_axes_for_y_motor(self):
+        kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_y", kinematics=kin)
+        d._invalidate_homing()
+        # CoreXY: rail 1 maps to axes (0, 1) → x and y
+        self.assertIn(0, kin._cleared_axes)
+        self.assertIn(1, kin._cleared_axes)
+        self.assertNotIn(2, kin._cleared_axes)
+
+    def test_corexy_z_only_clears_z(self):
+        kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_z", kinematics=kin)
+        d._invalidate_homing()
+        # CoreXY: rail 2 maps to axis (2,) → z only
+        self.assertIn(2, kin._cleared_axes)
+        self.assertNotIn(0, kin._cleared_axes)
+        self.assertNotIn(1, kin._cleared_axes)
 
 
 # =========================================================================
