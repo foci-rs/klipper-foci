@@ -2,7 +2,7 @@
 
 from tmc4671 import FociDriver
 
-from tests.mocks import make_driver
+from tests.mocks import make_driver, MockCommand, MockGCmd
 
 
 def test_selftest_result_handler_appends_to_results():
@@ -79,3 +79,41 @@ def test_format_inductance_uses_mh_units():
 def test_format_fail_status_returns_error_marker():
     out = FociDriver._format_selftest_value(7, 1, 0)
     assert "FAIL" in out or "fail" in out.lower()
+
+
+def test_cmd_selftest_builds_multiline_report():
+    d = make_driver()
+    d.selftest_cmd = MockCommand()
+
+    # Drive the response stream synchronously when selftest_cmd.send is called.
+    def drive_stream(_args):
+        for result in [
+            {"stage": 1, "status": 0, "value": (0x0ADC << 16) | 0x0CDC},
+            {"stage": 2, "status": 0, "value": 300},
+            {"stage": 3, "status": 0, "value": 312},
+            {"stage": 4, "status": 0, "value": 0},
+            {"stage": 5, "status": 0, "value": 3},
+            {"stage": 6, "status": 0, "value": 0},
+            {"stage": 7, "status": 0, "value": 1714},
+            {"stage": 8, "status": 0, "value": 3256},
+        ]:
+            d._handle_selftest_result(result)
+        d._handle_selftest_done({"status": 0})
+
+    d.selftest_cmd.send = drive_stream
+
+    gcmd = MockGCmd()
+    d.cmd_FOCI_SELFTEST(gcmd)
+
+    out = gcmd.last_info
+    assert "Self-Test" in out
+    assert "ADC calibration" in out
+    assert "Motor coil A" in out
+    assert "Motor coil B" in out
+    assert "Phase wiring" in out
+    assert "Encoder " in out  # trailing space distinguishes from "Encoder direction"
+    assert "Encoder direction" in out
+    assert "Resistance" in out
+    assert "Inductance" in out
+    assert "8/8 stages" in out
+    assert "PASS" in out

@@ -704,10 +704,6 @@ class FociDriver:
         self._dump_buffer: dict[int, int] = {}
         self._dump_complete = False
 
-        # Selftest state (commissioning-engine based — legacy, kept for transition)
-        self._selftest_done: bool = False
-        self._selftest_in_flight: bool = False
-
         # Selftest streaming state (populated by foci_selftest_result / foci_selftest_done).
         self._selftest_results: list[dict] = []
         self._selftest_complete: bool = False
@@ -1059,8 +1055,6 @@ class FociDriver:
             gcode.respond_info("FOCI %s autotune: %s" % (self.stepper_name, phase_name))
         elif phase_id == 0 and status != 0:
             self._commission_error_code = status
-        elif phase_id == 0 and status == 0 and self._selftest_in_flight:
-            self._selftest_done = True
 
     def _handle_commission_result(self, params: dict) -> None:
         """Handle foci_commission_result from firmware (Stage 1 completion)."""
@@ -1566,11 +1560,11 @@ class FociDriver:
             self.is_calibrated = False
 
     def cmd_FOCI_SELFTEST(self, gcmd) -> None:
-        """Handler for FOCI_SELFTEST GCode command.
+        """Run TMC4671 self-test and emit a per-stage report.
 
-        Sends foci_selftest command to create a commissioning-engine selftest
-        in firmware. The firmware streams foci_commission_phase messages for
-        progress and a terminal phase=0 status=0 on success.
+        Sends foci_selftest; firmware streams foci_selftest_result for
+        each completed stage and a terminal foci_selftest_done. This
+        handler collects the stream and formats the GCode console report.
 
         Selftest includes encoder alignment, so homing is invalidated at
         command-accepted time.
@@ -1583,46 +1577,42 @@ class FociDriver:
             self._invalidate_homing()
 
             reactor = self.printer.get_reactor()
-            self._selftest_done = False
-            self._selftest_in_flight = True
-            self._last_phase_id = None
-            self._commission_error_code = 0
+            self._selftest_results = []
+            self._selftest_complete = False
+            self._selftest_status = 0
 
-            # Send selftest command (firmware creates new_selftest engine)
             self.selftest_cmd.send([self.oid])
 
-            # Wait for completion (15s timeout -- selftest runs phases 0-4)
+            # Wait for the terminal foci_selftest_done message (15 s timeout).
             deadline = reactor.monotonic() + 15.0
-            while not self._selftest_done:
-                if self._commission_error_code != 0:
-                    self._selftest_in_flight = False
-                    phase_name = (
-                        self.PHASE_NAMES.get(self._last_phase_id, "unknown")
-                        if self._last_phase_id
-                        else "startup"
-                    )
-                    error_name = self.COMMISSION_ERROR_NAMES.get(
-                        self._commission_error_code,
-                        "unknown error (code %d)" % self._commission_error_code,
-                    )
-                    raise self.printer.command_error(
-                        "FOCI %s: selftest failed at %s: %s"
-                        % (self.stepper_name, phase_name, error_name)
-                    )
+            while not self._selftest_complete:
                 if reactor.monotonic() > deadline:
-                    self._selftest_in_flight = False
                     raise self.printer.command_error(
                         "FOCI %s: selftest timed out" % self.stepper_name
                     )
                 reactor.pause(reactor.monotonic() + 0.05)
-
-            self._selftest_in_flight = False
         finally:
             self._release_foci_lock()
-        gcmd.respond_info(
-            "FOCI %s: selftest passed (ADC, coil, wiring, encoder,"
-            " alignment, electrical ID)" % self.stepper_name
-        )
+
+        status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
+        lines = ["Self-Test: %s" % self.stepper_name]
+        passed = 0
+        total = len(self._selftest_results)
+        for result in self._selftest_results:
+            stage_id = result["stage"]
+            stage_status = result["status"]
+            stage_value = result["value"]
+            name = self.SELFTEST_STAGES.get(stage_id, "Stage %d" % stage_id)
+            status_str = status_names.get(stage_status, "?")
+            detail = self._format_selftest_value(stage_id, stage_status, stage_value)
+            dots = "." * max(1, 35 - len(name))
+            lines.append("  %s %s %s%s" % (name, dots, status_str, detail))
+            if stage_status == 0:
+                passed += 1
+
+        overall = "PASS" if self._selftest_status == 0 else "FAIL"
+        lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
+        gcmd.respond_info("\n".join(lines))
 
     def cmd_FOCI_COMMISSION(self, gcmd) -> None:
         """Stage 1: commission motor for safe printer motion.

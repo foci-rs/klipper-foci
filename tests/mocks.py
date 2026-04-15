@@ -19,6 +19,7 @@ class MockPrinter:
 
     def __init__(self):
         self._objects: dict[str, object] = {}
+        self._reactor = MockReactor()
 
     def lookup_object(self, name, default=None):
         return self._objects.get(name, default)
@@ -28,6 +29,9 @@ class MockPrinter:
 
     def command_error(self, msg):
         return CommandError(msg)
+
+    def get_reactor(self):
+        return self._reactor
 
 
 class MockToolhead:
@@ -145,6 +149,7 @@ class MockGCmd:
     def __init__(self, params=None):
         self._params = params or {}
         self._responses = []
+        self.last_info = None
 
     def get(self, key, default=None):
         return self._params.get(key, default)
@@ -154,6 +159,7 @@ class MockGCmd:
 
     def respond_info(self, msg):
         self._responses.append(msg)
+        self.last_info = msg
 
 
 class MockReactor:
@@ -236,10 +242,6 @@ def make_driver(
     driver._commission_result = None
     driver._commission_error_code = 0
     driver._last_phase_id = None
-
-    # Selftest state (legacy commissioning-engine based)
-    driver._selftest_done = False
-    driver._selftest_in_flight = False
 
     # Selftest streaming state
     driver._selftest_results = []
