@@ -1620,6 +1620,14 @@ class FociDriver:
         lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
         gcmd.respond_info("\n".join(lines))
 
+        if self._selftest_status != 0:
+            err = self.COMMISSION_ERROR_NAMES.get(
+                self._selftest_status, "unknown error %d" % self._selftest_status
+            )
+            raise self.printer.command_error(
+                "FOCI %s: selftest failed: %s" % (self.stepper_name, err)
+            )
+
     def cmd_FOCI_COMMISSION(self, gcmd) -> None:
         """Stage 1: commission motor for safe printer motion.
 

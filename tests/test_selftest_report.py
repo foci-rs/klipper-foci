@@ -1,8 +1,10 @@
 """Tests for FOCI_SELFTEST streaming result handling and report formatting."""
 
+import pytest
+
 from tmc4671 import FociDriver
 
-from tests.mocks import make_driver, MockCommand, MockGCmd
+from tests.mocks import CommandError, make_driver, MockCommand, MockGCmd
 
 
 def test_selftest_result_handler_appends_to_results():
@@ -119,7 +121,7 @@ def test_cmd_selftest_builds_multiline_report():
     assert "PASS" in out
 
 
-def test_cmd_selftest_failure_includes_error_name():
+def test_cmd_selftest_failure_raises_and_still_emits_report():
     d = make_driver()
     d.selftest_cmd = MockCommand()
 
@@ -132,10 +134,28 @@ def test_cmd_selftest_failure_includes_error_name():
     d.selftest_cmd.send = drive_stream
 
     gcmd = MockGCmd()
-    d.cmd_FOCI_SELFTEST(gcmd)
+    with pytest.raises(CommandError):
+        d.cmd_FOCI_SELFTEST(gcmd)
 
+    # respond_info was called before the raise — report is still available.
     out = gcmd.last_info
     assert "FAIL" in out
     assert "ADC calibration fault" in out
     assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
     assert "0/1 stages" in out
+
+
+def test_cmd_selftest_pass_does_not_raise():
+    d = make_driver()
+    d.selftest_cmd = MockCommand()
+
+    def drive_stream(_args):
+        d._handle_selftest_result({"stage": 4, "status": 0, "value": 0})
+        d._handle_selftest_done({"status": 0})
+
+    d.selftest_cmd.send = drive_stream
+
+    gcmd = MockGCmd()
+    d.cmd_FOCI_SELFTEST(gcmd)  # must not raise
+
+    assert "PASS" in gcmd.last_info
