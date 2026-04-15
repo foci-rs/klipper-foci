@@ -1610,7 +1610,13 @@ class FociDriver:
             if stage_status == 0:
                 passed += 1
 
-        overall = "PASS" if self._selftest_status == 0 else "FAIL"
+        if self._selftest_status == 0:
+            overall = "PASS"
+        else:
+            err = self.COMMISSION_ERROR_NAMES.get(
+                self._selftest_status, "unknown error %d" % self._selftest_status
+            )
+            overall = "FAIL (%s)" % err
         lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
         gcmd.respond_info("\n".join(lines))
 

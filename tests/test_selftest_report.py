@@ -117,3 +117,25 @@ def test_cmd_selftest_builds_multiline_report():
     assert "Inductance" in out
     assert "8/8 stages" in out
     assert "PASS" in out
+
+
+def test_cmd_selftest_failure_includes_error_name():
+    d = make_driver()
+    d.selftest_cmd = MockCommand()
+
+    # Stage 1 fails; firmware emits a foci_selftest_result then foci_selftest_done
+    # with the ADC calibration fault code (4 = "ADC calibration fault").
+    def drive_stream(_args):
+        d._handle_selftest_result({"stage": 1, "status": 1, "value": 0})
+        d._handle_selftest_done({"status": 4})
+
+    d.selftest_cmd.send = drive_stream
+
+    gcmd = MockGCmd()
+    d.cmd_FOCI_SELFTEST(gcmd)
+
+    out = gcmd.last_info
+    assert "FAIL" in out
+    assert "ADC calibration fault" in out
+    assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
+    assert "0/1 stages" in out
