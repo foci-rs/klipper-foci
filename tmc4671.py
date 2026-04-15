@@ -704,9 +704,14 @@ class FociDriver:
         self._dump_buffer: dict[int, int] = {}
         self._dump_complete = False
 
-        # Selftest state (commissioning-engine based)
+        # Selftest state (commissioning-engine based — legacy, kept for transition)
         self._selftest_done: bool = False
         self._selftest_in_flight: bool = False
+
+        # Selftest streaming state (populated by foci_selftest_result / foci_selftest_done).
+        self._selftest_results: list[dict] = []
+        self._selftest_complete: bool = False
+        self._selftest_status: int = 0
 
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
@@ -876,6 +881,16 @@ class FociDriver:
             "foci_trace_info_result",
             self.oid,
         )
+        self.mcu._serial.register_response(
+            self._handle_selftest_result,
+            "foci_selftest_result",
+            self.oid,
+        )
+        self.mcu._serial.register_response(
+            self._handle_selftest_done,
+            "foci_selftest_done",
+            self.oid,
+        )
 
     def _read_register(self, reg_name: str) -> int:
         """Read a single TMC4671 register via the firmware.
@@ -998,6 +1013,21 @@ class FociDriver:
         """Handle foci_tune_result from firmware (Stage 2 completion)."""
         self._commission_result = params
         self._commission_done = True
+
+    def _handle_selftest_result(self, params: dict) -> None:
+        """Collect one stage result streamed during FOCI_SELFTEST."""
+        self._selftest_results.append(
+            {
+                "stage": params["stage"],
+                "status": params["status"],
+                "value": params["value"],
+            }
+        )
+
+    def _handle_selftest_done(self, params: dict) -> None:
+        """Terminal signal for FOCI_SELFTEST."""
+        self._selftest_complete = True
+        self._selftest_status = params["status"]
 
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.

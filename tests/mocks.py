@@ -237,9 +237,14 @@ def make_driver(
     driver._commission_error_code = 0
     driver._last_phase_id = None
 
-    # Selftest state
+    # Selftest state (legacy commissioning-engine based)
     driver._selftest_done = False
     driver._selftest_in_flight = False
+
+    # Selftest streaming state
+    driver._selftest_results = []
+    driver._selftest_complete = False
+    driver._selftest_status = 0
 
     # Config values (needed by some methods)
     driver.microsteps = 20
