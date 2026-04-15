@@ -984,6 +984,64 @@ class FociDriver:
         "high_inertia": 2,
     }
 
+    SELFTEST_STAGES: dict[int, str] = {
+        1: "ADC calibration",
+        2: "Motor coil A",
+        3: "Motor coil B",
+        4: "Phase wiring",
+        5: "Encoder",
+        6: "Encoder direction",
+        7: "Resistance",
+        8: "Inductance",
+    }
+
+    @staticmethod
+    def _format_selftest_value(stage: int, status: int, value: int) -> str:
+        """Return a stage-specific detail string (empty string for bare PASS).
+
+        ``value`` is decoded per the firmware-side encoding in foci-core:
+
+        - stage 1 (ADC calibration): low 16 bits = offset_i0, high 16 bits = offset_i1
+        - stages 2, 3 (coil currents): i16 bit-reinterpreted as u16, then zero-extended
+        - stage 4 (phase wiring): value is always 0
+        - stage 5 (encoder delta): unsigned magnitude (sign in stage 6)
+        - stage 6 (encoder direction): 0 = increasing, 1 = reversed
+        - stage 7 (resistance): milliohms
+        - stage 8 (inductance): microhenries
+
+        Args:
+            stage: Stage number (1–8) as reported by the firmware.
+            status: 0 = pass, non-zero = fail.
+            value: Stage-specific encoded value from the firmware.
+
+        Returns:
+            A parenthesised detail string, or an empty string when no
+            per-stage detail is applicable (e.g. bare phase-wiring pass).
+        """
+        if status != 0:
+            return " (FAIL, raw=%d)" % value
+        if stage == 1:
+            offset_i0 = value & 0xFFFF
+            offset_i1 = (value >> 16) & 0xFFFF
+            return " (offset_i0=%d, offset_i1=%d)" % (offset_i0, offset_i1)
+        if stage in (2, 3):
+            # Value is an i16 whose two's-complement bit pattern was stored
+            # in the low 16 bits of a u32. Reinterpret bit 15 as sign.
+            low16 = value & 0xFFFF
+            signed = low16 if low16 < 0x8000 else low16 - 0x10000
+            return " (current=%d)" % signed
+        if stage == 4:
+            return ""
+        if stage == 5:
+            return " (delta=%d)" % value
+        if stage == 6:
+            return " (reversed)" if value == 1 else " (increasing)"
+        if stage == 7:
+            return " (%.1f ohm)" % (value / 1000.0)
+        if stage == 8:
+            return " (%.1f mH)" % (value / 1000.0)
+        return ""
+
     def _handle_commission_phase(self, params: dict) -> None:
         """Handle foci_commission_phase message from firmware.
 
