@@ -537,7 +537,7 @@ class TestValidateAndLoadConfig(unittest.TestCase):
 class TestNameMaps(unittest.TestCase):
     def test_all_phase_ids_have_names(self):
         """Every wire code 1-17 should have a name."""
-        from tmc4671 import FociDriver
+        from foci import FociDriver
 
         for phase_id in range(1, 18):
             self.assertIn(
@@ -547,7 +547,7 @@ class TestNameMaps(unittest.TestCase):
             )
 
     def test_hard_fault_codes_are_subset_of_error_names(self):
-        from tmc4671 import FociDriver
+        from foci import FociDriver
 
         for code in FociDriver.HARD_FAULT_CODES:
             self.assertIn(

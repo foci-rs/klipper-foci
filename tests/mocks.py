@@ -7,7 +7,7 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
-from tmc4671 import FociDriver
+from foci import FociDriver
 
 
 class CommandError(Exception):

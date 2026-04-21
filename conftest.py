@@ -1,6 +1,6 @@
 """Pytest configuration for klipper-foci tests.
 
-Makes ``import tmc4671`` and ``from tests.mocks import ...`` resolve
+Makes ``import foci`` and ``from tests.mocks import ...`` resolve
 without an installed package. Also pre-registers the ``klipper_foci``
 package so that the relative import in ``__init__.py`` works when pytest
 imports it during Package.setup().
@@ -24,9 +24,9 @@ if str(_ROOT) not in sys.path:
 # --- Pre-register a synthetic package so relative imports work -------------
 #
 # pytest's Package.setup() calls importtestmodule(klipper-foci/__init__.py).
-# That file does ``from .tmc4671 import FociDriver``, which needs __package__
+# That file does ``from .foci import FociDriver``, which needs __package__
 # set to "klipper_foci" (using underscores — Python package names cannot
-# contain hyphens).  We load tmc4671 directly and register the package, so
+# contain hyphens).  We load foci directly and register the package, so
 # the relative import resolves correctly.
 
 _PKG_NAME = "klipper_foci"
@@ -43,18 +43,18 @@ if _PKG_NAME not in sys.modules:
     )
     sys.modules[_PKG_NAME] = pkg
 
-    # Load tmc4671 as a submodule of the package.
-    _tmc_name = _PKG_NAME + ".tmc4671"
+    # Load foci as a submodule of the package.
+    _tmc_name = _PKG_NAME + ".foci"
     if _tmc_name not in sys.modules:
         _tmc_spec = importlib.util.spec_from_file_location(
-            _tmc_name, str(_ROOT / "tmc4671.py")
+            _tmc_name, str(_ROOT / "foci.py")
         )
         _tmc_mod = importlib.util.module_from_spec(_tmc_spec)
         _tmc_mod.__package__ = _PKG_NAME
         sys.modules[_tmc_name] = _tmc_mod
         _tmc_spec.loader.exec_module(_tmc_mod)
 
-    # Expose FociDriver on the package so ``from .tmc4671 import FociDriver``
+    # Expose FociDriver on the package so ``from .foci import FociDriver``
     # inside __init__.py is satisfied by the already-loaded submodule.
     pkg.FociDriver = sys.modules[_tmc_name].FociDriver  # type: ignore[attr-defined]
-    pkg.tmc4671 = sys.modules[_tmc_name]
+    pkg.foci = sys.modules[_tmc_name]

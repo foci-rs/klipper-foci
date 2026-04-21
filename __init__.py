@@ -5,9 +5,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 try:
-    from .tmc4671 import FociDriver
+    from .foci import FociDriver
 except ImportError:
-    from tmc4671 import FociDriver  # type: ignore[no-redef]  # flat import for pytest
+    from foci import FociDriver  # type: ignore[no-redef]  # flat import for pytest
 
 
 def load_config_prefix(config):

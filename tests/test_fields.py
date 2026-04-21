@@ -7,7 +7,7 @@
 
 import unittest
 
-from tmc4671 import (
+from foci import (
     FieldHelper,
     Fields,
     SIGNED_FIELDS,

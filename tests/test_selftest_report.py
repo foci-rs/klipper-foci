@@ -2,7 +2,7 @@
 
 import pytest
 
-from tmc4671 import FociDriver
+from foci import FociDriver
 
 from tests.mocks import CommandError, make_driver, MockCommand, MockGCmd
 
