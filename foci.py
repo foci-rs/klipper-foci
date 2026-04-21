@@ -868,7 +868,7 @@ class FociDriver:
         )
         self.trace_info_cmd = self.mcu.lookup_command("foci_trace_info oid=%c")
         self.trace_fetch_cmd = self.mcu.lookup_query_command(
-            "foci_trace_fetch oid=%c offset=%hu gen=%c",
+            "foci_trace_fetch oid=%c offset=%hu generation=%c",
             "foci_trace_data oid=%c offset=%hu status=%c data=%*s",
             oid=self.oid,
         )
@@ -2033,7 +2033,7 @@ class FociDriver:
         info = self._trace_info
         state = info.get("state", 0)
         count = info.get("count", 0)
-        gen = info.get("gen", 0)
+        generation = info.get("generation", 0)
 
         if state != 2 or count == 0:
             gcmd.respond_info("FOCI %s: no trace data available" % self.name)
@@ -2087,7 +2087,7 @@ class FociDriver:
         # Fetch samples
         samples = []
         for i in range(count):
-            params = self.trace_fetch_cmd.send([self.oid, i, gen])
+            params = self.trace_fetch_cmd.send([self.oid, i, generation])
             status = params.get("status", 2)
             if status != 0:
                 status_names = {1: "capture still active", 2: "invalid"}
