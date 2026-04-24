@@ -1043,8 +1043,10 @@ class FociDriver:
 
         Caches the most recent phase ID for failure reporting and
         reports phase transitions to the Klipper console. A message with
-        phase=0 and nonzero status signals a commissioning failure —
-        sets the error code so the poll loop breaks immediately.
+        phase=0 and nonzero status signals a Stage 1 (FOCI_COMMISSION)
+        failure — sets the error code so the commission poll loop breaks
+        immediately. Stage 2 (FOCI_TUNE) failures are reported via
+        foci_tune_result instead.
         """
         phase_id = params.get("phase", 0)
         status = params.get("status", 0)
@@ -1895,7 +1897,9 @@ class FociDriver:
                 ]
             )
 
-            # Wait for result (up to 30 seconds)
+            # Wait for result (up to 30 seconds).
+            # foci_tune_result is emitted for all outcomes: success, soft failure,
+            # and safety fault (OuterFailed always sends foci_tune_result).
             reactor = self.printer.get_reactor()
             eventtime = reactor.monotonic()
             timeout = eventtime + 30.0
@@ -1903,43 +1907,30 @@ class FociDriver:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if eventtime > timeout:
                     raise gcmd.error("FOCI %s: FOCI_AUTOTUNE timed out" % self.name)
-                if self._commission_error_code != 0:
-                    error_name = self.COMMISSION_ERROR_NAMES.get(
-                        self._commission_error_code,
-                        "UNKNOWN(%d)" % self._commission_error_code,
-                    )
-                    phase_name = self.PHASE_NAMES.get(
-                        self._last_phase_id or 0, "unknown"
-                    )
-                    if self._commission_error_code in self.HARD_FAULT_CODES:
-                        # Hard fault: firmware disabled motor, cleared state.
-                        # Sync host-side enable line and calibration state.
-                        self.is_calibrated = False
-                        stepper_enable = self.printer.lookup_object("stepper_enable")
-                        enable_line = stepper_enable.lookup_enable(self.stepper_name)
-                        enable_line.motor_disable(toolhead.get_last_move_time())
-                        raise gcmd.error(
-                            "FOCI %s: FOCI_AUTOTUNE safety fault at %s: %s "
-                            "(motor disabled by firmware)"
-                            % (self.name, phase_name, error_name)
-                        )
-                    # Soft failure -- firmware restored entry gains
-                    gcmd.respond_info(
-                        "FOCI %s: FOCI_AUTOTUNE failed at %s: %s "
-                        "(motor holding with entry gains)"
-                        % (self.name, phase_name, error_name)
-                    )
-                    return  # _runtime_status unchanged, gains preserved
 
-            # Success
             result = self._commission_result
             status = result.get("status", 255)
             if status > 1:
-                gcmd.respond_info(
-                    "FOCI %s: tuning failed (status=%d), entry gains preserved"
-                    % (self.name, status)
+                error_name = self.COMMISSION_ERROR_NAMES.get(
+                    status, "UNKNOWN(%d)" % status
                 )
-                return
+                if status in self.HARD_FAULT_CODES:
+                    # Hard fault: firmware disabled motor, cleared state.
+                    # Sync host-side enable line and calibration state.
+                    self.is_calibrated = False
+                    stepper_enable = self.printer.lookup_object("stepper_enable")
+                    enable_line = stepper_enable.lookup_enable(self.stepper_name)
+                    enable_line.motor_disable(toolhead.get_last_move_time())
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_AUTOTUNE safety fault: %s "
+                        "(motor disabled by firmware)" % (self.name, error_name)
+                    )
+                # Soft failure -- firmware restored entry gains
+                gcmd.respond_info(
+                    "FOCI %s: FOCI_AUTOTUNE failed: %s "
+                    "(motor holding with entry gains)" % (self.name, error_name)
+                )
+                return  # _runtime_status unchanged, gains preserved
 
             # Determine tuned vs tuned_conservative
             warning_code = result.get("warning_code", 0)
