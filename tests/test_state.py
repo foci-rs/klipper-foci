@@ -265,6 +265,24 @@ class TestAutotuneGates(unittest.TestCase):
         except (CommandError, AttributeError, TypeError) as e:
             self.assertNotIn("not commissioned", str(e))
 
+    def test_admission_failure_reports_error_instead_of_timeout(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report_admission_failure(deadline):
+            reactor._time = deadline
+            d._handle_commission_phase({"phase": 0, "status": 15})
+            return reactor._time
+
+        reactor.pause = pause_and_report_admission_failure
+
+        with self.assertRaises(CommandError) as ctx:
+            d.cmd_FOCI_AUTOTUNE(gcmd)
+
+        self.assertIn("commissioning already running", str(ctx.exception))
+        self.assertNotIn("timed out", str(ctx.exception))
+
 
 # =========================================================================
 # 5. State transitions

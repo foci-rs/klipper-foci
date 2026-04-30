@@ -1075,10 +1075,10 @@ class FociDriver:
 
         Caches the most recent phase ID for failure reporting and
         reports phase transitions to the Klipper console. A message with
-        phase=0 and nonzero status signals a Stage 1 (FOCI_COMMISSION)
-        failure — sets the error code so the commission poll loop breaks
-        immediately. Stage 2 (FOCI_TUNE) failures are reported via
-        foci_tune_result instead.
+        phase=0 and nonzero status signals a command admission failure before
+        a terminal result message exists. The Stage 1 and Stage 2 poll loops
+        both watch this error code so they can report the real failure instead
+        of timing out.
         """
         phase_id = params.get("phase", 0)
         status = params.get("status", 0)
@@ -2030,6 +2030,14 @@ class FociDriver:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if eventtime > timeout:
                     raise gcmd.error("FOCI %s: FOCI_AUTOTUNE timed out" % self.name)
+                if self._commission_error_code != 0:
+                    error_name = self.COMMISSION_ERROR_NAMES.get(
+                        self._commission_error_code,
+                        "UNKNOWN(%d)" % self._commission_error_code,
+                    )
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_AUTOTUNE failed: %s" % (self.name, error_name)
+                    )
 
             result = self._commission_result
             status = result.get("status", 255)
