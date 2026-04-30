@@ -640,6 +640,23 @@ class FociDriver:
             "identified_bandwidth_hz", None, minval=0
         )
 
+        # Phase 1 inner-confidence fields (added 2026-04-30). Optional in
+        # the persisted config: old configs that never ran the new firmware
+        # leave these unset and `_resolve_inner_confidence` substitutes
+        # documented defaults (bit 6 = host-default confidence).
+        self.identified_tau_e_us: int | None = config.getint(
+            "identified_tau_e_us", None, minval=0
+        )
+        self.identified_tau_e_crosscheck_us: int | None = config.getint(
+            "identified_tau_e_crosscheck_us", None, minval=0
+        )
+        self.identified_tau_residual_permille: int | None = config.getint(
+            "identified_tau_residual_permille", None, minval=0, maxval=1000
+        )
+        self.identified_inner_warning_flags: int | None = config.getint(
+            "identified_inner_warning_flags", None, minval=0, maxval=255
+        )
+
         # Autotune status (commissioned / tuned / tuned_conservative)
         self.autotune_status: str | None = config.get("autotune_status", None)
 
@@ -830,6 +847,8 @@ class FociDriver:
         self.tune_cmd = self.mcu.lookup_command(
             "foci_tune oid=%c profile=%c mode=%c"
             " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
+            " tau_e_us=%u tau_e_crosscheck_us=%u"
+            " tau_residual_permille=%hu inner_warning_flags=%c"
         )
         self.mcu._serial.register_response(
             self._handle_commission_phase, "foci_commission_phase", self.oid
@@ -967,6 +986,19 @@ class FociDriver:
     # 3 = SPI error, 9 = current validation failed (post-restore
     # stability check in Stage 2), 14 = shutdown, 17 = safety envelope.
     HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
+
+    # Bit-to-name mapping for the firmware-side `inner_warning_flags`
+    # bitfield (matches docs/specs/2026-04-30-inner-commissioning-stability.md
+    # §4). Bit 7 is reserved for future Phase 2 use.
+    INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
+        (1 << 0, "coil R mismatch"),
+        (1 << 1, "coil tau mismatch"),
+        (1 << 2, "tau residual"),
+        (1 << 3, "theta/tau ratio"),
+        (1 << 4, "current validation retry"),
+        (1 << 5, "current gains fell back to defaults"),
+        (1 << 6, "host-default confidence (no fresh measurement)"),
+    ]
 
     PROFILE_MAP: dict[str, int] = {
         "conservative": 0,
@@ -1735,6 +1767,12 @@ class FociDriver:
                 "FOCI %s commissioned (%s): R=%dmOhm L=%duH"
                 % (self.name, status_str, result["r_mohm"], result["l_uh"])
             )
+            flags = result.get("inner_warning_flags", 0)
+            if flags:
+                gcmd.respond_info(
+                    "FOCI %s inner confidence: %s"
+                    % (self.name, self._format_inner_warning_flags(flags))
+                )
         finally:
             self._release_foci_lock()
 
@@ -1796,8 +1834,82 @@ class FociDriver:
             "identified_bandwidth_hz",
             "%d" % result["bandwidth_hz"],
         )
+        configfile.set(
+            self.name,
+            "identified_tau_e_us",
+            "%d" % result.get("tau_e_us", 0),
+        )
+        configfile.set(
+            self.name,
+            "identified_tau_e_crosscheck_us",
+            "%d" % result.get("tau_e_crosscheck_us", 0),
+        )
+        configfile.set(
+            self.name,
+            "identified_tau_residual_permille",
+            "%d" % result.get("tau_residual_permille", 1000),
+        )
+        configfile.set(
+            self.name,
+            "identified_inner_warning_flags",
+            "%d" % result.get("inner_warning_flags", 0),
+        )
         configfile.set(self.name, "autotune_profile", profile_name)
         configfile.set(self.name, "autotune_status", "commissioned")
+
+    def _resolve_inner_confidence(self) -> tuple[int, int, int, int]:
+        """Resolve the four Phase 1 inner-confidence fields for Stage 2.
+
+        Returns ``(tau_e_us, tau_e_crosscheck_us, tau_residual_permille,
+        inner_warning_flags)``. Fresh Stage 1 results from
+        ``_commissioned_result`` win over persisted values; persisted
+        values fall back to documented defaults when absent (used only
+        for old configs that pre-date this field set).
+        """
+        if self._commissioned_result is not None:
+            r = self._commissioned_result
+            return (
+                r.get("tau_e_us", 0),
+                r.get("tau_e_crosscheck_us", 0),
+                r.get("tau_residual_permille", 1000),
+                r.get("inner_warning_flags", 0),
+            )
+
+        tau_e_us = self.identified_tau_e_us
+        if tau_e_us is None:
+            # Spec wording: "when `identified_lambda_us` is available,
+            # otherwise 1000". Treat only `None` as missing — a genuine
+            # zero (implausible but legal) maps to the 1000us floor.
+            if self.identified_lambda_us is None:
+                tau_e_us = 1000
+            else:
+                tau_e_us = max(self.identified_lambda_us, 1000)
+
+        tau_e_crosscheck_us = self.identified_tau_e_crosscheck_us
+        if tau_e_crosscheck_us is None:
+            tau_e_crosscheck_us = 0
+
+        tau_residual_permille = self.identified_tau_residual_permille
+        if tau_residual_permille is None:
+            tau_residual_permille = 1000
+
+        inner_warning_flags = self.identified_inner_warning_flags
+        if inner_warning_flags is None:
+            # Bit 6: host-defaulted confidence data (no fresh measurement).
+            inner_warning_flags = 0x40
+
+        return (
+            tau_e_us,
+            tau_e_crosscheck_us,
+            tau_residual_permille,
+            inner_warning_flags,
+        )
+
+    def _format_inner_warning_flags(self, flags: int) -> str:
+        """Decode an `inner_warning_flags` bitfield into a human-readable
+        comma-separated list of warning names."""
+        names = [name for bit, name in self.INNER_WARNING_FLAG_NAMES if flags & bit]
+        return ", ".join(names) if names else "none"
 
     def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing.
@@ -1880,6 +1992,13 @@ class FociDriver:
                 ringing = self.identified_ringing_count
                 bandwidth = self.identified_bandwidth_hz
 
+            (
+                tau_e_us,
+                tau_e_crosscheck_us,
+                tau_residual_permille,
+                inner_warning_flags,
+            ) = self._resolve_inner_confidence()
+
             # Send tune command
             self._commission_done = False
             self._commission_result = None
@@ -1894,6 +2013,10 @@ class FociDriver:
                     theta_e,
                     ringing,
                     bandwidth,
+                    tau_e_us,
+                    tau_e_crosscheck_us,
+                    tau_residual_permille,
+                    inner_warning_flags,
                 ]
             )
 
@@ -1969,6 +2092,17 @@ class FociDriver:
                     result["position_p"],
                 )
             )
+            # Reuse the inner_warning_flags resolved earlier in this command —
+            # they were sent to the firmware along with the tune request and
+            # have not changed since.
+            if inner_warning_flags:
+                gcmd.respond_info(
+                    "FOCI %s inner confidence: %s"
+                    % (
+                        self.name,
+                        self._format_inner_warning_flags(inner_warning_flags),
+                    )
+                )
         finally:
             self._release_foci_lock()
 

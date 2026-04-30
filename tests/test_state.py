@@ -557,5 +557,58 @@ class TestNameMaps(unittest.TestCase):
             )
 
 
+class InnerConfidenceRoundtripTests(unittest.TestCase):
+    """Phase 1 inner-confidence resolution and persistence roundtrip.
+
+    See docs/specs/2026-04-30-inner-commissioning-stability.md §4.
+    """
+
+    def test_default_persisted_values_resolve_to_documented_defaults(self):
+        driver = make_driver()
+        driver._commissioned_result = None
+        driver.identified_lambda_us = 700
+        # All identified_tau_*/identified_inner_warning_flags default None
+        tau, cross, perm, flags = driver._resolve_inner_confidence()
+        # `tau_e_us = max(identified_lambda_us, 1000)` for old configs.
+        self.assertEqual(tau, 1000)
+        self.assertEqual(cross, 0)
+        self.assertEqual(perm, 1000)
+        # Bit 6 = host-default confidence.
+        self.assertEqual(flags, 0x40)
+
+    def test_fresh_stage1_result_wins_over_persisted(self):
+        driver = make_driver()
+        driver._commissioned_result = {
+            "tau_e_us": 1234,
+            "tau_e_crosscheck_us": 1100,
+            "tau_residual_permille": 50,
+            "inner_warning_flags": 0x02,
+        }
+        driver.identified_tau_e_us = 9999
+        tau, cross, perm, flags = driver._resolve_inner_confidence()
+        self.assertEqual((tau, cross, perm, flags), (1234, 1100, 50, 0x02))
+
+    def test_persisted_values_load_from_config(self):
+        driver = make_driver()
+        driver._commissioned_result = None
+        driver.identified_tau_e_us = 800
+        driver.identified_tau_e_crosscheck_us = 750
+        driver.identified_tau_residual_permille = 60
+        driver.identified_inner_warning_flags = 0x01
+        tau, cross, perm, flags = driver._resolve_inner_confidence()
+        self.assertEqual((tau, cross, perm, flags), (800, 750, 60, 0x01))
+
+    def test_format_inner_warning_flags_lists_active_bits(self):
+        driver = make_driver()
+        # Bits 0 (R mismatch) + 4 (retry).
+        text = driver._format_inner_warning_flags((1 << 0) | (1 << 4))
+        self.assertIn("coil R mismatch", text)
+        self.assertIn("current validation retry", text)
+
+    def test_format_inner_warning_flags_empty_when_clean(self):
+        driver = make_driver()
+        self.assertEqual(driver._format_inner_warning_flags(0), "none")
+
+
 if __name__ == "__main__":
     unittest.main()
