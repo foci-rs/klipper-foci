@@ -24,6 +24,9 @@ class MockPrinter:
     def lookup_object(self, name, default=None):
         return self._objects.get(name, default)
 
+    def lookup_objects(self, _module=None):
+        return []
+
     def register_event_handler(self, event, callback):
         pass
 
@@ -219,6 +222,7 @@ def make_driver(
     driver.name = "foci " + stepper_name
     driver.stepper_name = stepper_name
     driver.oid = 0
+    driver.channel = 0
 
     # Printer and objects
     toolhead = MockToolhead(kinematics)
@@ -236,6 +240,7 @@ def make_driver(
     driver._active_gains = None
     driver._runtime_status = None
     driver._foci_lock = False
+    driver._enable_patched = False
 
     # Commission polling state
     driver._commission_done = False
@@ -252,6 +257,7 @@ def make_driver(
     driver.microsteps = 20
     driver.full_steps = 200
     driver.encoder_ppr = 1000
+    driver.encoder_reversed = False
     driver.run_current = 0.8
     driver.velocity_feedforward = False
 
@@ -294,6 +300,9 @@ def make_driver(
     driver.flux_filter_hz = 0
 
     # Mock firmware commands (used by _ensure_calibrated, etc.)
+    driver.set_current_cmd = MockCommand()
+    driver.set_encoder_cmd = MockCommand()
+    driver.set_encoder_dir_cmd = MockCommand()
     driver.calibrate_cmd = MockCommand()
     driver.commission_cmd = MockCommand()
     driver.tune_cmd = MockCommand()
@@ -305,5 +314,6 @@ def make_driver(
     driver.set_torque_filter_cmd = MockCommand()
     driver.set_position_filter_cmd = MockCommand()
     driver.set_flux_filter_cmd = MockCommand()
+    driver.set_auto_calibrate_on_enable_cmd = MockCommand()
 
     return driver

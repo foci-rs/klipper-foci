@@ -706,6 +706,7 @@ class FociDriver:
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
         self.set_velocity_limit_cmd = None
+        self.set_auto_calibrate_on_enable_cmd = None
         self.trace_info_cmd = None
         self.trace_fetch_cmd = None
 
@@ -884,6 +885,9 @@ class FociDriver:
         )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
+        )
+        self.set_auto_calibrate_on_enable_cmd = self.mcu.lookup_command(
+            "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
         )
         self.trace_info_cmd = self.mcu.lookup_command("foci_trace_info oid=%c")
         self.trace_fetch_cmd = self.mcu.lookup_query_command(
@@ -1325,6 +1329,7 @@ class FociDriver:
                 )
             )
         self._validate_and_load_config()
+        self._set_auto_calibrate_on_enable_allowed(self._active_gains is not None)
         if not self._enable_patched:
             self._enable_patched = True
             stepper_enable = self.printer.lookup_object("stepper_enable")
@@ -1380,6 +1385,11 @@ class FociDriver:
     def _release_foci_lock(self) -> None:
         """Release the FOCI operation lock. Must be called on every exit path."""
         self._foci_lock = False
+
+    def _set_auto_calibrate_on_enable_allowed(self, allowed: bool) -> None:
+        """Tell firmware whether raw enable may start auto-calibration."""
+        if self.set_auto_calibrate_on_enable_cmd is not None:
+            self.set_auto_calibrate_on_enable_cmd.send([self.oid, int(allowed)])
 
     # Kinematics coupling map: in coupled kinematics a single motor
     # affects multiple Cartesian axes. Maps rail index -> affected axes.
@@ -1509,6 +1519,7 @@ class FociDriver:
             reactor = self.printer.get_reactor()
             self._calibration_completion = reactor.completion()
             t_start = reactor.monotonic()
+            self._set_auto_calibrate_on_enable_allowed(True)
             self.calibrate_cmd.send([self.oid])
             params = self._calibration_completion.wait(t_start + 5.0)
             t_elapsed = reactor.monotonic() - t_start
@@ -1741,6 +1752,7 @@ class FociDriver:
             enable_line.motor_enable(toolhead.get_last_move_time())
             self.is_calibrated = True
             self._inhibited = False
+            self._set_auto_calibrate_on_enable_allowed(True)
             self._commissioned_result = result
             self._active_gains = {
                 "flux_p": result["flux_p"],
@@ -1783,6 +1795,7 @@ class FociDriver:
         self._active_gains = None
         self._runtime_status = None
         self._inhibited = True
+        self._set_auto_calibrate_on_enable_allowed(False)
 
     def _persist_commission_results(self, result: dict, profile_name: str) -> None:
         """Persist Stage 1 results to printer.cfg (pending SAVE_CONFIG)."""
