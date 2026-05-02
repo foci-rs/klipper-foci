@@ -60,6 +60,12 @@ def _fmt_q8_8(val: int) -> str:
     return "%.3f" % (val * 2**-8)
 
 
+def _fmt_advanced_pi_current_i(val: int) -> str:
+    if val == 0:
+        return "0"
+    return "%d/65536" % val
+
+
 def _fmt_direction(val: int) -> str:
     return "reversed" if val else ""
 
@@ -312,9 +318,9 @@ FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "abn_direction": _fmt_direction,
     "pwm_sv": _fmt_on_off,
     "flux_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    "flux_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
+    "flux_i": _fmt_advanced_pi_current_i,  # Advanced PI zero scale.
     "torque_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    "torque_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
+    "torque_i": _fmt_advanced_pi_current_i,  # Advanced PI zero scale.
     "velocity_p": _fmt_q8_8,
     "velocity_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
     "position_p": _fmt_q8_8,

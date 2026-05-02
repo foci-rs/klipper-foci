@@ -142,6 +142,12 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertIn("flux_p=", out)
         self.assertIn("flux_i=", out)
 
+    def test_current_i_uses_advanced_pi_zero_scale(self):
+        out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x01000100)
+        self.assertIn("flux_p=1.000", out)
+        self.assertIn("flux_i=256/65536", out)
+        self.assertNotIn("flux_i=1.000", out)
+
     def test_register_without_fields(self):
         fh = FieldHelper({}, [], {})
         out = fh.pretty_format("UNKNOWN_REG", 0xDEADBEEF)
