@@ -291,6 +291,31 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("commissioning already running", str(ctx.exception))
         self.assertNotIn("timed out", str(ctx.exception))
 
+    def test_hard_fault_inhibits_future_raw_enable(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
+            d.stepper_name
+        )
+        enable_line.motor_enable(0.0)
+
+        def pause_and_report_hard_fault(deadline):
+            reactor._time = deadline
+            d._handle_tune_result({"status": 17})
+            return reactor._time
+
+        reactor.pause = pause_and_report_hard_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.cmd_FOCI_AUTOTUNE(gcmd)
+
+        self.assertIn("safety fault", str(ctx.exception))
+        self.assertFalse(enable_line.is_motor_enabled())
+        self.assertFalse(d.is_calibrated)
+        self.assertTrue(d._inhibited)
+        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
+
 
 # =========================================================================
 # 5. State transitions

@@ -2062,8 +2062,9 @@ class FociDriver:
                 )
                 if status in self.HARD_FAULT_CODES:
                     # Hard fault: firmware disabled motor, cleared state.
-                    # Sync host-side enable line and calibration state.
-                    self.is_calibrated = False
+                    # Sync host-side state and block raw-enable auto-calibration
+                    # until a fresh Stage 1 commission succeeds.
+                    self._on_commission_failure()
                     stepper_enable = self.printer.lookup_object("stepper_enable")
                     enable_line = stepper_enable.lookup_enable(self.stepper_name)
                     enable_line.motor_disable(toolhead.get_last_move_time())
