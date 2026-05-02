@@ -1329,7 +1329,9 @@ class FociDriver:
                 )
             )
         self._validate_and_load_config()
-        self._set_auto_calibrate_on_enable_allowed(self._active_gains is not None)
+        self._set_auto_calibrate_on_enable_allowed(
+            self._active_gains is not None and not self._inhibited
+        )
         if not self._enable_patched:
             self._enable_patched = True
             stepper_enable = self.printer.lookup_object("stepper_enable")
@@ -1469,13 +1471,13 @@ class FociDriver:
         - Marks kinematic axes unhomed (encoder re-zeroing)
         - Preloads gains from _active_gains into firmware atomics
         """
-        if self.is_calibrated:
-            return
         if self._inhibited:
             raise self.printer.command_error(
                 "FOCI %s: operation inhibited after failed FOCI_COMMISSION. "
                 "Retry FOCI_COMMISSION or restart Klipper." % self.name
             )
+        if self.is_calibrated:
+            return
         if self._active_gains is None:
             raise self.printer.command_error(
                 "FOCI %s: no commissioned gains available. "

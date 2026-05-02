@@ -88,6 +88,14 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         # Should return without error or side effects
         d._ensure_calibrated()
 
+    def test_inhibited_raises_even_if_already_calibrated(self):
+        d = make_driver()
+        d.is_calibrated = True
+        d._inhibited = True
+        with self.assertRaises(CommandError) as ctx:
+            d._ensure_calibrated()
+        self.assertIn("inhibited", str(ctx.exception))
+
     def test_raises_if_inhibited(self):
         d = make_driver()
         d._inhibited = True
@@ -327,6 +335,26 @@ class TestStateTransitions(unittest.TestCase):
         d.commissioned_velocity_limit = 50_000
         d._handle_connect()
         self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
+
+    def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):
+        d = make_driver()
+        d._inhibited = True
+        d.autotune_status = "commissioned"
+        d.pid_flux_p = 100
+        d.pid_flux_i = 200
+        d.pid_torque_p = 300
+        d.pid_torque_i = 400
+        d.identified_lambda_us = 1200
+        d.identified_theta_e_us = 100
+        d.identified_ringing_count = 0
+        d.identified_bandwidth_hz = 500
+        d.commissioned_velocity_p = 1100
+        d.commissioned_velocity_i = 0
+        d.commissioned_position_p = 700
+        d.commissioned_position_i = 0
+        d.commissioned_velocity_limit = 50_000
+        d._handle_connect()
+        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
 
     def test_inhibited_blocks_ensure_calibrated(self):
         d = make_driver()
