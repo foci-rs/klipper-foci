@@ -244,8 +244,9 @@ class MockSerial:
 class MockMCU:
     """Mock Klipper MCU object with config-build callbacks."""
 
-    def __init__(self, name="foci"):
+    def __init__(self, name="foci", allowed_pins=None):
         self.name = name
+        self.allowed_pins = set(allowed_pins) if allowed_pins is not None else None
         self._next_oid = 1
         self._config_callbacks = []
         self.config_cmds = []
@@ -284,7 +285,10 @@ class MockPins:
 
     def parse_pin(self, pin, can_invert=False):
         chip_name, pin_name = pin.split(":", 1)
-        return {"chip": self._chips[chip_name], "pin": pin_name}
+        chip = self._chips[chip_name]
+        if chip.allowed_pins is not None and pin_name not in chip.allowed_pins:
+            raise CommandError("Unknown pin %s on chip %s" % (pin_name, chip_name))
+        return {"chip": chip, "pin": pin_name}
 
 
 class MockConfig:
