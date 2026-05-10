@@ -19,18 +19,23 @@ class MockPrinter:
 
     def __init__(self):
         self._objects: dict[str, object] = {}
+        self._object_lists: dict[str, list[tuple[str, object]]] = {}
+        self._event_handlers: dict[str, list[object]] = {}
         self._reactor = MockReactor()
 
     def lookup_object(self, name, default=None):
         return self._objects.get(name, default)
 
-    def lookup_objects(self, _module=None):
-        return []
+    def lookup_objects(self, module=None):
+        return list(self._object_lists.get(module, []))
 
     def register_event_handler(self, event, callback):
-        pass
+        self._event_handlers.setdefault(event, []).append(callback)
 
     def command_error(self, msg):
+        return CommandError(msg)
+
+    def config_error(self, msg):
         return CommandError(msg)
 
     def get_reactor(self):
@@ -99,7 +104,10 @@ class MockRail:
     """Mock rail containing named steppers."""
 
     def __init__(self, stepper_names):
-        self._steppers = [MockStepper(n) for n in stepper_names]
+        self._steppers = [
+            stepper if isinstance(stepper, MockStepper) else MockStepper(stepper)
+            for stepper in stepper_names
+        ]
 
     def get_steppers(self):
         return self._steppers
@@ -108,11 +116,15 @@ class MockRail:
 class MockStepper:
     """Mock stepper with a name."""
 
-    def __init__(self, name):
+    def __init__(self, name, oid=0):
         self._name = name
+        self._oid = oid
 
     def get_name(self):
         return self._name
+
+    def get_oid(self):
+        return self._oid
 
 
 class MockEnableLine:
@@ -165,6 +177,20 @@ class MockGCmd:
         self.last_info = msg
 
 
+class MockGCode:
+    """Mock gcode module."""
+
+    def __init__(self):
+        self._mux_commands = []
+        self._responses = []
+
+    def register_mux_command(self, *args, **kwargs):
+        self._mux_commands.append((args, kwargs))
+
+    def respond_info(self, msg):
+        self._responses.append(msg)
+
+
 class MockReactor:
     """Minimal reactor for _ensure_calibrated."""
 
@@ -205,6 +231,158 @@ class MockCommand:
         self.last_args = args
 
 
+class MockSerial:
+    """Mock MCU serial response registry."""
+
+    def __init__(self):
+        self.responses = []
+
+    def register_response(self, callback, name, oid=None):
+        self.responses.append((callback, name, oid))
+
+
+class MockMCU:
+    """Mock Klipper MCU object with config-build callbacks."""
+
+    def __init__(self, name="foci"):
+        self.name = name
+        self._next_oid = 1
+        self._config_callbacks = []
+        self.config_cmds = []
+        self._serial = MockSerial()
+
+    def create_oid(self):
+        oid = self._next_oid
+        self._next_oid += 1
+        return oid
+
+    def register_config_callback(self, callback):
+        self._config_callbacks.append(callback)
+
+    def run_config_callbacks(self):
+        for callback in list(self._config_callbacks):
+            callback()
+
+    def add_config_cmd(self, cmd):
+        self.config_cmds.append(cmd)
+
+    def alloc_command_queue(self):
+        return object()
+
+    def lookup_command(self, _fmt, cq=None):
+        return MockCommand()
+
+    def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
+        return MockCommand()
+
+
+class MockPins:
+    """Mock pins object that resolves chip-prefixed virtual FOCI pins."""
+
+    def __init__(self, chips):
+        self._chips = chips
+
+    def parse_pin(self, pin, can_invert=False):
+        chip_name, pin_name = pin.split(":", 1)
+        return {"chip": self._chips[chip_name], "pin": pin_name}
+
+
+class MockConfig:
+    """Minimal config section object."""
+
+    def __init__(self, printer, sections, name):
+        self._printer = printer
+        self._sections = sections
+        self._name = name
+
+    def get_name(self):
+        return self._name
+
+    def get_printer(self):
+        return self._printer
+
+    def has_section(self, name):
+        return name in self._sections
+
+    def getsection(self, name):
+        return MockConfig(self._printer, self._sections, name)
+
+    def get(self, key, default=None):
+        return self._sections.get(self._name, {}).get(key, default)
+
+    def getint(self, key, default=None, minval=None, maxval=None):
+        value = self.get(key, default)
+        if value is None:
+            return None
+        value = int(value)
+        if minval is not None and value < minval:
+            raise self.error("%s below minimum" % key)
+        if maxval is not None and value > maxval:
+            raise self.error("%s above maximum" % key)
+        return value
+
+    def getfloat(self, key, default=None, above=None):
+        value = self.get(key, default)
+        if value is None:
+            return None
+        value = float(value)
+        if above is not None and value <= above:
+            raise self.error("%s must be above %s" % (key, above))
+        return value
+
+    def getboolean(self, key, default=False):
+        value = self.get(key, default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
+    def getchoice(self, key, choices, default=None):
+        value = self.get(key, default)
+        if value not in choices:
+            raise self.error("%s must be one of %s" % (key, sorted(choices)))
+        return choices[value]
+
+    def error(self, msg):
+        return CommandError(msg)
+
+
+def make_config_printer(stepper_sections, chips=None, kinematics=None):
+    """Create a printer/config section set for FociDriver construction."""
+    chips = chips or {"foci": MockMCU("foci")}
+    sections = {}
+    stepper_names = []
+    next_stepper_oid = 10
+    for name, values in stepper_sections.items():
+        section = {
+            "microsteps": values.get("microsteps", 20),
+            "full_steps_per_rotation": values.get("full_steps_per_rotation", 200),
+            "step_pin": values["step_pin"],
+            "dir_pin": values.get("dir_pin", "foci:DIR0"),
+        }
+        sections[name] = section
+        stepper_names.append(MockStepper(name, values.get("oid", next_stepper_oid)))
+        next_stepper_oid += 1
+        sections["foci " + name] = {
+            "run_current": values.get("run_current", 0.8),
+            "encoder_ppr": values.get("encoder_ppr", 1000),
+        }
+    printer = MockPrinter()
+    printer._objects["gcode"] = MockGCode()
+    printer._objects["pins"] = MockPins(chips)
+    printer._objects["stepper_enable"] = MockStepperEnable()
+    printer._objects["toolhead"] = MockToolhead(
+        kinematics or MockCartesianKinematics([[stepper] for stepper in stepper_names])
+    )
+    return printer, chips, sections
+
+
+def make_config_driver(printer, sections, name):
+    """Construct a real FociDriver from mocked config sections."""
+    return FociDriver(MockConfig(printer, sections, name))
+
+
 def make_driver(
     stepper_name="manual_stepper stepper_x",
     kinematics=None,
@@ -222,6 +400,7 @@ def make_driver(
     driver.name = "foci " + stepper_name
     driver.stepper_name = stepper_name
     driver.oid = 0
+    driver.stepper_oid = None
     driver.channel = 0
 
     # Printer and objects

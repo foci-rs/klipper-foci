@@ -695,6 +695,8 @@ class FociDriver:
 
         # Allocate an OID for this axis
         self.oid: int = self.mcu.create_oid()
+        self.stepper_oid: int | None = None
+        self.mcu.register_config_callback(self._build_config)
 
         # Command handles — resolved in _handle_mcu_identify after
         # the MCU data dictionary is loaded.
@@ -807,6 +809,52 @@ class FociDriver:
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler(
             "homing:home_rails_begin", self._handle_home_rails_begin
+        )
+
+    def _find_linked_stepper(self):
+        toolhead = self.printer.lookup_object("toolhead", None)
+        if toolhead is not None:
+            kin = toolhead.get_kinematics()
+            rails = getattr(kin, "rails", None)
+            if rails is None and hasattr(kin, "get_rails"):
+                rails = kin.get_rails()
+            if rails is not None:
+                for rail in rails:
+                    for stepper in rail.get_steppers():
+                        if stepper.get_name() == self.stepper_name:
+                            return stepper
+            get_steppers = getattr(kin, "get_steppers", None)
+            if get_steppers is not None:
+                for stepper in get_steppers():
+                    if stepper.get_name() == self.stepper_name:
+                        return stepper
+        for _name, manual_stepper in self.printer.lookup_objects("manual_stepper"):
+            steppers = getattr(manual_stepper, "steppers", [])
+            for stepper in steppers:
+                if stepper.get_name() == self.stepper_name:
+                    return stepper
+        return None
+
+    def _resolve_stepper_oid(self) -> int:
+        stepper = self._find_linked_stepper()
+        if stepper is None or not hasattr(stepper, "get_oid"):
+            raise self.printer.config_error(
+                "[%s] could not resolve MCU stepper OID for %s"
+                % (self.name, self.stepper_name)
+            )
+        oid = stepper.get_oid()
+        if oid is None:
+            raise self.printer.config_error(
+                "[%s] could not resolve MCU stepper OID for %s"
+                % (self.name, self.stepper_name)
+            )
+        return oid
+
+    def _build_config(self) -> None:
+        self.stepper_oid = self._resolve_stepper_oid()
+        self.mcu.add_config_cmd(
+            "config_foci_tmc oid=%d stepper_oid=%d channel=%d"
+            % (self.oid, self.stepper_oid, self.channel)
         )
 
     def _handle_mcu_identify(self) -> None:
