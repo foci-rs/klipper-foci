@@ -693,10 +693,10 @@ class FociDriver:
         self.mcu = pin_params["chip"]
         self.channel: int = STEP_PINS[pin_name]
 
-        # Allocate an OID for this axis
-        self.oid: int = self.mcu.create_oid()
+        # Runtime FOCI commands use the Klipper stepper OID. It is resolved
+        # after MCU identification, when Klipper has loaded all steppers.
+        self.oid: int | None = None
         self.stepper_oid: int | None = None
-        self.mcu.register_config_callback(self._build_config)
 
         # Command handles — resolved in _handle_mcu_identify after
         # the MCU data dictionary is loaded.
@@ -836,7 +836,11 @@ class FociDriver:
         return None
 
     def _resolve_stepper_oid(self) -> int:
-        stepper = self._find_linked_stepper()
+        force_move = self.printer.lookup_object("force_move", None)
+        if force_move is not None and hasattr(force_move, "lookup_stepper"):
+            stepper = force_move.lookup_stepper(self.stepper_name)
+        else:
+            stepper = self._find_linked_stepper()
         if stepper is None or not hasattr(stepper, "get_oid"):
             raise self.printer.config_error(
                 "[%s] could not resolve MCU stepper OID for %s"
@@ -850,15 +854,10 @@ class FociDriver:
             )
         return oid
 
-    def _build_config(self) -> None:
-        self.stepper_oid = self._resolve_stepper_oid()
-        self.mcu.add_config_cmd(
-            "config_foci_tmc oid=%d stepper_oid=%d channel=%d"
-            % (self.oid, self.stepper_oid, self.channel)
-        )
-
     def _handle_mcu_identify(self) -> None:
         """Look up MCU commands after data dictionary is loaded."""
+        self.stepper_oid = self._resolve_stepper_oid()
+        self.oid = self.stepper_oid
         cmd_queue = self.mcu.alloc_command_queue()
         self.set_current_cmd = self.mcu.lookup_command(
             "tmc_set_current oid=%c run_ma=%u"

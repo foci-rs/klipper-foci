@@ -5,7 +5,7 @@ import pytest
 from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
 
 
-def test_same_mcu_dual_channel_config_commands():
+def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {
             "stepper_x": {
@@ -25,17 +25,12 @@ def test_same_mcu_dual_channel_config_commands():
     driver_y = make_config_driver(printer, sections, "foci stepper_y")
 
     mcu.run_config_callbacks()
+    driver_x._handle_mcu_identify()
+    driver_y._handle_mcu_identify()
 
-    assert (
-        "config_foci_tmc oid=%d stepper_oid=%d channel=0"
-        % (driver_x.oid, driver_x.stepper_oid)
-        in mcu.config_cmds
-    )
-    assert (
-        "config_foci_tmc oid=%d stepper_oid=%d channel=1"
-        % (driver_y.oid, driver_y.stepper_oid)
-        in mcu.config_cmds
-    )
+    assert mcu.config_cmds == []
+    assert driver_x.oid == 10
+    assert driver_y.oid == 12
 
 
 def test_same_mcu_dual_channel_response_handlers_use_distinct_oids():
@@ -59,17 +54,16 @@ def test_same_mcu_dual_channel_response_handlers_use_distinct_oids():
     driver_x._handle_mcu_identify()
     driver_y._handle_mcu_identify()
 
-    assert driver_x.oid != driver_y.oid
     response_oids = {
         (name, oid) for _callback, name, oid in driver_x.mcu._serial.responses
     }
-    assert ("foci_commission_result", driver_x.oid) in response_oids
-    assert ("foci_commission_result", driver_y.oid) in response_oids
-    assert ("foci_trace_info_result", driver_x.oid) in response_oids
-    assert ("foci_trace_info_result", driver_y.oid) in response_oids
+    assert ("foci_commission_result", 10) in response_oids
+    assert ("foci_commission_result", 12) in response_oids
+    assert ("foci_trace_info_result", 10) in response_oids
+    assert ("foci_trace_info_result", 12) in response_oids
 
 
-def test_dual_mcu_single_channel_config_commands():
+def test_dual_mcu_single_channel_uses_stepper_oids_without_foci_config():
     mcu_x = MockMCU("foci_x")
     mcu_y = MockMCU("foci_y")
     printer, _chips, sections = make_config_printer(
@@ -92,15 +86,13 @@ def test_dual_mcu_single_channel_config_commands():
 
     mcu_x.run_config_callbacks()
     mcu_y.run_config_callbacks()
+    driver_x._handle_mcu_identify()
+    driver_y._handle_mcu_identify()
 
-    assert mcu_x.config_cmds == [
-        "config_foci_tmc oid=%d stepper_oid=%d channel=0"
-        % (driver_x.oid, driver_x.stepper_oid)
-    ]
-    assert mcu_y.config_cmds == [
-        "config_foci_tmc oid=%d stepper_oid=%d channel=0"
-        % (driver_y.oid, driver_y.stepper_oid)
-    ]
+    assert mcu_x.config_cmds == []
+    assert mcu_y.config_cmds == []
+    assert driver_x.oid == 10
+    assert driver_y.oid == 12
 
 
 def test_dual_mcu_drivers_keep_runtime_state_separate():
