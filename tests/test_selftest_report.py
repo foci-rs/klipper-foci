@@ -23,6 +23,104 @@ def test_selftest_done_handler_marks_complete():
     assert d._selftest_status == 0
 
 
+def test_commission_detail_handler_appends_to_details():
+    d = make_driver()
+    d._commission_details = []
+    d._handle_commission_detail(
+        {
+            "phase": 5,
+            "code": 28,
+            "status": 1,
+            "value0": 820,
+            "value1": 500,
+            "value2": 0,
+        }
+    )
+    assert d._commission_details == [
+        {
+            "phase": 5,
+            "code": 28,
+            "status": 1,
+            "value0": 820,
+            "value1": 500,
+            "value2": 0,
+        }
+    ]
+
+
+def test_format_commission_detail_tau_residual():
+    line = FociDriver._format_commission_detail(
+        {
+            "phase": 5,
+            "code": 28,
+            "status": 1,
+            "value0": 820,
+            "value1": 730,
+            "value2": 1328,
+        }
+    )
+    assert "Electrical ID" in line
+    assert "tau residual" in line
+    assert "820" in line
+    assert "tau=730us" in line
+    assert "crosscheck=1328us" in line
+
+
+def test_format_commission_detail_measurements():
+    excitation = FociDriver._format_commission_detail(
+        {
+            "phase": 5,
+            "code": 1,
+            "status": 0,
+            "value0": 512,
+            "value1": 5000,
+            "value2": 160,
+        }
+    )
+    resistance = FociDriver._format_commission_detail(
+        {
+            "phase": 5,
+            "code": 2,
+            "status": 0,
+            "value0": 300,
+            "value1": 1706,
+            "value2": 1000,
+        }
+    )
+    inductance = FociDriver._format_commission_detail(
+        {
+            "phase": 5,
+            "code": 4,
+            "status": 0,
+            "value0": 40,
+            "value1": 730,
+            "value2": 5000,
+        }
+    )
+    transient = FociDriver._format_commission_detail(
+        {
+            "phase": 5,
+            "code": 6,
+            "status": 0,
+            "value0": 1000,
+            "value1": 160,
+            "value2": 1328,
+        }
+    )
+
+    assert "voltage_count=512" in excitation
+    assert "didt_cycles=5000" in excitation
+    assert "coil A resistance" in resistance
+    assert "avg_current=300 counts" in resistance
+    assert "r=1706 mOhm" in resistance
+    assert "coil A inductance" in inductance
+    assert "avg_delta=40 counts" in inductance
+    assert "tau=730us" in inductance
+    assert "transient" in transient
+    assert "steady_state=1000 counts" in transient
+    assert "crosscheck=1328us" in transient
+
+
 def test_stage_names_map_contains_all_eight():
     assert FociDriver.SELFTEST_STAGES[1] == "ADC calibration"
     assert FociDriver.SELFTEST_STAGES[2] == "Motor coil A"
@@ -128,6 +226,16 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
     # Stage 1 fails; firmware emits a foci_selftest_result then foci_selftest_done
     # with the ADC calibration fault code (4 = "ADC calibration fault").
     def drive_stream(_args):
+        d._handle_commission_detail(
+            {
+                "phase": 5,
+                "code": 28,
+                "status": 1,
+                "value0": 820,
+                "value1": 730,
+                "value2": 1328,
+            }
+        )
         d._handle_selftest_result({"stage": 1, "status": 1, "value": 0})
         d._handle_selftest_done({"status": 4})
 
@@ -141,6 +249,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
     out = gcmd.last_info
     assert "FAIL" in out
     assert "ADC calibration fault" in out
+    assert "tau residual" in out
     assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
     assert "0/1 stages" in out
 

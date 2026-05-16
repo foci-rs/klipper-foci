@@ -181,6 +181,33 @@ class TestCommissionGates(unittest.TestCase):
             pass
         # Should not raise "not commissioned"
 
+    def test_commission_failure_reports_diagnostics(self):
+        d = make_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        def drive_failure(_args):
+            d._handle_commission_detail(
+                {
+                    "phase": 5,
+                    "code": 28,
+                    "status": 1,
+                    "value0": 820,
+                    "value1": 730,
+                    "value2": 1328,
+                }
+            )
+            d._handle_commission_phase({"phase": 0, "status": 8})
+
+        d.commission_cmd.send = drive_failure
+
+        with self.assertRaises(CommandError):
+            d.cmd_FOCI_COMMISSION(gcmd)
+
+        self.assertIn("commissioning diagnostics", gcmd.last_info)
+        self.assertIn("tau residual", gcmd.last_info)
+        self.assertIn("820", gcmd.last_info)
+        self.assertIn("tau=730us", gcmd.last_info)
+
 
 # =========================================================================
 # 4. cmd_FOCI_AUTOTUNE gates

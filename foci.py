@@ -750,6 +750,7 @@ class FociDriver:
         self._commission_result: dict | None = None  # inner or outer result
         self._commission_done: bool = False
         self._commission_error_code: int = 0
+        self._commission_details: list[dict] = []
 
         # Track whether enable methods have been monkey-patched
         self._enable_patched = False
@@ -963,6 +964,11 @@ class FociDriver:
             "foci_selftest_done",
             self.oid,
         )
+        self.mcu._serial.register_response(
+            self._handle_commission_detail,
+            "foci_commission_detail",
+            self.oid,
+        )
 
     def _read_register(self, reg_name: str) -> int:
         """Read a single TMC4671 register via the firmware.
@@ -1080,6 +1086,111 @@ class FociDriver:
         8: "Inductance",
     }
 
+    ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
+        1: "excitation",
+        2: "coil A resistance",
+        3: "coil B resistance",
+        4: "coil A inductance",
+        5: "coil B inductance",
+        6: "transient",
+        20: "no usable per-coil samples",
+        21: "only one coil produced non-zero tau",
+        22: "model scale rounded to zero",
+        23: "resistance below short threshold",
+        24: "resistance above open threshold",
+        25: "coil resistance mismatch",
+        26: "coil tau mismatch",
+        27: "tau crosscheck unmeasurable",
+        28: "tau residual too high",
+        29: "transport delay too large",
+    }
+
+    @classmethod
+    def _format_commission_detail(cls, detail: dict) -> str:
+        phase_name = cls.PHASE_NAMES.get(detail["phase"], "Phase %d" % detail["phase"])
+        code = detail["code"]
+        name = cls.ELECTRICAL_ID_DETAIL_NAMES.get(code, "diagnostic %d" % code)
+        value0 = detail["value0"]
+        value1 = detail["value1"]
+        value2 = detail["value2"]
+        if code == 1:
+            return "%s: %s (voltage_count=%d, didt_cycles=%d, sample_period=%dus)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
+        if code in (2, 3):
+            return "%s: %s (avg_current=%d counts, r=%d mOhm, samples=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
+        if code in (4, 5):
+            return "%s: %s (avg_delta=%d counts, tau=%dus, samples=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
+        if code == 6:
+            return "%s: %s (steady_state=%d counts, theta=%dus, crosscheck=%dus)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
+        if code in (25, 26):
+            return "%s: %s (%d permille, limit=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+            )
+        if code == 28:
+            return "%s: %s (%d permille, tau=%dus, crosscheck=%dus)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
+        if code in (23, 24):
+            return "%s: %s (r_mohm=%d, limit=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+            )
+        if code == 22:
+            return "%s: %s (l_int=%d, l_uh=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+            )
+        if code == 29:
+            return "%s: %s (theta_us=%d, tau_us=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+            )
+        if value0 or value1 or value2:
+            return "%s: %s (value0=%d, value1=%d, value2=%d)" % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
+        return "%s: %s" % (phase_name, name)
+
     @staticmethod
     def _format_selftest_value(stage: int, status: int, value: int) -> str:
         """Return a stage-specific detail string (empty string for bare PASS).
@@ -1171,6 +1282,19 @@ class FociDriver:
         """Terminal signal for FOCI_SELFTEST."""
         self._selftest_complete = True
         self._selftest_status = params["status"]
+
+    def _handle_commission_detail(self, params: dict) -> None:
+        """Collect structured commissioning diagnostic detail."""
+        self._commission_details.append(
+            {
+                "phase": params["phase"],
+                "code": params["code"],
+                "status": params["status"],
+                "value0": params["value0"],
+                "value1": params["value1"],
+                "value2": params["value2"],
+            }
+        )
 
     def cmd_DUMP_FOCI(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
@@ -1680,6 +1804,7 @@ class FociDriver:
             self._selftest_results = []
             self._selftest_complete = False
             self._selftest_status = 0
+            self._commission_details = []
 
             self.selftest_cmd.send([self.oid])
 
@@ -1709,6 +1834,11 @@ class FociDriver:
             lines.append("  %s %s %s%s" % (name, dots, status_str, detail))
             if stage_status == 0:
                 passed += 1
+
+        if self._commission_details:
+            lines.append("Diagnostics:")
+            for detail in self._commission_details:
+                lines.append("  %s" % self._format_commission_detail(detail))
 
         if self._selftest_status == 0:
             overall = "PASS"
@@ -1767,6 +1897,7 @@ class FociDriver:
             self._commission_result = None
             self._commission_error_code = 0
             self._last_phase_id = None
+            self._commission_details = []
 
             self.commission_cmd.send([self.oid, profile_code])
 
@@ -1788,6 +1919,15 @@ class FociDriver:
                     phase_name = self.PHASE_NAMES.get(
                         self._last_phase_id or 0, "unknown"
                     )
+                    if self._commission_details:
+                        detail_lines = [
+                            "FOCI %s commissioning diagnostics:" % self.stepper_name
+                        ]
+                        detail_lines.extend(
+                            "  %s" % self._format_commission_detail(detail)
+                            for detail in self._commission_details
+                        )
+                        gcmd.respond_info("\n".join(detail_lines))
                     raise gcmd.error(
                         "FOCI %s: FOCI_COMMISSION failed at %s: %s"
                         % (self.name, phase_name, error_name)
