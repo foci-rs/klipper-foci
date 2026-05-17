@@ -219,6 +219,35 @@ def test_cmd_selftest_builds_multiline_report():
     assert "PASS" in out
 
 
+def test_cmd_selftest_duplicate_stage_updates_without_inflating_report():
+    d = make_driver()
+    d.selftest_cmd = MockCommand()
+
+    def drive_stream(_args):
+        for result in [
+            {"stage": 1, "status": 0, "value": (0x0ADC << 16) | 0x0CDC},
+            {"stage": 2, "status": 0, "value": 300},
+            {"stage": 3, "status": 0, "value": 312},
+            {"stage": 4, "status": 0, "value": 0},
+            {"stage": 5, "status": 0, "value": 3},
+            {"stage": 6, "status": 0, "value": 0},
+            {"stage": 6, "status": 0, "value": 1},
+        ]:
+            d._handle_selftest_result(result)
+        d._handle_selftest_done({"status": 0})
+
+    d.selftest_cmd.send = drive_stream
+
+    gcmd = MockGCmd()
+    d.cmd_FOCI_SELFTEST(gcmd)
+
+    out = gcmd.last_info
+    assert out.count("Encoder direction") == 1
+    assert "reversed" in out
+    assert "7/7 stages" not in out
+    assert "6/6 stages" in out
+
+
 def test_cmd_selftest_failure_raises_and_still_emits_report():
     d = make_driver()
     d.selftest_cmd = MockCommand()

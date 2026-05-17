@@ -1288,13 +1288,16 @@ class FociDriver:
 
     def _handle_selftest_result(self, params: dict) -> None:
         """Collect one stage result streamed during FOCI_SELFTEST."""
-        self._selftest_results.append(
-            {
-                "stage": params["stage"],
-                "status": params["status"],
-                "value": params["value"],
-            }
-        )
+        result = {
+            "stage": params["stage"],
+            "status": params["status"],
+            "value": params["value"],
+        }
+        for idx, existing in enumerate(self._selftest_results):
+            if existing["stage"] == result["stage"]:
+                self._selftest_results[idx] = result
+                return
+        self._selftest_results.append(result)
 
     def _handle_selftest_done(self, params: dict) -> None:
         """Terminal signal for FOCI_SELFTEST."""
