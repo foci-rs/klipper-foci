@@ -128,6 +128,7 @@ REGISTERS: dict[str, int] = {
     "PID_TORQUE_FLUX_OFFSET": 0x65,
     "PID_VELOCITY_OFFSET": 0x67,
     "PID_POSITION_TARGET": 0x68,
+    "PID_VELOCITY_ACTUAL": 0x6A,
     "PID_POSITION_ACTUAL": 0x6B,
     "ADC_VM_LIMITS": 0x75,
     "STATUS_FLAGS": 0x7C,
@@ -293,6 +294,10 @@ Fields["PID_VELOCITY_OFFSET"] = {
     "velocity_offset": 0xFFFFFFFF,
 }
 
+Fields["PID_VELOCITY_ACTUAL"] = {
+    "velocity_actual": 0xFFFFFFFF,
+}
+
 # Sub-register fields (synthetic addresses 0x80+). These are raw s32
 # values displayed as a single field.
 Fields["INTERIM_PIDIN_TARGET_VELOCITY"] = {
@@ -319,6 +324,28 @@ Fields["PID_VELOCITY_ERROR_SUM"] = {
     "velocity_error_sum": 0xFFFFFFFF,
 }
 
+TRACE_FAST_HEADERS = [
+    "tick",
+    "phase",
+    "flags",
+    "pos_tgt",
+    "pos_act",
+    "trq_act",
+    "flx_act",
+    "pidout_vel",
+    "status",
+    "abn",
+]
+
+TRACE_FULL_HEADERS = TRACE_FAST_HEADERS + [
+    "trq_tgt",
+    "flx_tgt",
+    "vel_ofs",
+    "esum_pos",
+    "esum_vel",
+    "esum_trq",
+]
+
 
 ######################################################################
 # Signed fields and formatters
@@ -335,6 +362,7 @@ SIGNED_FIELDS: list[str] = [
     "flux_offset",
     "torque_offset",
     "velocity_offset",
+    "velocity_actual",
     "pidin_target_velocity",
     "pidout_target_velocity",
     "position_error_sum",
@@ -412,6 +440,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         [
             "INTERIM_PIDIN_TARGET_VELOCITY",
             "INTERIM_PIDOUT_TARGET_VELOCITY",
+            "PID_VELOCITY_ACTUAL",
             "PID_TORQUE_FLUX_OFFSET",
             "PID_VELOCITY_OFFSET",
             "PID_POSITION_ERROR_SUM",
@@ -526,6 +555,8 @@ class FociDriver:
     """Klipper extras driver for a single TMC4671 FOC channel."""
 
     cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
+    cmd_FOCI_TRACE_START_help = "Start FOCI per-tick trace capture"
+    cmd_FOCI_TRACE_STOP_help = "Stop FOCI per-tick trace capture"
     cmd_FOCI_TRACE_help = "Fetch and display trace capture buffer"
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_COMMISSION_help = "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)"
@@ -774,6 +805,8 @@ class FociDriver:
         self.set_auto_calibrate_on_enable_cmd = None
         self.trace_info_cmd = None
         self.trace_fetch_cmd = None
+        self.trace_start_cmd = None
+        self.trace_stop_cmd = None
 
         # Trace capture state
         self._trace_info: dict | None = None
@@ -865,6 +898,20 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_TRACE,
             desc=self.cmd_FOCI_TRACE_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_TRACE_START",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_TRACE_START,
+            desc=self.cmd_FOCI_TRACE_START_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_TRACE_STOP",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_TRACE_STOP,
+            desc=self.cmd_FOCI_TRACE_STOP_help,
         )
 
         # Lifecycle events
@@ -1008,6 +1055,10 @@ class FociDriver:
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
         )
         self.trace_info_cmd = self.mcu.lookup_command("foci_trace_info oid=%c")
+        self.trace_start_cmd = self.mcu.lookup_command(
+            "foci_trace_start oid=%c preset=%c"
+        )
+        self.trace_stop_cmd = self.mcu.lookup_command("foci_trace_stop oid=%c")
         self.trace_fetch_cmd = self.mcu.lookup_query_command(
             "foci_trace_fetch oid=%c offset=%hu generation=%c",
             "foci_trace_data oid=%c offset=%hu status=%c data=%*s",
@@ -2497,6 +2548,25 @@ class FociDriver:
         self._trace_info = params
         self._trace_info_received = True
 
+    def cmd_FOCI_TRACE_START(self, gcmd) -> None:
+        """Start per-tick trace capture for the selected stepper."""
+        preset_name = gcmd.get("PRESET", "full").lower()
+        presets = {"fast": 0, "full": 1}
+        if preset_name not in presets:
+            raise gcmd.error(
+                "FOCI %s: unknown trace preset '%s' (expected fast or full)"
+                % (self.name, preset_name)
+            )
+        self.trace_start_cmd.send([self.oid, presets[preset_name]])
+        gcmd.respond_info(
+            "FOCI %s trace capture started (%s preset)" % (self.name, preset_name)
+        )
+
+    def cmd_FOCI_TRACE_STOP(self, gcmd) -> None:
+        """Stop per-tick trace capture for the selected stepper."""
+        self.trace_stop_cmd.send([self.oid])
+        gcmd.respond_info("FOCI %s trace capture stopped" % self.name)
+
     def cmd_FOCI_TRACE(self, gcmd) -> None:
         """Fetch and display the trace capture buffer."""
         import struct
@@ -2532,39 +2602,11 @@ class FociDriver:
         if preset == 1:  # Full
             sample_size = 48
             fmt = "<HBBiiIiIiIiiii"
-            headers = [
-                "tick",
-                "phase",
-                "flags",
-                "pos_tgt",
-                "pos_act",
-                "trq_act",
-                "flx_act",
-                "vel_act",
-                "status",
-                "abn",
-                "trq_tgt",
-                "flx_tgt",
-                "vel_ofs",
-                "esum_pos",
-                "esum_vel",
-                "esum_trq",
-            ]
+            headers = TRACE_FULL_HEADERS
         else:  # Fast
             sample_size = 28
             fmt = "<HBBiiIiIi"
-            headers = [
-                "tick",
-                "phase",
-                "flags",
-                "pos_tgt",
-                "pos_act",
-                "trq_act",
-                "flx_act",
-                "vel_act",
-                "status",
-                "abn",
-            ]
+            headers = TRACE_FAST_HEADERS
 
         def _i16(val: int) -> int:
             """Convert unsigned 16-bit half to signed i16."""
@@ -2598,7 +2640,7 @@ class FociDriver:
                 tf_act = fields[5]
                 row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
                 row.append(_i16(tf_act & 0xFFFF))  # flux_actual
-                row.extend(list(fields[6:9]))  # vel_act, status, abn
+                row.extend(list(fields[6:9]))  # pidout_vel, status, abn
                 tf_tgt = fields[9]
                 row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
                 row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
@@ -2609,7 +2651,7 @@ class FociDriver:
                 tf_act = fields[5]
                 row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
                 row.append(_i16(tf_act & 0xFFFF))  # flux_actual
-                row.extend(list(fields[6:]))  # vel_act, status, abn
+                row.extend(list(fields[6:]))  # pidout_vel, status, abn
             samples.append(row)
 
         # Apply phase filter

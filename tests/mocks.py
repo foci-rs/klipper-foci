@@ -523,5 +523,7 @@ def make_driver(
     driver.set_position_filter_cmd = MockCommand()
     driver.set_flux_filter_cmd = MockCommand()
     driver.set_auto_calibrate_on_enable_cmd = MockCommand()
+    driver.trace_start_cmd = MockCommand()
+    driver.trace_stop_cmd = MockCommand()
 
     return driver

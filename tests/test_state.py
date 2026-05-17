@@ -692,7 +692,43 @@ class TestDebugGainsCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 10. _validate_and_load_config
+# 10. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
+# =========================================================================
+
+
+class TestTraceControlCommands(unittest.TestCase):
+    def test_trace_start_defaults_to_full_preset(self):
+        d = make_driver()
+
+        d.cmd_FOCI_TRACE_START(MockGCmd())
+
+        self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 1])
+
+    def test_trace_start_accepts_fast_preset(self):
+        d = make_driver()
+
+        d.cmd_FOCI_TRACE_START(MockGCmd({"PRESET": "fast"}))
+
+        self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 0])
+
+    def test_trace_start_rejects_unknown_preset(self):
+        d = make_driver()
+
+        with self.assertRaises(CommandError) as ctx:
+            d.cmd_FOCI_TRACE_START(MockGCmd({"PRESET": "wide"}))
+
+        self.assertIn("unknown trace preset", str(ctx.exception).lower())
+
+    def test_trace_stop_sends_stop_command(self):
+        d = make_driver()
+
+        d.cmd_FOCI_TRACE_STOP(MockGCmd())
+
+        self.assertEqual(d.trace_stop_cmd.last_args, [d.oid])
+
+
+# =========================================================================
+# 11. _validate_and_load_config
 # =========================================================================
 
 

@@ -10,6 +10,8 @@ Run: cd foci/klipper-foci && python -m pytest tests/ -v
 import struct
 import unittest
 
+from foci import TRACE_FAST_HEADERS, TRACE_FULL_HEADERS
+
 
 def _i16(val: int) -> int:
     """Convert unsigned 16-bit half to signed i16.
@@ -214,6 +216,14 @@ class TestSampleSizes(unittest.TestCase):
 
     def test_full_sample_is_48_bytes(self):
         self.assertEqual(struct.calcsize("<HBBiiIiIiIiiii"), 48)
+
+
+class TestTraceHeaders(unittest.TestCase):
+    def test_velocity_column_names_pidout_signal(self):
+        self.assertIn("pidout_vel", TRACE_FAST_HEADERS)
+        self.assertIn("pidout_vel", TRACE_FULL_HEADERS)
+        self.assertNotIn("vel_act", TRACE_FAST_HEADERS)
+        self.assertNotIn("vel_act", TRACE_FULL_HEADERS)
 
 
 if __name__ == "__main__":

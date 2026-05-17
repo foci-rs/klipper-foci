@@ -10,6 +10,7 @@ import unittest
 from foci import (
     FieldHelper,
     Fields,
+    REGISTERS,
     SIGNED_FIELDS,
     FIELD_FORMATTERS,
     _ffs,
@@ -141,6 +142,11 @@ class TestPrettyFormat(unittest.TestCase):
     def test_pid_error_sums_are_signed(self):
         out = self.fh.pretty_format("PID_TORQUE_ERROR_SUM", 0xFFFFFFFE)
         self.assertIn("torque_error_sum=-2", out)
+
+    def test_pid_velocity_actual_is_dumped_as_signed_register(self):
+        self.assertEqual(REGISTERS["PID_VELOCITY_ACTUAL"], 0x6A)
+        out = self.fh.pretty_format("PID_VELOCITY_ACTUAL", 0xFFFFFFFE)
+        self.assertIn("velocity_actual=-2", out)
 
     def test_motor_type_fields(self):
         out = self.fh.pretty_format("MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
