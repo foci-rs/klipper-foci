@@ -532,6 +532,7 @@ class FociDriver:
     cmd_FOCI_AUTOTUNE_help = (
         "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)"
     )
+    cmd_FOCI_SET_GAINS_help = "Set FOCI outer gains for bringup debugging"
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -850,6 +851,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_AUTOTUNE,
             desc=self.cmd_FOCI_AUTOTUNE_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_GAINS",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_GAINS,
+            desc=self.cmd_FOCI_SET_GAINS_help,
         )
         gcode.register_mux_command(
             "FOCI_TRACE",
@@ -2420,6 +2428,44 @@ class FociDriver:
                 )
         finally:
             self._release_foci_lock()
+
+    def cmd_FOCI_SET_GAINS(self, gcmd) -> None:
+        """Set outer-loop gains for live bringup debugging.
+
+        Parameters are floating-point gain values. For example, `VELOCITY_P=2.0`
+        writes raw Q8.8 value 512 and `POSITION_P=1.0` writes raw value 256.
+        Values are applied immediately and kept in memory for the current Klipper
+        session, but are not persisted to printer.cfg.
+        """
+        velocity_p = self._get_outer_gain(gcmd, "VELOCITY_P")
+        velocity_i = self._get_outer_gain(gcmd, "VELOCITY_I")
+        position_p = self._get_outer_gain(gcmd, "POSITION_P")
+        position_i = self._get_outer_gain(gcmd, "POSITION_I")
+
+        self.set_position_gains_cmd.send(
+            [self.oid, position_p, position_i, velocity_p, velocity_i]
+        )
+
+        self.pid_velocity_p = velocity_p
+        self.pid_velocity_i = velocity_i
+        self.pid_position_p = position_p
+        self.pid_position_i = position_i
+        if self._active_gains is not None:
+            self._active_gains["velocity_p"] = velocity_p
+            self._active_gains["velocity_i"] = velocity_i
+            self._active_gains["position_p"] = position_p
+            self._active_gains["position_i"] = position_i
+
+        gcmd.respond_info(
+            "FOCI %s debug gains set: vel_p=%d/256 vel_i=%d/256"
+            " pos_p=%d/256 pos_i=%d/256"
+            % (self.name, velocity_p, velocity_i, position_p, position_i)
+        )
+
+    def _get_outer_gain(self, gcmd, key: str) -> int:
+        """Read a floating-point gain parameter and convert it to raw Q8.8."""
+        value = gcmd.get_float(key, minval=0.0, maxval=32767.0 / 256.0)
+        return min(32767, int(value * 256.0 + 0.5))
 
     def _persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
         """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""

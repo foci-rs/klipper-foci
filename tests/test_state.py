@@ -642,7 +642,57 @@ class TestCommandHomingInvalidation(unittest.TestCase):
 
 
 # =========================================================================
-# 9. _validate_and_load_config
+# 9. FOCI_SET_GAINS debug command
+# =========================================================================
+
+
+class TestDebugGainsCommand(unittest.TestCase):
+    def test_sets_position_and_velocity_gains_as_q8_8(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_GAINS(
+            MockGCmd(
+                {
+                    "VELOCITY_P": "2.0",
+                    "VELOCITY_I": "0.0",
+                    "POSITION_P": "1.0",
+                    "POSITION_I": "0.0",
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.set_position_gains_cmd.last_args,
+            [d.oid, 256, 0, 512, 0],
+        )
+        self.assertEqual(d.pid_velocity_p, 512)
+        self.assertEqual(d.pid_velocity_i, 0)
+        self.assertEqual(d.pid_position_p, 256)
+        self.assertEqual(d.pid_position_i, 0)
+
+    def test_updates_active_gains_without_persisting(self):
+        d = make_driver()
+        d._active_gains = dict(SAMPLE_ACTIVE_GAINS)
+
+        d.cmd_FOCI_SET_GAINS(
+            MockGCmd(
+                {
+                    "VELOCITY_P": 2.0,
+                    "VELOCITY_I": 0.0,
+                    "POSITION_P": 1.0,
+                    "POSITION_I": 0.0,
+                }
+            )
+        )
+
+        self.assertEqual(d._active_gains["velocity_p"], 512)
+        self.assertEqual(d._active_gains["velocity_i"], 0)
+        self.assertEqual(d._active_gains["position_p"], 256)
+        self.assertEqual(d._active_gains["position_i"], 0)
+
+
+# =========================================================================
+# 10. _validate_and_load_config
 # =========================================================================
 
 
@@ -707,7 +757,7 @@ class TestValidateAndLoadConfig(unittest.TestCase):
 
 
 # =========================================================================
-# 9. Phase and error name coverage
+# 11. Phase and error name coverage
 # =========================================================================
 
 

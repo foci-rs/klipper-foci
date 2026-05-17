@@ -169,6 +169,30 @@ class MockGCmd:
     def get(self, key, default=None):
         return self._params.get(key, default)
 
+    def get_int(self, key, default=None, minval=None, maxval=None):
+        if key not in self._params:
+            if default is None:
+                raise CommandError("Missing parameter '%s'" % key)
+            return default
+        value = int(self._params[key])
+        if minval is not None and value < minval:
+            raise CommandError("Parameter '%s' below minimum" % key)
+        if maxval is not None and value > maxval:
+            raise CommandError("Parameter '%s' above maximum" % key)
+        return value
+
+    def get_float(self, key, default=None, minval=None, maxval=None):
+        if key not in self._params:
+            if default is None:
+                raise CommandError("Missing parameter '%s'" % key)
+            return default
+        value = float(self._params[key])
+        if minval is not None and value < minval:
+            raise CommandError("Parameter '%s' below minimum" % key)
+        if maxval is not None and value > maxval:
+            raise CommandError("Parameter '%s' above maximum" % key)
+        return value
+
     def error(self, msg):
         return CommandError(msg)
 
