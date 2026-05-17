@@ -346,6 +346,15 @@ TRACE_FULL_HEADERS = TRACE_FAST_HEADERS + [
     "esum_trq",
 ]
 
+TRACE_VELOCITY_HEADERS = TRACE_FAST_HEADERS + [
+    "trq_tgt",
+    "flx_tgt",
+    "pidin_vel",
+    "vel_actual",
+    "vel_ofs",
+    "esum_vel",
+]
+
 
 ######################################################################
 # Signed fields and formatters
@@ -2551,10 +2560,10 @@ class FociDriver:
     def cmd_FOCI_TRACE_START(self, gcmd) -> None:
         """Start per-tick trace capture for the selected stepper."""
         preset_name = gcmd.get("PRESET", "full").lower()
-        presets = {"fast": 0, "full": 1}
+        presets = {"fast": 0, "full": 1, "velocity": 2}
         if preset_name not in presets:
             raise gcmd.error(
-                "FOCI %s: unknown trace preset '%s' (expected fast or full)"
+                "FOCI %s: unknown trace preset '%s' (expected fast, full, or velocity)"
                 % (self.name, preset_name)
             )
         self.trace_start_cmd.send([self.oid, presets[preset_name]])
@@ -2603,6 +2612,10 @@ class FociDriver:
             sample_size = 48
             fmt = "<HBBiiIiIiIiiii"
             headers = TRACE_FULL_HEADERS
+        elif preset == 2:  # Velocity
+            sample_size = 48
+            fmt = "<HBBiiIiIiIiiii"
+            headers = TRACE_VELOCITY_HEADERS
         else:  # Fast
             sample_size = 28
             fmt = "<HBBiiIiIi"
@@ -2645,6 +2658,19 @@ class FociDriver:
                 row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
                 row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
                 row.extend(list(fields[10:]))  # vel_ofs, esum_pos/vel/trq
+            elif preset == 2:
+                row = list(fields[:3])  # tick, phase, flags
+                row.extend(list(fields[3:5]))  # pos_tgt, pos_act
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
+                row.append(_i16(tf_act & 0xFFFF))  # flux_actual
+                row.extend(list(fields[6:9]))  # pidout_vel, status, abn
+                tf_tgt = fields[9]
+                row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
+                row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
+                row.extend(
+                    list(fields[10:])
+                )  # pidin_vel, vel_actual, vel_ofs, esum_vel
             else:
                 row = list(fields[:3])  # tick, phase, flags
                 row.extend(list(fields[3:5]))  # pos_tgt, pos_act
@@ -2664,7 +2690,8 @@ class FociDriver:
             return
 
         # Format output
-        preset_name = "full" if preset == 1 else "fast"
+        preset_names = {1: "full", 2: "velocity"}
+        preset_name = preset_names.get(preset, "fast")
         header = "FOCI %s trace: %d samples" % (self.name, len(samples))
         if dropped > 0:
             header += " (%d dropped)" % dropped

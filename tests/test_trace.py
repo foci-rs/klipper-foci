@@ -10,7 +10,7 @@ Run: cd foci/klipper-foci && python -m pytest tests/ -v
 import struct
 import unittest
 
-from foci import TRACE_FAST_HEADERS, TRACE_FULL_HEADERS
+from foci import TRACE_FAST_HEADERS, TRACE_FULL_HEADERS, TRACE_VELOCITY_HEADERS
 
 
 def _i16(val: int) -> int:
@@ -57,6 +57,28 @@ def parse_full_sample(data: bytes) -> list:
     row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
     row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
     row.extend(list(fields[10:]))  # vel_ofs, esum_pos/vel/trq
+    return row
+
+
+def parse_velocity_sample(data: bytes) -> list:
+    """Parse a 48-byte velocity-preset trace sample.
+
+    Returns: [tick, phase, flags, pos_tgt, pos_act, trq_act, flx_act,
+              pidout_vel, status, abn, trq_tgt, flx_tgt, pidin_vel,
+              vel_actual, vel_ofs, esum_vel]
+    """
+    fmt = "<HBBiiIiIiIiiii"
+    fields = struct.unpack(fmt, data)
+    row = list(fields[:3])  # tick, phase, flags
+    row.extend(list(fields[3:5]))  # pos_tgt, pos_act
+    tf_act = fields[5]
+    row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
+    row.append(_i16(tf_act & 0xFFFF))  # flux_actual
+    row.extend(list(fields[6:9]))  # pidout_vel, status, abn
+    tf_tgt = fields[9]
+    row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
+    row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
+    row.extend(list(fields[10:]))  # pidin_vel, vel_actual, vel_ofs, esum_vel
     return row
 
 
@@ -188,6 +210,62 @@ class TestFullPresetParsing(unittest.TestCase):
         self.assertEqual(row[15], 5)  # esum_trq
 
 
+class TestVelocityPresetParsing(unittest.TestCase):
+    def test_basic_sample(self):
+        """Pack a known velocity sample and verify unpacking."""
+        tick = 12
+        phase = 4
+        flags = 0
+        pos_tgt = 2000
+        pos_act = 1992
+        tf_act = (30 << 16) | 0xFFF8  # torque=30, flux=-8
+        pidout_vel = 96
+        status = 0x70000080
+        abn = 1234
+        tf_tgt = (80 << 16) | 0xFFEC  # torque_tgt=80, flux_tgt=-20
+        pidin_vel = 104
+        vel_actual = 91
+        vel_ofs = 3
+        esum_vel = -9
+
+        data = struct.pack(
+            "<HBBiiIiIiIiiii",
+            tick,
+            phase,
+            flags,
+            pos_tgt,
+            pos_act,
+            tf_act,
+            pidout_vel,
+            status,
+            abn,
+            tf_tgt,
+            pidin_vel,
+            vel_actual,
+            vel_ofs,
+            esum_vel,
+        )
+        self.assertEqual(len(data), 48)
+
+        row = parse_velocity_sample(data)
+        self.assertEqual(row[0], 12)  # tick
+        self.assertEqual(row[1], 4)  # phase
+        self.assertEqual(row[2], 0)  # flags
+        self.assertEqual(row[3], 2000)  # pos_tgt
+        self.assertEqual(row[4], 1992)  # pos_act
+        self.assertEqual(row[5], 30)  # torque_actual
+        self.assertEqual(row[6], -8)  # flux_actual
+        self.assertEqual(row[7], 96)  # pidout_vel
+        self.assertEqual(row[8], 0x70000080)  # status
+        self.assertEqual(row[9], 1234)  # abn
+        self.assertEqual(row[10], 80)  # torque_target
+        self.assertEqual(row[11], -20)  # flux_target
+        self.assertEqual(row[12], 104)  # pidin_vel
+        self.assertEqual(row[13], 91)  # vel_actual
+        self.assertEqual(row[14], 3)  # vel_ofs
+        self.assertEqual(row[15], -9)  # esum_vel
+
+
 class TestPhaseFiltering(unittest.TestCase):
     def test_filter_by_phase(self):
         samples = [
@@ -217,11 +295,17 @@ class TestSampleSizes(unittest.TestCase):
     def test_full_sample_is_48_bytes(self):
         self.assertEqual(struct.calcsize("<HBBiiIiIiIiiii"), 48)
 
+    def test_velocity_sample_is_48_bytes(self):
+        self.assertEqual(struct.calcsize("<HBBiiIiIiIiiii"), 48)
+
 
 class TestTraceHeaders(unittest.TestCase):
     def test_velocity_column_names_pidout_signal(self):
         self.assertIn("pidout_vel", TRACE_FAST_HEADERS)
         self.assertIn("pidout_vel", TRACE_FULL_HEADERS)
+        self.assertIn("pidout_vel", TRACE_VELOCITY_HEADERS)
+        self.assertIn("vel_actual", TRACE_VELOCITY_HEADERS)
+        self.assertIn("pidin_vel", TRACE_VELOCITY_HEADERS)
         self.assertNotIn("vel_act", TRACE_FAST_HEADERS)
         self.assertNotIn("vel_act", TRACE_FULL_HEADERS)
 

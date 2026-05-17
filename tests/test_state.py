@@ -711,6 +711,13 @@ class TestTraceControlCommands(unittest.TestCase):
 
         self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 0])
 
+    def test_trace_start_accepts_velocity_preset(self):
+        d = make_driver()
+
+        d.cmd_FOCI_TRACE_START(MockGCmd({"PRESET": "velocity"}))
+
+        self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 2])
+
     def test_trace_start_rejects_unknown_preset(self):
         d = make_driver()
 
