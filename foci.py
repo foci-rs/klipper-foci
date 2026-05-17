@@ -633,6 +633,12 @@ class FociDriver:
         )
 
         # Inner-tuning parameters (persisted by Stage 1 for Stage 2 restart)
+        self.identified_r_mohm: int | None = config.getint(
+            "identified_r_mohm", None, minval=0
+        )
+        self.identified_l_uh: int | None = config.getint(
+            "identified_l_uh", None, minval=0
+        )
         self.identified_lambda_us: int | None = config.getint(
             "identified_lambda_us", None, minval=0
         )
@@ -662,6 +668,18 @@ class FociDriver:
         self.identified_inner_warning_flags: int | None = config.getint(
             "identified_inner_warning_flags", None, minval=0, maxval=255
         )
+
+        # Stage 2 model parameters persisted for traceability.
+        self.identified_j_eff: int | None = config.getint(
+            "identified_j_eff", None, minval=0
+        )
+        self.identified_b_eff: int | None = config.getint(
+            "identified_b_eff", None, minval=0
+        )
+
+        # Persisted profile/mode labels from SAVE_CONFIG.
+        self.autotune_profile: str | None = config.get("autotune_profile", None)
+        self.autotune_mode: str | None = config.get("autotune_mode", None)
 
         # Autotune status (commissioned / tuned / tuned_conservative)
         self.autotune_status: str | None = config.get("autotune_status", None)

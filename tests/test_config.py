@@ -143,3 +143,45 @@ def test_step1_rejected_when_mcu_pin_dictionary_lacks_step1():
 
     with pytest.raises(CommandError, match="Unknown pin STEP1"):
         make_config_driver(printer, sections, "foci stepper_x")
+
+
+def test_saved_commission_and_tune_fields_are_accepted_on_restart():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    sections["foci stepper_x"].update(
+        {
+            "identified_r_mohm": 1792,
+            "identified_l_uh": 2046,
+            "identified_lambda_us": 0,
+            "identified_theta_e_us": 160,
+            "identified_ringing_count": 7,
+            "identified_bandwidth_hz": 0,
+            "identified_tau_e_us": 1154,
+            "identified_tau_e_crosscheck_us": 3821,
+            "identified_tau_residual_permille": 1000,
+            "identified_inner_warning_flags": 36,
+            "identified_j_eff": 12345,
+            "identified_b_eff": 678,
+            "autotune_profile": "conservative",
+            "autotune_mode": "nominal",
+            "autotune_status": "commissioned",
+        }
+    )
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    assert driver.identified_r_mohm == 1792
+    assert driver.identified_l_uh == 2046
+    assert driver.identified_tau_e_us == 1154
+    assert driver.identified_j_eff == 12345
+    assert driver.identified_b_eff == 678
+    assert driver.autotune_profile == "conservative"
+    assert driver.autotune_mode == "nominal"
+    assert driver.autotune_status == "commissioned"
