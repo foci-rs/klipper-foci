@@ -690,6 +690,45 @@ class TestDebugGainsCommand(unittest.TestCase):
         self.assertEqual(d._active_gains["position_p"], 256)
         self.assertEqual(d._active_gains["position_i"], 0)
 
+    def test_sets_inner_current_gains_as_raw_register_values(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_INNER_GAINS(
+            MockGCmd(
+                {
+                    "FLUX_P": 706,
+                    "FLUX_I": 162,
+                    "TORQUE_P": 706,
+                    "TORQUE_I": 162,
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.set_pid_gains_cmd.last_args,
+            [d.oid, 706, 162, 706, 162],
+        )
+
+    def test_updates_active_inner_gains_without_persisting(self):
+        d = make_driver()
+        d._active_gains = dict(SAMPLE_ACTIVE_GAINS)
+
+        d.cmd_FOCI_SET_INNER_GAINS(
+            MockGCmd(
+                {
+                    "FLUX_P": 706,
+                    "FLUX_I": 162,
+                    "TORQUE_P": 706,
+                    "TORQUE_I": 162,
+                }
+            )
+        )
+
+        self.assertEqual(d._active_gains["flux_p"], 706)
+        self.assertEqual(d._active_gains["flux_i"], 162)
+        self.assertEqual(d._active_gains["torque_p"], 706)
+        self.assertEqual(d._active_gains["torque_i"], 162)
+
 
 # =========================================================================
 # 10. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands

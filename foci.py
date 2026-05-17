@@ -740,6 +740,7 @@ class FociDriver:
         "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)"
     )
     cmd_FOCI_SET_GAINS_help = "Set FOCI outer gains for bringup debugging"
+    cmd_FOCI_SET_INNER_GAINS_help = "Set FOCI inner current gains for bringup debugging"
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -1067,6 +1068,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_GAINS,
             desc=self.cmd_FOCI_SET_GAINS_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_INNER_GAINS",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_INNER_GAINS,
+            desc=self.cmd_FOCI_SET_INNER_GAINS_help,
         )
         gcode.register_mux_command(
             "FOCI_TRACE",
@@ -2687,6 +2695,33 @@ class FociDriver:
             "FOCI %s debug gains set: vel_p=%d/256 vel_i=%d/256"
             " pos_p=%d/256 pos_i=%d/256"
             % (self.name, velocity_p, velocity_i, position_p, position_i)
+        )
+
+    def cmd_FOCI_SET_INNER_GAINS(self, gcmd) -> None:
+        """Set inner current-loop gains for live bringup debugging.
+
+        Parameters are raw TMC4671 register values: P gains are Q8.8
+        numerators and I gains are Q0.16 numerators. Values are applied
+        immediately and kept in memory for the current Klipper session, but
+        are not persisted to printer.cfg.
+        """
+        flux_p = gcmd.get_int("FLUX_P", minval=0, maxval=65535)
+        flux_i = gcmd.get_int("FLUX_I", minval=0, maxval=65535)
+        torque_p = gcmd.get_int("TORQUE_P", minval=0, maxval=65535)
+        torque_i = gcmd.get_int("TORQUE_I", minval=0, maxval=65535)
+
+        self.set_pid_gains_cmd.send([self.oid, flux_p, flux_i, torque_p, torque_i])
+
+        if self._active_gains is not None:
+            self._active_gains["flux_p"] = flux_p
+            self._active_gains["flux_i"] = flux_i
+            self._active_gains["torque_p"] = torque_p
+            self._active_gains["torque_i"] = torque_i
+
+        gcmd.respond_info(
+            "FOCI %s inner gains set: flux_p=%d/256 flux_i=%d/65536"
+            " torque_p=%d/256 torque_i=%d/65536"
+            % (self.name, flux_p, flux_i, torque_p, torque_i)
         )
 
     def _get_outer_gain(self, gcmd, key: str) -> int:
