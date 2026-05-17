@@ -170,6 +170,12 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertNotIn("torque_actual", out)
         self.assertIn("flux_actual=-6", out)
 
+    def test_pid_torque_flux_limits_is_single_current_limit(self):
+        out = self.fh.pretty_format("PID_TORQUE_FLUX_LIMITS", 0x0000072C)
+        self.assertIn("current_limit=1836", out)
+        self.assertNotIn("flux_limit", out)
+        self.assertNotIn("torque_limit", out)
+
     def test_pid_q_format(self):
         out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x10000800)
         self.assertIn("flux_p=", out)

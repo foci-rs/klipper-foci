@@ -183,8 +183,7 @@ Fields["PID_TORQUE_FLUX_ACTUAL"] = {
 }
 
 Fields["PID_TORQUE_FLUX_LIMITS"] = {
-    "flux_limit": 0xFFFF,
-    "torque_limit": 0xFFFF << 16,
+    "current_limit": 0xFFFF,
 }
 
 Fields["PIDOUT_UQ_UD_LIMITS"] = {
