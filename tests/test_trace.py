@@ -345,6 +345,10 @@ class TestTraceSummary(unittest.TestCase):
         self.assertEqual(metrics["position_error"]["max_abs_tick"], 4)
         self.assertEqual(metrics["derived_velocity"]["min"], 32.5)
         self.assertEqual(metrics["derived_velocity"]["max"], 40.0)
+        self.assertEqual(metrics["derived_target_velocity"]["min"], 25.0)
+        self.assertEqual(metrics["derived_target_velocity"]["max"], 50.0)
+        self.assertEqual(metrics["derived_velocity_error"]["min"], -10.0)
+        self.assertEqual(metrics["derived_velocity_error"]["max"], 7.5)
         self.assertEqual(metrics["pidin_vel"]["min"], 0)
         self.assertEqual(metrics["pidin_vel"]["max"], 100)
         self.assertEqual(metrics["pidout_vel"]["min"], 0)
@@ -356,6 +360,29 @@ class TestTraceSummary(unittest.TestCase):
         self.assertEqual(metrics["pidout_flx"]["min"], -2)
         self.assertEqual(metrics["pidout_flx"]["max"], 1)
         self.assertEqual(metrics["status"]["pid_v_output_limit_samples"], 2)
+
+    def test_velocity_metrics_bucket_position_error_by_motion_phase(self):
+        samples = [
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn pidout_trq pidout_flx pidin vel_act ofs
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 20, 18, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [4, 0, 0, 60, 55, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [6, 0, 0, 100, 102, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [8, 0, 0, 120, 118, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [10, 0, 0, 120, 120, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+        ]
+
+        metrics = _trace_summary_metrics(
+            samples, TRACE_VELOCITY_HEADERS, expected_tick_step=2
+        )
+
+        phase_errors = metrics["position_error_by_motion_phase"]
+        self.assertEqual(phase_errors["accel"]["count"], 1)
+        self.assertEqual(phase_errors["accel"]["max_abs"], -5)
+        self.assertEqual(phase_errors["cruise"]["count"], 1)
+        self.assertEqual(phase_errors["cruise"]["max_abs"], 2)
+        self.assertEqual(phase_errors["decel"]["count"], 1)
+        self.assertEqual(phase_errors["decel"]["max_abs"], -2)
 
     def test_summary_format_includes_velocity_fields(self):
         samples = [
@@ -375,8 +402,12 @@ class TestTraceSummary(unittest.TestCase):
 
         text = "\n".join(lines)
         self.assertIn("FOCI foci stepper_x trace summary: 2 samples", text)
+        self.assertIn("1000us tick, 2000us samples", text)
         self.assertIn("position_error_counts:", text)
+        self.assertIn("position_error_by_phase:", text)
+        self.assertIn("derived_target_velocity_counts_per_tick:", text)
         self.assertIn("derived_actual_velocity_counts_per_tick:", text)
+        self.assertIn("derived_velocity_error_counts_per_tick:", text)
         self.assertIn("pidin_vel:", text)
         self.assertIn("pidout_vel:", text)
         self.assertIn("pidout_trq:", text)

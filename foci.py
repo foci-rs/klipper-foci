@@ -364,10 +364,43 @@ def _range_metric(samples: list[list[int]], idx: int) -> dict[str, int]:
     }
 
 
+def _range_float_metric(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {"min": 0.0, "max": 0.0, "final": 0.0}
+    return {
+        "min": min(values),
+        "max": max(values),
+        "final": values[-1],
+    }
+
+
+def _phase_error_metric(values: list[int]) -> dict[str, float | int]:
+    if not values:
+        return {"count": 0, "min": 0, "max": 0, "mean": 0.0, "max_abs": 0}
+    return {
+        "count": len(values),
+        "min": min(values),
+        "max": max(values),
+        "mean": sum(values) / len(values),
+        "max_abs": max(values, key=lambda value: abs(value)),
+    }
+
+
 def _format_metric_value(value: float | int) -> str:
     if isinstance(value, float):
         return ("%.3f" % value).rstrip("0").rstrip(".")
     return str(value)
+
+
+def _format_phase_error_metric(name: str, metric: dict[str, float | int]) -> str:
+    return "%s(n=%d min=%d max=%d mean=%s max_abs=%d)" % (
+        name,
+        metric["count"],
+        metric["min"],
+        metric["max"],
+        _format_metric_value(metric["mean"]),
+        metric["max_abs"],
+    )
 
 
 def _trace_summary_metrics(
@@ -388,7 +421,11 @@ def _trace_summary_metrics(
     duplicate_ticks = 0
     missed_samples = 0
     out_of_order_ticks = 0
-    derived_velocities = []
+    derived_target_velocities = []
+    derived_actual_velocities = []
+    derived_velocity_errors = []
+    phase_error_values = {"accel": [], "cruise": [], "decel": []}
+    prev_target_velocity = None
     prev = samples[0]
     for row in samples[1:]:
         delta_tick = row[tick_idx] - prev[tick_idx]
@@ -399,8 +436,24 @@ def _trace_summary_metrics(
         else:
             if delta_tick > expected_tick_step:
                 missed_samples += (delta_tick - 1) // expected_tick_step
-            delta_pos = row[pos_act_idx] - prev[pos_act_idx]
-            derived_velocities.append(delta_pos / delta_tick)
+            delta_target = row[pos_tgt_idx] - prev[pos_tgt_idx]
+            delta_actual = row[pos_act_idx] - prev[pos_act_idx]
+            target_velocity = delta_target / delta_tick
+            actual_velocity = delta_actual / delta_tick
+            derived_target_velocities.append(target_velocity)
+            derived_actual_velocities.append(actual_velocity)
+            derived_velocity_errors.append(actual_velocity - target_velocity)
+
+            if target_velocity != 0 and prev_target_velocity is not None:
+                target_accel = target_velocity - prev_target_velocity
+                position_error = row[pos_act_idx] - row[pos_tgt_idx]
+                if target_velocity * target_accel > 0:
+                    phase_error_values["accel"].append(position_error)
+                elif target_velocity * target_accel < 0:
+                    phase_error_values["decel"].append(position_error)
+                else:
+                    phase_error_values["cruise"].append(position_error)
+            prev_target_velocity = target_velocity
         prev = row
 
     metrics = {
@@ -420,14 +473,15 @@ def _trace_summary_metrics(
         },
     }
 
-    if derived_velocities:
-        metrics["derived_velocity"] = {
-            "min": min(derived_velocities),
-            "max": max(derived_velocities),
-            "final": derived_velocities[-1],
-        }
-    else:
-        metrics["derived_velocity"] = {"min": 0.0, "max": 0.0, "final": 0.0}
+    metrics["derived_target_velocity"] = _range_float_metric(derived_target_velocities)
+    metrics["derived_actual_velocity"] = _range_float_metric(derived_actual_velocities)
+    metrics["derived_velocity"] = metrics["derived_actual_velocity"]
+    metrics["derived_velocity_error"] = _range_float_metric(derived_velocity_errors)
+    metrics["position_error_by_motion_phase"] = {
+        "accel": _phase_error_metric(phase_error_values["accel"]),
+        "cruise": _phase_error_metric(phase_error_values["cruise"]),
+        "decel": _phase_error_metric(phase_error_values["decel"]),
+    }
 
     for field in (
         "pidin_vel",
@@ -463,9 +517,16 @@ def _format_trace_summary(
 ) -> list[str]:
     """Format compact trace metrics for G-code responses."""
     metrics = _trace_summary_metrics(samples, headers, expected_tick_step)
+    effective_sample_period_us = sample_period_us * expected_tick_step
     lines = [
-        "FOCI %s trace summary: %d samples, %s preset, %dus period"
-        % (name, metrics["sample_count"], preset_name, sample_period_us)
+        "FOCI %s trace summary: %d samples, %s preset, %dus tick, %dus samples"
+        % (
+            name,
+            metrics["sample_count"],
+            preset_name,
+            sample_period_us,
+            effective_sample_period_us,
+        )
     ]
     lines.append(
         "ticks: start=%d end=%d expected_step=%d duplicate=%d missed=%d"
@@ -493,6 +554,26 @@ def _format_trace_summary(
         )
     )
 
+    phase_errors = metrics["position_error_by_motion_phase"]
+    lines.append(
+        "position_error_by_phase: %s %s %s"
+        % (
+            _format_phase_error_metric("accel", phase_errors["accel"]),
+            _format_phase_error_metric("cruise", phase_errors["cruise"]),
+            _format_phase_error_metric("decel", phase_errors["decel"]),
+        )
+    )
+
+    derived_target_velocity = metrics["derived_target_velocity"]
+    lines.append(
+        "derived_target_velocity_counts_per_tick: min=%s max=%s final=%s"
+        % (
+            _format_metric_value(derived_target_velocity["min"]),
+            _format_metric_value(derived_target_velocity["max"]),
+            _format_metric_value(derived_target_velocity["final"]),
+        )
+    )
+
     derived_velocity = metrics["derived_velocity"]
     lines.append(
         "derived_actual_velocity_counts_per_tick: min=%s max=%s final=%s"
@@ -500,6 +581,16 @@ def _format_trace_summary(
             _format_metric_value(derived_velocity["min"]),
             _format_metric_value(derived_velocity["max"]),
             _format_metric_value(derived_velocity["final"]),
+        )
+    )
+
+    derived_velocity_error = metrics["derived_velocity_error"]
+    lines.append(
+        "derived_velocity_error_counts_per_tick: min=%s max=%s final=%s"
+        % (
+            _format_metric_value(derived_velocity_error["min"]),
+            _format_metric_value(derived_velocity_error["max"]),
+            _format_metric_value(derived_velocity_error["final"]),
         )
     )
 
