@@ -346,12 +346,11 @@ TRACE_FULL_HEADERS = TRACE_FAST_HEADERS + [
 ]
 
 TRACE_VELOCITY_HEADERS = TRACE_FAST_HEADERS + [
-    "trq_tgt",
-    "flx_tgt",
+    "pidout_trq",
+    "pidout_flx",
     "pidin_vel",
     "vel_actual",
     "vel_ofs",
-    "esum_vel",
 ]
 
 
@@ -430,7 +429,14 @@ def _trace_summary_metrics(
     else:
         metrics["derived_velocity"] = {"min": 0.0, "max": 0.0, "final": 0.0}
 
-    for field in ("pidin_vel", "pidout_vel", "vel_actual", "vel_ofs"):
+    for field in (
+        "pidin_vel",
+        "pidout_vel",
+        "vel_actual",
+        "vel_ofs",
+        "pidout_trq",
+        "pidout_flx",
+    ):
         if field in columns:
             metrics[field] = _range_metric(samples, columns[field])
 
@@ -497,7 +503,14 @@ def _format_trace_summary(
         )
     )
 
-    for field in ("pidin_vel", "pidout_vel", "vel_actual", "vel_ofs"):
+    for field in (
+        "pidin_vel",
+        "pidout_vel",
+        "vel_actual",
+        "vel_ofs",
+        "pidout_trq",
+        "pidout_flx",
+    ):
         if field in metrics:
             metric = metrics[field]
             lines.append(
@@ -2877,7 +2890,7 @@ class FociDriver:
             headers = TRACE_FULL_HEADERS
         elif preset == 2:  # Velocity
             sample_size = 48
-            fmt = "<HBBiiIiIiIiiii"
+            fmt = "<HBBiiIiIiiiiii"
             headers = TRACE_VELOCITY_HEADERS
         else:  # Fast
             sample_size = 28
@@ -2928,12 +2941,9 @@ class FociDriver:
                 row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
                 row.append(_i16(tf_act & 0xFFFF))  # flux_actual
                 row.extend(list(fields[6:9]))  # pidout_vel, status, abn
-                tf_tgt = fields[9]
-                row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
-                row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
                 row.extend(
-                    list(fields[10:])
-                )  # pidin_vel, vel_actual, vel_ofs, esum_vel
+                    list(fields[9:])
+                )  # pidout_trq/flx, pidin_vel, vel_actual, vel_ofs
             else:
                 row = list(fields[:3])  # tick, phase, flags
                 row.extend(list(fields[3:5]))  # pos_tgt, pos_act

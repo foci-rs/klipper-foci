@@ -70,10 +70,10 @@ def parse_velocity_sample(data: bytes) -> list:
     """Parse a 48-byte velocity-preset trace sample.
 
     Returns: [tick, phase, flags, pos_tgt, pos_act, trq_act, flx_act,
-              pidout_vel, status, abn, trq_tgt, flx_tgt, pidin_vel,
-              vel_actual, vel_ofs, esum_vel]
+              pidout_vel, status, abn, pidout_trq, pidout_flx, pidin_vel,
+              vel_actual, vel_ofs]
     """
-    fmt = "<HBBiiIiIiIiiii"
+    fmt = "<HBBiiIiIiiiiii"
     fields = struct.unpack(fmt, data)
     row = list(fields[:3])  # tick, phase, flags
     row.extend(list(fields[3:5]))  # pos_tgt, pos_act
@@ -81,10 +81,9 @@ def parse_velocity_sample(data: bytes) -> list:
     row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
     row.append(_i16(tf_act & 0xFFFF))  # flux_actual
     row.extend(list(fields[6:9]))  # pidout_vel, status, abn
-    tf_tgt = fields[9]
-    row.append(_i16((tf_tgt >> 16) & 0xFFFF))  # torque_target
-    row.append(_i16(tf_tgt & 0xFFFF))  # flux_target
-    row.extend(list(fields[10:]))  # pidin_vel, vel_actual, vel_ofs, esum_vel
+    row.extend(
+        list(fields[9:])
+    )  # pidout_trq, pidout_flx, pidin_vel, vel_actual, vel_ofs
     return row
 
 
@@ -228,14 +227,14 @@ class TestVelocityPresetParsing(unittest.TestCase):
         pidout_vel = 96
         status = 0x70000080
         abn = 1234
-        tf_tgt = (80 << 16) | 0xFFEC  # torque_tgt=80, flux_tgt=-20
+        pidout_trq = 80
+        pidout_flx = -20
         pidin_vel = 104
         vel_actual = 91
         vel_ofs = 3
-        esum_vel = -9
 
         data = struct.pack(
-            "<HBBiiIiIiIiiii",
+            "<HBBiiIiIiiiiii",
             tick,
             phase,
             flags,
@@ -245,11 +244,11 @@ class TestVelocityPresetParsing(unittest.TestCase):
             pidout_vel,
             status,
             abn,
-            tf_tgt,
+            pidout_trq,
+            pidout_flx,
             pidin_vel,
             vel_actual,
             vel_ofs,
-            esum_vel,
         )
         self.assertEqual(len(data), 48)
 
@@ -264,12 +263,11 @@ class TestVelocityPresetParsing(unittest.TestCase):
         self.assertEqual(row[7], 96)  # pidout_vel
         self.assertEqual(row[8], 0x70000080)  # status
         self.assertEqual(row[9], 1234)  # abn
-        self.assertEqual(row[10], 80)  # torque_target
-        self.assertEqual(row[11], -20)  # flux_target
+        self.assertEqual(row[10], 80)  # pidout_target_torque
+        self.assertEqual(row[11], -20)  # pidout_target_flux
         self.assertEqual(row[12], 104)  # pidin_vel
         self.assertEqual(row[13], 91)  # vel_actual
         self.assertEqual(row[14], 3)  # vel_ofs
-        self.assertEqual(row[15], -9)  # esum_vel
 
 
 class TestPhaseFiltering(unittest.TestCase):
@@ -302,7 +300,7 @@ class TestSampleSizes(unittest.TestCase):
         self.assertEqual(struct.calcsize("<HBBiiIiIiIiiii"), 48)
 
     def test_velocity_sample_is_48_bytes(self):
-        self.assertEqual(struct.calcsize("<HBBiiIiIiIiiii"), 48)
+        self.assertEqual(struct.calcsize("<HBBiiIiIiiiiii"), 48)
 
 
 class TestTraceHeaders(unittest.TestCase):
@@ -310,8 +308,12 @@ class TestTraceHeaders(unittest.TestCase):
         self.assertIn("pidout_vel", TRACE_FAST_HEADERS)
         self.assertIn("pidout_vel", TRACE_FULL_HEADERS)
         self.assertIn("pidout_vel", TRACE_VELOCITY_HEADERS)
+        self.assertIn("pidout_trq", TRACE_VELOCITY_HEADERS)
+        self.assertIn("pidout_flx", TRACE_VELOCITY_HEADERS)
         self.assertIn("vel_actual", TRACE_VELOCITY_HEADERS)
         self.assertIn("pidin_vel", TRACE_VELOCITY_HEADERS)
+        self.assertNotIn("trq_tgt", TRACE_VELOCITY_HEADERS)
+        self.assertNotIn("flx_tgt", TRACE_VELOCITY_HEADERS)
         self.assertNotIn("vel_act", TRACE_FAST_HEADERS)
         self.assertNotIn("vel_act", TRACE_FULL_HEADERS)
 
@@ -319,12 +321,12 @@ class TestTraceHeaders(unittest.TestCase):
 class TestTraceSummary(unittest.TestCase):
     def test_velocity_metrics_quantify_tracking_and_sampling(self):
         samples = [
-            # tick phase flags pos_tgt pos_act trq flx pidout status abn trq_t flx_t pidin vel_act ofs esum
-            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
-            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 0, 0, 100, 0, 2, 1],
-            [4, 0, 0, 200, 160, 0, 0, 95, 0x70000080, 0, 0, 0, 100, 0, 3, 2],
-            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, 0, 0, 25, 5, 1, 3],
-            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, 0, 0, 25, 5, 1, 3],
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn pidout_trq pidout_flx pidin vel_act ofs
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 12, -1, 100, 0, 2],
+            [4, 0, 0, 200, 160, 0, 0, 95, 0x70000080, 0, 14, -2, 100, 0, 3],
+            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, -5, 1, 25, 5, 1],
+            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, -5, 1, 25, 5, 1],
         ]
 
         metrics = _trace_summary_metrics(
@@ -349,12 +351,16 @@ class TestTraceSummary(unittest.TestCase):
         self.assertEqual(metrics["pidout_vel"]["max"], 95)
         self.assertEqual(metrics["vel_actual"]["nonzero"], 2)
         self.assertEqual(metrics["vel_ofs"]["max"], 3)
+        self.assertEqual(metrics["pidout_trq"]["min"], -5)
+        self.assertEqual(metrics["pidout_trq"]["max"], 14)
+        self.assertEqual(metrics["pidout_flx"]["min"], -2)
+        self.assertEqual(metrics["pidout_flx"]["max"], 1)
         self.assertEqual(metrics["status"]["pid_v_output_limit_samples"], 2)
 
     def test_summary_format_includes_velocity_fields(self):
         samples = [
-            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
-            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 0, 0, 100, 0, 2, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 12, -1, 100, 0, 2],
         ]
 
         lines = _format_trace_summary(
@@ -373,6 +379,8 @@ class TestTraceSummary(unittest.TestCase):
         self.assertIn("derived_actual_velocity_counts_per_tick:", text)
         self.assertIn("pidin_vel:", text)
         self.assertIn("pidout_vel:", text)
+        self.assertIn("pidout_trq:", text)
+        self.assertIn("pidout_flx:", text)
         self.assertIn("vel_actual:", text)
         self.assertIn("vel_ofs:", text)
 
