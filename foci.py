@@ -740,6 +740,7 @@ class FociDriver:
     )
     cmd_FOCI_SET_GAINS_help = "Set FOCI outer gains for bringup debugging"
     cmd_FOCI_SET_INNER_GAINS_help = "Set FOCI inner current gains for bringup debugging"
+    cmd_FOCI_SET_CURRENT_help = "Set FOCI run current for bringup debugging"
     cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help = (
         "Set FOCI velocity feedforward runtime multiplier for bringup debugging"
     )
@@ -1080,6 +1081,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_INNER_GAINS,
             desc=self.cmd_FOCI_SET_INNER_GAINS_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_CURRENT",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_CURRENT,
+            desc=self.cmd_FOCI_SET_CURRENT_help,
         )
         gcode.register_mux_command(
             "FOCI_SET_VELOCITY_FEEDFORWARD",
@@ -2736,6 +2744,26 @@ class FociDriver:
             "FOCI %s inner gains set: flux_p=%d/256 flux_i=%d/65536"
             " torque_p=%d/256 torque_i=%d/65536"
             % (self.name, flux_p, flux_i, torque_p, torque_i)
+        )
+
+    def cmd_FOCI_SET_CURRENT(self, gcmd) -> None:
+        """Set run current for live bringup debugging.
+
+        RUN_CURRENT is in amps RMS, matching the printer.cfg convention. The
+        value is applied immediately and kept in memory for the current Klipper
+        session, but is not persisted to printer.cfg.
+        """
+        run_current = gcmd.get_float("RUN_CURRENT", minval=0.0, maxval=5.0)
+        if run_current <= 0.0:
+            raise gcmd.error("FOCI %s: RUN_CURRENT must be above 0" % self.name)
+
+        run_ma = int(run_current * 1000.0 + 0.5)
+        self.set_current_cmd.send([self.oid, run_ma])
+        self.run_current = run_current
+
+        gcmd.respond_info(
+            "FOCI %s run current set: run_current=%.3fA run_ma=%d"
+            % (self.name, run_current, run_ma)
         )
 
     def cmd_FOCI_SET_VELOCITY_FEEDFORWARD(self, gcmd) -> None:

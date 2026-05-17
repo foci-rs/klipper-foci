@@ -647,6 +647,16 @@ class TestCommandHomingInvalidation(unittest.TestCase):
 
 
 class TestDebugGainsCommand(unittest.TestCase):
+    def test_sets_run_current_in_milliamps_without_persisting(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"RUN_CURRENT": 1.7})
+        d.cmd_FOCI_SET_CURRENT(gcmd)
+
+        self.assertEqual(d.set_current_cmd.last_args, [d.oid, 1700])
+        self.assertEqual(d.run_current, 1.7)
+        self.assertIn("run_current=1.700A", gcmd.last_info)
+
     def test_sets_position_and_velocity_gains_as_q8_8(self):
         d = make_driver()
 
