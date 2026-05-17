@@ -18,6 +18,8 @@ from foci import (
     _fmt_motor_type,
     _fmt_phi_e,
     _fmt_motion_mode,
+    _fmt_angle_source,
+    _fmt_velocity_meter,
 )
 
 
@@ -50,6 +52,18 @@ class TestFieldExtraction(unittest.TestCase):
     def test_unsigned_3bit_field(self):
         val = self.fh.get_field("phi_e", "PHI_E_SELECTION", 0x00000003)
         self.assertEqual(val, 3)
+
+    def test_velocity_selection_fields(self):
+        val = self.fh.get_field("velocity_selection", "VELOCITY_SELECTION", 0x00000109)
+        self.assertEqual(val, 9)
+        val = self.fh.get_field(
+            "velocity_meter_selection", "VELOCITY_SELECTION", 0x00000109
+        )
+        self.assertEqual(val, 1)
+
+    def test_position_selection_field(self):
+        val = self.fh.get_field("position_selection", "POSITION_SELECTION", 0x00000009)
+        self.assertEqual(val, 9)
 
     def test_signed_positive(self):
         val = self.fh.get_field("torque_actual", "PID_TORQUE_FLUX_ACTUAL", 0x00C80000)
@@ -100,6 +114,12 @@ class TestFormatters(unittest.TestCase):
     def test_motion_mode_stopped(self):
         self.assertEqual(_fmt_motion_mode(0), "stopped")
 
+    def test_angle_source_phi_m_abn(self):
+        self.assertEqual(_fmt_angle_source(9), "9(phi_m_abn)")
+
+    def test_velocity_meter_advanced(self):
+        self.assertEqual(_fmt_velocity_meter(1), "1(advanced)")
+
 
 class TestPrettyFormat(unittest.TestCase):
     def setUp(self):
@@ -126,6 +146,13 @@ class TestPrettyFormat(unittest.TestCase):
         out = self.fh.pretty_format("MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
         self.assertIn("motor_type=2(stepper)", out)
         self.assertIn("n_pole_pairs=50", out)
+
+    def test_selection_fields_are_pretty_formatted(self):
+        out = self.fh.pretty_format("VELOCITY_SELECTION", 0x00000109)
+        self.assertIn("velocity_selection=9(phi_m_abn)", out)
+        self.assertIn("velocity_meter_selection=1(advanced)", out)
+        out = self.fh.pretty_format("POSITION_SELECTION", 0x00000009)
+        self.assertIn("position_selection=9(phi_m_abn)", out)
 
     def test_signed_negative_shown(self):
         out = self.fh.pretty_format("PID_TORQUE_FLUX_ACTUAL", 0x00C8FFFA)

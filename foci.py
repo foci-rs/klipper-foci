@@ -24,6 +24,20 @@ PHI_E_SOURCES: dict[int, str] = {
     6: "aenc",
     7: "aenc",
 }
+ANGLE_SOURCES: dict[int, str] = {
+    0: "phi_e_selection",
+    1: "phi_e_ext",
+    2: "phi_e_openloop",
+    3: "phi_e_abn",
+    5: "phi_e_hal",
+    6: "phi_e_aenc",
+    7: "phi_a_aenc",
+    9: "phi_m_abn",
+    10: "phi_m_abn_2",
+    11: "phi_m_aenc",
+    12: "phi_m_hal",
+}
+VELOCITY_METER_SOURCES: dict[int, str] = {0: "default", 1: "advanced"}
 MOTION_MODES: dict[int, str] = {
     0: "stopped",
     1: "torque",
@@ -42,6 +56,14 @@ def _fmt_motor_type(val: int) -> str:
 
 def _fmt_phi_e(val: int) -> str:
     return PHI_E_SOURCES.get(val, str(val))
+
+
+def _fmt_angle_source(val: int) -> str:
+    return "%d(%s)" % (val, ANGLE_SOURCES.get(val, "?"))
+
+
+def _fmt_velocity_meter(val: int) -> str:
+    return "%d(%s)" % (val, VELOCITY_METER_SOURCES.get(val, "?"))
 
 
 def _fmt_motion_mode(val: int) -> str:
@@ -84,6 +106,8 @@ def _fmt_on_off(val: int) -> str:
 
 REGISTERS: dict[str, int] = {
     "MOTOR_TYPE_N_POLE_PAIRS": 0x1B,
+    "VELOCITY_SELECTION": 0x50,
+    "POSITION_SELECTION": 0x51,
     "PHI_E_SELECTION": 0x52,
     "MODE_RAMP_MODE_MOTION": 0x63,
     "PID_TORQUE_FLUX_TARGET": 0x64,
@@ -131,6 +155,15 @@ Fields["MOTOR_TYPE_N_POLE_PAIRS"] = {
 
 Fields["PHI_E_SELECTION"] = {
     "phi_e": 0xFF,
+}
+
+Fields["VELOCITY_SELECTION"] = {
+    "velocity_selection": 0xFF,
+    "velocity_meter_selection": 0xFF << 8,
+}
+
+Fields["POSITION_SELECTION"] = {
+    "position_selection": 0xFF,
 }
 
 Fields["MODE_RAMP_MODE_MOTION"] = {
@@ -313,6 +346,9 @@ SIGNED_FIELDS: list[str] = [
 FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "motor_type": _fmt_motor_type,
     "phi_e": _fmt_phi_e,
+    "velocity_selection": _fmt_angle_source,
+    "velocity_meter_selection": _fmt_velocity_meter,
+    "position_selection": _fmt_angle_source,
     "mode": _fmt_motion_mode,
     "mode_pid_type": _fmt_pid_type,
     "abn_direction": _fmt_direction,
@@ -337,6 +373,8 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         "FOCI %s",
         [
             "MOTOR_TYPE_N_POLE_PAIRS",
+            "VELOCITY_SELECTION",
+            "POSITION_SELECTION",
             "PHI_E_SELECTION",
             "MODE_RAMP_MODE_MOTION",
         ],
