@@ -731,7 +731,46 @@ class TestDebugGainsCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 10. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
+# 10. FOCI_SET_VELOCITY_FEEDFORWARD debug command
+# =========================================================================
+
+
+class TestVelocityFeedforwardCommand(unittest.TestCase):
+    def test_sets_feedforward_enable_and_multiplier(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_VELOCITY_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "MULTIPLIER": 8,
+                }
+            )
+        )
+
+        self.assertEqual(d.set_velocity_feedforward_cmd.last_args, [d.oid, 1, 8])
+        self.assertTrue(d.velocity_feedforward)
+        self.assertEqual(d.velocity_feedforward_multiplier, 8)
+
+    def test_disable_preserves_configured_multiplier(self):
+        d = make_driver()
+        d.velocity_feedforward_multiplier = 4
+
+        d.cmd_FOCI_SET_VELOCITY_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 0,
+                }
+            )
+        )
+
+        self.assertEqual(d.set_velocity_feedforward_cmd.last_args, [d.oid, 0, 4])
+        self.assertFalse(d.velocity_feedforward)
+        self.assertEqual(d.velocity_feedforward_multiplier, 4)
+
+
+# =========================================================================
+# 11. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
 # =========================================================================
 
 

@@ -741,6 +741,9 @@ class FociDriver:
     )
     cmd_FOCI_SET_GAINS_help = "Set FOCI outer gains for bringup debugging"
     cmd_FOCI_SET_INNER_GAINS_help = "Set FOCI inner current gains for bringup debugging"
+    cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help = (
+        "Set FOCI velocity feedforward runtime multiplier for bringup debugging"
+    )
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -853,6 +856,9 @@ class FociDriver:
         # Velocity feedforward (boolean, default disabled)
         self.velocity_feedforward: bool = config.getboolean(
             "velocity_feedforward", False
+        )
+        self.velocity_feedforward_multiplier: int = config.getint(
+            "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
         )
 
         # PID velocity limit (caps position PID output, anti-windup).
@@ -1077,6 +1083,13 @@ class FociDriver:
             desc=self.cmd_FOCI_SET_INNER_GAINS_help,
         )
         gcode.register_mux_command(
+            "FOCI_SET_VELOCITY_FEEDFORWARD",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD,
+            desc=self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help,
+        )
+        gcode.register_mux_command(
             "FOCI_TRACE",
             "STEPPER",
             self.stepper_name,
@@ -1230,7 +1243,7 @@ class FociDriver:
             " velocity_p=%hu velocity_i=%hu"
         )
         self.set_velocity_feedforward_cmd = self.mcu.lookup_command(
-            "tmc_set_velocity_feedforward oid=%c enable=%c"
+            "tmc_set_velocity_feedforward oid=%c enable=%c multiplier=%hu"
         )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
@@ -1788,7 +1801,9 @@ class FociDriver:
                 ]
             )
         if self.velocity_feedforward:
-            self.set_velocity_feedforward_cmd.send([self.oid, 1])
+            self.set_velocity_feedforward_cmd.send(
+                [self.oid, 1, self.velocity_feedforward_multiplier]
+            )
         if self.pid_velocity_limit is not None:
             self.set_velocity_limit_cmd.send([self.oid, self.pid_velocity_limit])
         encoder_steps: int = self.encoder_ppr * 4
@@ -2722,6 +2737,25 @@ class FociDriver:
             "FOCI %s inner gains set: flux_p=%d/256 flux_i=%d/65536"
             " torque_p=%d/256 torque_i=%d/65536"
             % (self.name, flux_p, flux_i, torque_p, torque_i)
+        )
+
+    def cmd_FOCI_SET_VELOCITY_FEEDFORWARD(self, gcmd) -> None:
+        """Set velocity feedforward multiplier for live bringup debugging."""
+        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
+        multiplier = gcmd.get_int(
+            "MULTIPLIER",
+            self.velocity_feedforward_multiplier,
+            minval=0,
+            maxval=65535,
+        )
+
+        self.set_velocity_feedforward_cmd.send([self.oid, enable, multiplier])
+        self.velocity_feedforward = enable != 0
+        self.velocity_feedforward_multiplier = multiplier
+
+        gcmd.respond_info(
+            "FOCI %s velocity feedforward set: enable=%d multiplier=%d"
+            % (self.name, enable, multiplier)
         )
 
     def _get_outer_gain(self, gcmd, key: str) -> int:
