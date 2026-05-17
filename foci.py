@@ -356,6 +356,173 @@ TRACE_VELOCITY_HEADERS = TRACE_FAST_HEADERS + [
 ]
 
 
+def _range_metric(samples: list[list[int]], idx: int) -> dict[str, int]:
+    values = [row[idx] for row in samples]
+    return {
+        "min": min(values),
+        "max": max(values),
+        "final": values[-1],
+        "nonzero": sum(1 for value in values if value != 0),
+    }
+
+
+def _format_metric_value(value: float | int) -> str:
+    if isinstance(value, float):
+        return ("%.3f" % value).rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _trace_summary_metrics(
+    samples: list[list[int]],
+    headers: list[str],
+    expected_tick_step: int,
+) -> dict:
+    """Compute compact trace metrics from parsed trace rows."""
+    columns = {name: idx for idx, name in enumerate(headers)}
+    tick_idx = columns["tick"]
+    pos_tgt_idx = columns["pos_tgt"]
+    pos_act_idx = columns["pos_act"]
+
+    errors = [row[pos_act_idx] - row[pos_tgt_idx] for row in samples]
+    max_abs_error = max(errors, key=lambda value: abs(value))
+    max_abs_error_idx = errors.index(max_abs_error)
+
+    duplicate_ticks = 0
+    missed_samples = 0
+    out_of_order_ticks = 0
+    derived_velocities = []
+    prev = samples[0]
+    for row in samples[1:]:
+        delta_tick = row[tick_idx] - prev[tick_idx]
+        if delta_tick == 0:
+            duplicate_ticks += 1
+        elif delta_tick < 0:
+            out_of_order_ticks += 1
+        else:
+            if delta_tick > expected_tick_step:
+                missed_samples += (delta_tick - 1) // expected_tick_step
+            delta_pos = row[pos_act_idx] - prev[pos_act_idx]
+            derived_velocities.append(delta_pos / delta_tick)
+        prev = row
+
+    metrics = {
+        "sample_count": len(samples),
+        "tick_start": samples[0][tick_idx],
+        "tick_end": samples[-1][tick_idx],
+        "expected_tick_step": expected_tick_step,
+        "duplicate_ticks": duplicate_ticks,
+        "missed_samples": missed_samples,
+        "out_of_order_ticks": out_of_order_ticks,
+        "position_error": {
+            "min": min(errors),
+            "max": max(errors),
+            "final": errors[-1],
+            "max_abs": max_abs_error,
+            "max_abs_tick": samples[max_abs_error_idx][tick_idx],
+        },
+    }
+
+    if derived_velocities:
+        metrics["derived_velocity"] = {
+            "min": min(derived_velocities),
+            "max": max(derived_velocities),
+            "final": derived_velocities[-1],
+        }
+    else:
+        metrics["derived_velocity"] = {"min": 0.0, "max": 0.0, "final": 0.0}
+
+    for field in ("pidin_vel", "pidout_vel", "vel_actual", "vel_ofs"):
+        if field in columns:
+            metrics[field] = _range_metric(samples, columns[field])
+
+    if "status" in columns:
+        status_values = [row[columns["status"]] for row in samples]
+        metrics["status"] = {
+            "unique": sorted(set(status_values)),
+            "pid_v_output_limit_samples": sum(
+                1 for value in status_values if value & (1 << 7)
+            ),
+        }
+
+    return metrics
+
+
+def _format_trace_summary(
+    name: str,
+    samples: list[list[int]],
+    headers: list[str],
+    preset_name: str,
+    sample_period_us: int,
+    dropped: int,
+    expected_tick_step: int,
+) -> list[str]:
+    """Format compact trace metrics for G-code responses."""
+    metrics = _trace_summary_metrics(samples, headers, expected_tick_step)
+    lines = [
+        "FOCI %s trace summary: %d samples, %s preset, %dus period"
+        % (name, metrics["sample_count"], preset_name, sample_period_us)
+    ]
+    lines.append(
+        "ticks: start=%d end=%d expected_step=%d duplicate=%d missed=%d"
+        " out_of_order=%d dropped=%d"
+        % (
+            metrics["tick_start"],
+            metrics["tick_end"],
+            metrics["expected_tick_step"],
+            metrics["duplicate_ticks"],
+            metrics["missed_samples"],
+            metrics["out_of_order_ticks"],
+            dropped,
+        )
+    )
+
+    position_error = metrics["position_error"]
+    lines.append(
+        "position_error_counts: min=%d max=%d final=%d max_abs=%d at_tick=%d"
+        % (
+            position_error["min"],
+            position_error["max"],
+            position_error["final"],
+            position_error["max_abs"],
+            position_error["max_abs_tick"],
+        )
+    )
+
+    derived_velocity = metrics["derived_velocity"]
+    lines.append(
+        "derived_actual_velocity_counts_per_tick: min=%s max=%s final=%s"
+        % (
+            _format_metric_value(derived_velocity["min"]),
+            _format_metric_value(derived_velocity["max"]),
+            _format_metric_value(derived_velocity["final"]),
+        )
+    )
+
+    for field in ("pidin_vel", "pidout_vel", "vel_actual", "vel_ofs"):
+        if field in metrics:
+            metric = metrics[field]
+            lines.append(
+                "%s: min=%d max=%d final=%d nonzero=%d"
+                % (
+                    field,
+                    metric["min"],
+                    metric["max"],
+                    metric["final"],
+                    metric["nonzero"],
+                )
+            )
+
+    if "status" in metrics:
+        status = metrics["status"]
+        unique = ",".join("0x%08x" % value for value in status["unique"])
+        lines.append(
+            "status: unique=%s pid_v_output_limit_samples=%d"
+            % (unique, status["pid_v_output_limit_samples"])
+        )
+
+    return lines
+
+
 ######################################################################
 # Signed fields and formatters
 ######################################################################
@@ -2692,12 +2859,23 @@ class FociDriver:
         # Format output
         preset_names = {1: "full", 2: "velocity"}
         preset_name = preset_names.get(preset, "fast")
+        expected_tick_step = 2 if preset in (1, 2) else 1
         header = "FOCI %s trace: %d samples" % (self.name, len(samples))
         if dropped > 0:
             header += " (%d dropped)" % dropped
         header += ", %s preset, %dus period" % (preset_name, sample_period)
 
-        if format_name == "csv":
+        if format_name == "summary":
+            lines = _format_trace_summary(
+                self.name,
+                samples,
+                headers,
+                preset_name,
+                sample_period,
+                dropped,
+                expected_tick_step,
+            )
+        elif format_name == "csv":
             lines = [header, ",".join(headers)]
             for row in samples:
                 lines.append(",".join(str(v) for v in row))

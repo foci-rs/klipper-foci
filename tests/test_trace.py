@@ -10,7 +10,13 @@ Run: cd foci/klipper-foci && python -m pytest tests/ -v
 import struct
 import unittest
 
-from foci import TRACE_FAST_HEADERS, TRACE_FULL_HEADERS, TRACE_VELOCITY_HEADERS
+from foci import (
+    TRACE_FAST_HEADERS,
+    TRACE_FULL_HEADERS,
+    TRACE_VELOCITY_HEADERS,
+    _format_trace_summary,
+    _trace_summary_metrics,
+)
 
 
 def _i16(val: int) -> int:
@@ -308,6 +314,67 @@ class TestTraceHeaders(unittest.TestCase):
         self.assertIn("pidin_vel", TRACE_VELOCITY_HEADERS)
         self.assertNotIn("vel_act", TRACE_FAST_HEADERS)
         self.assertNotIn("vel_act", TRACE_FULL_HEADERS)
+
+
+class TestTraceSummary(unittest.TestCase):
+    def test_velocity_metrics_quantify_tracking_and_sampling(self):
+        samples = [
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn trq_t flx_t pidin vel_act ofs esum
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 0, 0, 100, 0, 2, 1],
+            [4, 0, 0, 200, 160, 0, 0, 95, 0x70000080, 0, 0, 0, 100, 0, 3, 2],
+            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, 0, 0, 25, 5, 1, 3],
+            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, 0, 0, 25, 5, 1, 3],
+        ]
+
+        metrics = _trace_summary_metrics(
+            samples, TRACE_VELOCITY_HEADERS, expected_tick_step=2
+        )
+
+        self.assertEqual(metrics["sample_count"], 5)
+        self.assertEqual(metrics["tick_start"], 0)
+        self.assertEqual(metrics["tick_end"], 8)
+        self.assertEqual(metrics["duplicate_ticks"], 1)
+        self.assertEqual(metrics["missed_samples"], 1)
+        self.assertEqual(metrics["position_error"]["min"], -40)
+        self.assertEqual(metrics["position_error"]["max"], 0)
+        self.assertEqual(metrics["position_error"]["final"], -10)
+        self.assertEqual(metrics["position_error"]["max_abs"], -40)
+        self.assertEqual(metrics["position_error"]["max_abs_tick"], 4)
+        self.assertEqual(metrics["derived_velocity"]["min"], 32.5)
+        self.assertEqual(metrics["derived_velocity"]["max"], 40.0)
+        self.assertEqual(metrics["pidin_vel"]["min"], 0)
+        self.assertEqual(metrics["pidin_vel"]["max"], 100)
+        self.assertEqual(metrics["pidout_vel"]["min"], 0)
+        self.assertEqual(metrics["pidout_vel"]["max"], 95)
+        self.assertEqual(metrics["vel_actual"]["nonzero"], 2)
+        self.assertEqual(metrics["vel_ofs"]["max"], 3)
+        self.assertEqual(metrics["status"]["pid_v_output_limit_samples"], 2)
+
+    def test_summary_format_includes_velocity_fields(self):
+        samples = [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 0, 0, 100, 0, 2, 1],
+        ]
+
+        lines = _format_trace_summary(
+            "foci stepper_x",
+            samples,
+            TRACE_VELOCITY_HEADERS,
+            preset_name="velocity",
+            sample_period_us=1000,
+            dropped=0,
+            expected_tick_step=2,
+        )
+
+        text = "\n".join(lines)
+        self.assertIn("FOCI foci stepper_x trace summary: 2 samples", text)
+        self.assertIn("position_error_counts:", text)
+        self.assertIn("derived_actual_velocity_counts_per_tick:", text)
+        self.assertIn("pidin_vel:", text)
+        self.assertIn("pidout_vel:", text)
+        self.assertIn("vel_actual:", text)
+        self.assertIn("vel_ofs:", text)
 
 
 if __name__ == "__main__":
