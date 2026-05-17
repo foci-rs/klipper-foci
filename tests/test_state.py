@@ -546,7 +546,56 @@ class TestHomingInvalidation(unittest.TestCase):
 
 
 # =========================================================================
-# 7. Homing invalidation at command-accepted time
+# 7. Homing calibration coupling
+# =========================================================================
+
+
+class TestHomingCalibrationCoupling(unittest.TestCase):
+    def test_corexy_homing_x_calibrates_y_motor_too(self):
+        kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_y", kinematics=kin)
+        calls = []
+
+        def ensure_calibrated():
+            calls.append(d.stepper_name)
+
+        d._ensure_calibrated = ensure_calibrated
+
+        d._handle_home_rails_begin(None, [kin.rails[0]])
+
+        self.assertEqual(calls, ["stepper_y"])
+
+    def test_corexy_homing_y_calibrates_x_motor_too(self):
+        kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_x", kinematics=kin)
+        calls = []
+
+        def ensure_calibrated():
+            calls.append(d.stepper_name)
+
+        d._ensure_calibrated = ensure_calibrated
+
+        d._handle_home_rails_begin(None, [kin.rails[1]])
+
+        self.assertEqual(calls, ["stepper_x"])
+
+    def test_cartesian_homing_x_does_not_calibrate_y_motor(self):
+        kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        d = make_driver(stepper_name="stepper_y", kinematics=kin)
+        calls = []
+
+        def ensure_calibrated():
+            calls.append(d.stepper_name)
+
+        d._ensure_calibrated = ensure_calibrated
+
+        d._handle_home_rails_begin(None, [kin.rails[0]])
+
+        self.assertEqual(calls, [])
+
+
+# =========================================================================
+# 8. Homing invalidation at command-accepted time
 # =========================================================================
 
 
@@ -593,7 +642,7 @@ class TestCommandHomingInvalidation(unittest.TestCase):
 
 
 # =========================================================================
-# 8. _validate_and_load_config
+# 9. _validate_and_load_config
 # =========================================================================
 
 

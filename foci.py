@@ -1786,12 +1786,43 @@ class FociDriver:
             self._release_foci_lock()
 
     def _handle_home_rails_begin(self, homing_state, rails) -> None:
-        """Ensure calibration before homing any rail that includes this stepper.
+        """Ensure calibration before homing any axis driven by this stepper.
 
         Args:
             homing_state: Current homing state object.
             rails: List of PrinterRail objects being homed.
         """
+        toolhead = self.printer.lookup_object("toolhead", None)
+        if toolhead is not None:
+            kin = toolhead.get_kinematics()
+            all_rails = getattr(kin, "rails", None)
+            if all_rails is not None:
+                homed_axes = set()
+                for homed_rail in rails:
+                    for rail_index, rail in enumerate(all_rails):
+                        if rail is homed_rail:
+                            if rail_index < 3:
+                                homed_axes.add(rail_index)
+                            break
+
+                matched_rails = set()
+                for rail_index, rail in enumerate(all_rails):
+                    for stepper in rail.get_steppers():
+                        if stepper.get_name() == self.stepper_name:
+                            matched_rails.add(rail_index)
+
+                coupling = self.COUPLED_AXES.get(type(kin).__name__)
+                driver_axes = set()
+                for rail_index in matched_rails:
+                    if coupling and rail_index in coupling:
+                        driver_axes.update(coupling[rail_index])
+                    elif rail_index < 3:
+                        driver_axes.add(rail_index)
+
+                if homed_axes and driver_axes and homed_axes & driver_axes:
+                    self._ensure_calibrated()
+                    return
+
         dominated_steppers = set()
         for rail in rails:
             for stepper in rail.get_steppers():
