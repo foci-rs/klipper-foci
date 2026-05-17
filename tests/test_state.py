@@ -386,6 +386,12 @@ class TestStateTransitions(unittest.TestCase):
         d.commissioned_position_i = 0
         d.commissioned_velocity_limit = 50_000
         d._handle_connect()
+        self.assertEqual(d.set_pid_gains_cmd.last_args, [d.oid, 100, 200, 300, 400])
+        self.assertEqual(
+            d.set_position_gains_cmd.last_args,
+            [d.oid, 700, 0, 1100, 0],
+        )
+        self.assertEqual(d.set_velocity_limit_cmd.last_args, [d.oid, 50_000])
         self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
 
     def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):

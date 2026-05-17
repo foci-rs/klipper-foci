@@ -1527,6 +1527,8 @@ class FociDriver:
                 )
             )
         self._validate_and_load_config()
+        if self._active_gains is not None and not self._inhibited:
+            self._apply_active_gains_to_firmware()
         self._set_auto_calibrate_on_enable_allowed(
             self._active_gains is not None and not self._inhibited
         )
@@ -1590,6 +1592,38 @@ class FociDriver:
         """Tell firmware whether raw enable may start auto-calibration."""
         if self.set_auto_calibrate_on_enable_cmd is not None:
             self.set_auto_calibrate_on_enable_cmd.send([self.oid, int(allowed)])
+
+    def _apply_active_gains_to_firmware(self) -> None:
+        """Preload saved FOCI gains into firmware state before enabling."""
+        gains = self._active_gains
+        if gains is None:
+            return
+        self.set_pid_gains_cmd.send(
+            [
+                self.oid,
+                gains["flux_p"],
+                gains["flux_i"],
+                gains["torque_p"],
+                gains["torque_i"],
+            ]
+        )
+        if gains.get("velocity_p") is not None:
+            self.set_position_gains_cmd.send(
+                [
+                    self.oid,
+                    gains["position_p"],
+                    gains["position_i"],
+                    gains["velocity_p"],
+                    gains["velocity_i"],
+                ]
+            )
+        if gains.get("velocity_limit"):
+            self.set_velocity_limit_cmd.send([self.oid, gains["velocity_limit"]])
+        for filter_name in ("velocity", "torque", "position", "flux"):
+            hz = gains.get("%s_filter_hz" % filter_name, 0)
+            if hz > 0:
+                cmd = getattr(self, "set_%s_filter_cmd" % filter_name)
+                cmd.send([self.oid, hz])
 
     # Kinematics coupling map: in coupled kinematics a single motor
     # affects multiple Cartesian axes. Maps rail index -> affected axes.
@@ -1687,33 +1721,7 @@ class FociDriver:
             )
         try:
             # Preload gains from _active_gains into firmware atomics
-            gains = self._active_gains
-            self.set_pid_gains_cmd.send(
-                [
-                    self.oid,
-                    gains["flux_p"],
-                    gains["flux_i"],
-                    gains["torque_p"],
-                    gains["torque_i"],
-                ]
-            )
-            if gains.get("velocity_p") is not None:
-                self.set_position_gains_cmd.send(
-                    [
-                        self.oid,
-                        gains["position_p"],
-                        gains["position_i"],
-                        gains["velocity_p"],
-                        gains["velocity_i"],
-                    ]
-                )
-            if gains.get("velocity_limit"):
-                self.set_velocity_limit_cmd.send([self.oid, gains["velocity_limit"]])
-            for filter_name in ("velocity", "torque", "position", "flux"):
-                hz = gains.get("%s_filter_hz" % filter_name, 0)
-                if hz > 0:
-                    cmd = getattr(self, "set_%s_filter_cmd" % filter_name)
-                    cmd.send([self.oid, hz])
+            self._apply_active_gains_to_firmware()
 
             # Send calibrate and wait for response
             reactor = self.printer.get_reactor()
