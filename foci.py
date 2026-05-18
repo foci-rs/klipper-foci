@@ -346,6 +346,7 @@ TRACE_FULL_HEADERS = TRACE_FAST_HEADERS + [
 ]
 
 TRACE_VELOCITY_HEADERS = TRACE_FAST_HEADERS + [
+    "pos_err",
     "pidout_trq",
     "pidout_flx",
     "pidin_vel",
@@ -386,6 +387,20 @@ def _phase_error_metric(values: list[int]) -> dict[str, float | int]:
     }
 
 
+def _position_error_metric(
+    errors: list[int], samples: list[list[int]], tick_idx: int
+) -> dict[str, int]:
+    max_abs_error = max(errors, key=lambda value: abs(value))
+    max_abs_error_idx = errors.index(max_abs_error)
+    return {
+        "min": min(errors),
+        "max": max(errors),
+        "final": errors[-1],
+        "max_abs": max_abs_error,
+        "max_abs_tick": samples[max_abs_error_idx][tick_idx],
+    }
+
+
 def _format_metric_value(value: float | int) -> str:
     if isinstance(value, float):
         return ("%.3f" % value).rstrip("0").rstrip(".")
@@ -413,10 +428,12 @@ def _trace_summary_metrics(
     tick_idx = columns["tick"]
     pos_tgt_idx = columns["pos_tgt"]
     pos_act_idx = columns["pos_act"]
+    pos_err_idx = columns.get("pos_err")
 
-    errors = [row[pos_act_idx] - row[pos_tgt_idx] for row in samples]
-    max_abs_error = max(errors, key=lambda value: abs(value))
-    max_abs_error_idx = errors.index(max_abs_error)
+    errors = [row[pos_tgt_idx] - row[pos_act_idx] for row in samples]
+    hardware_errors = (
+        [row[pos_err_idx] for row in samples] if pos_err_idx is not None else []
+    )
 
     duplicate_ticks = 0
     missed_samples = 0
@@ -425,6 +442,7 @@ def _trace_summary_metrics(
     derived_actual_velocities = []
     derived_velocity_errors = []
     phase_error_values = {"accel": [], "cruise": [], "decel": []}
+    hardware_phase_error_values = {"accel": [], "cruise": [], "decel": []}
     prev_target_velocity = None
     prev = samples[0]
     for row in samples[1:]:
@@ -446,13 +464,28 @@ def _trace_summary_metrics(
 
             if target_velocity != 0 and prev_target_velocity is not None:
                 target_accel = target_velocity - prev_target_velocity
-                position_error = row[pos_act_idx] - row[pos_tgt_idx]
+                position_error = row[pos_tgt_idx] - row[pos_act_idx]
+                hardware_position_error = (
+                    row[pos_err_idx] if pos_err_idx is not None else None
+                )
                 if target_velocity * target_accel > 0:
                     phase_error_values["accel"].append(position_error)
+                    if hardware_position_error is not None:
+                        hardware_phase_error_values["accel"].append(
+                            hardware_position_error
+                        )
                 elif target_velocity * target_accel < 0:
                     phase_error_values["decel"].append(position_error)
+                    if hardware_position_error is not None:
+                        hardware_phase_error_values["decel"].append(
+                            hardware_position_error
+                        )
                 else:
                     phase_error_values["cruise"].append(position_error)
+                    if hardware_position_error is not None:
+                        hardware_phase_error_values["cruise"].append(
+                            hardware_position_error
+                        )
             prev_target_velocity = target_velocity
         prev = row
 
@@ -464,14 +497,13 @@ def _trace_summary_metrics(
         "duplicate_ticks": duplicate_ticks,
         "missed_samples": missed_samples,
         "out_of_order_ticks": out_of_order_ticks,
-        "position_error": {
-            "min": min(errors),
-            "max": max(errors),
-            "final": errors[-1],
-            "max_abs": max_abs_error,
-            "max_abs_tick": samples[max_abs_error_idx][tick_idx],
-        },
+        "position_error": _position_error_metric(errors, samples, tick_idx),
     }
+
+    if hardware_errors:
+        metrics["hardware_position_error"] = _position_error_metric(
+            hardware_errors, samples, tick_idx
+        )
 
     metrics["derived_target_velocity"] = _range_float_metric(derived_target_velocities)
     metrics["derived_actual_velocity"] = _range_float_metric(derived_actual_velocities)
@@ -482,6 +514,12 @@ def _trace_summary_metrics(
         "cruise": _phase_error_metric(phase_error_values["cruise"]),
         "decel": _phase_error_metric(phase_error_values["decel"]),
     }
+    if hardware_errors:
+        metrics["hardware_position_error_by_motion_phase"] = {
+            "accel": _phase_error_metric(hardware_phase_error_values["accel"]),
+            "cruise": _phase_error_metric(hardware_phase_error_values["cruise"]),
+            "decel": _phase_error_metric(hardware_phase_error_values["decel"]),
+        }
 
     for field in (
         "pidin_vel",
@@ -563,6 +601,31 @@ def _format_trace_summary(
             _format_phase_error_metric("decel", phase_errors["decel"]),
         )
     )
+
+    if "hardware_position_error" in metrics:
+        hardware_position_error = metrics["hardware_position_error"]
+        lines.append(
+            "hardware_position_error_counts: min=%d max=%d final=%d max_abs=%d"
+            " at_tick=%d"
+            % (
+                hardware_position_error["min"],
+                hardware_position_error["max"],
+                hardware_position_error["final"],
+                hardware_position_error["max_abs"],
+                hardware_position_error["max_abs_tick"],
+            )
+        )
+
+    if "hardware_position_error_by_motion_phase" in metrics:
+        phase_errors = metrics["hardware_position_error_by_motion_phase"]
+        lines.append(
+            "hardware_position_error_by_phase: %s %s %s"
+            % (
+                _format_phase_error_metric("accel", phase_errors["accel"]),
+                _format_phase_error_metric("cruise", phase_errors["cruise"]),
+                _format_phase_error_metric("decel", phase_errors["decel"]),
+            )
+        )
 
     derived_target_velocity = metrics["derived_target_velocity"]
     lines.append(
@@ -2980,8 +3043,8 @@ class FociDriver:
             fmt = "<HBBiiIiIiIiiii"
             headers = TRACE_FULL_HEADERS
         elif preset == 2:  # Velocity
-            sample_size = 48
-            fmt = "<HBBiiIiIiiiiii"
+            sample_size = 52
+            fmt = "<HBBiiIiIiiiiiii"
             headers = TRACE_VELOCITY_HEADERS
         else:  # Fast
             sample_size = 28
@@ -3034,7 +3097,7 @@ class FociDriver:
                 row.extend(list(fields[6:9]))  # pidout_vel, status, abn
                 row.extend(
                     list(fields[9:])
-                )  # pidout_trq/flx, pidin_vel, vel_actual, vel_ofs
+                )  # pos_err, pidout_trq/flx, pidin_vel, vel_actual, vel_ofs
             else:
                 row = list(fields[:3])  # tick, phase, flags
                 row.extend(list(fields[3:5]))  # pos_tgt, pos_act

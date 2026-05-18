@@ -67,13 +67,13 @@ def parse_full_sample(data: bytes) -> list:
 
 
 def parse_velocity_sample(data: bytes) -> list:
-    """Parse a 48-byte velocity-preset trace sample.
+    """Parse a 52-byte velocity-preset trace sample.
 
     Returns: [tick, phase, flags, pos_tgt, pos_act, trq_act, flx_act,
-              pidout_vel, status, abn, pidout_trq, pidout_flx, pidin_vel,
-              vel_actual, vel_ofs]
+              pidout_vel, status, abn, pos_err, pidout_trq, pidout_flx,
+              pidin_vel, vel_actual, vel_ofs]
     """
-    fmt = "<HBBiiIiIiiiiii"
+    fmt = "<HBBiiIiIiiiiiii"
     fields = struct.unpack(fmt, data)
     row = list(fields[:3])  # tick, phase, flags
     row.extend(list(fields[3:5]))  # pos_tgt, pos_act
@@ -83,7 +83,7 @@ def parse_velocity_sample(data: bytes) -> list:
     row.extend(list(fields[6:9]))  # pidout_vel, status, abn
     row.extend(
         list(fields[9:])
-    )  # pidout_trq, pidout_flx, pidin_vel, vel_actual, vel_ofs
+    )  # pos_err, pidout_trq, pidout_flx, pidin_vel, vel_actual, vel_ofs
     return row
 
 
@@ -227,6 +227,7 @@ class TestVelocityPresetParsing(unittest.TestCase):
         pidout_vel = 96
         status = 0x70000080
         abn = 1234
+        pos_err = -8
         pidout_trq = 80
         pidout_flx = -20
         pidin_vel = 104
@@ -234,7 +235,7 @@ class TestVelocityPresetParsing(unittest.TestCase):
         vel_ofs = 3
 
         data = struct.pack(
-            "<HBBiiIiIiiiiii",
+            "<HBBiiIiIiiiiiii",
             tick,
             phase,
             flags,
@@ -244,13 +245,14 @@ class TestVelocityPresetParsing(unittest.TestCase):
             pidout_vel,
             status,
             abn,
+            pos_err,
             pidout_trq,
             pidout_flx,
             pidin_vel,
             vel_actual,
             vel_ofs,
         )
-        self.assertEqual(len(data), 48)
+        self.assertEqual(len(data), 52)
 
         row = parse_velocity_sample(data)
         self.assertEqual(row[0], 12)  # tick
@@ -263,11 +265,12 @@ class TestVelocityPresetParsing(unittest.TestCase):
         self.assertEqual(row[7], 96)  # pidout_vel
         self.assertEqual(row[8], 0x70000080)  # status
         self.assertEqual(row[9], 1234)  # abn
-        self.assertEqual(row[10], 80)  # pidout_target_torque
-        self.assertEqual(row[11], -20)  # pidout_target_flux
-        self.assertEqual(row[12], 104)  # pidin_vel
-        self.assertEqual(row[13], 91)  # vel_actual
-        self.assertEqual(row[14], 3)  # vel_ofs
+        self.assertEqual(row[10], -8)  # pos_err
+        self.assertEqual(row[11], 80)  # pidout_target_torque
+        self.assertEqual(row[12], -20)  # pidout_target_flux
+        self.assertEqual(row[13], 104)  # pidin_vel
+        self.assertEqual(row[14], 91)  # vel_actual
+        self.assertEqual(row[15], 3)  # vel_ofs
 
 
 class TestPhaseFiltering(unittest.TestCase):
@@ -299,8 +302,8 @@ class TestSampleSizes(unittest.TestCase):
     def test_full_sample_is_48_bytes(self):
         self.assertEqual(struct.calcsize("<HBBiiIiIiIiiii"), 48)
 
-    def test_velocity_sample_is_48_bytes(self):
-        self.assertEqual(struct.calcsize("<HBBiiIiIiiiiii"), 48)
+    def test_velocity_sample_is_52_bytes(self):
+        self.assertEqual(struct.calcsize("<HBBiiIiIiiiiiii"), 52)
 
 
 class TestTraceHeaders(unittest.TestCase):
@@ -310,6 +313,7 @@ class TestTraceHeaders(unittest.TestCase):
         self.assertIn("pidout_vel", TRACE_VELOCITY_HEADERS)
         self.assertIn("pidout_trq", TRACE_VELOCITY_HEADERS)
         self.assertIn("pidout_flx", TRACE_VELOCITY_HEADERS)
+        self.assertIn("pos_err", TRACE_VELOCITY_HEADERS)
         self.assertIn("vel_actual", TRACE_VELOCITY_HEADERS)
         self.assertIn("pidin_vel", TRACE_VELOCITY_HEADERS)
         self.assertNotIn("trq_tgt", TRACE_VELOCITY_HEADERS)
@@ -321,12 +325,12 @@ class TestTraceHeaders(unittest.TestCase):
 class TestTraceSummary(unittest.TestCase):
     def test_velocity_metrics_quantify_tracking_and_sampling(self):
         samples = [
-            # tick phase flags pos_tgt pos_act trq flx pidout status abn pidout_trq pidout_flx pidin vel_act ofs
-            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 12, -1, 100, 0, 2],
-            [4, 0, 0, 200, 160, 0, 0, 95, 0x70000080, 0, 14, -2, 100, 0, 3],
-            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, -5, 1, 25, 5, 1],
-            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, -5, 1, 25, 5, 1],
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn pos_err pidout_trq pidout_flx pidin vel_act ofs
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 18, 12, -1, 100, 0, 2],
+            [4, 0, 0, 200, 160, 0, 0, 95, 0x70000080, 0, 36, 14, -2, 100, 0, 3],
+            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, 8, -5, 1, 25, 5, 1],
+            [8, 0, 0, 300, 290, 0, 0, 20, 0x70000000, 0, 8, -5, 1, 25, 5, 1],
         ]
 
         metrics = _trace_summary_metrics(
@@ -338,11 +342,16 @@ class TestTraceSummary(unittest.TestCase):
         self.assertEqual(metrics["tick_end"], 8)
         self.assertEqual(metrics["duplicate_ticks"], 1)
         self.assertEqual(metrics["missed_samples"], 1)
-        self.assertEqual(metrics["position_error"]["min"], -40)
-        self.assertEqual(metrics["position_error"]["max"], 0)
-        self.assertEqual(metrics["position_error"]["final"], -10)
-        self.assertEqual(metrics["position_error"]["max_abs"], -40)
+        self.assertEqual(metrics["position_error"]["min"], 0)
+        self.assertEqual(metrics["position_error"]["max"], 40)
+        self.assertEqual(metrics["position_error"]["final"], 10)
+        self.assertEqual(metrics["position_error"]["max_abs"], 40)
         self.assertEqual(metrics["position_error"]["max_abs_tick"], 4)
+        self.assertEqual(metrics["hardware_position_error"]["min"], 0)
+        self.assertEqual(metrics["hardware_position_error"]["max"], 36)
+        self.assertEqual(metrics["hardware_position_error"]["final"], 8)
+        self.assertEqual(metrics["hardware_position_error"]["max_abs"], 36)
+        self.assertEqual(metrics["hardware_position_error"]["max_abs_tick"], 4)
         self.assertEqual(metrics["derived_velocity"]["min"], 32.5)
         self.assertEqual(metrics["derived_velocity"]["max"], 40.0)
         self.assertEqual(metrics["derived_target_velocity"]["min"], 25.0)
@@ -363,13 +372,13 @@ class TestTraceSummary(unittest.TestCase):
 
     def test_velocity_metrics_bucket_position_error_by_motion_phase(self):
         samples = [
-            # tick phase flags pos_tgt pos_act trq flx pidout status abn pidout_trq pidout_flx pidin vel_act ofs
-            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [2, 0, 0, 20, 18, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [4, 0, 0, 60, 55, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [6, 0, 0, 100, 102, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [8, 0, 0, 120, 118, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [10, 0, 0, 120, 120, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn pos_err pidout_trq pidout_flx pidin vel_act ofs
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 20, 18, 0, 0, 0, 0x70000000, 0, 2, 0, 0, 0, 0, 0],
+            [4, 0, 0, 60, 55, 0, 0, 0, 0x70000000, 0, 5, 0, 0, 0, 0, 0],
+            [6, 0, 0, 100, 102, 0, 0, 0, 0x70000000, 0, -2, 0, 0, 0, 0, 0],
+            [8, 0, 0, 120, 118, 0, 0, 0, 0x70000000, 0, 2, 0, 0, 0, 0, 0],
+            [10, 0, 0, 120, 120, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
         ]
 
         metrics = _trace_summary_metrics(
@@ -378,16 +387,39 @@ class TestTraceSummary(unittest.TestCase):
 
         phase_errors = metrics["position_error_by_motion_phase"]
         self.assertEqual(phase_errors["accel"]["count"], 1)
-        self.assertEqual(phase_errors["accel"]["max_abs"], -5)
+        self.assertEqual(phase_errors["accel"]["max_abs"], 5)
         self.assertEqual(phase_errors["cruise"]["count"], 1)
-        self.assertEqual(phase_errors["cruise"]["max_abs"], 2)
+        self.assertEqual(phase_errors["cruise"]["max_abs"], -2)
         self.assertEqual(phase_errors["decel"]["count"], 1)
-        self.assertEqual(phase_errors["decel"]["max_abs"], -2)
+        self.assertEqual(phase_errors["decel"]["max_abs"], 2)
+
+    def test_velocity_metrics_bucket_hardware_position_error_by_motion_phase(self):
+        samples = [
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn pos_err pidout_trq pidout_flx pidin vel_act ofs
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 20, 18, 0, 0, 0, 0x70000000, 0, 3, 0, 0, 0, 0, 0],
+            [4, 0, 0, 60, 55, 0, 0, 0, 0x70000000, 0, 7, 0, 0, 0, 0, 0],
+            [6, 0, 0, 100, 102, 0, 0, 0, 0x70000000, 0, -4, 0, 0, 0, 0, 0],
+            [8, 0, 0, 120, 118, 0, 0, 0, 0x70000000, 0, 5, 0, 0, 0, 0, 0],
+            [10, 0, 0, 120, 120, 0, 0, 0, 0x70000000, 0, -1, 0, 0, 0, 0, 0],
+        ]
+
+        metrics = _trace_summary_metrics(
+            samples, TRACE_VELOCITY_HEADERS, expected_tick_step=2
+        )
+
+        phase_errors = metrics["hardware_position_error_by_motion_phase"]
+        self.assertEqual(phase_errors["accel"]["count"], 1)
+        self.assertEqual(phase_errors["accel"]["max_abs"], 7)
+        self.assertEqual(phase_errors["cruise"]["count"], 1)
+        self.assertEqual(phase_errors["cruise"]["max_abs"], -4)
+        self.assertEqual(phase_errors["decel"]["count"], 1)
+        self.assertEqual(phase_errors["decel"]["max_abs"], 5)
 
     def test_summary_format_includes_velocity_fields(self):
         samples = [
-            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0],
-            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 12, -1, 100, 0, 2],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
+            [2, 0, 0, 100, 80, 0, 0, 90, 0x70000080, 0, 18, 12, -1, 100, 0, 2],
         ]
 
         lines = _format_trace_summary(
@@ -405,6 +437,8 @@ class TestTraceSummary(unittest.TestCase):
         self.assertIn("1000us tick, 2000us samples", text)
         self.assertIn("position_error_counts:", text)
         self.assertIn("position_error_by_phase:", text)
+        self.assertIn("hardware_position_error_counts:", text)
+        self.assertIn("hardware_position_error_by_phase:", text)
         self.assertIn("derived_target_velocity_counts_per_tick:", text)
         self.assertIn("derived_actual_velocity_counts_per_tick:", text)
         self.assertIn("derived_velocity_error_counts_per_tick:", text)
