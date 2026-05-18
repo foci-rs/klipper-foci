@@ -7,12 +7,14 @@ or hardware.
 Run: cd foci/klipper-foci && python -m pytest tests/ -v
 """
 
+import math
 import struct
 import unittest
 
 from foci import (
     TRACE_FAST_HEADERS,
     TRACE_FULL_HEADERS,
+    TRACE_HOLD_HEADERS,
     TRACE_VELOCITY_HEADERS,
     _format_trace_summary,
     _trace_summary_metrics,
@@ -84,6 +86,32 @@ def parse_velocity_sample(data: bytes) -> list:
     row.extend(
         list(fields[9:])
     )  # pos_err, pidout_trq, pidout_flx, pidin_vel, vel_actual, vel_ofs
+    return row
+
+
+def parse_hold_sample(data: bytes) -> list:
+    """Parse a 52-byte hold-preset trace sample.
+
+    Returns: [tick, phase, flags, pos_tgt, pos_act, trq_act, flx_act,
+              pidout_vel, status, abn, pidout_trq, pidout_flx, foc_uq,
+              foc_ud, foc_uq_lim, foc_ud_lim, esum_trq, esum_flx]
+    """
+    fmt = "<HBBiiIiIiiiIIii"
+    fields = struct.unpack(fmt, data)
+    row = list(fields[:3])  # tick, phase, flags
+    row.extend(list(fields[3:5]))  # pos_tgt, pos_act
+    tf_act = fields[5]
+    row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
+    row.append(_i16(tf_act & 0xFFFF))  # flux_actual
+    row.extend(list(fields[6:9]))  # pidout_vel, status, abn
+    row.extend(list(fields[9:11]))  # pidout_trq, pidout_flx
+    foc_uq_ud = fields[11]
+    row.append(_i16((foc_uq_ud >> 16) & 0xFFFF))  # foc_uq
+    row.append(_i16(foc_uq_ud & 0xFFFF))  # foc_ud
+    foc_uq_ud_limited = fields[12]
+    row.append(_i16((foc_uq_ud_limited >> 16) & 0xFFFF))  # foc_uq_lim
+    row.append(_i16(foc_uq_ud_limited & 0xFFFF))  # foc_ud_lim
+    row.extend(list(fields[13:]))  # esum_trq, esum_flx
     return row
 
 
@@ -273,6 +301,61 @@ class TestVelocityPresetParsing(unittest.TestCase):
         self.assertEqual(row[15], 3)  # vel_ofs
 
 
+class TestHoldPresetParsing(unittest.TestCase):
+    def test_basic_sample(self):
+        """Pack a known hold sample and verify unpacking."""
+        tick = 120
+        phase = 0
+        flags = 0
+        pos_tgt = 4000
+        pos_act = 4000
+        tf_act = (0xFFFE << 16) | 6  # torque=-2, flux=6
+        pidout_vel = 0
+        status = 0x70000000
+        abn = 99
+        pidout_trq = 18
+        pidout_flx = -4
+        foc_uq_ud = (24 << 16) | 0xFFF7  # uq=24, ud=-9
+        foc_uq_ud_limited = (20 << 16) | 0xFFFA  # uq_lim=20, ud_lim=-6
+        esum_trq = 12345
+        esum_flx = -23456
+
+        data = struct.pack(
+            "<HBBiiIiIiiiIIii",
+            tick,
+            phase,
+            flags,
+            pos_tgt,
+            pos_act,
+            tf_act,
+            pidout_vel,
+            status,
+            abn,
+            pidout_trq,
+            pidout_flx,
+            foc_uq_ud,
+            foc_uq_ud_limited,
+            esum_trq,
+            esum_flx,
+        )
+        self.assertEqual(len(data), 52)
+
+        row = parse_hold_sample(data)
+        self.assertEqual(row[0], 120)
+        self.assertEqual(row[3], 4000)
+        self.assertEqual(row[4], 4000)
+        self.assertEqual(row[5], -2)
+        self.assertEqual(row[6], 6)
+        self.assertEqual(row[10], 18)
+        self.assertEqual(row[11], -4)
+        self.assertEqual(row[12], 24)
+        self.assertEqual(row[13], -9)
+        self.assertEqual(row[14], 20)
+        self.assertEqual(row[15], -6)
+        self.assertEqual(row[16], 12345)
+        self.assertEqual(row[17], -23456)
+
+
 class TestPhaseFiltering(unittest.TestCase):
     def test_filter_by_phase(self):
         samples = [
@@ -305,12 +388,16 @@ class TestSampleSizes(unittest.TestCase):
     def test_velocity_sample_is_52_bytes(self):
         self.assertEqual(struct.calcsize("<HBBiiIiIiiiiiii"), 52)
 
+    def test_hold_sample_is_52_bytes(self):
+        self.assertEqual(struct.calcsize("<HBBiiIiIiiiIIii"), 52)
+
 
 class TestTraceHeaders(unittest.TestCase):
     def test_velocity_column_names_pidout_signal(self):
         self.assertIn("pidout_vel", TRACE_FAST_HEADERS)
         self.assertIn("pidout_vel", TRACE_FULL_HEADERS)
         self.assertIn("pidout_vel", TRACE_VELOCITY_HEADERS)
+        self.assertIn("pidout_vel", TRACE_HOLD_HEADERS)
         self.assertIn("pidout_trq", TRACE_VELOCITY_HEADERS)
         self.assertIn("pidout_flx", TRACE_VELOCITY_HEADERS)
         self.assertIn("pos_err", TRACE_VELOCITY_HEADERS)
@@ -320,6 +407,18 @@ class TestTraceHeaders(unittest.TestCase):
         self.assertNotIn("flx_tgt", TRACE_VELOCITY_HEADERS)
         self.assertNotIn("vel_act", TRACE_FAST_HEADERS)
         self.assertNotIn("vel_act", TRACE_FULL_HEADERS)
+
+    def test_hold_column_names_expose_current_loop_signals(self):
+        self.assertIn("trq_act", TRACE_HOLD_HEADERS)
+        self.assertIn("flx_act", TRACE_HOLD_HEADERS)
+        self.assertIn("pidout_trq", TRACE_HOLD_HEADERS)
+        self.assertIn("pidout_flx", TRACE_HOLD_HEADERS)
+        self.assertIn("foc_uq", TRACE_HOLD_HEADERS)
+        self.assertIn("foc_ud", TRACE_HOLD_HEADERS)
+        self.assertIn("foc_uq_lim", TRACE_HOLD_HEADERS)
+        self.assertIn("foc_ud_lim", TRACE_HOLD_HEADERS)
+        self.assertIn("esum_trq", TRACE_HOLD_HEADERS)
+        self.assertIn("esum_flx", TRACE_HOLD_HEADERS)
 
 
 class TestTraceSummary(unittest.TestCase):
@@ -416,6 +515,67 @@ class TestTraceSummary(unittest.TestCase):
         self.assertEqual(phase_errors["decel"]["count"], 1)
         self.assertEqual(phase_errors["decel"]["max_abs"], 5)
 
+    def test_velocity_metrics_report_final_settle_tail(self):
+        samples = []
+        for idx in range(40):
+            pos_tgt = idx * 20
+            if idx < 10:
+                pos_err = 999
+                pidout_vel = 999
+                pidout_trq = 999
+                vel_actual = 999
+            else:
+                tail_idx = idx - 9
+                sign = -1 if tail_idx % 2 else 1
+                pos_err = sign * tail_idx
+                pidout_vel = 4
+                pidout_trq = -3
+                vel_actual = 5
+
+            samples.append(
+                [
+                    idx * 2,
+                    0,
+                    0,
+                    pos_tgt,
+                    pos_tgt - pos_err,
+                    0,
+                    0,
+                    pidout_vel,
+                    0x70000000,
+                    0,
+                    pos_err,
+                    pidout_trq,
+                    0,
+                    0,
+                    vel_actual,
+                    0,
+                ]
+            )
+
+        metrics = _trace_summary_metrics(
+            samples, TRACE_VELOCITY_HEADERS, expected_tick_step=2
+        )
+
+        settle = metrics["final_settle"]
+        self.assertEqual(settle["window_size"], 30)
+        self.assertEqual(settle["sample_count"], 30)
+        self.assertEqual(settle["pos_err"]["max_abs"], 30)
+        self.assertEqual(settle["pos_err"]["final"], 30)
+        self.assertAlmostEqual(
+            settle["pos_err"]["rms"],
+            math.sqrt(sum(value * value for value in range(1, 31)) / 30),
+        )
+        self.assertEqual(settle["pidout_vel"]["max_abs"], 4)
+        self.assertEqual(settle["pidout_vel"]["final"], 4)
+        self.assertEqual(settle["pidout_vel"]["rms"], 4.0)
+        self.assertEqual(settle["pidout_trq"]["max_abs"], 3)
+        self.assertEqual(settle["pidout_trq"]["final"], -3)
+        self.assertEqual(settle["pidout_trq"]["rms"], 3.0)
+        self.assertEqual(settle["vel_actual"]["max_abs"], 5)
+        self.assertEqual(settle["vel_actual"]["final"], 5)
+        self.assertEqual(settle["vel_actual"]["rms"], 5.0)
+
     def test_summary_format_includes_velocity_fields(self):
         samples = [
             [0, 0, 0, 0, 0, 0, 0, 0, 0x70000000, 0, 0, 0, 0, 0, 0, 0],
@@ -448,6 +608,94 @@ class TestTraceSummary(unittest.TestCase):
         self.assertIn("pidout_flx:", text)
         self.assertIn("vel_actual:", text)
         self.assertIn("vel_ofs:", text)
+        self.assertIn("final_settle_last_30:", text)
+        self.assertIn("pos_err(rms=", text)
+        self.assertIn("pidout_vel(rms=", text)
+        self.assertIn("pidout_trq(rms=", text)
+        self.assertIn("vel_actual(rms=", text)
+
+    def test_hold_metrics_report_current_loop_fields_and_100hz_period(self):
+        samples = [
+            # tick phase flags pos_tgt pos_act trq flx pidout status abn pidout_trq pidout_flx foc_uq foc_ud foc_uq_lim foc_ud_lim esum_trq esum_flx
+            [
+                0,
+                0,
+                0,
+                1000,
+                1000,
+                4,
+                -1,
+                0,
+                0x70000000,
+                0,
+                12,
+                -2,
+                20,
+                -5,
+                18,
+                -4,
+                100,
+                -50,
+            ],
+            [
+                10,
+                0,
+                0,
+                1000,
+                1000,
+                -6,
+                3,
+                0,
+                0x70000000,
+                0,
+                10,
+                -3,
+                22,
+                -7,
+                19,
+                -6,
+                90,
+                -45,
+            ],
+        ]
+
+        metrics = _trace_summary_metrics(
+            samples, TRACE_HOLD_HEADERS, expected_tick_step=10
+        )
+
+        self.assertEqual(metrics["expected_tick_step"], 10)
+        self.assertEqual(metrics["trq_act"]["min"], -6)
+        self.assertEqual(metrics["flx_act"]["max"], 3)
+        self.assertEqual(metrics["foc_uq"]["max"], 22)
+        self.assertEqual(metrics["foc_ud"]["min"], -7)
+        self.assertEqual(metrics["foc_uq_lim"]["final"], 19)
+        self.assertEqual(metrics["foc_ud_lim"]["final"], -6)
+        self.assertEqual(metrics["esum_trq"]["final"], 90)
+        self.assertEqual(metrics["esum_flx"]["final"], -45)
+
+        lines = _format_trace_summary(
+            "foci stepper_x",
+            samples,
+            TRACE_HOLD_HEADERS,
+            preset_name="hold",
+            sample_period_us=1000,
+            dropped=0,
+            expected_tick_step=10,
+        )
+        text = "\n".join(lines)
+        self.assertIn("hold preset, 1000us tick, 10000us samples", text)
+        self.assertIn("trq_act:", text)
+        self.assertIn("flx_act:", text)
+        self.assertIn("foc_uq:", text)
+        self.assertIn("foc_ud:", text)
+        self.assertIn("foc_uq_lim:", text)
+        self.assertIn("foc_ud_lim:", text)
+        self.assertIn("esum_trq:", text)
+        self.assertIn("esum_flx:", text)
+        self.assertIn("final_settle_last_30:", text)
+        self.assertIn("trq_act(rms=", text)
+        self.assertIn("foc_uq_lim(rms=", text)
+        self.assertIn("esum_trq(rms=", text)
 
 
 if __name__ == "__main__":

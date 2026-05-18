@@ -6,6 +6,7 @@
 # Register reference: TMC4671-LA datasheet rev 2.08
 
 import logging
+import math
 from collections.abc import Callable
 
 log = logging.getLogger(__name__)
@@ -354,6 +355,19 @@ TRACE_VELOCITY_HEADERS = TRACE_FAST_HEADERS + [
     "vel_ofs",
 ]
 
+TRACE_HOLD_HEADERS = TRACE_FAST_HEADERS + [
+    "pidout_trq",
+    "pidout_flx",
+    "foc_uq",
+    "foc_ud",
+    "foc_uq_lim",
+    "foc_ud_lim",
+    "esum_trq",
+    "esum_flx",
+]
+
+TRACE_FINAL_SETTLE_WINDOW = 30
+
 
 def _range_metric(samples: list[list[int]], idx: int) -> dict[str, int]:
     values = [row[idx] for row in samples]
@@ -387,6 +401,17 @@ def _phase_error_metric(values: list[int]) -> dict[str, float | int]:
     }
 
 
+def _settle_metric(samples: list[list[int]], idx: int) -> dict[str, float | int]:
+    values = [row[idx] for row in samples]
+    square_sum = sum(value * value for value in values)
+    return {
+        "rms": math.sqrt(square_sum / len(values)),
+        "max_abs": max(abs(value) for value in values),
+        "final": values[-1],
+        "nonzero": sum(1 for value in values if value != 0),
+    }
+
+
 def _position_error_metric(
     errors: list[int], samples: list[list[int]], tick_idx: int
 ) -> dict[str, int]:
@@ -415,6 +440,15 @@ def _format_phase_error_metric(name: str, metric: dict[str, float | int]) -> str
         metric["max"],
         _format_metric_value(metric["mean"]),
         metric["max_abs"],
+    )
+
+
+def _format_settle_metric(name: str, metric: dict[str, float | int]) -> str:
+    return "%s(rms=%s max_abs=%d final=%d)" % (
+        name,
+        _format_metric_value(metric["rms"]),
+        metric["max_abs"],
+        metric["final"],
     )
 
 
@@ -522,15 +556,45 @@ def _trace_summary_metrics(
         }
 
     for field in (
+        "trq_act",
+        "flx_act",
         "pidin_vel",
         "pidout_vel",
         "vel_actual",
         "vel_ofs",
         "pidout_trq",
         "pidout_flx",
+        "foc_uq",
+        "foc_ud",
+        "foc_uq_lim",
+        "foc_ud_lim",
+        "esum_trq",
+        "esum_flx",
     ):
         if field in columns:
             metrics[field] = _range_metric(samples, columns[field])
+
+    settle_samples = samples[-TRACE_FINAL_SETTLE_WINDOW:]
+    final_settle = {
+        "window_size": TRACE_FINAL_SETTLE_WINDOW,
+        "sample_count": len(settle_samples),
+    }
+    for field in (
+        "pos_err",
+        "pidout_vel",
+        "pidout_trq",
+        "vel_actual",
+        "trq_act",
+        "flx_act",
+        "foc_uq_lim",
+        "foc_ud_lim",
+        "esum_trq",
+        "esum_flx",
+    ):
+        if field in columns:
+            final_settle[field] = _settle_metric(settle_samples, columns[field])
+    if len(final_settle) > 2:
+        metrics["final_settle"] = final_settle
 
     if "status" in columns:
         status_values = [row[columns["status"]] for row in samples]
@@ -658,12 +722,20 @@ def _format_trace_summary(
     )
 
     for field in (
+        "trq_act",
+        "flx_act",
         "pidin_vel",
         "pidout_vel",
         "vel_actual",
         "vel_ofs",
         "pidout_trq",
         "pidout_flx",
+        "foc_uq",
+        "foc_ud",
+        "foc_uq_lim",
+        "foc_ud_lim",
+        "esum_trq",
+        "esum_flx",
     ):
         if field in metrics:
             metric = metrics[field]
@@ -675,6 +747,33 @@ def _format_trace_summary(
                     metric["max"],
                     metric["final"],
                     metric["nonzero"],
+                )
+            )
+
+    if "final_settle" in metrics:
+        final_settle = metrics["final_settle"]
+        settle_fields = []
+        for field in (
+            "pos_err",
+            "pidout_vel",
+            "pidout_trq",
+            "vel_actual",
+            "trq_act",
+            "flx_act",
+            "foc_uq_lim",
+            "foc_ud_lim",
+            "esum_trq",
+            "esum_flx",
+        ):
+            if field in final_settle:
+                settle_fields.append(_format_settle_metric(field, final_settle[field]))
+        if settle_fields:
+            lines.append(
+                "final_settle_last_%d: n=%d %s"
+                % (
+                    final_settle["window_size"],
+                    final_settle["sample_count"],
+                    " ".join(settle_fields),
                 )
             )
 
@@ -2990,11 +3089,11 @@ class FociDriver:
     def cmd_FOCI_TRACE_START(self, gcmd) -> None:
         """Start per-tick trace capture for the selected stepper."""
         preset_name = gcmd.get("PRESET", "full").lower()
-        presets = {"fast": 0, "full": 1, "velocity": 2}
+        presets = {"fast": 0, "full": 1, "velocity": 2, "hold": 3}
         if preset_name not in presets:
             raise gcmd.error(
-                "FOCI %s: unknown trace preset '%s' (expected fast, full, or velocity)"
-                % (self.name, preset_name)
+                "FOCI %s: unknown trace preset '%s' "
+                "(expected fast, full, velocity, or hold)" % (self.name, preset_name)
             )
         self.trace_start_cmd.send([self.oid, presets[preset_name]])
         gcmd.respond_info(
@@ -3046,6 +3145,10 @@ class FociDriver:
             sample_size = 52
             fmt = "<HBBiiIiIiiiiiii"
             headers = TRACE_VELOCITY_HEADERS
+        elif preset == 3:  # Hold
+            sample_size = 52
+            fmt = "<HBBiiIiIiiiIIii"
+            headers = TRACE_HOLD_HEADERS
         else:  # Fast
             sample_size = 28
             fmt = "<HBBiiIiIi"
@@ -3098,6 +3201,21 @@ class FociDriver:
                 row.extend(
                     list(fields[9:])
                 )  # pos_err, pidout_trq/flx, pidin_vel, vel_actual, vel_ofs
+            elif preset == 3:
+                row = list(fields[:3])  # tick, phase, flags
+                row.extend(list(fields[3:5]))  # pos_tgt, pos_act
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))  # torque_actual
+                row.append(_i16(tf_act & 0xFFFF))  # flux_actual
+                row.extend(list(fields[6:9]))  # pidout_vel, status, abn
+                row.extend(list(fields[9:11]))  # pidout_trq, pidout_flx
+                foc_uq_ud = fields[11]
+                row.append(_i16((foc_uq_ud >> 16) & 0xFFFF))  # foc_uq
+                row.append(_i16(foc_uq_ud & 0xFFFF))  # foc_ud
+                foc_uq_ud_limited = fields[12]
+                row.append(_i16((foc_uq_ud_limited >> 16) & 0xFFFF))  # foc_uq_lim
+                row.append(_i16(foc_uq_ud_limited & 0xFFFF))  # foc_ud_lim
+                row.extend(list(fields[13:]))  # esum_trq, esum_flx
             else:
                 row = list(fields[:3])  # tick, phase, flags
                 row.extend(list(fields[3:5]))  # pos_tgt, pos_act
@@ -3117,9 +3235,9 @@ class FociDriver:
             return
 
         # Format output
-        preset_names = {1: "full", 2: "velocity"}
+        preset_names = {1: "full", 2: "velocity", 3: "hold"}
         preset_name = preset_names.get(preset, "fast")
-        expected_tick_step = 2 if preset in (1, 2) else 1
+        expected_tick_step = {1: 2, 2: 2, 3: 10}.get(preset, 1)
         header = "FOCI %s trace: %d samples" % (self.name, len(samples))
         if dropped > 0:
             header += " (%d dropped)" % dropped
