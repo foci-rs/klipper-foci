@@ -1,0 +1,199 @@
+"""Tests for FOCI homing position diagnostics."""
+
+from types import SimpleNamespace
+
+from tests.mocks import MockStepper, make_driver
+
+
+def test_homing_move_end_reports_matching_stepper_positions():
+    driver = make_driver(stepper_name="stepper_y")
+    gcode = driver.printer.lookup_object("gcode")
+    stepper = MockStepper("stepper_y", step_dist=0.01)
+    homing_move = SimpleNamespace(
+        stepper_positions=[
+            SimpleNamespace(
+                stepper=MockStepper("stepper_x", step_dist=0.01),
+                stepper_name="stepper_x",
+                endstop_name="x",
+                start_pos=-13904,
+                trig_pos=13692,
+                halt_pos=13692,
+            ),
+            SimpleNamespace(
+                stepper=stepper,
+                stepper_name="stepper_y",
+                endstop_name="x",
+                start_pos=-13904,
+                trig_pos=13692,
+                halt_pos=26934,
+            ),
+        ]
+    )
+
+    driver._handle_homing_move_end(homing_move)
+
+    assert len(gcode._responses) == 1
+    assert gcode._responses[0] == (
+        "FOCI_HOME_POSITION stepper_y endstop=x start=-13904 trig=13692 "
+        "halt=26934 move_steps=40838 over_steps=13242 "
+        "move_mm=408.380 over_mm=132.420"
+    )
+
+
+def test_homing_move_end_reports_step_history_summary():
+    driver = make_driver(stepper_name="stepper_y")
+    gcode = driver.printer.lookup_object("gcode")
+    toolhead = driver.printer.lookup_object("toolhead")
+    toolhead.last_move_time = 12.0
+    stepper = MockStepper(
+        "stepper_y",
+        step_dist=0.01,
+        step_history=[
+            SimpleNamespace(
+                first_clock=12050,
+                last_clock=12100,
+                start_position=-13000,
+                step_count=300,
+                interval=10,
+                add=0,
+            ),
+            SimpleNamespace(
+                first_clock=12100,
+                last_clock=12200,
+                start_position=-12700,
+                step_count=500,
+                interval=10,
+                add=0,
+            ),
+        ],
+    )
+    homing_move = SimpleNamespace(
+        toolhead=toolhead,
+        stepper_positions=[
+            SimpleNamespace(
+                stepper=stepper,
+                stepper_name="stepper_y",
+                endstop_name="x",
+                start_pos=-13000,
+                trig_pos=-12200,
+                halt_pos=-12200,
+            )
+        ],
+    )
+
+    driver._handle_homing_move_begin(homing_move)
+    toolhead.last_move_time = 13.0
+    driver._handle_homing_move_end(homing_move)
+
+    assert len(gcode._responses) == 3
+    assert gcode._responses[1] == (
+        "FOCI_HOME_STEP_HISTORY stepper_y start_clock=12000 end_clock=13000 "
+        "segments=2 move_segments=2 marker_segments=0 signed_steps=800 "
+        "abs_steps=800 pos_steps=800 neg_steps=0 dir_changes=0 "
+        "gap_steps=0 planned_start=-13000 planned_end=-12200 "
+        "first_clock=12050 last_clock=12200 signed_mm=8.000 abs_mm=8.000"
+    )
+    assert gcode._responses[2] == (
+        "FOCI_HOME_STEP_SEGMENTS stepper_y first="
+        "12050:-13000:+300@10/+0,12100:-12700:+500@10/+0 last="
+        "12050:-13000:+300@10/+0,12100:-12700:+500@10/+0 markers=none"
+    )
+
+
+def test_homing_move_end_reports_signed_step_history_details():
+    driver = make_driver(stepper_name="stepper_x")
+    gcode = driver.printer.lookup_object("gcode")
+    toolhead = driver.printer.lookup_object("toolhead")
+    toolhead.last_move_time = 20.0
+    stepper = MockStepper(
+        "stepper_x",
+        step_dist=0.01,
+        step_history=[
+            SimpleNamespace(
+                first_clock=20010,
+                last_clock=20100,
+                start_position=0,
+                step_count=100,
+                interval=10,
+                add=0,
+            ),
+            SimpleNamespace(
+                first_clock=20100,
+                last_clock=20200,
+                start_position=100,
+                step_count=-70,
+                interval=11,
+                add=-1,
+            ),
+            SimpleNamespace(
+                first_clock=20200,
+                last_clock=20300,
+                start_position=30,
+                step_count=20,
+                interval=12,
+                add=1,
+            ),
+            SimpleNamespace(
+                first_clock=20310,
+                last_clock=20310,
+                start_position=50,
+                step_count=0,
+                interval=0,
+                add=0,
+            ),
+        ],
+    )
+    homing_move = SimpleNamespace(
+        toolhead=toolhead,
+        stepper_positions=[
+            SimpleNamespace(
+                stepper=stepper,
+                stepper_name="stepper_x",
+                endstop_name="x",
+                start_pos=0,
+                trig_pos=50,
+                halt_pos=50,
+            )
+        ],
+    )
+
+    driver._handle_homing_move_begin(homing_move)
+    toolhead.last_move_time = 21.0
+    driver._handle_homing_move_end(homing_move)
+
+    assert len(gcode._responses) == 3
+    assert gcode._responses[1] == (
+        "FOCI_HOME_STEP_HISTORY stepper_x start_clock=20000 end_clock=21000 "
+        "segments=4 move_segments=3 marker_segments=1 signed_steps=50 "
+        "abs_steps=190 pos_steps=120 neg_steps=70 dir_changes=2 "
+        "gap_steps=0 planned_start=0 planned_end=50 first_clock=20010 "
+        "last_clock=20300 signed_mm=0.500 abs_mm=1.900"
+    )
+    assert gcode._responses[2] == (
+        "FOCI_HOME_STEP_SEGMENTS stepper_x first="
+        "20010:0:+100@10/+0,20100:100:-70@11/-1,"
+        "20200:30:+20@12/+1 last="
+        "20010:0:+100@10/+0,20100:100:-70@11/-1,"
+        "20200:30:+20@12/+1 markers=20310:50"
+    )
+
+
+def test_homing_move_end_ignores_unrelated_moves():
+    driver = make_driver(stepper_name="stepper_z")
+    gcode = driver.printer.lookup_object("gcode")
+    homing_move = SimpleNamespace(
+        stepper_positions=[
+            SimpleNamespace(
+                stepper=MockStepper("stepper_x", step_dist=0.01),
+                stepper_name="stepper_x",
+                endstop_name="x",
+                start_pos=0,
+                trig_pos=10,
+                halt_pos=10,
+            )
+        ]
+    )
+
+    driver._handle_homing_move_end(homing_move)
+
+    assert gcode._responses == []

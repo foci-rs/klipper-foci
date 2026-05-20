@@ -48,12 +48,13 @@ class MockToolhead:
     def __init__(self, kinematics=None):
         self._kinematics = kinematics or MockNoneKinematics()
         self._homed_axes = ""
+        self.last_move_time = 0.0
 
     def get_kinematics(self):
         return self._kinematics
 
     def get_last_move_time(self):
-        return 0.0
+        return self.last_move_time
 
     def get_status(self, _time):
         return {"homed_axes": self._homed_axes}
@@ -116,15 +117,59 @@ class MockRail:
 class MockStepper:
     """Mock stepper with a name."""
 
-    def __init__(self, name, oid=0):
+    def __init__(
+        self,
+        name,
+        oid=0,
+        mcu_position=0,
+        dir_inverted=False,
+        step_dist=0.01,
+        step_history=None,
+    ):
         self._name = name
         self._oid = oid
+        self._mcu_position = mcu_position
+        self._dir_inverted = dir_inverted
+        self._step_dist = step_dist
+        self._step_history = step_history or []
+        self._mcu = MockClockMCU()
 
     def get_name(self):
         return self._name
 
     def get_oid(self):
         return self._oid
+
+    def get_mcu_position(self):
+        return self._mcu_position
+
+    def get_dir_inverted(self):
+        return self._dir_inverted, None
+
+    def get_step_dist(self):
+        return self._step_dist
+
+    def get_mcu(self):
+        return self._mcu
+
+    def dump_steps(self, count, start_clock, end_clock):
+        data = sorted(
+            [
+                step
+                for step in self._step_history
+                if start_clock < step.last_clock and end_clock > step.first_clock
+            ],
+            key=lambda step: step.first_clock,
+            reverse=True,
+        )[:count]
+        return data, len(data)
+
+
+class MockClockMCU:
+    """Mock MCU clock conversion."""
+
+    def print_time_to_clock(self, print_time):
+        return int(print_time * 1000)
 
 
 class MockEnableLine:
@@ -248,11 +293,13 @@ class MockCompletion:
 class MockCommand:
     """Mock firmware command."""
 
-    def __init__(self):
+    def __init__(self, response=None):
         self.last_args = None
+        self.response = response
 
     def send(self, args=None):
         self.last_args = args
+        return self.response
 
 
 class MockSerial:
@@ -435,6 +482,7 @@ def make_driver(
     toolhead = MockToolhead(kinematics)
     toolhead._homed_axes = homed_axes
     printer = MockPrinter()
+    printer._objects["gcode"] = MockGCode()
     printer._objects["toolhead"] = toolhead
     printer._objects["stepper_enable"] = MockStepperEnable()
     driver.printer = printer
@@ -460,6 +508,7 @@ def make_driver(
     driver._selftest_results = []
     driver._selftest_complete = False
     driver._selftest_status = 0
+    driver._homing_move_start_times = {}
 
     # Config values (needed by some methods)
     driver.microsteps = 20
@@ -527,5 +576,9 @@ def make_driver(
     driver.set_auto_calibrate_on_enable_cmd = MockCommand()
     driver.trace_start_cmd = MockCommand()
     driver.trace_stop_cmd = MockCommand()
+    driver.stepper_stats_cmd = MockCommand()
+    driver.stepper_exec_stats_cmd = MockCommand()
+    driver.stepper_timing_stats_cmd = MockCommand()
+    driver.stepper_stop_stats_cmd = MockCommand()
 
     return driver
