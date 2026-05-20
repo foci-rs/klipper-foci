@@ -437,11 +437,29 @@ class TestStateTransitions(unittest.TestCase):
         d._handle_stepper_enable(0.0, False)
         self.assertFalse(d.is_calibrated)
 
-    def test_enable_callback_does_not_set_calibrated(self):
+    def test_enable_callback_calibrates_before_marking_enabled(self):
         d = make_driver()
         d.is_calibrated = False
+        d._active_gains = {
+            "flux_p": 711,
+            "flux_i": 159,
+            "torque_p": 711,
+            "torque_i": 159,
+            "velocity_p": 1434,
+            "velocity_i": 2,
+            "position_p": 627,
+            "position_i": 1,
+            "velocity_limit": 500000,
+        }
+        d.printer.get_reactor().completion_result = {
+            "status": 0,
+            "adc_i0": 33152,
+            "adc_i1": 33256,
+            "encoder_count": 0,
+        }
         d._handle_stepper_enable(0.0, True)
-        self.assertFalse(d.is_calibrated)
+        self.assertEqual(d.calibrate_cmd.last_args, [0])
+        self.assertTrue(d.is_calibrated)
 
     def test_ensure_calibrated_skips_if_already_true(self):
         d = make_driver()

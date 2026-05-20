@@ -265,12 +265,13 @@ class MockReactor:
 
     def __init__(self):
         self._time = 0.0
+        self.completion_result = None
 
     def monotonic(self):
         return self._time
 
     def completion(self):
-        return MockCompletion()
+        return MockCompletion(self.completion_result)
 
     def pause(self, deadline):
         self._time = deadline
@@ -280,8 +281,8 @@ class MockReactor:
 class MockCompletion:
     """Reactor completion mock."""
 
-    def __init__(self):
-        self._result = None
+    def __init__(self, result=None):
+        self._result = result
 
     def wait(self, deadline):
         return self._result

@@ -2822,16 +2822,20 @@ class FociDriver:
         )
 
     def _handle_stepper_enable(self, print_time, is_enable) -> None:
-        """Reset calibration state when the stepper is disabled.
+        """Synchronize FOCI calibration state with Klipper stepper enable.
 
-        On disable: clears calibration state so the next enable triggers
-        recalibration via the firmware's auto-calibrate-on-enable path.
+        On enable: calibrates synchronously so Klipper only marks the stepper
+        enabled after firmware reports the motor is armed and holding.
+
+        On disable: clears calibration state so the next enable recalibrates.
 
         Args:
             print_time: Timestamp of the enable/disable event.
             is_enable: True if enabling, False if disabling.
         """
-        if not is_enable:
+        if is_enable:
+            self._ensure_calibrated()
+        else:
             self.is_calibrated = False
 
     def cmd_FOCI_SELFTEST(self, gcmd) -> None:
@@ -2994,8 +2998,9 @@ class FociDriver:
                     % (self.name, status)
                 )
 
-            # Terminal state: motor enabled, holding
-            enable_line.motor_enable(toolhead.get_last_move_time())
+            # Terminal state: motor enabled, holding. Mark the host state before
+            # syncing Klipper's enable tracker so the enable callback sees the
+            # already-armed motor instead of starting a second calibration.
             self.is_calibrated = True
             self._inhibited = False
             self._set_auto_calibrate_on_enable_allowed(True)
@@ -3016,6 +3021,7 @@ class FociDriver:
                 "flux_filter_hz": 0,
             }
             self._runtime_status = "commissioned"
+            enable_line.motor_enable(toolhead.get_last_move_time())
 
             # Persist to config
             self._persist_commission_results(result, profile_name)
