@@ -999,6 +999,12 @@ class FociDriver:
     cmd_FOCI_TRACE_START_help = "Start FOCI per-tick trace capture"
     cmd_FOCI_TRACE_STOP_help = "Stop FOCI per-tick trace capture"
     cmd_FOCI_TRACE_help = "Fetch and display trace capture buffer"
+    cmd_FOCI_STEP_POSITION_help = (
+        "Query raw FOCI MCU step position without syncing Klipper"
+    )
+    cmd_FOCI_STEPPER_STATS_help = (
+        "Query FOCI MCU step queue/execution counters without motion"
+    )
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_COMMISSION_help = "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)"
     cmd_FOCI_AUTOTUNE_help = (
@@ -1256,10 +1262,16 @@ class FociDriver:
         self.trace_fetch_cmd = None
         self.trace_start_cmd = None
         self.trace_stop_cmd = None
+        self.stepper_get_position_cmd = None
+        self.stepper_stats_cmd = None
+        self.stepper_exec_stats_cmd = None
+        self.stepper_timing_stats_cmd = None
+        self.stepper_stop_stats_cmd = None
 
         # Trace capture state
         self._trace_info: dict | None = None
         self._trace_info_received: bool = False
+        self._homing_move_start_times: dict[int, float] = {}
 
         # Calibration state
         self.is_calibrated = False
@@ -1383,6 +1395,20 @@ class FociDriver:
             self.cmd_FOCI_TRACE_STOP,
             desc=self.cmd_FOCI_TRACE_STOP_help,
         )
+        gcode.register_mux_command(
+            "FOCI_STEP_POSITION",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_STEP_POSITION,
+            desc=self.cmd_FOCI_STEP_POSITION_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_STEPPER_STATS",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_STEPPER_STATS,
+            desc=self.cmd_FOCI_STEPPER_STATS_help,
+        )
 
         # Lifecycle events
         self.printer.register_event_handler(
@@ -1391,6 +1417,12 @@ class FociDriver:
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler(
             "homing:home_rails_begin", self._handle_home_rails_begin
+        )
+        self.printer.register_event_handler(
+            "homing:homing_move_begin", self._handle_homing_move_begin
+        )
+        self.printer.register_event_handler(
+            "homing:homing_move_end", self._handle_homing_move_end
         )
 
     def _find_linked_stepper(self):
@@ -1441,6 +1473,46 @@ class FociDriver:
         self.stepper_oid = self._resolve_stepper_oid()
         self.oid = self.stepper_oid
         cmd_queue = self.mcu.alloc_command_queue()
+        self.stepper_get_position_cmd = self.mcu.lookup_query_command(
+            "stepper_get_position oid=%c",
+            "stepper_position oid=%c pos=%i",
+            oid=self.oid,
+        )
+        self.stepper_stats_cmd = self.mcu.lookup_query_command(
+            "foci_stepper_stats oid=%c",
+            "foci_stepper_stats_result oid=%c channel=%c position=%i"
+            " queued_segments=%u queued_steps=%u"
+            " loaded_segments=%u loaded_steps=%u"
+            " discarded_segments=%u discarded_steps=%u"
+            " timer_active=%c queue_len=%hu",
+            oid=self.oid,
+        )
+        self.stepper_exec_stats_cmd = self.mcu.lookup_query_command(
+            "foci_stepper_exec_stats oid=%c",
+            "foci_stepper_exec_stats_result oid=%c channel=%c"
+            " executed_pos_steps=%u executed_neg_steps=%u"
+            " queue_empty_count=%u missed_deadline_count=%u",
+            oid=self.oid,
+        )
+        self.stepper_timing_stats_cmd = self.mcu.lookup_query_command(
+            "foci_stepper_timing_stats oid=%c",
+            "foci_stepper_timing_stats_result oid=%c channel=%c"
+            " activation_count=%u last_activation_clock=%u"
+            " first_load_now=%u first_load_scheduled=%u first_load_compare=%u"
+            " first_load_lead_ticks=%i first_load_compare_delay_ticks=%i"
+            " first_step_clock=%u first_step_delay_ticks=%i",
+            oid=self.oid,
+        )
+        self.stepper_stop_stats_cmd = self.mcu.lookup_query_command(
+            "foci_stepper_stop_stats oid=%c",
+            "foci_stepper_stop_stats_result oid=%c channel=%c"
+            " stop_count=%u stop_drained_segments=%u stop_drained_steps=%u"
+            " reset_count=%u reset_drained_segments=%u reset_drained_steps=%u"
+            " last_stop_reason=%c"
+            " last_stop_remaining_events=%u last_stop_queue_len=%hu"
+            " last_stop_drained_segments=%u last_stop_drained_steps=%u",
+            oid=self.oid,
+        )
         self.set_current_cmd = self.mcu.lookup_command(
             "tmc_set_current oid=%c run_ma=%u"
         )
@@ -1554,6 +1626,10 @@ class FociDriver:
             "foci_commission_detail",
             self.oid,
         )
+        self.mcu._serial.register_response(
+            self._handle_stepper_event,
+            "foci_stepper_event",
+        )
 
     def _read_register(self, reg_name: str) -> int:
         """Read a single TMC4671 register via the firmware.
@@ -1575,6 +1651,16 @@ class FociDriver:
         addr = REGISTERS[reg_name]
         params = self.read_reg_cmd.send([self.oid, addr])
         return params["value"]
+
+    @staticmethod
+    def _stepper_dir_inverted(stepper) -> bool:
+        get_dir_inverted = getattr(stepper, "get_dir_inverted", None)
+        if get_dir_inverted is None:
+            return False
+        dir_info = get_dir_inverted()
+        if isinstance(dir_info, (list, tuple)):
+            return bool(dir_info[0])
+        return bool(dir_info)
 
     def _handle_dump_value(self, params: dict) -> None:
         """Handle a single register value from the firmware dump."""
@@ -1606,6 +1692,16 @@ class FociDriver:
         15: "Outer done",
         16: "Encoder alignment",
         17: "Closed-loop entry",
+    }
+
+    STEPPER_EVENT_REASON_NAMES: dict[int, str] = {
+        1: "queue_empty",
+        2: "missed_deadline_load",
+        3: "missed_deadline_step",
+        4: "trsync_stop",
+        5: "p1_stop",
+        6: "reset_step_clock",
+        7: "tmc_disable_signal",
     }
 
     COMMISSION_ERROR_NAMES: dict[int, str] = {
@@ -1853,6 +1949,36 @@ class FociDriver:
         self._commission_result = params
         self._commission_done = True
 
+    def _format_stepper_event(self, params: dict) -> str:
+        """Format one firmware stepper diagnostic event."""
+        reason_code = params.get("reason", 0)
+        reason_name = self.STEPPER_EVENT_REASON_NAMES.get(reason_code, "unknown")
+        return (
+            "FOCI_STEPPER_EVENT %s reason=%s(%d) channel=%d pos=%d"
+            " clock=%d timer_active=%d queue_len=%d dir=%d data0=%d data1=%d"
+            % (
+                self.stepper_name,
+                reason_name,
+                reason_code,
+                params.get("channel", 255),
+                params.get("position", 0),
+                params.get("clock", 0),
+                params.get("timer_active", 0),
+                params.get("queue_len", 65535),
+                params.get("direction", 0),
+                params.get("data0", 0),
+                params.get("data1", 0),
+            )
+        )
+
+    def _handle_stepper_event(self, params: dict) -> None:
+        """Handle bounded firmware stepper diagnostics."""
+        message = self._format_stepper_event(params)
+        log.info(message)
+        gcode = self.printer.lookup_object("gcode", None)
+        if gcode is not None:
+            gcode.respond_info(message)
+
     def _handle_selftest_result(self, params: dict) -> None:
         """Collect one stage result streamed during FOCI_SELFTEST."""
         result = {
@@ -1922,6 +2048,110 @@ class FociDriver:
                 else:
                     lines.append("  %-30s = (not in dump)" % reg_name)
         gcmd.respond_info("\n".join(lines))
+
+    def cmd_FOCI_STEP_POSITION(self, gcmd) -> None:
+        """Query raw MCU step position without updating Klipper state."""
+        if self.stepper_get_position_cmd is None or self.oid is None:
+            raise gcmd.error("FOCI_STEP_POSITION is not available before MCU identify")
+
+        stepper = self._find_linked_stepper()
+        if stepper is None:
+            raise gcmd.error(
+                "FOCI_STEP_POSITION could not find linked stepper %s"
+                % self.stepper_name
+            )
+
+        params = self.stepper_get_position_cmd.send([self.oid])
+        if params is None or "pos" not in params:
+            raise gcmd.error("FOCI_STEP_POSITION query returned no position")
+
+        raw_position = int(params["pos"])
+        invert_dir = self._stepper_dir_inverted(stepper)
+        host_position = -raw_position if invert_dir else raw_position
+
+        get_mcu_position = getattr(stepper, "get_mcu_position", None)
+        klipper_position = None
+        delta = None
+        if get_mcu_position is not None:
+            klipper_position = int(get_mcu_position())
+            delta = host_position - klipper_position
+
+        parts = [
+            "FOCI_STEP_POSITION %s:" % self.stepper_name,
+            "raw=%d" % raw_position,
+            "host=%d" % host_position,
+            "klipper=%s" % (klipper_position if klipper_position is not None else "?"),
+            "delta=%s" % (delta if delta is not None else "?"),
+            "invert_dir=%d" % (1 if invert_dir else 0),
+        ]
+
+        get_step_dist = getattr(stepper, "get_step_dist", None)
+        if get_step_dist is not None:
+            step_dist = float(get_step_dist())
+            parts.append("step_dist=%.6f" % step_dist)
+            if delta is not None:
+                parts.append("delta_mm=%.3f" % (delta * step_dist))
+
+        gcmd.respond_info(" ".join(parts))
+
+    def cmd_FOCI_STEPPER_STATS(self, gcmd) -> None:
+        """Query MCU step queue and execution counters."""
+        query_cmds = (
+            ("stats", self.stepper_stats_cmd),
+            ("exec_stats", self.stepper_exec_stats_cmd),
+            ("timing_stats", self.stepper_timing_stats_cmd),
+            ("stop_stats", self.stepper_stop_stats_cmd),
+        )
+        if self.oid is None or any(cmd is None for _, cmd in query_cmds):
+            raise gcmd.error("FOCI_STEPPER_STATS is not available before MCU identify")
+
+        params = {}
+        for name, cmd in query_cmds:
+            response = cmd.send([self.oid])
+            if response is None:
+                raise gcmd.error("FOCI_STEPPER_STATS %s query returned no data" % name)
+            params.update(response)
+
+        fields = [
+            "channel",
+            "position",
+            "queued_segments",
+            "queued_steps",
+            "loaded_segments",
+            "loaded_steps",
+            "executed_pos_steps",
+            "executed_neg_steps",
+            "activation_count",
+            "last_activation_clock",
+            "first_load_now",
+            "first_load_scheduled",
+            "first_load_compare",
+            "first_load_lead_ticks",
+            "first_load_compare_delay_ticks",
+            "first_step_clock",
+            "first_step_delay_ticks",
+            "discarded_segments",
+            "discarded_steps",
+            "queue_empty_count",
+            "missed_deadline_count",
+            "stop_count",
+            "stop_drained_segments",
+            "stop_drained_steps",
+            "reset_count",
+            "reset_drained_segments",
+            "reset_drained_steps",
+            "last_stop_reason",
+            "last_stop_remaining_events",
+            "last_stop_queue_len",
+            "last_stop_drained_segments",
+            "last_stop_drained_steps",
+            "timer_active",
+            "queue_len",
+        ]
+        parts = ["FOCI_STEPPER_STATS %s:" % self.stepper_name]
+        for field in fields:
+            parts.append("%s=%s" % (field, params.get(field, "?")))
+        gcmd.respond_info(" ".join(parts))
 
     def _validate_and_load_config(self) -> None:
         """Validate persisted config and populate _active_gains/_runtime_status.
@@ -2398,6 +2628,198 @@ class FociDriver:
                 dominated_steppers.add(stepper.get_name())
         if self.stepper_name in dominated_steppers:
             self._ensure_calibrated()
+
+    def _handle_homing_move_end(self, homing_move) -> None:
+        """Report FOCI stepper positions captured by Kalico homing."""
+        gcode = self.printer.lookup_object("gcode", None)
+        if gcode is None:
+            return
+        start_time = self._homing_move_start_times.pop(id(homing_move), None)
+        for sp in getattr(homing_move, "stepper_positions", []):
+            if getattr(sp, "stepper_name", None) != self.stepper_name:
+                continue
+            start_pos = int(sp.start_pos)
+            trig_pos = int(sp.trig_pos)
+            halt_pos = int(sp.halt_pos)
+            move_steps = halt_pos - start_pos
+            over_steps = halt_pos - trig_pos
+            step_dist = float(sp.stepper.get_step_dist())
+            gcode.respond_info(
+                "FOCI_HOME_POSITION %s endstop=%s start=%d trig=%d halt=%d"
+                " move_steps=%d over_steps=%d move_mm=%.3f over_mm=%.3f"
+                % (
+                    self.stepper_name,
+                    sp.endstop_name,
+                    start_pos,
+                    trig_pos,
+                    halt_pos,
+                    move_steps,
+                    over_steps,
+                    move_steps * step_dist,
+                    over_steps * step_dist,
+                )
+            )
+            self._report_homing_step_history(gcode, homing_move, sp, start_time)
+            return
+
+    def _handle_homing_move_begin(self, homing_move) -> None:
+        """Record the homing move print-time window for step history diagnostics."""
+        toolhead = getattr(homing_move, "toolhead", None)
+        if toolhead is None:
+            return
+        get_last_move_time = getattr(toolhead, "get_last_move_time", None)
+        if get_last_move_time is None:
+            return
+        self._homing_move_start_times[id(homing_move)] = float(get_last_move_time())
+
+    def _report_homing_step_history(self, gcode, homing_move, sp, start_time) -> None:
+        """Report Kalico stepcompress history for one homing stepper."""
+        if start_time is None:
+            return
+        toolhead = getattr(homing_move, "toolhead", None)
+        if toolhead is None:
+            return
+        get_last_move_time = getattr(toolhead, "get_last_move_time", None)
+        get_mcu = getattr(sp.stepper, "get_mcu", None)
+        dump_steps = getattr(sp.stepper, "dump_steps", None)
+        if get_last_move_time is None or get_mcu is None or dump_steps is None:
+            return
+        mcu = get_mcu()
+        print_time_to_clock = getattr(mcu, "print_time_to_clock", None)
+        if print_time_to_clock is None:
+            return
+
+        end_time = float(get_last_move_time())
+        start_clock = int(print_time_to_clock(start_time))
+        end_clock = int(print_time_to_clock(end_time))
+        history = self._extract_step_history(sp.stepper, start_clock, end_clock)
+        if not history:
+            return
+
+        move_history = [step for step in history if int(step.step_count) != 0]
+        marker_history = [step for step in history if int(step.step_count) == 0]
+        if not move_history:
+            return
+
+        signed_steps = sum(int(step.step_count) for step in move_history)
+        abs_steps = sum(abs(int(step.step_count)) for step in move_history)
+        pos_steps = sum(
+            int(step.step_count) for step in move_history if int(step.step_count) > 0
+        )
+        neg_steps = sum(
+            -int(step.step_count) for step in move_history if int(step.step_count) < 0
+        )
+        dir_changes = self._count_history_dir_changes(move_history)
+        gap_steps = self._sum_history_position_gaps(move_history)
+        first = move_history[0]
+        last = move_history[-1]
+        planned_start = int(first.start_position)
+        planned_end = int(last.start_position) + int(last.step_count)
+        step_dist = float(sp.stepper.get_step_dist())
+        gcode.respond_info(
+            "FOCI_HOME_STEP_HISTORY %s start_clock=%d end_clock=%d"
+            " segments=%d move_segments=%d marker_segments=%d signed_steps=%d"
+            " abs_steps=%d pos_steps=%d neg_steps=%d dir_changes=%d"
+            " gap_steps=%d planned_start=%d planned_end=%d first_clock=%d"
+            " last_clock=%d signed_mm=%.3f abs_mm=%.3f"
+            % (
+                self.stepper_name,
+                start_clock,
+                end_clock,
+                len(history),
+                len(move_history),
+                len(marker_history),
+                signed_steps,
+                abs_steps,
+                pos_steps,
+                neg_steps,
+                dir_changes,
+                gap_steps,
+                planned_start,
+                planned_end,
+                int(first.first_clock),
+                int(last.last_clock),
+                signed_steps * step_dist,
+                abs_steps * step_dist,
+            )
+        )
+        gcode.respond_info(
+            "FOCI_HOME_STEP_SEGMENTS %s first=%s last=%s markers=%s"
+            % (
+                self.stepper_name,
+                self._format_history_segment_edges(move_history[:4]),
+                self._format_history_segment_edges(move_history[-4:]),
+                self._format_history_markers(marker_history[:4]),
+            )
+        )
+
+    def _extract_step_history(self, stepper, start_clock, end_clock):
+        """Return chronological stepcompress history overlapping a clock window."""
+        batch_size = 128
+        batches = []
+        window_end = end_clock
+        for _ in range(8):
+            data, count = stepper.dump_steps(batch_size, start_clock, window_end)
+            if not count:
+                break
+            batches.append((data, count))
+            if count < batch_size:
+                break
+            window_end = int(data[count - 1].first_clock)
+
+        history = []
+        for data, count in reversed(batches):
+            for idx in range(count - 1, -1, -1):
+                history.append(data[idx])
+        return history
+
+    def _count_history_dir_changes(self, history) -> int:
+        """Count sign changes between consecutive non-zero history segments."""
+        changes = 0
+        last_sign = 0
+        for step in history:
+            count = int(step.step_count)
+            sign = 1 if count > 0 else -1
+            if last_sign and sign != last_sign:
+                changes += 1
+            last_sign = sign
+        return changes
+
+    def _sum_history_position_gaps(self, history) -> int:
+        """Return total absolute discontinuity between history segments."""
+        gap_steps = 0
+        last_end = None
+        for step in history:
+            start = int(step.start_position)
+            if last_end is not None:
+                gap_steps += abs(start - last_end)
+            last_end = start + int(step.step_count)
+        return gap_steps
+
+    def _format_history_segment_edges(self, history) -> str:
+        """Format compact signed segment edges for homing diagnostics."""
+        if not history:
+            return "none"
+        return ",".join(
+            "%d:%d:%+d@%d/%+d"
+            % (
+                int(step.first_clock),
+                int(step.start_position),
+                int(step.step_count),
+                int(step.interval),
+                int(step.add),
+            )
+            for step in history
+        )
+
+    def _format_history_markers(self, history) -> str:
+        """Format zero-count reset/query markers for homing diagnostics."""
+        if not history:
+            return "none"
+        return ",".join(
+            "%d:%d" % (int(step.first_clock), int(step.start_position))
+            for step in history
+        )
 
     def _handle_stepper_enable(self, print_time, is_enable) -> None:
         """Reset calibration state when the stepper is disabled.
