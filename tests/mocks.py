@@ -577,6 +577,7 @@ def make_driver(
     driver.set_velocity_limit_cmd = MockCommand()
     driver.set_voltage_limit_cmd = MockCommand()
     driver.current_step_test_cmd = MockCommand()
+    driver.current_vector_step_test_cmd = MockCommand()
     driver.set_velocity_filter_cmd = MockCommand()
     driver.set_torque_filter_cmd = MockCommand()
     driver.set_position_filter_cmd = MockCommand()

@@ -1055,6 +1055,9 @@ class FociDriver:
         "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics"
     )
     cmd_FOCI_CURRENT_STEP_TEST_help = "Run a bounded FOCI current-loop step diagnostic"
+    cmd_FOCI_CURRENT_VECTOR_STEP_TEST_help = (
+        "Run a bounded FOCI current-vector step diagnostic"
+    )
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -1445,6 +1448,13 @@ class FociDriver:
             desc=self.cmd_FOCI_CURRENT_STEP_TEST_help,
         )
         gcode.register_mux_command(
+            "FOCI_CURRENT_VECTOR_STEP_TEST",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_CURRENT_VECTOR_STEP_TEST,
+            desc=self.cmd_FOCI_CURRENT_VECTOR_STEP_TEST_help,
+        )
+        gcode.register_mux_command(
             "FOCI_TRACE",
             "STEPPER",
             self.stepper_name,
@@ -1672,9 +1682,18 @@ class FociDriver:
         self.current_step_test_cmd = self.mcu.lookup_command(
             "tmc_current_step_test oid=%c target=%hi duration_ms=%hu voltage_limit=%hu"
         )
+        self.current_vector_step_test_cmd = self.mcu.lookup_command(
+            "tmc_current_vector_step_test oid=%c torque_target=%hi flux_target=%hi"
+            " duration_ms=%hu voltage_limit=%hu"
+        )
         self.mcu._serial.register_response(
             self._handle_current_step_result,
             "foci_current_step_result",
+            self.oid,
+        )
+        self.mcu._serial.register_response(
+            self._handle_current_vector_step_result,
+            "foci_current_vector_step_result",
             self.oid,
         )
         self.set_auto_calibrate_on_enable_cmd = self.mcu.lookup_command(
@@ -2058,6 +2077,36 @@ class FociDriver:
                 params["torque_before"],
                 params["torque_after"],
                 params["flux_during"],
+                params["iq_during"],
+                params["id_during"],
+                params["uq_limited"],
+                params["ud_limited"],
+                params["encoder_before"],
+                params["encoder_after"],
+                params["encoder_delta"],
+                params["adc_vm_raw"],
+            )
+        )
+        self.printer.lookup_object("gcode").respond_info(msg)
+
+    def _handle_current_vector_step_result(self, params: dict) -> None:
+        """Handle foci_current_vector_step_result from firmware."""
+        msg = (
+            "FOCI %s current vector step: status=%d"
+            " torque_target=%d flux_target=%d"
+            " actual_torque=%d actual_flux=%d"
+            " before=%d after=%d iq=%d id=%d"
+            " uq_limited=%d ud_limited=%d"
+            " enc_before=%d enc_after=%d enc_delta=%d adc_vm_raw=%d"
+            % (
+                self.name,
+                params["status"],
+                params["torque_target"],
+                params["flux_target"],
+                params["torque_during"],
+                params["flux_during"],
+                params["torque_before"],
+                params["torque_after"],
                 params["iq_during"],
                 params["id_during"],
                 params["uq_limited"],
@@ -3693,6 +3742,32 @@ class FociDriver:
             "FOCI %s current-step requested: target=%d"
             " duration_ms=%d voltage_limit=%d"
             % (self.name, target, duration_ms, voltage_limit)
+        )
+
+    def cmd_FOCI_CURRENT_VECTOR_STEP_TEST(self, gcmd) -> None:
+        """Run a bounded current-vector step diagnostic.
+
+        The firmware rejects this command unless the motor is already enabled,
+        calibrated, idle, and outside a homing move.
+        """
+        torque_target = gcmd.get_int("TORQUE_TARGET", 0, minval=-1000, maxval=1000)
+        flux_target = gcmd.get_int("FLUX_TARGET", 0, minval=-1000, maxval=1000)
+        duration_ms = gcmd.get_int("DURATION_MS", 80, minval=20, maxval=200)
+        voltage_limit = gcmd.get_int(
+            "VOLTAGE_LIMIT",
+            12000,
+            minval=MIN_OPERATIONAL_VOLTAGE_LIMIT,
+            maxval=29000,
+        )
+
+        self.current_vector_step_test_cmd.send(
+            [self.oid, torque_target, flux_target, duration_ms, voltage_limit]
+        )
+
+        gcmd.respond_info(
+            "FOCI %s current-vector-step requested:"
+            " torque_target=%d flux_target=%d duration_ms=%d voltage_limit=%d"
+            % (self.name, torque_target, flux_target, duration_ms, voltage_limit)
         )
 
     def _get_outer_gain(self, gcmd, key: str) -> int:

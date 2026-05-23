@@ -941,6 +941,56 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("enc_delta=112", out)
         self.assertIn("adc_vm_raw=40099", out)
 
+    def test_sends_flux_axis_current_vector_step(self):
+        d = make_driver()
+
+        d.cmd_FOCI_CURRENT_VECTOR_STEP_TEST(
+            MockGCmd(
+                {
+                    "TORQUE_TARGET": 0,
+                    "FLUX_TARGET": 250,
+                    "DURATION_MS": 120,
+                    "VOLTAGE_LIMIT": 20000,
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.current_vector_step_test_cmd.last_args,
+            [d.oid, 0, 250, 120, 20000],
+        )
+
+    def test_current_vector_step_result_formats_axis_targets(self):
+        d = make_driver()
+
+        d._handle_current_vector_step_result(
+            {
+                "status": 0,
+                "torque_target": 0,
+                "flux_target": 250,
+                "torque_during": 8,
+                "torque_before": -3,
+                "torque_after": 18,
+                "flux_during": 240,
+                "iq_during": 12,
+                "id_during": 238,
+                "uq_limited": 20,
+                "ud_limited": 1500,
+                "encoder_before": 3900,
+                "encoder_after": 3912,
+                "encoder_delta": 12,
+                "adc_vm_raw": 40099,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("current vector step", out)
+        self.assertIn("torque_target=0", out)
+        self.assertIn("flux_target=250", out)
+        self.assertIn("actual_torque=8", out)
+        self.assertIn("actual_flux=240", out)
+        self.assertIn("enc_delta=12", out)
+
 
 # =========================================================================
 # 14. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
