@@ -913,6 +913,34 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
         self.assertEqual(d.current_step_test_cmd.last_args, [d.oid, -500, 120, 20000])
 
+    def test_current_step_result_formats_motion_and_supply_fields(self):
+        d = make_driver()
+
+        d._handle_current_step_result(
+            {
+                "status": 0,
+                "target": 250,
+                "torque_during": 240,
+                "torque_before": -3,
+                "torque_after": 18,
+                "flux_during": 4,
+                "iq_during": 239,
+                "id_during": -5,
+                "uq_limited": 1500,
+                "ud_limited": -20,
+                "encoder_before": 3900,
+                "encoder_after": 12,
+                "encoder_delta": 112,
+                "adc_vm_raw": 40099,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("enc_before=3900", out)
+        self.assertIn("enc_after=12", out)
+        self.assertIn("enc_delta=112", out)
+        self.assertIn("adc_vm_raw=40099", out)
+
 
 # =========================================================================
 # 14. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands

@@ -2049,6 +2049,7 @@ class FociDriver:
             "FOCI %s current step: status=%d target=%d actual=%d"
             " before=%d after=%d flux=%d iq=%d id=%d"
             " uq_limited=%d ud_limited=%d"
+            " enc_before=%d enc_after=%d enc_delta=%d adc_vm_raw=%d"
             % (
                 self.name,
                 params["status"],
@@ -2061,6 +2062,10 @@ class FociDriver:
                 params["id_during"],
                 params["uq_limited"],
                 params["ud_limited"],
+                params["encoder_before"],
+                params["encoder_after"],
+                params["encoder_delta"],
+                params["adc_vm_raw"],
             )
         )
         self.printer.lookup_object("gcode").respond_info(msg)
