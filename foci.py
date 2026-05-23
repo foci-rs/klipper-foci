@@ -1054,6 +1054,7 @@ class FociDriver:
     cmd_FOCI_SET_VOLTAGE_LIMIT_help = (
         "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics"
     )
+    cmd_FOCI_CURRENT_STEP_TEST_help = "Run a bounded FOCI current-loop step diagnostic"
 
     def __init__(self, config) -> None:
         # Parse section name: [foci stepper_x]
@@ -1431,6 +1432,13 @@ class FociDriver:
             desc=self.cmd_FOCI_SET_VOLTAGE_LIMIT_help,
         )
         gcode.register_mux_command(
+            "FOCI_CURRENT_STEP_TEST",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_CURRENT_STEP_TEST,
+            desc=self.cmd_FOCI_CURRENT_STEP_TEST_help,
+        )
+        gcode.register_mux_command(
             "FOCI_TRACE",
             "STEPPER",
             self.stepper_name,
@@ -1654,6 +1662,14 @@ class FociDriver:
         )
         self.set_voltage_limit_cmd = self.mcu.lookup_command(
             "tmc_set_voltage_limit oid=%c voltage_limit=%u"
+        )
+        self.current_step_test_cmd = self.mcu.lookup_command(
+            "tmc_current_step_test oid=%c target=%hi duration_ms=%hu voltage_limit=%hu"
+        )
+        self.mcu._serial.register_response(
+            self._handle_current_step_result,
+            "foci_current_step_result",
+            self.oid,
         )
         self.set_auto_calibrate_on_enable_cmd = self.mcu.lookup_command(
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
@@ -2010,6 +2026,28 @@ class FociDriver:
         """Handle foci_tune_result from firmware (Stage 2 completion)."""
         self._commission_result = params
         self._commission_done = True
+
+    def _handle_current_step_result(self, params: dict) -> None:
+        """Handle foci_current_step_result from firmware."""
+        msg = (
+            "FOCI %s current step: status=%d target=%d actual=%d"
+            " before=%d after=%d flux=%d iq=%d id=%d"
+            " uq_limited=%d ud_limited=%d"
+            % (
+                self.name,
+                params["status"],
+                params["target"],
+                params["torque_during"],
+                params["torque_before"],
+                params["torque_after"],
+                params["flux_during"],
+                params["iq_during"],
+                params["id_during"],
+                params["uq_limited"],
+                params["ud_limited"],
+            )
+        )
+        self.printer.lookup_object("gcode").respond_info(msg)
 
     def _format_stepper_event(self, params: dict) -> str:
         """Format one firmware stepper diagnostic event."""
@@ -3594,6 +3632,29 @@ class FociDriver:
         gcmd.respond_info(
             "FOCI %s voltage limit set: pidout_uq_ud_limit=%d"
             % (self.name, voltage_limit)
+        )
+
+    def cmd_FOCI_CURRENT_STEP_TEST(self, gcmd) -> None:
+        """Run a bounded current-loop step diagnostic.
+
+        The firmware rejects this command unless the motor is already enabled,
+        calibrated, idle, and outside a homing move.
+        """
+        target = gcmd.get_int("TARGET", minval=-1000, maxval=1000)
+        duration_ms = gcmd.get_int("DURATION_MS", 80, minval=20, maxval=200)
+        voltage_limit = gcmd.get_int(
+            "VOLTAGE_LIMIT",
+            12000,
+            minval=MIN_OPERATIONAL_VOLTAGE_LIMIT,
+            maxval=29000,
+        )
+
+        self.current_step_test_cmd.send([self.oid, target, duration_ms, voltage_limit])
+
+        gcmd.respond_info(
+            "FOCI %s current-step requested: target=%d"
+            " duration_ms=%d voltage_limit=%d"
+            % (self.name, target, duration_ms, voltage_limit)
         )
 
     def _get_outer_gain(self, gcmd, key: str) -> int:

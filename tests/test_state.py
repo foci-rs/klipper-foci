@@ -862,7 +862,32 @@ class TestVoltageLimitCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 13. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
+# 13. FOCI_CURRENT_STEP_TEST debug command
+# =========================================================================
+
+
+class TestCurrentStepDiagnosticCommand(unittest.TestCase):
+    def test_sends_bounded_current_step_defaults(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"TARGET": 250})
+        d.cmd_FOCI_CURRENT_STEP_TEST(gcmd)
+
+        self.assertEqual(d.current_step_test_cmd.last_args, [d.oid, 250, 80, 12000])
+        self.assertIn("target=250", gcmd.last_info)
+
+    def test_sends_explicit_current_step_parameters(self):
+        d = make_driver()
+
+        d.cmd_FOCI_CURRENT_STEP_TEST(
+            MockGCmd({"TARGET": -500, "DURATION_MS": 120, "VOLTAGE_LIMIT": 20000})
+        )
+
+        self.assertEqual(d.current_step_test_cmd.last_args, [d.oid, -500, 120, 20000])
+
+
+# =========================================================================
+# 14. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
 # =========================================================================
 
 
