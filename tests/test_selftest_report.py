@@ -121,6 +121,26 @@ def test_format_commission_detail_measurements():
     assert "crosscheck=1328us" in transient
 
 
+def test_format_commission_detail_coil_check_sample():
+    line = FociDriver._format_commission_detail(
+        {
+            "phase": 2,
+            "code": 1,
+            "status": 1,
+            "value0": 120,
+            "value1": 0xFFEC,
+            "value2": 0xFFEC0078,
+        }
+    )
+
+    assert "Coil check" in line
+    assert "coil A sample" in line
+    assert "FAIL" in line
+    assert "expected=120 counts" in line
+    assert "other=-20 counts" in line
+    assert "raw=0xffec0078" in line
+
+
 def test_stage_names_map_contains_all_eight():
     assert FociDriver.SELFTEST_STAGES[1] == "ADC calibration"
     assert FociDriver.SELFTEST_STAGES[2] == "Motor coil A"

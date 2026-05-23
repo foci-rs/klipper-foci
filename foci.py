@@ -1878,6 +1878,16 @@ class FociDriver:
         value0 = detail["value0"]
         value1 = detail["value1"]
         value2 = detail["value2"]
+        if detail["phase"] == 2 and code in (1, 2):
+            coil = "A" if code == 1 else "B"
+            expected = value0 if value0 < 0x8000 else value0 - 0x10000
+            other = value1 if value1 < 0x8000 else value1 - 0x10000
+            status = "FAIL" if detail["status"] else "PASS"
+            return (
+                "%s: coil %s sample %s "
+                "(expected=%d counts, other=%d counts, raw=0x%08x)"
+                % (phase_name, coil, status, expected, other, value2)
+            )
         if code == 1:
             return "%s: %s (voltage_count=%d, didt_cycles=%d, sample_period=%dus)" % (
                 phase_name,
