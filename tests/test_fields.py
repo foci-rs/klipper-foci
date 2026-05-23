@@ -8,6 +8,7 @@
 import unittest
 
 from foci import (
+    DUMP_GROUPS,
     FieldHelper,
     Fields,
     REGISTERS,
@@ -148,6 +149,31 @@ class TestPrettyFormat(unittest.TestCase):
         out = self.fh.pretty_format("PID_VELOCITY_ACTUAL", 0xFFFFFFFE)
         self.assertIn("velocity_actual=-2", out)
 
+    def test_advanced_pi_representation_is_named_dump_field(self):
+        self.assertEqual(REGISTERS["CONFIG_ADVANCED_PI_REPRESENT"], 0x86)
+        out = self.fh.pretty_format("CONFIG_ADVANCED_PI_REPRESENT", 0x00000015)
+        self.assertIn("current_i_q4_12=1", out)
+        self.assertIn("velocity_i_q4_12=1", out)
+        self.assertIn("position_i_q4_12=1", out)
+        self.assertNotIn("current_p_q4_12", out)
+
+    def test_adc_i_select_is_named_current_dump_field(self):
+        self.assertEqual(REGISTERS["ADC_I_SELECT"], 0x0A)
+        current_group = next(regs for title, regs in DUMP_GROUPS if title == "Current")
+        self.assertIn("ADC_I_SELECT", current_group)
+        out = self.fh.pretty_format("ADC_I_SELECT", 0x18000100)
+        self.assertIn("adc_i1_select=1", out)
+        self.assertIn("adc_i_v_select=2", out)
+        self.assertIn("adc_i_wy_select=1", out)
+
+    def test_pwm_bbm_is_named_status_dump_field(self):
+        self.assertEqual(REGISTERS["PWM_BBM_H_BBM_L"], 0x19)
+        status_group = next(regs for title, regs in DUMP_GROUPS if title == "Status")
+        self.assertIn("PWM_BBM_H_BBM_L", status_group)
+        out = self.fh.pretty_format("PWM_BBM_H_BBM_L", 0x00002828)
+        self.assertIn("bbm_l=40", out)
+        self.assertIn("bbm_h=40", out)
+
     def test_motor_type_fields(self):
         out = self.fh.pretty_format("MOTOR_TYPE_N_POLE_PAIRS", 0x00020032)
         self.assertIn("motor_type=2(stepper)", out)
@@ -184,7 +210,7 @@ class TestPrettyFormat(unittest.TestCase):
     def test_current_i_uses_advanced_pi_zero_scale(self):
         out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x01000100)
         self.assertIn("flux_p=1.000", out)
-        self.assertIn("flux_i=256/65536", out)
+        self.assertIn("flux_i=256(q8.8=1.000,zero=256/65536)", out)
         self.assertNotIn("flux_i=1.000", out)
 
     def test_register_without_fields(self):

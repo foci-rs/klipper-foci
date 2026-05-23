@@ -798,7 +798,71 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 11. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
+# 11. FOCI_SET_ACCEL_FEEDFORWARD debug command
+# =========================================================================
+
+
+class TestAccelFeedforwardCommand(unittest.TestCase):
+    def test_sets_accel_feedforward_enable_and_gain(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "GAIN": 750,
+                }
+            )
+        )
+
+        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 1, 750])
+        self.assertTrue(d.accel_feedforward)
+        self.assertEqual(d.accel_feedforward_gain, 750)
+
+    def test_disable_preserves_configured_gain(self):
+        d = make_driver()
+        d.accel_feedforward_gain = 500
+
+        d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 0,
+                }
+            )
+        )
+
+        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 0, 500])
+        self.assertFalse(d.accel_feedforward)
+        self.assertEqual(d.accel_feedforward_gain, 500)
+
+
+# =========================================================================
+# 12. FOCI_SET_VOLTAGE_LIMIT debug command
+# =========================================================================
+
+
+class TestVoltageLimitCommand(unittest.TestCase):
+    def test_sets_pidout_voltage_limit_without_persisting(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"VOLTAGE_LIMIT": 20000})
+        d.cmd_FOCI_SET_VOLTAGE_LIMIT(gcmd)
+
+        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 20000])
+        self.assertIn("pidout_uq_ud_limit=20000", gcmd.last_info)
+
+    def test_accepts_voltage_limit_at_chip_max(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"VOLTAGE_LIMIT": 32767})
+        d.cmd_FOCI_SET_VOLTAGE_LIMIT(gcmd)
+
+        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 32767])
+        self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
+
+
+# =========================================================================
+# 13. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
 # =========================================================================
 
 

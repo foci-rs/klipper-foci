@@ -86,7 +86,7 @@ def _fmt_q8_8(val: int) -> str:
 def _fmt_advanced_pi_current_i(val: int) -> str:
     if val == 0:
         return "0"
-    return "%d/65536" % val
+    return "%d(q8.8=%.3f,zero=%d/65536)" % (val, val * 2**-8, val)
 
 
 def _fmt_direction(val: int) -> str:
@@ -115,6 +115,7 @@ REGISTERS: dict[str, int] = {
     "PID_TORQUE_FLUX_ACTUAL": 0x69,
     "PID_TORQUE_FLUX_LIMITS": 0x5E,
     "PIDOUT_UQ_UD_LIMITS": 0x5D,
+    "ADC_I_SELECT": 0x0A,
     "ADC_I0_SCALE_OFFSET": 0x09,
     "ADC_I1_SCALE_OFFSET": 0x08,
     "PID_FLUX_P_FLUX_I": 0x54,
@@ -133,6 +134,7 @@ REGISTERS: dict[str, int] = {
     "PID_POSITION_ACTUAL": 0x6B,
     "ADC_VM_LIMITS": 0x75,
     "STATUS_FLAGS": 0x7C,
+    "PWM_BBM_H_BBM_L": 0x19,
     "PWM_SV_CHOP": 0x1A,
     # Sub-registers (synthetic addresses 0x80+, match firmware encoding)
     "INTERIM_PIDIN_TARGET_VELOCITY": 0x80,
@@ -141,6 +143,7 @@ REGISTERS: dict[str, int] = {
     "PID_TORQUE_ERROR_SUM": 0x83,
     "PID_FLUX_ERROR_SUM": 0x84,
     "PID_VELOCITY_ERROR_SUM": 0x85,
+    "CONFIG_ADVANCED_PI_REPRESENT": 0x86,
 }
 
 
@@ -189,6 +192,14 @@ Fields["PID_TORQUE_FLUX_LIMITS"] = {
 
 Fields["PIDOUT_UQ_UD_LIMITS"] = {
     "voltage_limit": 0xFFFF,
+}
+
+Fields["ADC_I_SELECT"] = {
+    "adc_i0_select": 0xFF,
+    "adc_i1_select": 0xFF << 8,
+    "adc_i_ux_select": 0x03 << 24,
+    "adc_i_v_select": 0x03 << 26,
+    "adc_i_wy_select": 0x03 << 28,
 }
 
 Fields["ADC_I0_SCALE_OFFSET"] = {
@@ -281,6 +292,11 @@ Fields["PWM_SV_CHOP"] = {
     "pwm_sv": 1 << 8,
 }
 
+Fields["PWM_BBM_H_BBM_L"] = {
+    "bbm_l": 0xFF,
+    "bbm_h": 0xFF << 8,
+}
+
 Fields["PID_VELOCITY_LIMIT"] = {
     "velocity_limit": 0xFFFFFFFF,
 }
@@ -322,6 +338,15 @@ Fields["PID_FLUX_ERROR_SUM"] = {
 
 Fields["PID_VELOCITY_ERROR_SUM"] = {
     "velocity_error_sum": 0xFFFFFFFF,
+}
+
+Fields["CONFIG_ADVANCED_PI_REPRESENT"] = {
+    "current_i_q4_12": 1 << 0,
+    "current_p_q4_12": 1 << 1,
+    "velocity_i_q4_12": 1 << 2,
+    "velocity_p_q4_12": 1 << 3,
+    "position_i_q4_12": 1 << 4,
+    "position_p_q4_12": 1 << 5,
 }
 
 TRACE_FAST_HEADERS = [
@@ -823,9 +848,11 @@ FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "abn_direction": _fmt_direction,
     "pwm_sv": _fmt_on_off,
     "flux_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    "flux_i": _fmt_advanced_pi_current_i,  # Advanced PI zero scale.
+    # Raw current-I is Q8.8 with CONFIG_ADVANCED_PI_REPRESENT at its default 0.
+    # The advanced PI integrator makes the effective zero factor raw/65536.
+    "flux_i": _fmt_advanced_pi_current_i,
     "torque_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    "torque_i": _fmt_advanced_pi_current_i,  # Advanced PI zero scale.
+    "torque_i": _fmt_advanced_pi_current_i,
     "velocity_p": _fmt_q8_8,
     "velocity_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
     "position_p": _fmt_q8_8,
@@ -855,6 +882,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_TORQUE_FLUX_ACTUAL",
             "PID_TORQUE_FLUX_LIMITS",
             "PIDOUT_UQ_UD_LIMITS",
+            "ADC_I_SELECT",
             "ADC_I0_SCALE_OFFSET",
             "ADC_I1_SCALE_OFFSET",
         ],
@@ -867,6 +895,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_VELOCITY_P_VELOCITY_I",
             "PID_POSITION_P_POSITION_I",
             "PID_VELOCITY_LIMIT",
+            "CONFIG_ADVANCED_PI_REPRESENT",
         ],
     ),
     (
@@ -909,6 +938,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         "Status",
         [
             "STATUS_FLAGS",
+            "PWM_BBM_H_BBM_L",
             "PWM_SV_CHOP",
         ],
     ),
@@ -990,6 +1020,8 @@ class FieldHelper:
 ######################################################################
 
 STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
+MIN_OPERATIONAL_VOLTAGE_LIMIT = 1024
+MAX_DIAGNOSTIC_VOLTAGE_LIMIT = 32767
 
 
 class FociDriver:
@@ -1015,6 +1047,12 @@ class FociDriver:
     cmd_FOCI_SET_CURRENT_help = "Set FOCI run current for bringup debugging"
     cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help = (
         "Set FOCI velocity feedforward runtime multiplier for bringup debugging"
+    )
+    cmd_FOCI_SET_ACCEL_FEEDFORWARD_help = (
+        "Set FOCI acceleration feedforward runtime gain for bringup debugging"
+    )
+    cmd_FOCI_SET_VOLTAGE_LIMIT_help = (
+        "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics"
     )
 
     def __init__(self, config) -> None:
@@ -1132,6 +1170,8 @@ class FociDriver:
         self.velocity_feedforward_multiplier: int = config.getint(
             "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
         )
+        self.accel_feedforward: bool = False
+        self.accel_feedforward_gain: int = 1000
 
         # PID velocity limit (caps position PID output, anti-windup).
         # 0 or unset = unconstrained (0x7FFFFFFF). Units: TMC4671 internal
@@ -1256,7 +1296,9 @@ class FociDriver:
         self.set_velocity_filter_cmd = None
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
+        self.set_accel_feedforward_cmd = None
         self.set_velocity_limit_cmd = None
+        self.set_voltage_limit_cmd = None
         self.set_auto_calibrate_on_enable_cmd = None
         self.trace_info_cmd = None
         self.trace_fetch_cmd = None
@@ -1373,6 +1415,20 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD,
             desc=self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_ACCEL_FEEDFORWARD",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_ACCEL_FEEDFORWARD,
+            desc=self.cmd_FOCI_SET_ACCEL_FEEDFORWARD_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_VOLTAGE_LIMIT",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_VOLTAGE_LIMIT,
+            desc=self.cmd_FOCI_SET_VOLTAGE_LIMIT_help,
         )
         gcode.register_mux_command(
             "FOCI_TRACE",
@@ -1590,8 +1646,14 @@ class FociDriver:
         self.set_velocity_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_feedforward oid=%c enable=%c multiplier=%hu"
         )
+        self.set_accel_feedforward_cmd = self.mcu.lookup_command(
+            "tmc_set_accel_feedforward oid=%c enable=%c gain_permille=%hu"
+        )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
+        )
+        self.set_voltage_limit_cmd = self.mcu.lookup_command(
+            "tmc_set_voltage_limit oid=%c voltage_limit=%u"
         )
         self.set_auto_calibrate_on_enable_cmd = self.mcu.lookup_command(
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
@@ -3416,10 +3478,12 @@ class FociDriver:
     def cmd_FOCI_SET_INNER_GAINS(self, gcmd) -> None:
         """Set inner current-loop gains for live bringup debugging.
 
-        Parameters are raw TMC4671 register values: P gains are Q8.8
-        numerators and I gains are Q0.16 numerators. Values are applied
-        immediately and kept in memory for the current Klipper session, but
-        are not persisted to printer.cfg.
+        Parameters are raw TMC4671 register values. P gains are Q8.8
+        numerators. Current I gains are also Q8.8 while
+        CONFIG_ADVANCED_PI_REPRESENT remains at its default 0; in advanced PI
+        mode their effective zero factor is raw/65536 per PWM sample. Values
+        are applied immediately and kept in memory for the current Klipper
+        session, but are not persisted to printer.cfg.
         """
         flux_p = gcmd.get_int("FLUX_P", minval=0, maxval=65535)
         flux_i = gcmd.get_int("FLUX_I", minval=0, maxval=65535)
@@ -3435,9 +3499,20 @@ class FociDriver:
             self._active_gains["torque_i"] = torque_i
 
         gcmd.respond_info(
-            "FOCI %s inner gains set: flux_p=%d/256 flux_i=%d/65536"
-            " torque_p=%d/256 torque_i=%d/65536"
-            % (self.name, flux_p, flux_i, torque_p, torque_i)
+            "FOCI %s inner gains set: flux_p=%d/256"
+            " flux_i=%d(q8.8=%.3f zero=%d/65536)"
+            " torque_p=%d/256 torque_i=%d(q8.8=%.3f zero=%d/65536)"
+            % (
+                self.name,
+                flux_p,
+                flux_i,
+                flux_i * 2**-8,
+                flux_i,
+                torque_p,
+                torque_i,
+                torque_i * 2**-8,
+                torque_i,
+            )
         )
 
     def cmd_FOCI_SET_CURRENT(self, gcmd) -> None:
@@ -3477,6 +3552,48 @@ class FociDriver:
         gcmd.respond_info(
             "FOCI %s velocity feedforward set: enable=%d multiplier=%d"
             % (self.name, enable, multiplier)
+        )
+
+    def cmd_FOCI_SET_ACCEL_FEEDFORWARD(self, gcmd) -> None:
+        """Set acceleration feedforward gain for live bringup debugging.
+
+        GAIN is in permille. A value of 1000 applies the raw diagnostic
+        acceleration estimate, 500 applies half, and 0 disables the offset.
+        """
+        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
+        gain = gcmd.get_int(
+            "GAIN",
+            self.accel_feedforward_gain,
+            minval=0,
+            maxval=65535,
+        )
+
+        self.set_accel_feedforward_cmd.send([self.oid, enable, gain])
+        self.accel_feedforward = enable != 0
+        self.accel_feedforward_gain = gain
+
+        gcmd.respond_info(
+            "FOCI %s acceleration feedforward set: enable=%d gain=%d"
+            % (self.name, enable, gain)
+        )
+
+    def cmd_FOCI_SET_VOLTAGE_LIMIT(self, gcmd) -> None:
+        """Set PIDOUT_UQ_UD_LIMITS for live authority diagnostics.
+
+        VOLTAGE_LIMIT is a raw TMC4671 PIDOUT count. This command is live-only:
+        it changes the current Klipper session and does not persist config.
+        """
+        voltage_limit = gcmd.get_int(
+            "VOLTAGE_LIMIT",
+            minval=MIN_OPERATIONAL_VOLTAGE_LIMIT,
+            maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
+        )
+
+        self.set_voltage_limit_cmd.send([self.oid, voltage_limit])
+
+        gcmd.respond_info(
+            "FOCI %s voltage limit set: pidout_uq_ud_limit=%d"
+            % (self.name, voltage_limit)
         )
 
     def _get_outer_gain(self, gcmd, key: str) -> int:

@@ -519,6 +519,8 @@ def make_driver(
     driver.run_current = 0.8
     driver.velocity_feedforward = False
     driver.velocity_feedforward_multiplier = 1
+    driver.accel_feedforward = False
+    driver.accel_feedforward_gain = 1000
 
     # Identified values (from prior commission, used by AUTOTUNE)
     driver.identified_lambda_us = 0
@@ -569,7 +571,9 @@ def make_driver(
     driver.set_pid_gains_cmd = MockCommand()
     driver.set_position_gains_cmd = MockCommand()
     driver.set_velocity_feedforward_cmd = MockCommand()
+    driver.set_accel_feedforward_cmd = MockCommand()
     driver.set_velocity_limit_cmd = MockCommand()
+    driver.set_voltage_limit_cmd = MockCommand()
     driver.set_velocity_filter_cmd = MockCommand()
     driver.set_torque_filter_cmd = MockCommand()
     driver.set_position_filter_cmd = MockCommand()
