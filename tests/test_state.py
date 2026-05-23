@@ -43,6 +43,8 @@ SAMPLE_COMMISSION_RESULT = {
     "flux_i": 26,
     "torque_p": 256,
     "torque_i": 26,
+    "r_int": 1706,
+    "l_int": 1245,
     "r_mohm": 1700,
     "l_uh": 3300,
     "lambda_us": 0,
@@ -50,6 +52,32 @@ SAMPLE_COMMISSION_RESULT = {
     "ringing_count": 7,
     "bandwidth_hz": 0,
 }
+
+
+def complete_commission_result():
+    result = SAMPLE_COMMISSION_RESULT.copy()
+    result.update(
+        {
+            "fallback_velocity_p": 1152,
+            "fallback_velocity_i": 0,
+            "fallback_position_p": 640,
+            "fallback_position_i": 0,
+            "fallback_velocity_limit": 500000,
+            "tau_e_us": 730,
+            "tau_e_crosscheck_us": 730,
+            "tau_residual_permille": 0,
+            "inner_warning_flags": 0,
+        }
+    )
+    return result
+
+
+class MockConfigFile:
+    def __init__(self):
+        self.values = {}
+
+    def set(self, section, key, value):
+        self.values[(section, key)] = value
 
 
 # =========================================================================
@@ -1020,6 +1048,41 @@ class TestNameMaps(unittest.TestCase):
                 FociDriver.COMMISSION_ERROR_NAMES,
                 f"Hard fault code {code} missing from COMMISSION_ERROR_NAMES",
             )
+
+
+class CommissionModelSurfacingTests(unittest.TestCase):
+    def test_persists_internal_electrical_model_fields(self):
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+
+        driver._persist_commission_results(complete_commission_result(), "balanced")
+
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_int")],
+            "1706",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_l_int")],
+            "1245",
+        )
+
+    def test_commission_success_message_includes_internal_model(self):
+        driver = make_driver()
+        result = complete_commission_result()
+        driver.printer._objects["configfile"] = MockConfigFile()
+
+        class CompleteCommissionCommand:
+            def send(self, _args):
+                driver._commission_result = result
+                driver._commission_done = True
+
+        driver.commission_cmd = CompleteCommissionCommand()
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        driver.cmd_FOCI_COMMISSION(gcmd)
+
+        self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
 
 
 class InnerConfidenceRoundtripTests(unittest.TestCase):

@@ -1199,6 +1199,12 @@ class FociDriver:
         )
 
         # Inner-tuning parameters (persisted by Stage 1 for Stage 2 restart)
+        self.identified_r_int: int | None = config.getint(
+            "identified_r_int", None, minval=0
+        )
+        self.identified_l_int: int | None = config.getint(
+            "identified_l_int", None, minval=0
+        )
         self.identified_r_mohm: int | None = config.getint(
             "identified_r_mohm", None, minval=0
         )
@@ -3128,8 +3134,15 @@ class FociDriver:
 
             status_str = "accepted" if status == 0 else "accepted with warnings"
             gcmd.respond_info(
-                "FOCI %s commissioned (%s): R=%dmOhm L=%duH"
-                % (self.name, status_str, result["r_mohm"], result["l_uh"])
+                "FOCI %s commissioned (%s): R=%dmOhm L=%duH R_int=%d L_int=%d"
+                % (
+                    self.name,
+                    status_str,
+                    result["r_mohm"],
+                    result["l_uh"],
+                    result.get("r_int", 0),
+                    result.get("l_int", 0),
+                )
             )
             flags = result.get("inner_warning_flags", 0)
             if flags:
@@ -3183,6 +3196,16 @@ class FociDriver:
         )
         configfile.set(self.name, "identified_r_mohm", "%d" % result["r_mohm"])
         configfile.set(self.name, "identified_l_uh", "%d" % result["l_uh"])
+        configfile.set(
+            self.name,
+            "identified_r_int",
+            "%d" % result.get("r_int", 0),
+        )
+        configfile.set(
+            self.name,
+            "identified_l_int",
+            "%d" % result.get("l_int", 0),
+        )
         configfile.set(self.name, "identified_lambda_us", "%d" % result["lambda_us"])
         configfile.set(
             self.name,

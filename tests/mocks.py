@@ -523,6 +523,8 @@ def make_driver(
     driver.accel_feedforward_gain = 1000
 
     # Identified values (from prior commission, used by AUTOTUNE)
+    driver.identified_r_int = None
+    driver.identified_l_int = None
     driver.identified_lambda_us = 0
     driver.identified_theta_e_us = 160
     driver.identified_ringing_count = 7
