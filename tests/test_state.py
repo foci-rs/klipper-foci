@@ -1314,6 +1314,16 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         driver._persist_commission_results(complete_commission_result(), "balanced")
 
         self.assertEqual(
+            configfile.values[(driver.name, "identified_r_count_milli")],
+            "1700",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_l_count_micro")],
+            "3300",
+        )
+        self.assertNotIn((driver.name, "identified_r_mohm"), configfile.values)
+        self.assertNotIn((driver.name, "identified_l_uh"), configfile.values)
+        self.assertEqual(
             configfile.values[(driver.name, "identified_r_int")],
             "1706",
         )
@@ -1337,6 +1347,7 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
         driver.cmd_FOCI_COMMISSION(gcmd)
 
+        self.assertIn("r_count_milli=1700 l_count_micro=3300", gcmd.last_info)
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
 
 

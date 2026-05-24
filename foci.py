@@ -1219,11 +1219,11 @@ class FociDriver:
         self.identified_l_int: int | None = config.getint(
             "identified_l_int", None, minval=0
         )
-        self.identified_r_mohm: int | None = config.getint(
-            "identified_r_mohm", None, minval=0
+        self.identified_r_count_milli: int | None = config.getint(
+            "identified_r_count_milli", None, minval=0
         )
-        self.identified_l_uh: int | None = config.getint(
-            "identified_l_uh", None, minval=0
+        self.identified_l_count_micro: int | None = config.getint(
+            "identified_l_count_micro", None, minval=0
         )
         self.identified_lambda_us: int | None = config.getint(
             "identified_lambda_us", None, minval=0
@@ -2013,14 +2013,14 @@ class FociDriver:
                 value2,
             )
         if code in (23, 24):
-            return "%s: %s (r_mohm=%d, limit=%d)" % (
+            return "%s: %s (r_count_milli=%d, limit=%d)" % (
                 phase_name,
                 name,
                 value0,
                 value1,
             )
         if code == 22:
-            return "%s: %s (l_int=%d, l_uh=%d)" % (
+            return "%s: %s (l_int=%d, l_count_micro=%d)" % (
                 phase_name,
                 name,
                 value0,
@@ -3381,7 +3381,8 @@ class FociDriver:
 
             status_str = "accepted" if status == 0 else "accepted with warnings"
             gcmd.respond_info(
-                "FOCI %s commissioned (%s): R=%dmOhm L=%duH R_int=%d L_int=%d"
+                "FOCI %s commissioned (%s): "
+                "r_count_milli=%d l_count_micro=%d R_int=%d L_int=%d"
                 % (
                     self.name,
                     status_str,
@@ -3441,8 +3442,16 @@ class FociDriver:
             "commissioned_velocity_limit",
             "%d" % result["fallback_velocity_limit"],
         )
-        configfile.set(self.name, "identified_r_mohm", "%d" % result["r_mohm"])
-        configfile.set(self.name, "identified_l_uh", "%d" % result["l_uh"])
+        configfile.set(
+            self.name,
+            "identified_r_count_milli",
+            "%d" % result["r_mohm"],
+        )
+        configfile.set(
+            self.name,
+            "identified_l_count_micro",
+            "%d" % result["l_uh"],
+        )
         configfile.set(
             self.name,
             "identified_r_int",

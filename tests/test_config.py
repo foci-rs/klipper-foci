@@ -157,8 +157,8 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
     )
     sections["foci stepper_x"].update(
         {
-            "identified_r_mohm": 1792,
-            "identified_l_uh": 2046,
+            "identified_r_count_milli": 1792,
+            "identified_l_count_micro": 2046,
             "identified_lambda_us": 0,
             "identified_theta_e_us": 160,
             "identified_ringing_count": 7,
@@ -177,8 +177,8 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
 
     driver = make_config_driver(printer, sections, "foci stepper_x")
 
-    assert driver.identified_r_mohm == 1792
-    assert driver.identified_l_uh == 2046
+    assert driver.identified_r_count_milli == 1792
+    assert driver.identified_l_count_micro == 2046
     assert driver.identified_tau_e_us == 1154
     assert driver.identified_j_eff == 12345
     assert driver.identified_b_eff == 678
