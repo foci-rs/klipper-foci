@@ -475,6 +475,8 @@ def make_driver(
     # Identity
     driver.name = "foci " + stepper_name
     driver.stepper_name = stepper_name
+    driver._current_torque_sample_details = {}
+    driver._current_torque_sample_labels = {}
     driver.oid = 0
     driver.stepper_oid = None
     driver.channel = 0
@@ -578,6 +580,9 @@ def make_driver(
     driver.set_voltage_limit_cmd = MockCommand()
     driver.current_step_test_cmd = MockCommand()
     driver.current_vector_step_test_cmd = MockCommand()
+    driver.current_torque_sample_test_cmd = MockCommand()
+    driver.position_torque_offset_sample_test_cmd = MockCommand()
+    driver.voltage_step_test_cmd = MockCommand()
     driver.set_velocity_filter_cmd = MockCommand()
     driver.set_torque_filter_cmd = MockCommand()
     driver.set_position_filter_cmd = MockCommand()
