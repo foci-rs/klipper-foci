@@ -886,7 +886,44 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 12. FOCI_SET_VOLTAGE_LIMIT debug command
+# 12. FOCI_SET_POSITION_LEAD debug command
+# =========================================================================
+
+
+class TestPositionLeadCommand(unittest.TestCase):
+    def test_sets_position_lead_enable_gain_and_cap(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_POSITION_LEAD(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "GAIN": 10,
+                    "MAX_COUNTS": 20,
+                }
+            )
+        )
+
+        self.assertEqual(d.set_position_lead_cmd.last_args, [d.oid, 1, 10, 20])
+        self.assertTrue(d.position_lead)
+        self.assertEqual(d.position_lead_gain, 10)
+        self.assertEqual(d.position_lead_max_counts, 20)
+
+    def test_disable_preserves_position_lead_gain_and_cap(self):
+        d = make_driver()
+        d.position_lead_gain = 10
+        d.position_lead_max_counts = 20
+
+        d.cmd_FOCI_SET_POSITION_LEAD(MockGCmd({"ENABLE": 0}))
+
+        self.assertEqual(d.set_position_lead_cmd.last_args, [d.oid, 0, 10, 20])
+        self.assertFalse(d.position_lead)
+        self.assertEqual(d.position_lead_gain, 10)
+        self.assertEqual(d.position_lead_max_counts, 20)
+
+
+# =========================================================================
+# 13. FOCI_SET_VOLTAGE_LIMIT debug command
 # =========================================================================
 
 

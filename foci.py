@@ -1049,6 +1049,9 @@ class FociDriver:
         "Set FOCI velocity feedforward runtime multiplier for bringup debugging"
     )
     cmd_FOCI_SET_ACCEL_FEEDFORWARD_help = "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging"
+    cmd_FOCI_SET_POSITION_LEAD_help = (
+        "Set FOCI diagnostic position-target lead for bringup debugging"
+    )
     cmd_FOCI_SET_VOLTAGE_LIMIT_help = (
         "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics"
     )
@@ -1186,6 +1189,9 @@ class FociDriver:
         self.accel_feedforward: bool = False
         self.accel_feedforward_accel_gain: int = 1000
         self.accel_feedforward_decel_gain: int = 1000
+        self.position_lead: bool = False
+        self.position_lead_gain: int = 0
+        self.position_lead_max_counts: int = 0
 
         # PID velocity limit (caps position PID output, anti-windup).
         # 0 or unset = unconstrained (0x7FFFFFFF). Units: TMC4671 internal
@@ -1317,6 +1323,7 @@ class FociDriver:
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
         self.set_accel_feedforward_cmd = None
+        self.set_position_lead_cmd = None
         self.set_velocity_limit_cmd = None
         self.set_voltage_limit_cmd = None
         self.set_auto_calibrate_on_enable_cmd = None
@@ -1442,6 +1449,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_ACCEL_FEEDFORWARD,
             desc=self.cmd_FOCI_SET_ACCEL_FEEDFORWARD_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_POSITION_LEAD",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_POSITION_LEAD,
+            desc=self.cmd_FOCI_SET_POSITION_LEAD_help,
         )
         gcode.register_mux_command(
             "FOCI_SET_VOLTAGE_LIMIT",
@@ -1704,6 +1718,9 @@ class FociDriver:
         self.set_accel_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_accel_feedforward oid=%c enable=%c"
             " accel_gain_permille=%hu decel_gain_permille=%hu"
+        )
+        self.set_position_lead_cmd = self.mcu.lookup_command(
+            "tmc_set_position_lead oid=%c enable=%c gain_permille=%hu max_counts=%hu"
         )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
@@ -3914,6 +3931,32 @@ class FociDriver:
         gcmd.respond_info(
             "FOCI %s acceleration feedforward set: enable=%d"
             " accel_gain=%d decel_gain=%d" % (self.name, enable, accel_gain, decel_gain)
+        )
+
+    def cmd_FOCI_SET_POSITION_LEAD(self, gcmd) -> None:
+        """Set bounded position-target lead for live bringup debugging."""
+        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
+        gain = gcmd.get_int(
+            "GAIN",
+            self.position_lead_gain,
+            minval=0,
+            maxval=65535,
+        )
+        max_counts = gcmd.get_int(
+            "MAX_COUNTS",
+            self.position_lead_max_counts,
+            minval=0,
+            maxval=200,
+        )
+
+        self.set_position_lead_cmd.send([self.oid, enable, gain, max_counts])
+        self.position_lead = enable != 0
+        self.position_lead_gain = gain
+        self.position_lead_max_counts = max_counts
+
+        gcmd.respond_info(
+            "FOCI %s position lead set: enable=%d gain=%d max_counts=%d"
+            % (self.name, enable, gain, max_counts)
         )
 
     def cmd_FOCI_SET_VOLTAGE_LIMIT(self, gcmd) -> None:
