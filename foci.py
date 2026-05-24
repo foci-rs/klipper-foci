@@ -1048,9 +1048,7 @@ class FociDriver:
     cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help = (
         "Set FOCI velocity feedforward runtime multiplier for bringup debugging"
     )
-    cmd_FOCI_SET_ACCEL_FEEDFORWARD_help = (
-        "Set FOCI acceleration feedforward runtime gain for bringup debugging"
-    )
+    cmd_FOCI_SET_ACCEL_FEEDFORWARD_help = "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging"
     cmd_FOCI_SET_VOLTAGE_LIMIT_help = (
         "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics"
     )
@@ -1186,7 +1184,8 @@ class FociDriver:
             "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
         )
         self.accel_feedforward: bool = False
-        self.accel_feedforward_gain: int = 1000
+        self.accel_feedforward_accel_gain: int = 1000
+        self.accel_feedforward_decel_gain: int = 1000
 
         # PID velocity limit (caps position PID output, anti-windup).
         # 0 or unset = unconstrained (0x7FFFFFFF). Units: TMC4671 internal
@@ -1703,7 +1702,8 @@ class FociDriver:
             "tmc_set_velocity_feedforward oid=%c enable=%c multiplier=%hu"
         )
         self.set_accel_feedforward_cmd = self.mcu.lookup_command(
-            "tmc_set_accel_feedforward oid=%c enable=%c gain_permille=%hu"
+            "tmc_set_accel_feedforward oid=%c enable=%c"
+            " accel_gain_permille=%hu decel_gain_permille=%hu"
         )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
@@ -3872,26 +3872,48 @@ class FociDriver:
         )
 
     def cmd_FOCI_SET_ACCEL_FEEDFORWARD(self, gcmd) -> None:
-        """Set acceleration feedforward gain for live bringup debugging.
+        """Set acceleration feedforward gains for live bringup debugging.
 
-        GAIN is in permille. A value of 1000 applies the raw diagnostic
-        acceleration estimate, 500 applies half, and 0 disables the offset.
+        ACCEL_GAIN and DECEL_GAIN are in permille. GAIN is a convenience alias
+        that sets both when neither split gain is supplied.
         """
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
-        gain = gcmd.get_int(
-            "GAIN",
-            self.accel_feedforward_gain,
+        split_gain_supplied = (
+            gcmd.get("ACCEL_GAIN", None) is not None
+            or gcmd.get("DECEL_GAIN", None) is not None
+        )
+        alias_gain = (
+            gcmd.get_int("GAIN", minval=0, maxval=65535)
+            if gcmd.get("GAIN", None) is not None
+            else None
+        )
+        if alias_gain is not None and not split_gain_supplied:
+            default_accel_gain = alias_gain
+            default_decel_gain = alias_gain
+        else:
+            default_accel_gain = self.accel_feedforward_accel_gain
+            default_decel_gain = self.accel_feedforward_decel_gain
+        accel_gain = gcmd.get_int(
+            "ACCEL_GAIN",
+            default_accel_gain,
+            minval=0,
+            maxval=65535,
+        )
+        decel_gain = gcmd.get_int(
+            "DECEL_GAIN",
+            default_decel_gain,
             minval=0,
             maxval=65535,
         )
 
-        self.set_accel_feedforward_cmd.send([self.oid, enable, gain])
+        self.set_accel_feedforward_cmd.send([self.oid, enable, accel_gain, decel_gain])
         self.accel_feedforward = enable != 0
-        self.accel_feedforward_gain = gain
+        self.accel_feedforward_accel_gain = accel_gain
+        self.accel_feedforward_decel_gain = decel_gain
 
         gcmd.respond_info(
-            "FOCI %s acceleration feedforward set: enable=%d gain=%d"
-            % (self.name, enable, gain)
+            "FOCI %s acceleration feedforward set: enable=%d"
+            " accel_gain=%d decel_gain=%d" % (self.name, enable, accel_gain, decel_gain)
         )
 
     def cmd_FOCI_SET_VOLTAGE_LIMIT(self, gcmd) -> None:

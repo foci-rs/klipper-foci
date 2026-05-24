@@ -831,25 +831,45 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
 
 
 class TestAccelFeedforwardCommand(unittest.TestCase):
-    def test_sets_accel_feedforward_enable_and_gain(self):
+    def test_sets_accel_feedforward_enable_and_split_gains(self):
         d = make_driver()
 
         d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
             MockGCmd(
                 {
                     "ENABLE": 1,
-                    "GAIN": 750,
+                    "ACCEL_GAIN": 750,
+                    "DECEL_GAIN": 250,
                 }
             )
         )
 
-        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 1, 750])
+        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 1, 750, 250])
         self.assertTrue(d.accel_feedforward)
-        self.assertEqual(d.accel_feedforward_gain, 750)
+        self.assertEqual(d.accel_feedforward_accel_gain, 750)
+        self.assertEqual(d.accel_feedforward_decel_gain, 250)
+
+    def test_gain_alias_sets_both_split_gains(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "GAIN": 500,
+                }
+            )
+        )
+
+        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 1, 500, 500])
+        self.assertTrue(d.accel_feedforward)
+        self.assertEqual(d.accel_feedforward_accel_gain, 500)
+        self.assertEqual(d.accel_feedforward_decel_gain, 500)
 
     def test_disable_preserves_configured_gain(self):
         d = make_driver()
-        d.accel_feedforward_gain = 500
+        d.accel_feedforward_accel_gain = 750
+        d.accel_feedforward_decel_gain = 250
 
         d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
             MockGCmd(
@@ -859,9 +879,10 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 0, 500])
+        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 0, 750, 250])
         self.assertFalse(d.accel_feedforward)
-        self.assertEqual(d.accel_feedforward_gain, 500)
+        self.assertEqual(d.accel_feedforward_accel_gain, 750)
+        self.assertEqual(d.accel_feedforward_decel_gain, 250)
 
 
 # =========================================================================

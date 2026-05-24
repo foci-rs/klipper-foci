@@ -522,7 +522,8 @@ def make_driver(
     driver.velocity_feedforward = False
     driver.velocity_feedforward_multiplier = 1
     driver.accel_feedforward = False
-    driver.accel_feedforward_gain = 1000
+    driver.accel_feedforward_accel_gain = 1000
+    driver.accel_feedforward_decel_gain = 1000
 
     # Identified values (from prior commission, used by AUTOTUNE)
     driver.identified_r_int = None
