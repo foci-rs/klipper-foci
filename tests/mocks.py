@@ -529,6 +529,13 @@ def make_driver(
     driver.accel_feedforward = False
     driver.accel_feedforward_accel_gain = 1000
     driver.accel_feedforward_decel_gain = 1000
+    driver.decoupling_feedforward = False
+    driver.decoupling_r_int = 3000
+    driver.decoupling_l_int = 4095
+    driver.decoupling_pole_pairs = 50
+    driver.decoupling_position_units_per_rev = 65536
+    driver.decoupling_f_pwm_hz = 25000
+    driver.decoupling_max_offset = 500
     driver.position_lead = False
     driver.position_lead_gain = 0
     driver.position_lead_max_counts = 0
@@ -586,6 +593,7 @@ def make_driver(
     driver.set_velocity_feedforward_cmd = MockCommand()
     driver.set_velocity_transient_feedforward_cmd = MockCommand()
     driver.set_accel_feedforward_cmd = MockCommand()
+    driver.set_decoupling_feedforward_cmd = MockCommand()
     driver.set_position_lead_cmd = MockCommand()
     driver.set_velocity_limit_cmd = MockCommand()
     driver.set_voltage_limit_cmd = MockCommand()

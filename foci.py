@@ -1052,6 +1052,9 @@ class FociDriver:
         "Set FOCI diagnostic velocity transient feedforward for bringup debugging"
     )
     cmd_FOCI_SET_ACCEL_FEEDFORWARD_help = "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging"
+    cmd_FOCI_SET_DECOUPLING_FEEDFORWARD_help = (
+        "Set FOCI diagnostic q/d decoupling proxy feedforward for bringup debugging"
+    )
     cmd_FOCI_SET_POSITION_LEAD_help = (
         "Set FOCI diagnostic position-target lead for bringup debugging"
     )
@@ -1197,6 +1200,13 @@ class FociDriver:
         self.accel_feedforward: bool = False
         self.accel_feedforward_accel_gain: int = 1000
         self.accel_feedforward_decel_gain: int = 1000
+        self.decoupling_feedforward: bool = False
+        self.decoupling_r_int: int = 3000
+        self.decoupling_l_int: int = 4095
+        self.decoupling_pole_pairs: int = 50
+        self.decoupling_position_units_per_rev: int = 65536
+        self.decoupling_f_pwm_hz: int = 25000
+        self.decoupling_max_offset: int = 500
         self.position_lead: bool = False
         self.position_lead_gain: int = 0
         self.position_lead_max_counts: int = 0
@@ -1332,6 +1342,7 @@ class FociDriver:
         self.set_velocity_feedforward_cmd = None
         self.set_velocity_transient_feedforward_cmd = None
         self.set_accel_feedforward_cmd = None
+        self.set_decoupling_feedforward_cmd = None
         self.set_position_lead_cmd = None
         self.set_velocity_limit_cmd = None
         self.set_voltage_limit_cmd = None
@@ -1465,6 +1476,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_ACCEL_FEEDFORWARD,
             desc=self.cmd_FOCI_SET_ACCEL_FEEDFORWARD_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_DECOUPLING_FEEDFORWARD",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_DECOUPLING_FEEDFORWARD,
+            desc=self.cmd_FOCI_SET_DECOUPLING_FEEDFORWARD_help,
         )
         gcode.register_mux_command(
             "FOCI_SET_POSITION_LEAD",
@@ -1738,6 +1756,11 @@ class FociDriver:
         self.set_accel_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_accel_feedforward oid=%c enable=%c"
             " accel_gain_permille=%hu decel_gain_permille=%hu"
+        )
+        self.set_decoupling_feedforward_cmd = self.mcu.lookup_command(
+            "tmc_set_decoupling_feedforward oid=%c enable=%c"
+            " r_int=%u l_int=%u pole_pairs=%hu position_units_per_rev=%u"
+            " f_pwm_hz=%u max_offset=%hu"
         )
         self.set_position_lead_cmd = self.mcu.lookup_command(
             "tmc_set_position_lead oid=%c enable=%c gain_permille=%hu max_counts=%hu"
@@ -3994,6 +4017,82 @@ class FociDriver:
         gcmd.respond_info(
             "FOCI %s acceleration feedforward set: enable=%d"
             " accel_gain=%d decel_gain=%d" % (self.name, enable, accel_gain, decel_gain)
+        )
+
+    def cmd_FOCI_SET_DECOUPLING_FEEDFORWARD(self, gcmd) -> None:
+        """Set bounded q/d decoupling proxy feedforward for live debugging."""
+        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
+        r_int = gcmd.get_int(
+            "R_INT",
+            self.decoupling_r_int,
+            minval=1,
+            maxval=0xFFFFFFFF,
+        )
+        l_int = gcmd.get_int(
+            "L_INT",
+            self.decoupling_l_int,
+            minval=1,
+            maxval=0xFFFFFFFF,
+        )
+        pole_pairs = gcmd.get_int(
+            "POLE_PAIRS",
+            self.decoupling_pole_pairs,
+            minval=1,
+            maxval=65535,
+        )
+        position_units_per_rev = gcmd.get_int(
+            "POSITION_UNITS_PER_REV",
+            self.decoupling_position_units_per_rev,
+            minval=1,
+            maxval=0xFFFFFFFF,
+        )
+        f_pwm_hz = gcmd.get_int(
+            "F_PWM_HZ",
+            self.decoupling_f_pwm_hz,
+            minval=1,
+            maxval=0xFFFFFFFF,
+        )
+        max_offset = gcmd.get_int(
+            "MAX_OFFSET",
+            self.decoupling_max_offset,
+            minval=0,
+            maxval=32767,
+        )
+
+        self.set_decoupling_feedforward_cmd.send(
+            [
+                self.oid,
+                enable,
+                r_int,
+                l_int,
+                pole_pairs,
+                position_units_per_rev,
+                f_pwm_hz,
+                max_offset,
+            ]
+        )
+        self.decoupling_feedforward = enable != 0
+        self.decoupling_r_int = r_int
+        self.decoupling_l_int = l_int
+        self.decoupling_pole_pairs = pole_pairs
+        self.decoupling_position_units_per_rev = position_units_per_rev
+        self.decoupling_f_pwm_hz = f_pwm_hz
+        self.decoupling_max_offset = max_offset
+
+        gcmd.respond_info(
+            "FOCI %s decoupling feedforward set: enable=%d"
+            " r_int=%d l_int=%d pole_pairs=%d position_units_per_rev=%d"
+            " f_pwm_hz=%d max_offset=%d"
+            % (
+                self.name,
+                enable,
+                r_int,
+                l_int,
+                pole_pairs,
+                position_units_per_rev,
+                f_pwm_hz,
+                max_offset,
+            )
         )
 
     def cmd_FOCI_SET_POSITION_LEAD(self, gcmd) -> None:

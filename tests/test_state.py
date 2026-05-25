@@ -943,7 +943,43 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 12. FOCI_SET_POSITION_LEAD debug command
+# 13. FOCI_SET_DECOUPLING_FEEDFORWARD debug command
+# =========================================================================
+
+
+class TestDecouplingFeedforwardCommand(unittest.TestCase):
+    def test_sets_decoupling_feedforward_enable_and_model(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_DECOUPLING_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "R_INT": 3000,
+                    "L_INT": 4095,
+                    "POLE_PAIRS": 50,
+                    "POSITION_UNITS_PER_REV": 65536,
+                    "F_PWM_HZ": 25000,
+                    "MAX_OFFSET": 500,
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.set_decoupling_feedforward_cmd.last_args,
+            [d.oid, 1, 3000, 4095, 50, 65536, 25000, 500],
+        )
+        self.assertTrue(d.decoupling_feedforward)
+        self.assertEqual(d.decoupling_r_int, 3000)
+        self.assertEqual(d.decoupling_l_int, 4095)
+        self.assertEqual(d.decoupling_pole_pairs, 50)
+        self.assertEqual(d.decoupling_position_units_per_rev, 65536)
+        self.assertEqual(d.decoupling_f_pwm_hz, 25000)
+        self.assertEqual(d.decoupling_max_offset, 500)
+
+
+# =========================================================================
+# 14. FOCI_SET_POSITION_LEAD debug command
 # =========================================================================
 
 
