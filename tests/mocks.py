@@ -521,6 +521,10 @@ def make_driver(
     driver.run_current = 0.8
     driver.velocity_feedforward = False
     driver.velocity_feedforward_multiplier = 1
+    driver.velocity_transient_feedforward = False
+    driver.velocity_transient_lead_time_us = 0
+    driver.velocity_transient_gain = 0
+    driver.velocity_transient_max_offset = 0
     driver.accel_feedforward = False
     driver.accel_feedforward_accel_gain = 1000
     driver.accel_feedforward_decel_gain = 1000
@@ -579,6 +583,7 @@ def make_driver(
     driver.set_pid_gains_cmd = MockCommand()
     driver.set_position_gains_cmd = MockCommand()
     driver.set_velocity_feedforward_cmd = MockCommand()
+    driver.set_velocity_transient_feedforward_cmd = MockCommand()
     driver.set_accel_feedforward_cmd = MockCommand()
     driver.set_position_lead_cmd = MockCommand()
     driver.set_velocity_limit_cmd = MockCommand()

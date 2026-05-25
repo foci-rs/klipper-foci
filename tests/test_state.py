@@ -826,7 +826,60 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 11. FOCI_SET_ACCEL_FEEDFORWARD debug command
+# 11. FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD debug command
+# =========================================================================
+
+
+class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
+    def test_sets_transient_feedforward_parameters(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "LEAD_TIME_US": 400,
+                    "GAIN": 750,
+                    "MAX_OFFSET": 1200,
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.set_velocity_transient_feedforward_cmd.last_args,
+            [d.oid, 1, 400, 750, 1200],
+        )
+        self.assertTrue(d.velocity_transient_feedforward)
+        self.assertEqual(d.velocity_transient_lead_time_us, 400)
+        self.assertEqual(d.velocity_transient_gain, 750)
+        self.assertEqual(d.velocity_transient_max_offset, 1200)
+
+    def test_disable_preserves_transient_parameters(self):
+        d = make_driver()
+        d.velocity_transient_lead_time_us = 250
+        d.velocity_transient_gain = 500
+        d.velocity_transient_max_offset = 900
+
+        d.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD(
+            MockGCmd(
+                {
+                    "ENABLE": 0,
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.set_velocity_transient_feedforward_cmd.last_args,
+            [d.oid, 0, 250, 500, 900],
+        )
+        self.assertFalse(d.velocity_transient_feedforward)
+        self.assertEqual(d.velocity_transient_lead_time_us, 250)
+        self.assertEqual(d.velocity_transient_gain, 500)
+        self.assertEqual(d.velocity_transient_max_offset, 900)
+
+
+# =========================================================================
+# 12. FOCI_SET_ACCEL_FEEDFORWARD debug command
 # =========================================================================
 
 

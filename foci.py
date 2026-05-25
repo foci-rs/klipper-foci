@@ -1048,6 +1048,9 @@ class FociDriver:
     cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help = (
         "Set FOCI velocity feedforward runtime multiplier for bringup debugging"
     )
+    cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD_help = (
+        "Set FOCI diagnostic velocity transient feedforward for bringup debugging"
+    )
     cmd_FOCI_SET_ACCEL_FEEDFORWARD_help = "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging"
     cmd_FOCI_SET_POSITION_LEAD_help = (
         "Set FOCI diagnostic position-target lead for bringup debugging"
@@ -1186,6 +1189,10 @@ class FociDriver:
         self.velocity_feedforward_multiplier: int = config.getint(
             "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
         )
+        self.velocity_transient_feedforward: bool = False
+        self.velocity_transient_lead_time_us: int = 0
+        self.velocity_transient_gain: int = 0
+        self.velocity_transient_max_offset: int = 0
         self.accel_feedforward: bool = False
         self.accel_feedforward_accel_gain: int = 1000
         self.accel_feedforward_decel_gain: int = 1000
@@ -1322,6 +1329,7 @@ class FociDriver:
         self.set_velocity_filter_cmd = None
         self.set_position_gains_cmd = None
         self.set_velocity_feedforward_cmd = None
+        self.set_velocity_transient_feedforward_cmd = None
         self.set_accel_feedforward_cmd = None
         self.set_position_lead_cmd = None
         self.set_velocity_limit_cmd = None
@@ -1442,6 +1450,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD,
             desc=self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD,
+            desc=self.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD_help,
         )
         gcode.register_mux_command(
             "FOCI_SET_ACCEL_FEEDFORWARD",
@@ -1714,6 +1729,10 @@ class FociDriver:
         )
         self.set_velocity_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_feedforward oid=%c enable=%c multiplier=%hu"
+        )
+        self.set_velocity_transient_feedforward_cmd = self.mcu.lookup_command(
+            "tmc_set_velocity_transient_feedforward oid=%c enable=%c"
+            " lead_time_us=%hu gain_permille=%hu max_offset=%hu"
         )
         self.set_accel_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_accel_feedforward oid=%c enable=%c"
@@ -3886,6 +3905,42 @@ class FociDriver:
         gcmd.respond_info(
             "FOCI %s velocity feedforward set: enable=%d multiplier=%d"
             % (self.name, enable, multiplier)
+        )
+
+    def cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD(self, gcmd) -> None:
+        """Set live-only command-acceleration velocity feedforward."""
+        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
+        lead_time_us = gcmd.get_int(
+            "LEAD_TIME_US",
+            self.velocity_transient_lead_time_us,
+            minval=0,
+            maxval=65535,
+        )
+        gain = gcmd.get_int(
+            "GAIN",
+            self.velocity_transient_gain,
+            minval=0,
+            maxval=65535,
+        )
+        max_offset = gcmd.get_int(
+            "MAX_OFFSET",
+            self.velocity_transient_max_offset,
+            minval=0,
+            maxval=32767,
+        )
+
+        self.set_velocity_transient_feedforward_cmd.send(
+            [self.oid, enable, lead_time_us, gain, max_offset]
+        )
+        self.velocity_transient_feedforward = enable != 0
+        self.velocity_transient_lead_time_us = lead_time_us
+        self.velocity_transient_gain = gain
+        self.velocity_transient_max_offset = max_offset
+
+        gcmd.respond_info(
+            "FOCI %s velocity transient feedforward set: enable=%d"
+            " lead_time_us=%d gain=%d max_offset=%d"
+            % (self.name, enable, lead_time_us, gain, max_offset)
         )
 
     def cmd_FOCI_SET_ACCEL_FEEDFORWARD(self, gcmd) -> None:
