@@ -525,6 +525,7 @@ def make_driver(
     driver.velocity_transient_lead_time_us = 0
     driver.velocity_transient_gain = 0
     driver.velocity_transient_max_offset = 0
+    driver.velocity_transient_rate_hz = 1000
     driver.accel_feedforward = False
     driver.accel_feedforward_accel_gain = 1000
     driver.accel_feedforward_decel_gain = 1000

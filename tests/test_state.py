@@ -841,24 +841,27 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
                     "LEAD_TIME_US": 400,
                     "GAIN": 750,
                     "MAX_OFFSET": 1200,
+                    "RATE_HZ": 10000,
                 }
             )
         )
 
         self.assertEqual(
             d.set_velocity_transient_feedforward_cmd.last_args,
-            [d.oid, 1, 400, 750, 1200],
+            [d.oid, 1, 400, 750, 1200, 10000],
         )
         self.assertTrue(d.velocity_transient_feedforward)
         self.assertEqual(d.velocity_transient_lead_time_us, 400)
         self.assertEqual(d.velocity_transient_gain, 750)
         self.assertEqual(d.velocity_transient_max_offset, 1200)
+        self.assertEqual(d.velocity_transient_rate_hz, 10000)
 
     def test_disable_preserves_transient_parameters(self):
         d = make_driver()
         d.velocity_transient_lead_time_us = 250
         d.velocity_transient_gain = 500
         d.velocity_transient_max_offset = 900
+        d.velocity_transient_rate_hz = 10000
 
         d.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD(
             MockGCmd(
@@ -870,12 +873,13 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
 
         self.assertEqual(
             d.set_velocity_transient_feedforward_cmd.last_args,
-            [d.oid, 0, 250, 500, 900],
+            [d.oid, 0, 250, 500, 900, 10000],
         )
         self.assertFalse(d.velocity_transient_feedforward)
         self.assertEqual(d.velocity_transient_lead_time_us, 250)
         self.assertEqual(d.velocity_transient_gain, 500)
         self.assertEqual(d.velocity_transient_max_offset, 900)
+        self.assertEqual(d.velocity_transient_rate_hz, 10000)
 
 
 # =========================================================================

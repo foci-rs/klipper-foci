@@ -1193,6 +1193,7 @@ class FociDriver:
         self.velocity_transient_lead_time_us: int = 0
         self.velocity_transient_gain: int = 0
         self.velocity_transient_max_offset: int = 0
+        self.velocity_transient_rate_hz: int = 1000
         self.accel_feedforward: bool = False
         self.accel_feedforward_accel_gain: int = 1000
         self.accel_feedforward_decel_gain: int = 1000
@@ -1732,7 +1733,7 @@ class FociDriver:
         )
         self.set_velocity_transient_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_transient_feedforward oid=%c enable=%c"
-            " lead_time_us=%hu gain_permille=%hu max_offset=%hu"
+            " lead_time_us=%hu gain_permille=%hu max_offset=%hu rate_hz=%hu"
         )
         self.set_accel_feedforward_cmd = self.mcu.lookup_command(
             "tmc_set_accel_feedforward oid=%c enable=%c"
@@ -3928,19 +3929,26 @@ class FociDriver:
             minval=0,
             maxval=32767,
         )
+        rate_hz = gcmd.get_int(
+            "RATE_HZ",
+            self.velocity_transient_rate_hz,
+            minval=1000,
+            maxval=10000,
+        )
 
         self.set_velocity_transient_feedforward_cmd.send(
-            [self.oid, enable, lead_time_us, gain, max_offset]
+            [self.oid, enable, lead_time_us, gain, max_offset, rate_hz]
         )
         self.velocity_transient_feedforward = enable != 0
         self.velocity_transient_lead_time_us = lead_time_us
         self.velocity_transient_gain = gain
         self.velocity_transient_max_offset = max_offset
+        self.velocity_transient_rate_hz = rate_hz
 
         gcmd.respond_info(
             "FOCI %s velocity transient feedforward set: enable=%d"
-            " lead_time_us=%d gain=%d max_offset=%d"
-            % (self.name, enable, lead_time_us, gain, max_offset)
+            " lead_time_us=%d gain=%d max_offset=%d rate_hz=%d"
+            % (self.name, enable, lead_time_us, gain, max_offset, rate_hz)
         )
 
     def cmd_FOCI_SET_ACCEL_FEEDFORWARD(self, gcmd) -> None:
