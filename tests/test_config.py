@@ -63,6 +63,36 @@ def test_same_mcu_dual_channel_response_handlers_use_distinct_oids():
     assert ("foci_trace_info_result", 12) in response_oids
 
 
+def test_perf_stats_query_format_includes_scheduler_attribution_fields():
+    printer, chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    driver._handle_mcu_identify()
+
+    send_fmt, recv_fmt, oid = next(
+        query
+        for query in chips["foci"].query_cmds
+        if query[0] == "foci_stepper_perf_stats oid=%c clear=%c"
+    )
+    assert send_fmt == "foci_stepper_perf_stats oid=%c clear=%c"
+    assert oid == 10
+    assert "scheduler_cycles_max=%u" in recv_fmt
+    assert "scheduler_cycles_events_at_max=%u" in recv_fmt
+    assert "scheduler_cycles_per_event_max=%u" in recv_fmt
+    assert "scheduler_cycles_per_event_max_cycles=%u" in recv_fmt
+    assert "scheduler_cycles_per_event_max_events=%u" in recv_fmt
+    assert "scheduler_cycles_per_event_floor3_max=%u" in recv_fmt
+    assert "scheduler_full_count=%u" in recv_fmt
+
+
 def test_dual_mcu_single_channel_uses_stepper_oids_without_foci_config():
     mcu_x = MockMCU("foci_x")
     mcu_y = MockMCU("foci_y")

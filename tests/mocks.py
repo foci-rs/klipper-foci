@@ -322,6 +322,7 @@ class MockMCU:
         self._next_oid = 1
         self._config_callbacks = []
         self.config_cmds = []
+        self.query_cmds = []
         self._serial = MockSerial()
 
     def create_oid(self):
@@ -346,6 +347,7 @@ class MockMCU:
         return MockCommand()
 
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
+        self.query_cmds.append((_send_fmt, _recv_fmt, oid))
         return MockCommand()
 
 

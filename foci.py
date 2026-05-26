@@ -1729,6 +1729,13 @@ class FociDriver:
             " tim5_burst_cycles_per_event_floor3_max=%u"
             " tim5_entry_latency_max_ticks=%u"
             " tim5_pop_lateness_max_ticks=%u"
+            " scheduler_cycles_max=%u"
+            " scheduler_cycles_events_at_max=%u"
+            " scheduler_cycles_per_event_max=%u"
+            " scheduler_cycles_per_event_max_cycles=%u"
+            " scheduler_cycles_per_event_max_events=%u"
+            " scheduler_cycles_per_event_floor3_max=%u"
+            " scheduler_full_count=%u"
             " stepper_load_lateness_max_ticks=%u"
             " stepper_load_lateness_last_ticks=%i build_trace_enabled=%c",
             oid=self.oid,
