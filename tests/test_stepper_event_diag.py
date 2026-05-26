@@ -87,6 +87,13 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
             "tim5_burst_cycles_per_event_floor3_max": 900,
             "tim5_entry_latency_max_ticks": 8400,
             "tim5_pop_lateness_max_ticks": 72,
+            "scheduler_cycles_max": 555,
+            "scheduler_cycles_events_at_max": 4,
+            "scheduler_cycles_per_event_max": 111,
+            "scheduler_cycles_per_event_max_cycles": 555,
+            "scheduler_cycles_per_event_max_events": 5,
+            "scheduler_cycles_per_event_floor3_max": 111,
+            "scheduler_full_count": 2,
             "stepper_load_lateness_max_ticks": 1234,
             "stepper_load_lateness_last_ticks": -12,
             "build_trace_enabled": 1,
@@ -110,6 +117,11 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
         "tim5_burst_cycles_per_event_max_events=2 "
         "tim5_burst_cycles_per_event_floor3_max=900 "
         "tim5_entry_latency_max_ticks=8400 tim5_pop_lateness_max_ticks=72 "
+        "scheduler_cycles_max=555 scheduler_cycles_events_at_max=4 "
+        "scheduler_cycles_per_event_max=111 "
+        "scheduler_cycles_per_event_max_cycles=555 "
+        "scheduler_cycles_per_event_max_events=5 "
+        "scheduler_cycles_per_event_floor3_max=111 scheduler_full_count=2 "
         "stepper_load_lateness_max_ticks=1234 "
         "stepper_load_lateness_last_ticks=-12 build_trace_enabled=1"
     ]

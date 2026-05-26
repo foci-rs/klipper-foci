@@ -2490,6 +2490,11 @@ class FociDriver:
             " tim5_burst_cycles_per_event_max_events=%d"
             " tim5_burst_cycles_per_event_floor3_max=%d"
             " tim5_entry_latency_max_ticks=%d tim5_pop_lateness_max_ticks=%d"
+            " scheduler_cycles_max=%d scheduler_cycles_events_at_max=%d"
+            " scheduler_cycles_per_event_max=%d"
+            " scheduler_cycles_per_event_max_cycles=%d"
+            " scheduler_cycles_per_event_max_events=%d"
+            " scheduler_cycles_per_event_floor3_max=%d scheduler_full_count=%d"
             " stepper_load_lateness_max_ticks=%d"
             " stepper_load_lateness_last_ticks=%d build_trace_enabled=%d"
             % (
@@ -2527,6 +2532,13 @@ class FociDriver:
                 params.get("tim5_burst_cycles_per_event_floor3_max", 0),
                 params.get("tim5_entry_latency_max_ticks", 0),
                 params.get("tim5_pop_lateness_max_ticks", 0),
+                params.get("scheduler_cycles_max", 0),
+                params.get("scheduler_cycles_events_at_max", 0),
+                params.get("scheduler_cycles_per_event_max", 0),
+                params.get("scheduler_cycles_per_event_max_cycles", 0),
+                params.get("scheduler_cycles_per_event_max_events", 0),
+                params.get("scheduler_cycles_per_event_floor3_max", 0),
+                params.get("scheduler_full_count", 0),
                 params.get("stepper_load_lateness_max_ticks", 0),
                 params.get("stepper_load_lateness_last_ticks", 0),
                 params.get("build_trace_enabled", 0),
@@ -2758,6 +2770,13 @@ class FociDriver:
             "tim5_burst_cycles_per_event_floor3_max",
             "tim5_entry_latency_max_ticks",
             "tim5_pop_lateness_max_ticks",
+            "scheduler_cycles_max",
+            "scheduler_cycles_events_at_max",
+            "scheduler_cycles_per_event_max",
+            "scheduler_cycles_per_event_max_cycles",
+            "scheduler_cycles_per_event_max_events",
+            "scheduler_cycles_per_event_floor3_max",
+            "scheduler_full_count",
             "stepper_load_lateness_max_ticks",
             "stepper_load_lateness_last_ticks",
             "build_trace_enabled",

@@ -134,6 +134,13 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
             "tim5_burst_cycles_per_event_floor3_max": 700,
             "tim5_entry_latency_max_ticks": 8400,
             "tim5_pop_lateness_max_ticks": 41,
+            "scheduler_cycles_max": 555,
+            "scheduler_cycles_events_at_max": 4,
+            "scheduler_cycles_per_event_max": 111,
+            "scheduler_cycles_per_event_max_cycles": 555,
+            "scheduler_cycles_per_event_max_events": 5,
+            "scheduler_cycles_per_event_floor3_max": 111,
+            "scheduler_full_count": 2,
             "stepper_load_lateness_max_ticks": 1234,
             "stepper_load_lateness_last_ticks": -20,
             "build_trace_enabled": 0,
@@ -169,6 +176,13 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "tim5_burst_cycles_per_event_floor3_max=700" in gcmd.last_info
     assert "tim5_entry_latency_max_ticks=8400" in gcmd.last_info
     assert "tim5_pop_lateness_max_ticks=41" in gcmd.last_info
+    assert "scheduler_cycles_max=555" in gcmd.last_info
+    assert "scheduler_cycles_events_at_max=4" in gcmd.last_info
+    assert "scheduler_cycles_per_event_max=111" in gcmd.last_info
+    assert "scheduler_cycles_per_event_max_cycles=555" in gcmd.last_info
+    assert "scheduler_cycles_per_event_max_events=5" in gcmd.last_info
+    assert "scheduler_cycles_per_event_floor3_max=111" in gcmd.last_info
+    assert "scheduler_full_count=2" in gcmd.last_info
     assert "stepper_load_lateness_max_ticks=1234" in gcmd.last_info
     assert "stepper_load_lateness_last_ticks=-20" in gcmd.last_info
     assert "build_trace_enabled=0" in gcmd.last_info
