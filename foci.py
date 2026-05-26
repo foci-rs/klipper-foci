@@ -1717,8 +1717,15 @@ class FociDriver:
             " crit_over_10us=%u crit_over_50us=%u"
             " crit_over_100us=%u crit_over_1000us=%u"
             " queue_step_count=%u queue_step_max_cycles=%u"
-            " tim5_irq_count=%u tim5_irq_max_cycles=%u"
-            " tim5_dispatch_max_cycles=%u tim5_events_max_per_irq=%u",
+            " tim5_activation_count=%u tim5_irq_max_cycles=%u"
+            " tim5_dispatch_max_cycles=%u tim5_events_max_per_irq=%u"
+            " tim5_event_count_total=%u tim5_defer_count=%u"
+            " tim5_empty_count=%u tim5_events_last_activation=%u"
+            " tim5_burst_cycles_per_event_max=%u"
+            " tim5_entry_latency_max_ticks=%u"
+            " tim5_pop_lateness_max_ticks=%u"
+            " stepper_load_lateness_max_ticks=%u"
+            " stepper_load_lateness_last_ticks=%i build_trace_enabled=%c",
             oid=self.oid,
         )
         self.set_current_cmd = self.mcu.lookup_command(
@@ -2465,10 +2472,17 @@ class FociDriver:
             " sample_count=%d crit_count=%d crit_max_cycles=%d crit_max_site=%d"
             " crit_max_us=%s crit_over_10us=%d crit_over_50us=%d"
             " crit_over_100us=%d crit_over_1000us=%d queue_step_count=%d"
-            " queue_step_max_cycles=%d queue_step_max_us=%s tim5_irq_count=%d"
+            " queue_step_max_cycles=%d queue_step_max_us=%s"
+            " tim5_activation_count=%d"
             " tim5_irq_max_cycles=%d tim5_irq_max_us=%s"
             " tim5_dispatch_max_cycles=%d tim5_dispatch_max_us=%s"
             " tim5_events_max_per_irq=%d"
+            " tim5_event_count_total=%d tim5_defer_count=%d"
+            " tim5_empty_count=%d tim5_events_last_activation=%d"
+            " tim5_burst_cycles_per_event_max=%d"
+            " tim5_entry_latency_max_ticks=%d tim5_pop_lateness_max_ticks=%d"
+            " stepper_load_lateness_max_ticks=%d"
+            " stepper_load_lateness_last_ticks=%d build_trace_enabled=%d"
             % (
                 self.stepper_name,
                 reason_name,
@@ -2487,12 +2501,22 @@ class FociDriver:
                 params.get("queue_step_count", 0),
                 params.get("queue_step_max_cycles", 0),
                 cycles_to_us("queue_step_max_cycles"),
-                params.get("tim5_irq_count", 0),
+                params.get("tim5_activation_count", 0),
                 params.get("tim5_irq_max_cycles", 0),
                 cycles_to_us("tim5_irq_max_cycles"),
                 params.get("tim5_dispatch_max_cycles", 0),
                 cycles_to_us("tim5_dispatch_max_cycles"),
                 params.get("tim5_events_max_per_irq", 0),
+                params.get("tim5_event_count_total", 0),
+                params.get("tim5_defer_count", 0),
+                params.get("tim5_empty_count", 0),
+                params.get("tim5_events_last_activation", 0),
+                params.get("tim5_burst_cycles_per_event_max", 0),
+                params.get("tim5_entry_latency_max_ticks", 0),
+                params.get("tim5_pop_lateness_max_ticks", 0),
+                params.get("stepper_load_lateness_max_ticks", 0),
+                params.get("stepper_load_lateness_last_ticks", 0),
+                params.get("build_trace_enabled", 0),
             )
         )
 
@@ -2706,10 +2730,20 @@ class FociDriver:
             "crit_over_1000us",
             "queue_step_count",
             "queue_step_max_cycles",
-            "tim5_irq_count",
+            "tim5_activation_count",
             "tim5_irq_max_cycles",
             "tim5_dispatch_max_cycles",
             "tim5_events_max_per_irq",
+            "tim5_event_count_total",
+            "tim5_defer_count",
+            "tim5_empty_count",
+            "tim5_events_last_activation",
+            "tim5_burst_cycles_per_event_max",
+            "tim5_entry_latency_max_ticks",
+            "tim5_pop_lateness_max_ticks",
+            "stepper_load_lateness_max_ticks",
+            "stepper_load_lateness_last_ticks",
+            "build_trace_enabled",
         ]
         parts = ["FOCI_DISPATCH_STATS %s:" % self.stepper_name]
         for field in fields:

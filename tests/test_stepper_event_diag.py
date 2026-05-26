@@ -72,10 +72,20 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
             "crit_over_1000us": 1,
             "queue_step_count": 90,
             "queue_step_max_cycles": 180000,
-            "tim5_irq_count": 208,
+            "tim5_activation_count": 208,
             "tim5_irq_max_cycles": 2400,
             "tim5_dispatch_max_cycles": 2100,
             "tim5_events_max_per_irq": 13,
+            "tim5_event_count_total": 721,
+            "tim5_defer_count": 6,
+            "tim5_empty_count": 2,
+            "tim5_events_last_activation": 14,
+            "tim5_burst_cycles_per_event_max": 1345,
+            "tim5_entry_latency_max_ticks": 8400,
+            "tim5_pop_lateness_max_ticks": 72,
+            "stepper_load_lateness_max_ticks": 1234,
+            "stepper_load_lateness_last_ticks": -12,
+            "build_trace_enabled": 1,
         }
     )
 
@@ -86,7 +96,12 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
         "crit_over_10us=10 crit_over_50us=5 crit_over_100us=3 "
         "crit_over_1000us=1 queue_step_count=90 "
         "queue_step_max_cycles=180000 queue_step_max_us=1071 "
-        "tim5_irq_count=208 tim5_irq_max_cycles=2400 tim5_irq_max_us=14 "
+        "tim5_activation_count=208 tim5_irq_max_cycles=2400 tim5_irq_max_us=14 "
         "tim5_dispatch_max_cycles=2100 tim5_dispatch_max_us=12 "
-        "tim5_events_max_per_irq=13"
+        "tim5_events_max_per_irq=13 tim5_event_count_total=721 "
+        "tim5_defer_count=6 tim5_empty_count=2 "
+        "tim5_events_last_activation=14 tim5_burst_cycles_per_event_max=1345 "
+        "tim5_entry_latency_max_ticks=8400 tim5_pop_lateness_max_ticks=72 "
+        "stepper_load_lateness_max_ticks=1234 "
+        "stepper_load_lateness_last_ticks=-12 build_trace_enabled=1"
     ]

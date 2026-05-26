@@ -119,10 +119,20 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
             "crit_over_1000us": 1,
             "queue_step_count": 23,
             "queue_step_max_cycles": 175000,
-            "tim5_irq_count": 400,
+            "tim5_activation_count": 400,
             "tim5_irq_max_cycles": 2400,
             "tim5_dispatch_max_cycles": 2100,
             "tim5_events_max_per_irq": 3,
+            "tim5_event_count_total": 800,
+            "tim5_defer_count": 5,
+            "tim5_empty_count": 2,
+            "tim5_events_last_activation": 3,
+            "tim5_burst_cycles_per_event_max": 700,
+            "tim5_entry_latency_max_ticks": 8400,
+            "tim5_pop_lateness_max_ticks": 41,
+            "stepper_load_lateness_max_ticks": 1234,
+            "stepper_load_lateness_last_ticks": -20,
+            "build_trace_enabled": 0,
         }
     )
     gcmd = MockGCmd({"RESET": 1})
@@ -144,3 +154,13 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "tim5_irq_max_us=14" in gcmd.last_info
     assert "tim5_dispatch_max_cycles=2100" in gcmd.last_info
     assert "tim5_events_max_per_irq=3" in gcmd.last_info
+    assert "tim5_event_count_total=800" in gcmd.last_info
+    assert "tim5_defer_count=5" in gcmd.last_info
+    assert "tim5_empty_count=2" in gcmd.last_info
+    assert "tim5_events_last_activation=3" in gcmd.last_info
+    assert "tim5_burst_cycles_per_event_max=700" in gcmd.last_info
+    assert "tim5_entry_latency_max_ticks=8400" in gcmd.last_info
+    assert "tim5_pop_lateness_max_ticks=41" in gcmd.last_info
+    assert "stepper_load_lateness_max_ticks=1234" in gcmd.last_info
+    assert "stepper_load_lateness_last_ticks=-20" in gcmd.last_info
+    assert "build_trace_enabled=0" in gcmd.last_info
