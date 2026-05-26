@@ -109,8 +109,6 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
         {
             "oid": 10,
             "channel": 0,
-            "sample_count": 42,
-            "crit_count": 37,
             "crit_max_cycles": 190000,
             "crit_max_site": 1,
             "crit_over_10us": 9,
@@ -126,9 +124,6 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
             "tim5_events_max_per_irq": 3,
             "tim5_event_count_total": 800,
             "tim5_defer_count": 5,
-            "tim5_empty_count": 2,
-            "tim5_events_last_activation": 3,
-            "tim5_burst_cycles_per_event_max": 700,
             "tim5_burst_cycles_per_event_max_cycles": 2100,
             "tim5_burst_cycles_per_event_max_events": 3,
             "tim5_burst_cycles_per_event_floor3_max": 700,
@@ -137,8 +132,6 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
             "scheduler_cycles_max": 555,
             "scheduler_cycles_events_at_max": 4,
             "scheduler_cycles_per_event_max": 111,
-            "scheduler_cycles_per_event_max_cycles": 555,
-            "scheduler_cycles_per_event_max_events": 5,
             "scheduler_cycles_per_event_floor3_max": 111,
             "scheduler_full_count": 2,
             "stepper_load_lateness_max_ticks": 1234,
@@ -153,8 +146,6 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert driver.stepper_perf_stats_cmd.last_args == [10, 1]
     assert "FOCI_DISPATCH_STATS stepper_x:" in gcmd.last_info
     assert "channel=0" in gcmd.last_info
-    assert "sample_count=42" in gcmd.last_info
-    assert "crit_count=37" in gcmd.last_info
     assert "crit_max_cycles=190000" in gcmd.last_info
     assert "crit_max_site=1" in gcmd.last_info
     assert "crit_max_us=1130" in gcmd.last_info
@@ -168,9 +159,6 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "tim5_events_max_per_irq=3" in gcmd.last_info
     assert "tim5_event_count_total=800" in gcmd.last_info
     assert "tim5_defer_count=5" in gcmd.last_info
-    assert "tim5_empty_count=2" in gcmd.last_info
-    assert "tim5_events_last_activation=3" in gcmd.last_info
-    assert "tim5_burst_cycles_per_event_max=700" in gcmd.last_info
     assert "tim5_burst_cycles_per_event_max_cycles=2100" in gcmd.last_info
     assert "tim5_burst_cycles_per_event_max_events=3" in gcmd.last_info
     assert "tim5_burst_cycles_per_event_floor3_max=700" in gcmd.last_info
@@ -179,8 +167,6 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "scheduler_cycles_max=555" in gcmd.last_info
     assert "scheduler_cycles_events_at_max=4" in gcmd.last_info
     assert "scheduler_cycles_per_event_max=111" in gcmd.last_info
-    assert "scheduler_cycles_per_event_max_cycles=555" in gcmd.last_info
-    assert "scheduler_cycles_per_event_max_events=5" in gcmd.last_info
     assert "scheduler_cycles_per_event_floor3_max=111" in gcmd.last_info
     assert "scheduler_full_count=2" in gcmd.last_info
     assert "stepper_load_lateness_max_ticks=1234" in gcmd.last_info

@@ -1712,7 +1712,6 @@ class FociDriver:
         self.stepper_perf_stats_cmd = self.mcu.lookup_query_command(
             "foci_stepper_perf_stats oid=%c clear=%c",
             "foci_stepper_perf_stats_result oid=%c channel=%c"
-            " sample_count=%u crit_count=%u"
             " crit_max_cycles=%u crit_max_site=%c"
             " crit_over_10us=%u crit_over_50us=%u"
             " crit_over_100us=%u crit_over_1000us=%u"
@@ -1722,8 +1721,6 @@ class FociDriver:
             " tim5_dispatch_max_cycles_events=%u"
             " tim5_events_max_per_irq=%u"
             " tim5_event_count_total=%u tim5_defer_count=%u"
-            " tim5_empty_count=%u tim5_events_last_activation=%u"
-            " tim5_burst_cycles_per_event_max=%u"
             " tim5_burst_cycles_per_event_max_cycles=%u"
             " tim5_burst_cycles_per_event_max_events=%u"
             " tim5_burst_cycles_per_event_floor3_max=%u"
@@ -1732,8 +1729,6 @@ class FociDriver:
             " scheduler_cycles_max=%u"
             " scheduler_cycles_events_at_max=%u"
             " scheduler_cycles_per_event_max=%u"
-            " scheduler_cycles_per_event_max_cycles=%u"
-            " scheduler_cycles_per_event_max_events=%u"
             " scheduler_cycles_per_event_floor3_max=%u"
             " scheduler_full_count=%u"
             " stepper_load_lateness_max_ticks=%u"
@@ -2752,8 +2747,6 @@ class FociDriver:
 
         fields = [
             "channel",
-            "sample_count",
-            "crit_count",
             "crit_max_cycles",
             "crit_max_site",
             "crit_over_10us",
@@ -2769,9 +2762,6 @@ class FociDriver:
             "tim5_events_max_per_irq",
             "tim5_event_count_total",
             "tim5_defer_count",
-            "tim5_empty_count",
-            "tim5_events_last_activation",
-            "tim5_burst_cycles_per_event_max",
             "tim5_burst_cycles_per_event_max_cycles",
             "tim5_burst_cycles_per_event_max_events",
             "tim5_burst_cycles_per_event_floor3_max",
@@ -2780,8 +2770,6 @@ class FociDriver:
             "scheduler_cycles_max",
             "scheduler_cycles_events_at_max",
             "scheduler_cycles_per_event_max",
-            "scheduler_cycles_per_event_max_cycles",
-            "scheduler_cycles_per_event_max_events",
             "scheduler_cycles_per_event_floor3_max",
             "scheduler_full_count",
             "stepper_load_lateness_max_ticks",
