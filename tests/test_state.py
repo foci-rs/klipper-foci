@@ -1016,6 +1016,64 @@ class TestPositionLeadCommand(unittest.TestCase):
 
 
 # =========================================================================
+# 15. FOCI_SET_PHASE_ADVANCE debug command
+# =========================================================================
+
+
+class TestPhaseAdvanceCommand(unittest.TestCase):
+    def test_sets_phase_advance_enable_gain_cap_and_deadband(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_PHASE_ADVANCE(
+            MockGCmd(
+                {
+                    "ENABLE": 1,
+                    "GAIN_PPM": -60000,
+                    "MAX_COUNTS": 64,
+                    "DEADBAND": 16,
+                }
+            )
+        )
+
+        self.assertEqual(
+            d.set_phase_advance_cmd.last_args,
+            [d.oid, 1, -60000, 64, 16],
+        )
+        self.assertTrue(d.phase_advance)
+        self.assertEqual(d.phase_advance_gain_ppm, -60000)
+        self.assertEqual(d.phase_advance_max_counts, 64)
+        self.assertEqual(d.phase_advance_deadband, 16)
+
+    def test_disable_preserves_phase_advance_parameters(self):
+        d = make_driver()
+        d.phase_advance_gain_ppm = 60000
+        d.phase_advance_max_counts = 64
+        d.phase_advance_deadband = 16
+
+        d.cmd_FOCI_SET_PHASE_ADVANCE(MockGCmd({"ENABLE": 0}))
+
+        self.assertEqual(
+            d.set_phase_advance_cmd.last_args,
+            [d.oid, 0, 60000, 64, 16],
+        )
+        self.assertFalse(d.phase_advance)
+        self.assertEqual(d.phase_advance_gain_ppm, 60000)
+        self.assertEqual(d.phase_advance_max_counts, 64)
+        self.assertEqual(d.phase_advance_deadband, 16)
+
+    def test_enable_with_no_parameters_is_safe_noop(self):
+        d = make_driver()
+
+        d.cmd_FOCI_SET_PHASE_ADVANCE(MockGCmd({}))
+
+        self.assertEqual(d.set_phase_advance_cmd.last_args, [d.oid, 1, 0, 0, 16])
+        self.assertTrue(d.phase_advance)
+        self.assertEqual(d.phase_advance_gain_ppm, 0)
+        self.assertEqual(d.phase_advance_max_counts, 0)
+        self.assertEqual(d.phase_advance_deadband, 16)
+
+
+# =========================================================================
 # 13. FOCI_SET_VOLTAGE_LIMIT debug command
 # =========================================================================
 

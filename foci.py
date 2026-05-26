@@ -128,6 +128,7 @@ REGISTERS: dict[str, int] = {
     "ABN_DECODER_MODE": 0x25,
     "ABN_DECODER_PPR": 0x26,
     "ABN_DECODER_COUNT": 0x27,
+    "ABN_DECODER_PHI_E_PHI_M_OFFSET": 0x29,
     "ABN_DECODER_PHI_E_PHI_M": 0x2A,
     "PID_TORQUE_FLUX_OFFSET": 0x65,
     "PID_VELOCITY_OFFSET": 0x67,
@@ -249,6 +250,11 @@ Fields["ABN_DECODER_PPR"] = {
 
 Fields["ABN_DECODER_COUNT"] = {
     "count": 0xFFFFFF,
+}
+
+Fields["ABN_DECODER_PHI_E_PHI_M_OFFSET"] = {
+    "abn_phi_m_offset": 0xFFFF,
+    "abn_phi_e_offset": 0xFFFF << 16,
 }
 
 Fields["ABN_DECODER_PHI_E_PHI_M"] = {
@@ -837,6 +843,8 @@ SIGNED_FIELDS: list[str] = [
     "torque_error_sum",
     "flux_error_sum",
     "velocity_error_sum",
+    "abn_phi_m_offset",
+    "abn_phi_e_offset",
 ]
 
 FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
@@ -927,6 +935,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "ABN_DECODER_MODE",
             "ABN_DECODER_PPR",
             "ABN_DECODER_COUNT",
+            "ABN_DECODER_PHI_E_PHI_M_OFFSET",
             "ABN_DECODER_PHI_E_PHI_M",
         ],
     ),
@@ -1062,6 +1071,9 @@ class FociDriver:
     )
     cmd_FOCI_SET_POSITION_LEAD_help = (
         "Set FOCI diagnostic position-target lead for bringup debugging"
+    )
+    cmd_FOCI_SET_PHASE_ADVANCE_help = (
+        "Set FOCI diagnostic commutation phase advance for bringup debugging"
     )
     cmd_FOCI_SET_VOLTAGE_LIMIT_help = (
         "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics"
@@ -1215,6 +1227,10 @@ class FociDriver:
         self.position_lead: bool = False
         self.position_lead_gain: int = 0
         self.position_lead_max_counts: int = 0
+        self.phase_advance: bool = False
+        self.phase_advance_gain_ppm: int = 0
+        self.phase_advance_max_counts: int = 0
+        self.phase_advance_deadband: int = 16
 
         # PID velocity limit (caps position PID output, anti-windup).
         # 0 or unset = unconstrained (0x7FFFFFFF). Units: TMC4671 internal
@@ -1349,6 +1365,7 @@ class FociDriver:
         self.set_accel_feedforward_cmd = None
         self.set_decoupling_feedforward_cmd = None
         self.set_position_lead_cmd = None
+        self.set_phase_advance_cmd = None
         self.set_velocity_limit_cmd = None
         self.set_voltage_limit_cmd = None
         self.set_auto_calibrate_on_enable_cmd = None
@@ -1496,6 +1513,13 @@ class FociDriver:
             self.stepper_name,
             self.cmd_FOCI_SET_POSITION_LEAD,
             desc=self.cmd_FOCI_SET_POSITION_LEAD_help,
+        )
+        gcode.register_mux_command(
+            "FOCI_SET_PHASE_ADVANCE",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_SET_PHASE_ADVANCE,
+            desc=self.cmd_FOCI_SET_PHASE_ADVANCE_help,
         )
         gcode.register_mux_command(
             "FOCI_SET_VOLTAGE_LIMIT",
@@ -1789,6 +1813,10 @@ class FociDriver:
         )
         self.set_position_lead_cmd = self.mcu.lookup_command(
             "tmc_set_position_lead oid=%c enable=%c gain_permille=%hu max_counts=%hu"
+        )
+        self.set_phase_advance_cmd = self.mcu.lookup_command(
+            "tmc_set_phase_advance oid=%c enable=%c"
+            " gain_ppm=%i max_counts=%hu deadband=%hu"
         )
         self.set_velocity_limit_cmd = self.mcu.lookup_command(
             "tmc_set_velocity_limit oid=%c limit=%u"
@@ -4247,6 +4275,42 @@ class FociDriver:
         gcmd.respond_info(
             "FOCI %s position lead set: enable=%d gain=%d max_counts=%d"
             % (self.name, enable, gain, max_counts)
+        )
+
+    def cmd_FOCI_SET_PHASE_ADVANCE(self, gcmd) -> None:
+        """Set bounded commutation phase advance for live bringup debugging."""
+        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
+        gain_ppm = gcmd.get_int(
+            "GAIN_PPM",
+            self.phase_advance_gain_ppm,
+            minval=-2_000_000,
+            maxval=2_000_000,
+        )
+        max_counts = gcmd.get_int(
+            "MAX_COUNTS",
+            self.phase_advance_max_counts,
+            minval=0,
+            maxval=512,
+        )
+        deadband = gcmd.get_int(
+            "DEADBAND",
+            self.phase_advance_deadband,
+            minval=0,
+            maxval=65535,
+        )
+
+        self.set_phase_advance_cmd.send(
+            [self.oid, enable, gain_ppm, max_counts, deadband]
+        )
+        self.phase_advance = enable != 0
+        self.phase_advance_gain_ppm = gain_ppm
+        self.phase_advance_max_counts = max_counts
+        self.phase_advance_deadband = deadband
+
+        gcmd.respond_info(
+            "FOCI %s phase advance set: enable=%d gain_ppm=%d"
+            " max_counts=%d deadband=%d"
+            % (self.name, enable, gain_ppm, max_counts, deadband)
         )
 
     def cmd_FOCI_SET_VOLTAGE_LIMIT(self, gcmd) -> None:

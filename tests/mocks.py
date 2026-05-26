@@ -539,6 +539,10 @@ def make_driver(
     driver.position_lead = False
     driver.position_lead_gain = 0
     driver.position_lead_max_counts = 0
+    driver.phase_advance = False
+    driver.phase_advance_gain_ppm = 0
+    driver.phase_advance_max_counts = 0
+    driver.phase_advance_deadband = 16
 
     # Identified values (from prior commission, used by AUTOTUNE)
     driver.identified_r_int = None
@@ -595,6 +599,7 @@ def make_driver(
     driver.set_accel_feedforward_cmd = MockCommand()
     driver.set_decoupling_feedforward_cmd = MockCommand()
     driver.set_position_lead_cmd = MockCommand()
+    driver.set_phase_advance_cmd = MockCommand()
     driver.set_velocity_limit_cmd = MockCommand()
     driver.set_voltage_limit_cmd = MockCommand()
     driver.current_step_test_cmd = MockCommand()
