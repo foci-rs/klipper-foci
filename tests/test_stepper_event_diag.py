@@ -50,3 +50,43 @@ def test_stepper_event_handler_formats_unknown_reason_without_crashing():
 
     assert "reason=unknown(99)" in gcode._responses[-1]
     assert "stepper_y" in gcode._responses[-1]
+
+
+def test_stepper_perf_event_handler_formats_fatal_snapshot():
+    driver = make_driver(stepper_name="stepper_x")
+    gcode = MockGCode()
+    driver.printer._objects["gcode"] = gcode
+
+    driver._handle_stepper_perf_event(
+        {
+            "reason": 2,
+            "channel": 0,
+            "clock": 197311339,
+            "sample_count": 410,
+            "crit_count": 202,
+            "crit_max_cycles": 200000,
+            "crit_max_site": 1,
+            "crit_over_10us": 10,
+            "crit_over_50us": 5,
+            "crit_over_100us": 3,
+            "crit_over_1000us": 1,
+            "queue_step_count": 90,
+            "queue_step_max_cycles": 180000,
+            "tim5_irq_count": 208,
+            "tim5_irq_max_cycles": 2400,
+            "tim5_dispatch_max_cycles": 2100,
+            "tim5_events_max_per_irq": 13,
+        }
+    )
+
+    assert gcode._responses == [
+        "FOCI_STEPPER_PERF_EVENT stepper_x reason=missed_deadline_load(2) "
+        "channel=0 clock=197311339 sample_count=410 crit_count=202 "
+        "crit_max_cycles=200000 crit_max_site=1 crit_max_us=1190 "
+        "crit_over_10us=10 crit_over_50us=5 crit_over_100us=3 "
+        "crit_over_1000us=1 queue_step_count=90 "
+        "queue_step_max_cycles=180000 queue_step_max_us=1071 "
+        "tim5_irq_count=208 tim5_irq_max_cycles=2400 tim5_irq_max_us=14 "
+        "tim5_dispatch_max_cycles=2100 tim5_dispatch_max_us=12 "
+        "tim5_events_max_per_irq=13"
+    ]

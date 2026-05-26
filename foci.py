@@ -11,6 +11,8 @@ from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 
+OPENFFBOARD_CPU_CYCLES_PER_US = 168
+
 
 ######################################################################
 # Field formatting helpers
@@ -1037,6 +1039,9 @@ class FociDriver:
     cmd_FOCI_STEPPER_STATS_help = (
         "Query FOCI MCU step queue/execution counters without motion"
     )
+    cmd_FOCI_DISPATCH_STATS_help = (
+        "Query FOCI MCU step-dispatch cycle counters without motion"
+    )
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_COMMISSION_help = "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)"
     cmd_FOCI_AUTOTUNE_help = (
@@ -1356,6 +1361,7 @@ class FociDriver:
         self.stepper_exec_stats_cmd = None
         self.stepper_timing_stats_cmd = None
         self.stepper_stop_stats_cmd = None
+        self.stepper_perf_stats_cmd = None
 
         # Trace capture state
         self._trace_info: dict | None = None
@@ -1568,6 +1574,13 @@ class FociDriver:
             self.cmd_FOCI_STEPPER_STATS,
             desc=self.cmd_FOCI_STEPPER_STATS_help,
         )
+        gcode.register_mux_command(
+            "FOCI_DISPATCH_STATS",
+            "STEPPER",
+            self.stepper_name,
+            self.cmd_FOCI_DISPATCH_STATS,
+            desc=self.cmd_FOCI_DISPATCH_STATS_help,
+        )
 
         # Lifecycle events
         self.printer.register_event_handler(
@@ -1670,6 +1683,18 @@ class FociDriver:
             " last_stop_reason=%c"
             " last_stop_remaining_events=%u last_stop_queue_len=%hu"
             " last_stop_drained_segments=%u last_stop_drained_steps=%u",
+            oid=self.oid,
+        )
+        self.stepper_perf_stats_cmd = self.mcu.lookup_query_command(
+            "foci_stepper_perf_stats oid=%c clear=%c",
+            "foci_stepper_perf_stats_result oid=%c channel=%c"
+            " sample_count=%u crit_count=%u"
+            " crit_max_cycles=%u crit_max_site=%c"
+            " crit_over_10us=%u crit_over_50us=%u"
+            " crit_over_100us=%u crit_over_1000us=%u"
+            " queue_step_count=%u queue_step_max_cycles=%u"
+            " tim5_irq_count=%u tim5_irq_max_cycles=%u"
+            " tim5_dispatch_max_cycles=%u tim5_events_max_per_irq=%u",
             oid=self.oid,
         )
         self.set_current_cmd = self.mcu.lookup_command(
@@ -1850,6 +1875,10 @@ class FociDriver:
         self.mcu._serial.register_response(
             self._handle_stepper_event,
             "foci_stepper_event",
+        )
+        self.mcu._serial.register_response(
+            self._handle_stepper_perf_event,
+            "foci_stepper_perf_event",
         )
 
     def _read_register(self, reg_name: str) -> int:
@@ -2392,6 +2421,61 @@ class FociDriver:
         if gcode is not None:
             gcode.respond_info(message)
 
+    def _format_stepper_perf_event(self, params: dict) -> str:
+        """Format one fatal firmware step-dispatch performance snapshot."""
+        reason_code = params.get("reason", 0)
+        reason_name = self.STEPPER_EVENT_REASON_NAMES.get(reason_code, "unknown")
+
+        def cycles_to_us(field: str) -> int | str:
+            value = params.get(field)
+            if value is None:
+                return "?"
+            return int(value) // OPENFFBOARD_CPU_CYCLES_PER_US
+
+        return (
+            "FOCI_STEPPER_PERF_EVENT %s reason=%s(%d) channel=%d clock=%d"
+            " sample_count=%d crit_count=%d crit_max_cycles=%d crit_max_site=%d"
+            " crit_max_us=%s crit_over_10us=%d crit_over_50us=%d"
+            " crit_over_100us=%d crit_over_1000us=%d queue_step_count=%d"
+            " queue_step_max_cycles=%d queue_step_max_us=%s tim5_irq_count=%d"
+            " tim5_irq_max_cycles=%d tim5_irq_max_us=%s"
+            " tim5_dispatch_max_cycles=%d tim5_dispatch_max_us=%s"
+            " tim5_events_max_per_irq=%d"
+            % (
+                self.stepper_name,
+                reason_name,
+                reason_code,
+                params.get("channel", 255),
+                params.get("clock", 0),
+                params.get("sample_count", 0),
+                params.get("crit_count", 0),
+                params.get("crit_max_cycles", 0),
+                params.get("crit_max_site", 0),
+                cycles_to_us("crit_max_cycles"),
+                params.get("crit_over_10us", 0),
+                params.get("crit_over_50us", 0),
+                params.get("crit_over_100us", 0),
+                params.get("crit_over_1000us", 0),
+                params.get("queue_step_count", 0),
+                params.get("queue_step_max_cycles", 0),
+                cycles_to_us("queue_step_max_cycles"),
+                params.get("tim5_irq_count", 0),
+                params.get("tim5_irq_max_cycles", 0),
+                cycles_to_us("tim5_irq_max_cycles"),
+                params.get("tim5_dispatch_max_cycles", 0),
+                cycles_to_us("tim5_dispatch_max_cycles"),
+                params.get("tim5_events_max_per_irq", 0),
+            )
+        )
+
+    def _handle_stepper_perf_event(self, params: dict) -> None:
+        """Handle fatal firmware step-dispatch performance snapshots."""
+        message = self._format_stepper_perf_event(params)
+        log.info(message)
+        gcode = self.printer.lookup_object("gcode", None)
+        if gcode is not None:
+            gcode.respond_info(message)
+
     def _handle_selftest_result(self, params: dict) -> None:
         """Collect one stage result streamed during FOCI_SELFTEST."""
         result = {
@@ -2564,6 +2648,50 @@ class FociDriver:
         parts = ["FOCI_STEPPER_STATS %s:" % self.stepper_name]
         for field in fields:
             parts.append("%s=%s" % (field, params.get(field, "?")))
+        gcmd.respond_info(" ".join(parts))
+
+    def cmd_FOCI_DISPATCH_STATS(self, gcmd) -> None:
+        """Query MCU step-dispatch cycle counters."""
+        if self.oid is None or self.stepper_perf_stats_cmd is None:
+            raise gcmd.error("FOCI_DISPATCH_STATS is not available before MCU identify")
+
+        clear = gcmd.get_int("RESET", 0, minval=0, maxval=1)
+        response = self.stepper_perf_stats_cmd.send([self.oid, clear])
+        if response is None:
+            raise gcmd.error("FOCI_DISPATCH_STATS query returned no data")
+
+        def cycles_to_us(field: str) -> int | str:
+            value = response.get(field)
+            if value is None:
+                return "?"
+            return int(value) // OPENFFBOARD_CPU_CYCLES_PER_US
+
+        fields = [
+            "channel",
+            "sample_count",
+            "crit_count",
+            "crit_max_cycles",
+            "crit_max_site",
+            "crit_over_10us",
+            "crit_over_50us",
+            "crit_over_100us",
+            "crit_over_1000us",
+            "queue_step_count",
+            "queue_step_max_cycles",
+            "tim5_irq_count",
+            "tim5_irq_max_cycles",
+            "tim5_dispatch_max_cycles",
+            "tim5_events_max_per_irq",
+        ]
+        parts = ["FOCI_DISPATCH_STATS %s:" % self.stepper_name]
+        for field in fields:
+            parts.append("%s=%s" % (field, response.get(field, "?")))
+        parts.append("crit_max_us=%s" % cycles_to_us("crit_max_cycles"))
+        parts.append("queue_step_max_us=%s" % cycles_to_us("queue_step_max_cycles"))
+        parts.append("tim5_irq_max_us=%s" % cycles_to_us("tim5_irq_max_cycles"))
+        parts.append(
+            "tim5_dispatch_max_us=%s" % cycles_to_us("tim5_dispatch_max_cycles")
+        )
         gcmd.respond_info(" ".join(parts))
 
     def _validate_and_load_config(self) -> None:

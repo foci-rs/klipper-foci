@@ -100,3 +100,47 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
     assert "last_stop_drained_steps=11128" in gcmd.last_info
     assert "timer_active=0" in gcmd.last_info
     assert "queue_len=0" in gcmd.last_info
+
+
+def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
+    driver = make_driver(stepper_name="stepper_x")
+    driver.oid = 10
+    driver.stepper_perf_stats_cmd = MockCommand(
+        {
+            "oid": 10,
+            "channel": 0,
+            "sample_count": 42,
+            "crit_count": 37,
+            "crit_max_cycles": 190000,
+            "crit_max_site": 1,
+            "crit_over_10us": 9,
+            "crit_over_50us": 4,
+            "crit_over_100us": 2,
+            "crit_over_1000us": 1,
+            "queue_step_count": 23,
+            "queue_step_max_cycles": 175000,
+            "tim5_irq_count": 400,
+            "tim5_irq_max_cycles": 2400,
+            "tim5_dispatch_max_cycles": 2100,
+            "tim5_events_max_per_irq": 3,
+        }
+    )
+    gcmd = MockGCmd({"RESET": 1})
+
+    driver.cmd_FOCI_DISPATCH_STATS(gcmd)
+
+    assert driver.stepper_perf_stats_cmd.last_args == [10, 1]
+    assert "FOCI_DISPATCH_STATS stepper_x:" in gcmd.last_info
+    assert "channel=0" in gcmd.last_info
+    assert "sample_count=42" in gcmd.last_info
+    assert "crit_count=37" in gcmd.last_info
+    assert "crit_max_cycles=190000" in gcmd.last_info
+    assert "crit_max_site=1" in gcmd.last_info
+    assert "crit_max_us=1130" in gcmd.last_info
+    assert "crit_over_1000us=1" in gcmd.last_info
+    assert "queue_step_max_cycles=175000" in gcmd.last_info
+    assert "queue_step_max_us=1041" in gcmd.last_info
+    assert "tim5_irq_max_cycles=2400" in gcmd.last_info
+    assert "tim5_irq_max_us=14" in gcmd.last_info
+    assert "tim5_dispatch_max_cycles=2100" in gcmd.last_info
+    assert "tim5_events_max_per_irq=3" in gcmd.last_info
