@@ -1718,10 +1718,15 @@ class FociDriver:
             " crit_over_100us=%u crit_over_1000us=%u"
             " queue_step_count=%u queue_step_max_cycles=%u"
             " tim5_activation_count=%u tim5_irq_max_cycles=%u"
-            " tim5_dispatch_max_cycles=%u tim5_events_max_per_irq=%u"
+            " tim5_dispatch_max_cycles=%u"
+            " tim5_dispatch_max_cycles_events=%u"
+            " tim5_events_max_per_irq=%u"
             " tim5_event_count_total=%u tim5_defer_count=%u"
             " tim5_empty_count=%u tim5_events_last_activation=%u"
             " tim5_burst_cycles_per_event_max=%u"
+            " tim5_burst_cycles_per_event_max_cycles=%u"
+            " tim5_burst_cycles_per_event_max_events=%u"
+            " tim5_burst_cycles_per_event_floor3_max=%u"
             " tim5_entry_latency_max_ticks=%u"
             " tim5_pop_lateness_max_ticks=%u"
             " stepper_load_lateness_max_ticks=%u"
@@ -2476,10 +2481,14 @@ class FociDriver:
             " tim5_activation_count=%d"
             " tim5_irq_max_cycles=%d tim5_irq_max_us=%s"
             " tim5_dispatch_max_cycles=%d tim5_dispatch_max_us=%s"
+            " tim5_dispatch_max_cycles_events=%d"
             " tim5_events_max_per_irq=%d"
             " tim5_event_count_total=%d tim5_defer_count=%d"
             " tim5_empty_count=%d tim5_events_last_activation=%d"
             " tim5_burst_cycles_per_event_max=%d"
+            " tim5_burst_cycles_per_event_max_cycles=%d"
+            " tim5_burst_cycles_per_event_max_events=%d"
+            " tim5_burst_cycles_per_event_floor3_max=%d"
             " tim5_entry_latency_max_ticks=%d tim5_pop_lateness_max_ticks=%d"
             " stepper_load_lateness_max_ticks=%d"
             " stepper_load_lateness_last_ticks=%d build_trace_enabled=%d"
@@ -2506,12 +2515,16 @@ class FociDriver:
                 cycles_to_us("tim5_irq_max_cycles"),
                 params.get("tim5_dispatch_max_cycles", 0),
                 cycles_to_us("tim5_dispatch_max_cycles"),
+                params.get("tim5_dispatch_max_cycles_events", 0),
                 params.get("tim5_events_max_per_irq", 0),
                 params.get("tim5_event_count_total", 0),
                 params.get("tim5_defer_count", 0),
                 params.get("tim5_empty_count", 0),
                 params.get("tim5_events_last_activation", 0),
                 params.get("tim5_burst_cycles_per_event_max", 0),
+                params.get("tim5_burst_cycles_per_event_max_cycles", 0),
+                params.get("tim5_burst_cycles_per_event_max_events", 0),
+                params.get("tim5_burst_cycles_per_event_floor3_max", 0),
                 params.get("tim5_entry_latency_max_ticks", 0),
                 params.get("tim5_pop_lateness_max_ticks", 0),
                 params.get("stepper_load_lateness_max_ticks", 0),
@@ -2733,12 +2746,16 @@ class FociDriver:
             "tim5_activation_count",
             "tim5_irq_max_cycles",
             "tim5_dispatch_max_cycles",
+            "tim5_dispatch_max_cycles_events",
             "tim5_events_max_per_irq",
             "tim5_event_count_total",
             "tim5_defer_count",
             "tim5_empty_count",
             "tim5_events_last_activation",
             "tim5_burst_cycles_per_event_max",
+            "tim5_burst_cycles_per_event_max_cycles",
+            "tim5_burst_cycles_per_event_max_events",
+            "tim5_burst_cycles_per_event_floor3_max",
             "tim5_entry_latency_max_ticks",
             "tim5_pop_lateness_max_ticks",
             "stepper_load_lateness_max_ticks",

@@ -122,12 +122,16 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
             "tim5_activation_count": 400,
             "tim5_irq_max_cycles": 2400,
             "tim5_dispatch_max_cycles": 2100,
+            "tim5_dispatch_max_cycles_events": 5,
             "tim5_events_max_per_irq": 3,
             "tim5_event_count_total": 800,
             "tim5_defer_count": 5,
             "tim5_empty_count": 2,
             "tim5_events_last_activation": 3,
             "tim5_burst_cycles_per_event_max": 700,
+            "tim5_burst_cycles_per_event_max_cycles": 2100,
+            "tim5_burst_cycles_per_event_max_events": 3,
+            "tim5_burst_cycles_per_event_floor3_max": 700,
             "tim5_entry_latency_max_ticks": 8400,
             "tim5_pop_lateness_max_ticks": 41,
             "stepper_load_lateness_max_ticks": 1234,
@@ -153,12 +157,16 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "tim5_irq_max_cycles=2400" in gcmd.last_info
     assert "tim5_irq_max_us=14" in gcmd.last_info
     assert "tim5_dispatch_max_cycles=2100" in gcmd.last_info
+    assert "tim5_dispatch_max_cycles_events=5" in gcmd.last_info
     assert "tim5_events_max_per_irq=3" in gcmd.last_info
     assert "tim5_event_count_total=800" in gcmd.last_info
     assert "tim5_defer_count=5" in gcmd.last_info
     assert "tim5_empty_count=2" in gcmd.last_info
     assert "tim5_events_last_activation=3" in gcmd.last_info
     assert "tim5_burst_cycles_per_event_max=700" in gcmd.last_info
+    assert "tim5_burst_cycles_per_event_max_cycles=2100" in gcmd.last_info
+    assert "tim5_burst_cycles_per_event_max_events=3" in gcmd.last_info
+    assert "tim5_burst_cycles_per_event_floor3_max=700" in gcmd.last_info
     assert "tim5_entry_latency_max_ticks=8400" in gcmd.last_info
     assert "tim5_pop_lateness_max_ticks=41" in gcmd.last_info
     assert "stepper_load_lateness_max_ticks=1234" in gcmd.last_info
