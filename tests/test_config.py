@@ -172,6 +172,29 @@ def test_dump_commands_register_register_dump_workflow_handler():
     )
 
 
+def test_default_control_commands_register_controls_workflow_handlers():
+    printer = build_driver_with_mode("default")
+    gcode = printer.lookup_object("gcode")
+    command_names = {
+        "FOCI_SET_GAINS",
+        "FOCI_SET_INNER_GAINS",
+        "FOCI_SET_CURRENT",
+        "FOCI_SET_VELOCITY_FEEDFORWARD",
+    }
+
+    handlers = {
+        args[0]: args[3]
+        for args, _kwargs in gcode._mux_commands
+        if args[0] in command_names
+    }
+
+    assert set(handlers) == command_names
+    assert all(
+        handler.__self__.__class__.__name__ == "ControlsWorkflow"
+        for handler in handlers.values()
+    )
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

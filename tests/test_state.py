@@ -792,7 +792,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         d = make_driver()
 
         gcmd = MockGCmd({"RUN_CURRENT": 1.7})
-        d.cmd_FOCI_SET_CURRENT(gcmd)
+        d.controls.set_current(gcmd)
 
         self.assertEqual(d.set_current_cmd.last_args, [d.oid, 1700])
         self.assertEqual(d.run_current, 1.7)
@@ -801,7 +801,7 @@ class TestDebugGainsCommand(unittest.TestCase):
     def test_sets_position_and_velocity_gains_as_q8_8(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_GAINS(
+        d.controls.set_gains(
             MockGCmd(
                 {
                     "VELOCITY_P": "2.0",
@@ -825,7 +825,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         d = make_driver()
         d.state.active_gains = dict(SAMPLE_ACTIVE_GAINS)
 
-        d.cmd_FOCI_SET_GAINS(
+        d.controls.set_gains(
             MockGCmd(
                 {
                     "VELOCITY_P": 2.0,
@@ -844,7 +844,7 @@ class TestDebugGainsCommand(unittest.TestCase):
     def test_sets_inner_current_gains_as_raw_register_values(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_INNER_GAINS(
+        d.controls.set_inner_gains(
             MockGCmd(
                 {
                     "FLUX_P": 706,
@@ -864,7 +864,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         d = make_driver()
         d.state.active_gains = dict(SAMPLE_ACTIVE_GAINS)
 
-        d.cmd_FOCI_SET_INNER_GAINS(
+        d.controls.set_inner_gains(
             MockGCmd(
                 {
                     "FLUX_P": 706,
@@ -890,7 +890,7 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
     def test_sets_feedforward_enable_and_multiplier(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_VELOCITY_FEEDFORWARD(
+        d.controls.set_velocity_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -907,7 +907,7 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
         d = make_driver()
         d.velocity_feedforward_multiplier = 4
 
-        d.cmd_FOCI_SET_VELOCITY_FEEDFORWARD(
+        d.controls.set_velocity_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 0,

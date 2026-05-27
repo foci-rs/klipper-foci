@@ -7,6 +7,7 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
+from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
 from klipper_foci.registry import FociGlobalConfig
@@ -510,6 +511,7 @@ def make_driver(
     # Volatile state (matches __init__ lines 700-719)
     driver.state = FociRuntimeState()
     driver.dump = RegisterDumpWorkflow(driver)
+    driver.controls = ControlsWorkflow(driver)
     driver._enable_patched = False
 
     # Commission polling state
