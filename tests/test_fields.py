@@ -7,7 +7,7 @@
 
 import unittest
 
-from klipper_foci.driver import (
+from klipper_foci.registers import (
     DUMP_GROUPS,
     FieldHelper,
     Fields,
