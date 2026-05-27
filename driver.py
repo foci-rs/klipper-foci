@@ -7,14 +7,8 @@
 
 import logging
 
-from .registers import (
-    DUMP_GROUPS,
-    FIELD_FORMATTERS,
-    REGISTERS,
-    SIGNED_FIELDS,
-    Fields,
-    FieldHelper,
-)
+from .dump import RegisterDumpWorkflow
+from .registers import REGISTERS
 from .registry import register_gcode_commands
 from .state import FociRuntimeState
 from .trace import (
@@ -44,7 +38,6 @@ MAX_DIAGNOSTIC_VOLTAGE_LIMIT = 32767
 class FociDriver:
     """Klipper extras driver for a single TMC4671 FOC channel."""
 
-    cmd_DUMP_FOCI_help = "Dump TMC4671 register state for a FOCI stepper"
     cmd_FOCI_TRACE_START_help = "Start FOCI per-tick trace capture"
     cmd_FOCI_TRACE_STOP_help = "Stop FOCI per-tick trace capture"
     cmd_FOCI_TRACE_help = "Fetch and display trace capture buffer"
@@ -399,10 +392,7 @@ class FociDriver:
         self._trace_info: dict | None = None
         self._trace_info_received: bool = False
         self._homing_move_start_times: dict[int, float] = {}
-
-        # Dump state
-        self._dump_buffer: dict[int, int] = {}
-        self._dump_complete = False
+        self.dump = RegisterDumpWorkflow(self)
 
         # Selftest streaming state (populated by foci_selftest_result / foci_selftest_done).
         self._selftest_results: list[dict] = []
@@ -420,9 +410,6 @@ class FociDriver:
 
         # Track whether enable methods have been monkey-patched
         self._enable_patched = False
-
-        # Field formatting helper
-        self.fields = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
 
         # Register GCode commands
         gcode = self.printer.lookup_object("gcode")
@@ -582,10 +569,10 @@ class FociDriver:
         )
         self.dump_cmd = self.mcu.lookup_command("foci_dump_registers oid=%c")
         self.mcu._serial.register_response(
-            self._handle_dump_value, "foci_dump_value", self.oid
+            self.dump.handle_dump_value, "foci_dump_value", self.oid
         )
         self.mcu._serial.register_response(
-            self._handle_dump_done, "foci_dump_done", self.oid
+            self.dump.handle_dump_done, "foci_dump_done", self.oid
         )
         self.mcu._serial.register_response(
             self._handle_calibrate_response, "foci_calibrate_result", self.oid
@@ -775,14 +762,6 @@ class FociDriver:
         if isinstance(dir_info, (list, tuple)):
             return bool(dir_info[0])
         return bool(dir_info)
-
-    def _handle_dump_value(self, params: dict) -> None:
-        """Handle a single register value from the firmware dump."""
-        self._dump_buffer[params["addr"]] = params["value"]
-
-    def _handle_dump_done(self, params: dict) -> None:
-        """Handle dump completion signal from firmware."""
-        self._dump_complete = True
 
     # -----------------------------------------------------------------
     # Commissioning phase/error/profile/mode maps
@@ -1419,45 +1398,6 @@ class FociDriver:
                 "value2": params["value2"],
             }
         )
-
-    def cmd_DUMP_FOCI(self, gcmd) -> None:
-        """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
-
-        Sends a single foci_dump_registers command to the firmware and
-        waits for all register values to be streamed back via the
-        FOCI:DUMP: output protocol, then prints them formatted to the
-        GCode console.
-        """
-        reactor = self.printer.get_reactor()
-        self._dump_buffer.clear()
-        self._dump_complete = False
-        self.dump_cmd.send([self.oid])
-
-        # Wait for dump to complete. The serial reader thread calls
-        # _handle_dump_done which sets _dump_complete.
-        deadline = reactor.monotonic() + 5.0
-        while not self._dump_complete and reactor.monotonic() < deadline:
-            reactor.pause(reactor.monotonic() + 0.05)
-
-        if not self._dump_complete:
-            gcmd.respond_info("FOCI register dump timed out")
-            return
-
-        lines: list[str] = []
-        for group_name, regs in DUMP_GROUPS:
-            if "%s" in group_name:
-                header = group_name % self.stepper_name
-            else:
-                header = group_name
-            lines.append("========== %s ==========" % header)
-            for reg_name in regs:
-                addr = REGISTERS[reg_name]
-                if addr in self._dump_buffer:
-                    val = self._dump_buffer[addr]
-                    lines.append(self.fields.pretty_format(reg_name, val))
-                else:
-                    lines.append("  %-30s = (not in dump)" % reg_name)
-        gcmd.respond_info("\n".join(lines))
 
     def cmd_FOCI_STEP_POSITION(self, gcmd) -> None:
         """Query raw MCU step position without updating Klipper state."""

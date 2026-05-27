@@ -36,15 +36,15 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     GcodeCommandSpec(
         "DUMP_FOCI",
         "default",
-        "driver",
-        "cmd_DUMP_FOCI",
+        "dump",
+        "dump_registers",
         "Dump TMC4671 register state for a FOCI stepper",
     ),
     GcodeCommandSpec(
         "DUMP_TMC",
         "default",
-        "driver",
-        "cmd_DUMP_FOCI",
+        "dump",
+        "dump_registers",
         "Dump TMC4671 register state for a FOCI stepper",
     ),
     GcodeCommandSpec(

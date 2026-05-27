@@ -154,6 +154,24 @@ def test_registry_resolves_component_handler_and_inline_help():
     assert kwargs["desc"] == "test command"
 
 
+def test_dump_commands_register_register_dump_workflow_handler():
+    printer = build_driver_with_mode("default")
+    gcode = printer.lookup_object("gcode")
+
+    dump_handlers = {
+        args[0]: args[3]
+        for args, _kwargs in gcode._mux_commands
+        if args[0] in {"DUMP_FOCI", "DUMP_TMC"}
+    }
+
+    assert dump_handlers["DUMP_FOCI"].__self__.__class__.__name__ == (
+        "RegisterDumpWorkflow"
+    )
+    assert dump_handlers["DUMP_TMC"].__self__.__class__.__name__ == (
+        "RegisterDumpWorkflow"
+    )
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {
