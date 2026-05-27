@@ -6,7 +6,13 @@ import pytest
 
 from klipper_foci.protocol import FociProtocol
 
-from tests.mocks import CommandError, MockCommand, MockMCU, make_driver
+from tests.mocks import (
+    CommandError,
+    MockCartesianKinematics,
+    MockCommand,
+    MockMCU,
+    make_driver,
+)
 
 
 def response_names(mcu):
@@ -86,3 +92,19 @@ def test_read_register_returns_value_from_optional_query():
 
     assert driver.protocol.read_register(0x6C) == 0x12345678
     assert driver.protocol.commands.read_register.last_args == [driver.oid, 0x6C]
+
+
+def test_driver_mcu_identify_binds_protocol_and_keeps_temporary_aliases():
+    driver = make_driver(
+        stepper_name="stepper_x",
+        kinematics=MockCartesianKinematics([["stepper_x"]]),
+    )
+    driver.mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
+
+    driver._handle_mcu_identify()
+
+    assert driver.protocol.commands.set_current is not None
+    assert driver.protocol.commands.set_current is driver.set_current_cmd
+    assert driver.protocol.commands.calibrate is driver.calibrate_cmd
+    assert ("foci_calibrate_result", driver.oid) in response_names(driver.mcu)

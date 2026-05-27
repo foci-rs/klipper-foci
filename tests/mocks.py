@@ -14,6 +14,7 @@ from klipper_foci.diagnostics import DiagnosticsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
 from klipper_foci.homing import HomingWorkflow
+from klipper_foci.protocol import FociProtocol
 from klipper_foci.registry import FociGlobalConfig
 from klipper_foci.selftest import SelftestWorkflow
 from klipper_foci.state import FociRuntimeState
@@ -487,6 +488,7 @@ def make_driver(
     stepper_name="manual_stepper stepper_x",
     kinematics=None,
     homed_axes="",
+    bind_protocol=True,
 ) -> FociDriver:
     """Create a FociDriver with mocked dependencies, bypassing __init__.
 
@@ -513,6 +515,7 @@ def make_driver(
     driver.printer = printer
 
     # Volatile state (matches __init__ lines 700-719)
+    driver.protocol = FociProtocol(driver)
     driver.state = FociRuntimeState()
     driver.dump = RegisterDumpWorkflow(driver)
     driver.controls = ControlsWorkflow(driver)
@@ -595,39 +598,9 @@ def make_driver(
     driver.position_filter_hz = 0
     driver.flux_filter_hz = 0
 
-    # Mock firmware commands (used by _ensure_calibrated, etc.)
-    driver.set_current_cmd = MockCommand()
-    driver.set_encoder_cmd = MockCommand()
-    driver.set_encoder_dir_cmd = MockCommand()
-    driver.calibrate_cmd = MockCommand()
-    driver.commission_cmd = MockCommand()
-    driver.tune_cmd = MockCommand()
-    driver.selftest_cmd = MockCommand()
-    driver.set_pid_gains_cmd = MockCommand()
-    driver.set_position_gains_cmd = MockCommand()
-    driver.set_velocity_feedforward_cmd = MockCommand()
-    driver.set_velocity_transient_feedforward_cmd = MockCommand()
-    driver.set_accel_feedforward_cmd = MockCommand()
-    driver.set_decoupling_feedforward_cmd = MockCommand()
-    driver.set_position_lead_cmd = MockCommand()
-    driver.set_phase_advance_cmd = MockCommand()
-    driver.set_velocity_limit_cmd = MockCommand()
-    driver.set_voltage_limit_cmd = MockCommand()
-    driver.current_step_test_cmd = MockCommand()
-    driver.current_vector_step_test_cmd = MockCommand()
-    driver.current_torque_sample_test_cmd = MockCommand()
-    driver.position_torque_offset_sample_test_cmd = MockCommand()
-    driver.voltage_step_test_cmd = MockCommand()
-    driver.set_velocity_filter_cmd = MockCommand()
-    driver.set_torque_filter_cmd = MockCommand()
-    driver.set_position_filter_cmd = MockCommand()
-    driver.set_flux_filter_cmd = MockCommand()
-    driver.set_auto_calibrate_on_enable_cmd = MockCommand()
-    driver.trace_start_cmd = MockCommand()
-    driver.trace_stop_cmd = MockCommand()
-    driver.stepper_stats_cmd = MockCommand()
-    driver.stepper_exec_stats_cmd = MockCommand()
-    driver.stepper_timing_stats_cmd = MockCommand()
-    driver.stepper_stop_stats_cmd = MockCommand()
+    driver.mcu = MockMCU()
+    if bind_protocol:
+        driver.protocol.bind_mcu(driver.mcu, driver.oid)
+        driver.protocol.install_driver_aliases()
 
     return driver

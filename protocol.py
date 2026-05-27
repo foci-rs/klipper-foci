@@ -302,6 +302,49 @@ class FociMcuCommands:
         )
 
 
+COMMAND_ALIAS_MAP = {
+    "stepper_get_position_cmd": "stepper_get_position",
+    "stepper_stats_cmd": "stepper_stats",
+    "stepper_exec_stats_cmd": "stepper_exec_stats",
+    "stepper_timing_stats_cmd": "stepper_timing_stats",
+    "stepper_stop_stats_cmd": "stepper_stop_stats",
+    "stepper_perf_stats_cmd": "stepper_perf_stats",
+    "set_current_cmd": "set_current",
+    "set_encoder_cmd": "set_encoder",
+    "set_encoder_dir_cmd": "set_encoder_dir",
+    "selftest_cmd": "selftest",
+    "read_reg_cmd": "read_register",
+    "calibrate_cmd": "calibrate",
+    "dump_cmd": "dump_registers",
+    "set_pid_gains_cmd": "set_pid_gains",
+    "commission_cmd": "commission",
+    "tune_cmd": "tune",
+    "set_velocity_filter_cmd": "set_velocity_filter",
+    "set_torque_filter_cmd": "set_torque_filter",
+    "set_position_filter_cmd": "set_position_filter",
+    "set_flux_filter_cmd": "set_flux_filter",
+    "set_position_gains_cmd": "set_position_gains",
+    "set_velocity_feedforward_cmd": "set_velocity_feedforward",
+    "set_velocity_transient_feedforward_cmd": "set_velocity_transient_feedforward",
+    "set_accel_feedforward_cmd": "set_accel_feedforward",
+    "set_decoupling_feedforward_cmd": "set_decoupling_feedforward",
+    "set_position_lead_cmd": "set_position_lead",
+    "set_phase_advance_cmd": "set_phase_advance",
+    "set_velocity_limit_cmd": "set_velocity_limit",
+    "set_voltage_limit_cmd": "set_voltage_limit",
+    "current_step_test_cmd": "current_step_test",
+    "current_vector_step_test_cmd": "current_vector_step_test",
+    "current_torque_sample_test_cmd": "current_torque_sample_test",
+    "position_torque_offset_sample_test_cmd": "position_torque_offset_sample_test",
+    "voltage_step_test_cmd": "voltage_step_test",
+    "set_auto_calibrate_on_enable_cmd": "set_auto_calibrate_on_enable",
+    "trace_info_cmd": "trace_info",
+    "trace_start_cmd": "trace_start",
+    "trace_stop_cmd": "trace_stop",
+    "trace_fetch_cmd": "trace_fetch",
+}
+
+
 class FociProtocol:
     """Host protocol facade for low-level FOCI MCU communication."""
 
@@ -312,6 +355,11 @@ class FociProtocol:
     def bind_mcu(self, mcu, oid: int) -> None:
         """Bind MCU commands and response handlers for one FOCI driver."""
         self.commands.bind(self.driver, mcu, oid)
+
+    def install_driver_aliases(self) -> None:
+        """Install temporary driver command aliases during Pass 3 migration."""
+        for driver_name, command_name in COMMAND_ALIAS_MAP.items():
+            setattr(self.driver, driver_name, getattr(self.commands, command_name))
 
     def read_register(self, addr: int) -> int:
         """Read one raw TMC4671 register address through dev firmware."""
