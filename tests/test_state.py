@@ -929,7 +929,7 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
     def test_sets_transient_feedforward_parameters(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD(
+        d.controls.set_velocity_transient_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -958,7 +958,7 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
         d.velocity_transient_max_offset = 900
         d.velocity_transient_rate_hz = 10000
 
-        d.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD(
+        d.controls.set_velocity_transient_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 0,
@@ -986,7 +986,7 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
     def test_sets_accel_feedforward_enable_and_split_gains(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
+        d.controls.set_accel_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -1004,7 +1004,7 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
     def test_gain_alias_sets_both_split_gains(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
+        d.controls.set_accel_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -1023,7 +1023,7 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
         d.accel_feedforward_accel_gain = 750
         d.accel_feedforward_decel_gain = 250
 
-        d.cmd_FOCI_SET_ACCEL_FEEDFORWARD(
+        d.controls.set_accel_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 0,
@@ -1046,7 +1046,7 @@ class TestDecouplingFeedforwardCommand(unittest.TestCase):
     def test_sets_decoupling_feedforward_enable_and_model(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_DECOUPLING_FEEDFORWARD(
+        d.controls.set_decoupling_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -1082,7 +1082,7 @@ class TestPositionLeadCommand(unittest.TestCase):
     def test_sets_position_lead_enable_gain_and_cap(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_POSITION_LEAD(
+        d.controls.set_position_lead(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -1102,7 +1102,7 @@ class TestPositionLeadCommand(unittest.TestCase):
         d.position_lead_gain = 10
         d.position_lead_max_counts = 20
 
-        d.cmd_FOCI_SET_POSITION_LEAD(MockGCmd({"ENABLE": 0}))
+        d.controls.set_position_lead(MockGCmd({"ENABLE": 0}))
 
         self.assertEqual(d.set_position_lead_cmd.last_args, [d.oid, 0, 10, 20])
         self.assertFalse(d.position_lead)
@@ -1119,7 +1119,7 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
     def test_sets_phase_advance_enable_gain_cap_and_deadband(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_PHASE_ADVANCE(
+        d.controls.set_phase_advance(
             MockGCmd(
                 {
                     "ENABLE": 1,
@@ -1145,7 +1145,7 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
         d.phase_advance_max_counts = 64
         d.phase_advance_deadband = 16
 
-        d.cmd_FOCI_SET_PHASE_ADVANCE(MockGCmd({"ENABLE": 0}))
+        d.controls.set_phase_advance(MockGCmd({"ENABLE": 0}))
 
         self.assertEqual(
             d.set_phase_advance_cmd.last_args,
@@ -1159,7 +1159,7 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
     def test_enable_with_no_parameters_is_safe_noop(self):
         d = make_driver()
 
-        d.cmd_FOCI_SET_PHASE_ADVANCE(MockGCmd({}))
+        d.controls.set_phase_advance(MockGCmd({}))
 
         self.assertEqual(d.set_phase_advance_cmd.last_args, [d.oid, 1, 0, 0, 16])
         self.assertTrue(d.phase_advance)
@@ -1178,7 +1178,7 @@ class TestVoltageLimitCommand(unittest.TestCase):
         d = make_driver()
 
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 20000})
-        d.cmd_FOCI_SET_VOLTAGE_LIMIT(gcmd)
+        d.controls.set_voltage_limit(gcmd)
 
         self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 20000])
         self.assertIn("pidout_uq_ud_limit=20000", gcmd.last_info)
@@ -1187,7 +1187,7 @@ class TestVoltageLimitCommand(unittest.TestCase):
         d = make_driver()
 
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 32767})
-        d.cmd_FOCI_SET_VOLTAGE_LIMIT(gcmd)
+        d.controls.set_voltage_limit(gcmd)
 
         self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 32767])
         self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
@@ -1196,7 +1196,7 @@ class TestVoltageLimitCommand(unittest.TestCase):
         d = make_driver()
 
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 0})
-        d.cmd_FOCI_SET_VOLTAGE_LIMIT(gcmd)
+        d.controls.set_voltage_limit(gcmd)
 
         self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 0])
         self.assertIn("pidout_uq_ud_limit=0", gcmd.last_info)

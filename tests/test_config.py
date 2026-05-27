@@ -195,6 +195,31 @@ def test_default_control_commands_register_controls_workflow_handlers():
     )
 
 
+def test_expert_control_commands_register_controls_workflow_handlers():
+    printer = build_driver_with_mode("expert")
+    gcode = printer.lookup_object("gcode")
+    command_names = {
+        "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
+        "FOCI_SET_ACCEL_FEEDFORWARD",
+        "FOCI_SET_DECOUPLING_FEEDFORWARD",
+        "FOCI_SET_POSITION_LEAD",
+        "FOCI_SET_PHASE_ADVANCE",
+        "FOCI_SET_VOLTAGE_LIMIT",
+    }
+
+    handlers = {
+        args[0]: args[3]
+        for args, _kwargs in gcode._mux_commands
+        if args[0] in command_names
+    }
+
+    assert set(handlers) == command_names
+    assert all(
+        handler.__self__.__class__.__name__ == "ControlsWorkflow"
+        for handler in handlers.values()
+    )
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {
