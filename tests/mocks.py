@@ -7,6 +7,7 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
+from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
 from klipper_foci.driver import FociDriver
@@ -518,6 +519,7 @@ def make_driver(
     driver.homing = HomingWorkflow(driver)
     driver.commissioning = CommissioningWorkflow(driver)
     driver.selftest = SelftestWorkflow(driver)
+    driver.autotune = AutotuneWorkflow(driver)
 
     # Config values (needed by some methods)
     driver.microsteps = 20
@@ -560,7 +562,7 @@ def make_driver(
     driver.identified_bandwidth_hz = 0
 
     # Phase 1 inner-confidence fields (added 2026-04-30). Default to None
-    # so `_resolve_inner_confidence` exercises the host-default fallback.
+    # so the autotune workflow exercises the host-default fallback.
     driver.identified_tau_e_us = None
     driver.identified_tau_e_crosscheck_us = None
     driver.identified_tau_residual_permille = None

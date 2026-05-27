@@ -7,12 +7,9 @@
 
 import logging
 
+from .autotune import AutotuneWorkflow
 from .commissioning import (
-    COMMISSION_ERROR_NAMES,
-    HARD_FAULT_CODES,
-    PROFILE_MAP,
     CommissioningWorkflow,
-    format_inner_warning_flags,
 )
 from .controls import (
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
@@ -61,9 +58,6 @@ class FociDriver:
     )
     cmd_FOCI_DISPATCH_STATS_help = (
         "Query FOCI MCU step-dispatch cycle counters without motion"
-    )
-    cmd_FOCI_AUTOTUNE_help = (
-        "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)"
     )
     cmd_FOCI_CURRENT_STEP_TEST_help = "Run a bounded FOCI current-loop step diagnostic"
     cmd_FOCI_CURRENT_VECTOR_STEP_TEST_help = (
@@ -279,7 +273,7 @@ class FociDriver:
 
         # Phase 1 inner-confidence fields (added 2026-04-30). Optional in
         # the persisted config: old configs that never ran the new firmware
-        # leave these unset and `_resolve_inner_confidence` substitutes
+        # leave these unset and the autotune workflow substitutes
         # documented defaults (bit 6 = host-default confidence).
         self.identified_tau_e_us: int | None = config.getint(
             "identified_tau_e_us", None, minval=0
@@ -384,6 +378,7 @@ class FociDriver:
         self.homing = HomingWorkflow(self)
         self.commissioning = CommissioningWorkflow(self)
         self.selftest = SelftestWorkflow(self)
+        self.autotune = AutotuneWorkflow(self)
 
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
@@ -577,7 +572,7 @@ class FociDriver:
             self.oid,
         )
         self.mcu._serial.register_response(
-            self._handle_tune_result,
+            self.autotune.handle_tune_result,
             "foci_tune_result",
             self.oid,
         )
@@ -755,17 +750,6 @@ class FociDriver:
         6: "reset_step_clock",
         7: "tmc_disable_signal",
     }
-
-    MODE_MAP: dict[str, int] = {
-        "unloaded": 0,
-        "nominal": 1,
-        "high_inertia": 2,
-    }
-
-    def _handle_tune_result(self, params: dict) -> None:
-        """Handle foci_tune_result from firmware (Stage 2 completion)."""
-        self.commissioning.result = params
-        self.commissioning.done = True
 
     def _handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
@@ -1420,268 +1404,6 @@ class FociDriver:
         )
         self.homing.install_enable_hooks()
 
-    def _resolve_inner_confidence(self) -> tuple[int, int, int, int]:
-        """Resolve the four Phase 1 inner-confidence fields for Stage 2.
-
-        Returns ``(tau_e_us, tau_e_crosscheck_us, tau_residual_permille,
-        inner_warning_flags)``. Fresh Stage 1 results from
-        ``_commissioned_result`` win over persisted values; persisted
-        values fall back to documented defaults when absent (used only
-        for old configs that pre-date this field set).
-        """
-        if self.state.commissioned_result is not None:
-            r = self.state.commissioned_result
-            return (
-                r.get("tau_e_us", 0),
-                r.get("tau_e_crosscheck_us", 0),
-                r.get("tau_residual_permille", 1000),
-                r.get("inner_warning_flags", 0),
-            )
-
-        tau_e_us = self.identified_tau_e_us
-        if tau_e_us is None:
-            # Spec wording: "when `identified_lambda_us` is available,
-            # otherwise 1000". Treat only `None` as missing — a genuine
-            # zero (implausible but legal) maps to the 1000us floor.
-            if self.identified_lambda_us is None:
-                tau_e_us = 1000
-            else:
-                tau_e_us = max(self.identified_lambda_us, 1000)
-
-        tau_e_crosscheck_us = self.identified_tau_e_crosscheck_us
-        if tau_e_crosscheck_us is None:
-            tau_e_crosscheck_us = 0
-
-        tau_residual_permille = self.identified_tau_residual_permille
-        if tau_residual_permille is None:
-            tau_residual_permille = 1000
-
-        inner_warning_flags = self.identified_inner_warning_flags
-        if inner_warning_flags is None:
-            # Bit 6: host-defaulted confidence data (no fresh measurement).
-            inner_warning_flags = 0x40
-
-        return (
-            tau_e_us,
-            tau_e_crosscheck_us,
-            tau_residual_permille,
-            inner_warning_flags,
-        )
-
-    def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
-        """Stage 2: installed tuning after commissioning and homing.
-
-        Runs mechanical ID, velocity/position tuning, filter selection,
-        and commit. Requires motor calibrated, enabled, in closed-loop
-        position mode, and printer fully homed.
-        """
-        profile_name = gcmd.get("PROFILE", "balanced").lower()
-        mode_name = gcmd.get("MODE", "nominal").lower()
-        if profile_name not in PROFILE_MAP:
-            raise gcmd.error(
-                "FOCI %s: unknown profile '%s' (expected: %s)"
-                % (self.name, profile_name, ", ".join(sorted(PROFILE_MAP)))
-            )
-        if mode_name not in self.MODE_MAP:
-            raise gcmd.error(
-                "FOCI %s: unknown mode '%s' (expected: %s)"
-                % (self.name, mode_name, ", ".join(sorted(self.MODE_MAP)))
-            )
-
-        # Hard gates -- before any side effects
-        if not self.state.try_acquire():
-            raise gcmd.error(
-                "FOCI %s: another FOCI operation is in progress" % self.name
-            )
-
-        try:
-            if self.state.inhibited:
-                raise gcmd.error(
-                    "FOCI %s: inhibited after failed FOCI_COMMISSION" % self.name
-                )
-            if self.state.runtime_status == "uncommissioned":
-                raise gcmd.error(
-                    "FOCI %s: not commissioned. Run FOCI_COMMISSION first." % self.name
-                )
-            if not self.state.is_calibrated:
-                raise gcmd.error(
-                    "FOCI %s: not calibrated. Enable motor, re-home, then retry."
-                    % self.name
-                )
-
-            # Check homing — skip for NoneKinematics (manual_stepper has
-            # no kinematic axes and never reports homed_axes).
-            toolhead = self.printer.lookup_object("toolhead")
-            kinematics = toolhead.get_kinematics()
-            if hasattr(kinematics, "rails"):
-                kin_status = toolhead.get_status(toolhead.get_last_move_time())
-                homed = set(kin_status.get("homed_axes", ""))
-                expected = set("xyz")  # full homing required
-                if not expected.issubset(homed):
-                    missing = expected - homed
-                    raise gcmd.error(
-                        "FOCI %s: printer not fully homed (missing: %s). "
-                        "Home first." % (self.name, "".join(sorted(missing)))
-                    )
-
-            # Setup sequence (lock held)
-            toolhead.wait_moves()
-
-            # Post-wait revalidation
-            if not self.state.is_calibrated:
-                raise gcmd.error("FOCI %s: calibration lost during wait" % self.name)
-            if hasattr(kinematics, "rails"):
-                kin_status = toolhead.get_status(toolhead.get_last_move_time())
-                if not expected.issubset(set(kin_status.get("homed_axes", ""))):
-                    raise gcmd.error("FOCI %s: homing lost during wait" % self.name)
-
-            self.homing.invalidate_homing()
-
-            # Get inner-tuning params from cache or config
-            if self.state.commissioned_result is not None:
-                inner_lambda = self.state.commissioned_result["lambda_us"]
-                theta_e = self.state.commissioned_result["theta_e_us"]
-                ringing = self.state.commissioned_result["ringing_count"]
-                bandwidth = self.state.commissioned_result["bandwidth_hz"]
-            else:
-                inner_lambda = self.identified_lambda_us
-                theta_e = self.identified_theta_e_us
-                ringing = self.identified_ringing_count
-                bandwidth = self.identified_bandwidth_hz
-
-            (
-                tau_e_us,
-                tau_e_crosscheck_us,
-                tau_residual_permille,
-                inner_warning_flags,
-            ) = self._resolve_inner_confidence()
-
-            # Send tune command
-            self.commissioning.done = False
-            self.commissioning.result = None
-            self.commissioning.error_code = 0
-
-            self.tune_cmd.send(
-                [
-                    self.oid,
-                    PROFILE_MAP[profile_name],
-                    self.MODE_MAP[mode_name],
-                    inner_lambda,
-                    theta_e,
-                    ringing,
-                    bandwidth,
-                    tau_e_us,
-                    tau_e_crosscheck_us,
-                    tau_residual_permille,
-                    inner_warning_flags,
-                ]
-            )
-
-            # Wait for result (up to 30 seconds).
-            # foci_tune_result is emitted for all outcomes: success, soft failure,
-            # and safety fault (OuterFailed always sends foci_tune_result).
-            reactor = self.printer.get_reactor()
-            eventtime = reactor.monotonic()
-            timeout = eventtime + 30.0
-            while not self.commissioning.done:
-                eventtime = reactor.pause(eventtime + 0.1)
-                if eventtime > timeout:
-                    raise gcmd.error("FOCI %s: FOCI_AUTOTUNE timed out" % self.name)
-                if self.commissioning.error_code != 0:
-                    error_name = COMMISSION_ERROR_NAMES.get(
-                        self.commissioning.error_code,
-                        "UNKNOWN(%d)" % self.commissioning.error_code,
-                    )
-                    self.commissioning.maybe_clear_calibration_for_chip_reset(
-                        self.commissioning.error_code
-                    )
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE failed: %s" % (self.name, error_name)
-                    )
-
-            result = self.commissioning.result
-            status = result.get("status", 255)
-            if status > 1:
-                error_name = COMMISSION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
-                if status == 18:
-                    self.commissioning.handle_chip_reset_detected()
-                    stepper_enable = self.printer.lookup_object("stepper_enable")
-                    enable_line = stepper_enable.lookup_enable(self.stepper_name)
-                    enable_line.motor_disable(toolhead.get_last_move_time())
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE chip reset: %s "
-                        "(motor disabled by firmware)" % (self.name, error_name)
-                    )
-                elif status in HARD_FAULT_CODES:
-                    # Hard fault: firmware disabled motor, cleared state.
-                    # Sync host-side state and block raw-enable auto-calibration
-                    # until a fresh Stage 1 commission succeeds.
-                    self.commissioning.on_commission_failure()
-                    stepper_enable = self.printer.lookup_object("stepper_enable")
-                    enable_line = stepper_enable.lookup_enable(self.stepper_name)
-                    enable_line.motor_disable(toolhead.get_last_move_time())
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE safety fault: %s "
-                        "(motor disabled by firmware)" % (self.name, error_name)
-                    )
-                # Soft failure -- firmware restored entry gains
-                gcmd.respond_info(
-                    "FOCI %s: FOCI_AUTOTUNE failed: %s "
-                    "(motor holding with entry gains)" % (self.name, error_name)
-                )
-                return  # _runtime_status unchanged, gains preserved
-
-            # Determine tuned vs tuned_conservative
-            warning_code = result.get("warning_code", 0)
-            if status == 1 or warning_code != 0:
-                tune_status = "tuned_conservative"
-            else:
-                tune_status = "tuned"
-
-            # Update _active_gains with tuned outer gains + existing current-loop
-            self.state.active_gains = {
-                "flux_p": self.state.active_gains["flux_p"],
-                "flux_i": self.state.active_gains["flux_i"],
-                "torque_p": self.state.active_gains["torque_p"],
-                "torque_i": self.state.active_gains["torque_i"],
-                "velocity_p": result["velocity_p"],
-                "velocity_i": result["velocity_i"],
-                "position_p": result["position_p"],
-                "position_i": result["position_i"],
-                "velocity_limit": result["velocity_limit"],
-                "velocity_filter_hz": result["velocity_filter_hz"],
-                "torque_filter_hz": result["torque_filter_hz"],
-                "position_filter_hz": result["position_filter_hz"],
-                "flux_filter_hz": result["flux_filter_hz"],
-            }
-            self.state.runtime_status = tune_status
-
-            # Persist tuned gains
-            self._persist_tune_results(result, mode_name, tune_status)
-
-            gcmd.respond_info(
-                "FOCI %s tuned (%s): vel_p=%d pos_p=%d"
-                % (
-                    self.name,
-                    tune_status,
-                    result["velocity_p"],
-                    result["position_p"],
-                )
-            )
-            # Reuse the inner_warning_flags resolved earlier in this command —
-            # they were sent to the firmware along with the tune request and
-            # have not changed since.
-            if inner_warning_flags:
-                gcmd.respond_info(
-                    "FOCI %s inner confidence: %s"
-                    % (
-                        self.name,
-                        format_inner_warning_flags(inner_warning_flags),
-                    )
-                )
-        finally:
-            self.state.release()
-
     def cmd_FOCI_CURRENT_STEP_TEST(self, gcmd) -> None:
         """Run a bounded current-loop step diagnostic.
 
@@ -1810,31 +1532,6 @@ class FociDriver:
             " uq_ext=%d ud_ext=%d sample_delay_ms=%d"
             % (self.name, uq_ext, ud_ext, sample_delay_ms)
         )
-
-    def _persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
-        """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
-        configfile = self.printer.lookup_object("configfile")
-        configfile.set(self.name, "pid_velocity_p", "%d" % result["velocity_p"])
-        configfile.set(self.name, "pid_velocity_i", "%d" % result["velocity_i"])
-        configfile.set(self.name, "pid_velocity_limit", "%d" % result["velocity_limit"])
-        configfile.set(self.name, "pid_position_p", "%d" % result["position_p"])
-        configfile.set(self.name, "pid_position_i", "%d" % result["position_i"])
-        configfile.set(
-            self.name,
-            "velocity_filter_hz",
-            "%d" % result["velocity_filter_hz"],
-        )
-        configfile.set(
-            self.name,
-            "position_filter_hz",
-            "%d" % result["position_filter_hz"],
-        )
-        configfile.set(self.name, "flux_filter_hz", "%d" % result["flux_filter_hz"])
-        configfile.set(self.name, "torque_filter_hz", "%d" % result["torque_filter_hz"])
-        configfile.set(self.name, "identified_j_eff", "%d" % result["j_eff"])
-        configfile.set(self.name, "identified_b_eff", "%d" % result["b_eff"])
-        configfile.set(self.name, "autotune_mode", mode_name)
-        configfile.set(self.name, "autotune_status", status)
 
     def _handle_trace_info_result(self, params: dict) -> None:
         """Handle foci_trace_info_result response from firmware."""

@@ -246,7 +246,7 @@ class TestCommissionGates(unittest.TestCase):
 
 
 # =========================================================================
-# 4. cmd_FOCI_AUTOTUNE gates
+# 4. FOCI_AUTOTUNE gates
 # =========================================================================
 
 
@@ -264,7 +264,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.operation_lock = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("another FOCI operation", str(ctx.exception))
 
     def test_raises_if_inhibited(self):
@@ -272,7 +272,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.inhibited = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_raises_if_not_commissioned(self):
@@ -280,7 +280,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.runtime_status = "uncommissioned"
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("not commissioned", str(ctx.exception))
 
     def test_raises_if_not_calibrated(self):
@@ -288,7 +288,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.is_calibrated = False
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("not calibrated", str(ctx.exception))
 
     def test_raises_if_not_homed_with_kinematics(self):
@@ -296,7 +296,7 @@ class TestAutotuneGates(unittest.TestCase):
         d = self._commissioned_driver(kinematics=kin, homed_axes="x")
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("not fully homed", str(ctx.exception))
 
     def test_skips_homing_check_for_none_kinematics(self):
@@ -307,7 +307,7 @@ class TestAutotuneGates(unittest.TestCase):
         # polling loop due to incomplete mocks, but should NOT raise
         # "not fully homed".
         try:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         except (CommandError, AttributeError, TypeError) as e:
             self.assertNotIn("not fully homed", str(e))
 
@@ -315,14 +315,14 @@ class TestAutotuneGates(unittest.TestCase):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "turbo", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("unknown profile", str(ctx.exception).lower())
 
     def test_rejects_invalid_mode(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "extreme"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("unknown mode", str(ctx.exception))
 
     def test_accepts_tuned_conservative_as_commissioned(self):
@@ -332,7 +332,7 @@ class TestAutotuneGates(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         # Should get past the "not commissioned" gate
         try:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         except (CommandError, AttributeError, TypeError) as e:
             self.assertNotIn("not commissioned", str(e))
 
@@ -349,7 +349,7 @@ class TestAutotuneGates(unittest.TestCase):
         reactor.pause = pause_and_report_admission_failure
 
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
 
         self.assertIn("commissioning already running", str(ctx.exception))
         self.assertNotIn("timed out", str(ctx.exception))
@@ -365,13 +365,13 @@ class TestAutotuneGates(unittest.TestCase):
 
         def pause_and_report_hard_fault(deadline):
             reactor._time = deadline
-            d._handle_tune_result({"status": 17})
+            d.autotune.handle_tune_result({"status": 17})
             return reactor._time
 
         reactor.pause = pause_and_report_hard_fault
 
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
 
         self.assertIn("safety fault", str(ctx.exception))
         self.assertFalse(enable_line.is_motor_enabled())
@@ -464,7 +464,7 @@ class TestStateTransitions(unittest.TestCase):
         d.state.is_calibrated = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_active_gain_apply_resends_configured_voltage_limit(self):
@@ -772,7 +772,7 @@ class TestCommandHomingInvalidation(unittest.TestCase):
         d, kin = self._driver_with_cartesian()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         try:
-            d.cmd_FOCI_AUTOTUNE(gcmd)
+            d.autotune.autotune(gcmd)
         except (CommandError, AttributeError, TypeError):
             pass
         self.assertIsNotNone(kin._cleared_axes)
@@ -1677,7 +1677,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
         driver.state.commissioned_result = None
         driver.identified_lambda_us = 700
         # All identified_tau_*/identified_inner_warning_flags default None
-        tau, cross, perm, flags = driver._resolve_inner_confidence()
+        tau, cross, perm, flags = driver.autotune.resolve_inner_confidence()
         # `tau_e_us = max(identified_lambda_us, 1000)` for old configs.
         self.assertEqual(tau, 1000)
         self.assertEqual(cross, 0)
@@ -1694,7 +1694,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
             "inner_warning_flags": 0x02,
         }
         driver.identified_tau_e_us = 9999
-        tau, cross, perm, flags = driver._resolve_inner_confidence()
+        tau, cross, perm, flags = driver.autotune.resolve_inner_confidence()
         self.assertEqual((tau, cross, perm, flags), (1234, 1100, 50, 0x02))
 
     def test_persisted_values_load_from_config(self):
@@ -1704,7 +1704,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
         driver.identified_tau_e_crosscheck_us = 750
         driver.identified_tau_residual_permille = 60
         driver.identified_inner_warning_flags = 0x01
-        tau, cross, perm, flags = driver._resolve_inner_confidence()
+        tau, cross, perm, flags = driver.autotune.resolve_inner_confidence()
         self.assertEqual((tau, cross, perm, flags), (800, 750, 60, 0x01))
 
     def test_format_inner_warning_flags_lists_active_bits(self):

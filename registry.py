@@ -64,8 +64,8 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     GcodeCommandSpec(
         "FOCI_AUTOTUNE",
         "default",
-        "driver",
-        "cmd_FOCI_AUTOTUNE",
+        "autotune",
+        "autotune",
         "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)",
     ),
     GcodeCommandSpec(

@@ -263,6 +263,17 @@ def test_selftest_registers_selftest_workflow_handler():
     assert handler.__self__.__class__.__name__ == "SelftestWorkflow"
 
 
+def test_autotune_registers_autotune_workflow_handler():
+    printer = build_driver_with_mode("default")
+    gcode = printer.lookup_object("gcode")
+
+    handler = next(
+        args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_AUTOTUNE"
+    )
+
+    assert handler.__self__.__class__.__name__ == "AutotuneWorkflow"
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {
