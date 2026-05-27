@@ -1031,7 +1031,9 @@ class FieldHelper:
 ######################################################################
 
 STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
+MIN_RAW_VOLTAGE_LIMIT = 0
 MIN_OPERATIONAL_VOLTAGE_LIMIT = 1024
+DEFAULT_OPERATIONAL_VOLTAGE_LIMIT = 16000
 MAX_DIAGNOSTIC_VOLTAGE_LIMIT = 32767
 
 
@@ -1104,6 +1106,12 @@ class FociDriver:
         # Required motor config
         self.run_current: float = config.getfloat("run_current", above=0.0)
         self.encoder_ppr: int = config.getint("encoder_ppr", minval=1)
+        self.voltage_limit: int = config.getint(
+            "voltage_limit",
+            DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
+            minval=MIN_RAW_VOLTAGE_LIMIT,
+            maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
+        )
         # Encoder count direction relative to motor rotation.
         # "default" = encoder counts up when motor drives forward.
         # "reversed" = encoder counts down when motor drives forward
@@ -2903,6 +2911,7 @@ class FociDriver:
         """
         run_ma: int = int(self.run_current * 1000.0)
         self.set_current_cmd.send([self.oid, run_ma])
+        self.set_voltage_limit_cmd.send([self.oid, self.voltage_limit])
         self.set_encoder_cmd.send([self.oid, self.channel, self.encoder_ppr])
         self.set_encoder_dir_cmd.send(
             [self.oid, self.channel, int(self.encoder_reversed)]
@@ -3031,6 +3040,7 @@ class FociDriver:
         gains = self._active_gains
         if gains is None:
             return
+        self.set_voltage_limit_cmd.send([self.oid, self.voltage_limit])
         self.set_pid_gains_cmd.send(
             [
                 self.oid,
@@ -4386,7 +4396,7 @@ class FociDriver:
         """
         voltage_limit = gcmd.get_int(
             "VOLTAGE_LIMIT",
-            minval=MIN_OPERATIONAL_VOLTAGE_LIMIT,
+            minval=MIN_RAW_VOLTAGE_LIMIT,
             maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
         )
 

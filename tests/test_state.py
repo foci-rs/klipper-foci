@@ -459,6 +459,15 @@ class TestStateTransitions(unittest.TestCase):
             d.cmd_FOCI_AUTOTUNE(gcmd)
         self.assertIn("inhibited", str(ctx.exception))
 
+    def test_active_gain_apply_resends_configured_voltage_limit(self):
+        d = make_driver()
+        d.voltage_limit = 29000
+        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
+
+        d._apply_active_gains_to_firmware()
+
+        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 29000])
+
     def test_disable_callback_clears_calibrated(self):
         d = make_driver()
         d.is_calibrated = True
@@ -1096,6 +1105,15 @@ class TestVoltageLimitCommand(unittest.TestCase):
 
         self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 32767])
         self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
+
+    def test_accepts_voltage_limit_at_chip_min(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"VOLTAGE_LIMIT": 0})
+        d.cmd_FOCI_SET_VOLTAGE_LIMIT(gcmd)
+
+        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 0])
+        self.assertIn("pidout_uq_ud_limit=0", gcmd.last_info)
 
 
 # =========================================================================

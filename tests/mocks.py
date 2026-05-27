@@ -445,6 +445,7 @@ def make_config_printer(stepper_sections, chips=None, kinematics=None):
         sections["foci " + name] = {
             "run_current": values.get("run_current", 0.8),
             "encoder_ppr": values.get("encoder_ppr", 1000),
+            "voltage_limit": values.get("voltage_limit", 16000),
         }
     printer = MockPrinter()
     printer._objects["gcode"] = MockGCode()
@@ -521,6 +522,7 @@ def make_driver(
     driver.encoder_ppr = 1000
     driver.encoder_reversed = False
     driver.run_current = 0.8
+    driver.voltage_limit = 16000
     driver.velocity_feedforward = False
     driver.velocity_feedforward_multiplier = 1
     driver.velocity_transient_feedforward = False

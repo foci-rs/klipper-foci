@@ -91,6 +91,67 @@ def test_perf_stats_query_format_includes_scheduler_attribution_fields():
     assert "scheduler_full_count=%u" in recv_fmt
 
 
+def test_configured_voltage_limit_is_sent_on_connect():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "voltage_limit": 29000,
+            },
+        }
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert driver.voltage_limit == 29000
+    assert driver.set_voltage_limit_cmd.last_args == [10, 29000]
+
+
+def test_configured_voltage_limit_accepts_raw_chip_range():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "voltage_limit": 0,
+            },
+            "stepper_y": {
+                "step_pin": "foci:STEP1",
+                "dir_pin": "foci:DIR1",
+                "oid": 12,
+                "voltage_limit": 32767,
+            },
+        }
+    )
+
+    driver_x = make_config_driver(printer, sections, "foci stepper_x")
+    driver_y = make_config_driver(printer, sections, "foci stepper_y")
+
+    assert driver_x.voltage_limit == 0
+    assert driver_y.voltage_limit == 32767
+
+
+def test_configured_voltage_limit_rejects_values_above_chip_range():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "voltage_limit": 32768,
+            },
+        }
+    )
+
+    with pytest.raises(CommandError, match="voltage_limit above maximum"):
+        make_config_driver(printer, sections, "foci stepper_x")
+
+
 def test_dual_mcu_single_channel_uses_stepper_oids_without_foci_config():
     mcu_x = MockMCU("foci_x")
     mcu_y = MockMCU("foci_y")
