@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-MIN_RAW_VOLTAGE_LIMIT = 0
-MAX_DIAGNOSTIC_VOLTAGE_LIMIT = 32767
+from .constants import MAX_DIAGNOSTIC_VOLTAGE_LIMIT, MIN_RAW_VOLTAGE_LIMIT
 
 
 class ControlsWorkflow:

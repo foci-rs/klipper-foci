@@ -386,6 +386,53 @@ class TestAutotuneGates(unittest.TestCase):
 
 
 class TestStateTransitions(unittest.TestCase):
+    def test_connect_delegates_initial_homing_state(self):
+        d = make_driver()
+        calls = []
+
+        class FakeHoming:
+            def apply_initial_state(self):
+                calls.append("apply_initial_state")
+
+            def __getattr__(self, name):
+                raise AssertionError("unexpected homing method %s" % name)
+
+        d.homing = FakeHoming()
+        d._handle_connect()
+
+        self.assertEqual(calls, ["apply_initial_state"])
+
+    def test_initial_homing_state_applies_active_gains_when_enabled(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        calls = []
+
+        d.homing.apply_active_gains_to_firmware = lambda: calls.append("apply")
+        d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: calls.append(
+            ("auto", allowed)
+        )
+        d.homing.install_enable_hooks = lambda: calls.append("hooks")
+
+        d.homing.apply_initial_state()
+
+        self.assertEqual(calls, ["apply", ("auto", True), "hooks"])
+
+    def test_initial_homing_state_keeps_auto_calibrate_closed_when_inhibited(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.inhibited = True
+        calls = []
+
+        d.homing.apply_active_gains_to_firmware = lambda: calls.append("apply")
+        d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: calls.append(
+            ("auto", allowed)
+        )
+        d.homing.install_enable_hooks = lambda: calls.append("hooks")
+
+        d.homing.apply_initial_state()
+
+        self.assertEqual(calls, [("auto", False), "hooks"])
+
     def test_commission_failure_sets_inhibited(self):
         d = make_driver()
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()

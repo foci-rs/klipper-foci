@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 
+from .constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
+
 OPENFFBOARD_CPU_CYCLES_PER_US = 168
-MIN_OPERATIONAL_VOLTAGE_LIMIT = 1024
 
 log = logging.getLogger(__name__)
 

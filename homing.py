@@ -71,6 +71,17 @@ class HomingWorkflow:
         if self.driver.state.calibration_completion is not None:
             self.driver.state.calibration_completion.complete(params)
 
+    def apply_initial_state(self) -> None:
+        """Apply connect-time homing state after driver config is loaded."""
+        allow_auto_calibrate = (
+            self.driver.state.active_gains is not None
+            and not self.driver.state.inhibited
+        )
+        if allow_auto_calibrate:
+            self.apply_active_gains_to_firmware()
+        self.set_auto_calibrate_on_enable_allowed(allow_auto_calibrate)
+        self.install_enable_hooks()
+
     def set_auto_calibrate_on_enable_allowed(self, allowed: bool) -> None:
         """Tell firmware whether raw enable may start auto-calibration."""
         if self.driver.set_auto_calibrate_on_enable_cmd is not None:

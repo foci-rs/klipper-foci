@@ -11,9 +11,12 @@ from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
 )
-from .controls import (
+from .constants import (
+    DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
     MIN_RAW_VOLTAGE_LIMIT,
+)
+from .controls import (
     ControlsWorkflow,
 )
 from .diagnostics import DiagnosticsWorkflow
@@ -30,7 +33,6 @@ from .trace import LegacyTraceWorkflow
 ######################################################################
 
 STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
-DEFAULT_OPERATIONAL_VOLTAGE_LIMIT = 16000
 
 
 class FociDriver:
@@ -866,9 +868,4 @@ class FociDriver:
                 )
             )
         self._validate_and_load_config()
-        if self.state.active_gains is not None and not self.state.inhibited:
-            self.homing.apply_active_gains_to_firmware()
-        self.homing.set_auto_calibrate_on_enable_allowed(
-            self.state.active_gains is not None and not self.state.inhibited
-        )
-        self.homing.install_enable_hooks()
+        self.homing.apply_initial_state()
