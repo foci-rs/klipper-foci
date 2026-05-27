@@ -296,6 +296,30 @@ def test_observation_diagnostics_register_diagnostics_workflow_handlers():
     )
 
 
+def test_active_diagnostics_register_diagnostics_workflow_handlers():
+    printer = build_driver_with_mode("expert")
+    gcode = printer.lookup_object("gcode")
+    command_names = {
+        "FOCI_CURRENT_STEP_TEST",
+        "FOCI_CURRENT_VECTOR_STEP_TEST",
+        "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
+        "FOCI_POSITION_TORQUE_OFFSET_TEST",
+        "FOCI_VOLTAGE_STEP_TEST",
+    }
+
+    handlers = {
+        args[0]: args[3]
+        for args, _kwargs in gcode._mux_commands
+        if args[0] in command_names
+    }
+
+    assert set(handlers) == command_names
+    assert all(
+        handler.__self__.__class__.__name__ == "DiagnosticsWorkflow"
+        for handler in handlers.values()
+    )
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

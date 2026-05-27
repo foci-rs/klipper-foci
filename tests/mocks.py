@@ -498,8 +498,6 @@ def make_driver(
     # Identity
     driver.name = "foci " + stepper_name
     driver.stepper_name = stepper_name
-    driver._current_torque_sample_details = {}
-    driver._current_torque_sample_labels = {}
     driver.oid = 0
     driver.stepper_oid = None
     driver.channel = 0

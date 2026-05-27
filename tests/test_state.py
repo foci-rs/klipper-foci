@@ -1216,7 +1216,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d = make_driver()
 
         gcmd = MockGCmd({"TARGET": 250})
-        d.cmd_FOCI_CURRENT_STEP_TEST(gcmd)
+        d.diagnostics.current_step_test(gcmd)
 
         self.assertEqual(d.current_step_test_cmd.last_args, [d.oid, 250, 80, 12000])
         self.assertIn("target=250", gcmd.last_info)
@@ -1224,7 +1224,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_sends_explicit_current_step_parameters(self):
         d = make_driver()
 
-        d.cmd_FOCI_CURRENT_STEP_TEST(
+        d.diagnostics.current_step_test(
             MockGCmd({"TARGET": -500, "DURATION_MS": 120, "VOLTAGE_LIMIT": 20000})
         )
 
@@ -1233,7 +1233,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_current_step_result_formats_motion_and_supply_fields(self):
         d = make_driver()
 
-        d._handle_current_step_result(
+        d.diagnostics.handle_current_step_result(
             {
                 "status": 0,
                 "target": 250,
@@ -1261,7 +1261,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_sends_flux_axis_current_vector_step(self):
         d = make_driver()
 
-        d.cmd_FOCI_CURRENT_VECTOR_STEP_TEST(
+        d.diagnostics.current_vector_step_test(
             MockGCmd(
                 {
                     "TORQUE_TARGET": 0,
@@ -1280,7 +1280,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_current_vector_step_result_formats_axis_targets(self):
         d = make_driver()
 
-        d._handle_current_vector_step_result(
+        d.diagnostics.handle_current_vector_step_result(
             {
                 "status": 0,
                 "torque_target": 0,
@@ -1310,9 +1310,11 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
     def test_sends_torque_sample_step_with_short_delay(self):
         d = make_driver()
-        d._current_torque_sample_details[(500, -125, 5, 29000)] = {"torque_error": 1}
+        d.diagnostics.current_torque_sample_details[(500, -125, 5, 29000)] = {
+            "torque_error": 1
+        }
 
-        d.cmd_FOCI_CURRENT_TORQUE_SAMPLE_TEST(
+        d.diagnostics.current_torque_sample_test(
             MockGCmd(
                 {
                     "TARGET": 500,
@@ -1327,13 +1329,13 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
             d.current_torque_sample_test_cmd.last_args,
             [d.oid, 500, -125, 5, 29000],
         )
-        self.assertEqual(d._current_torque_sample_details, {})
+        self.assertEqual(d.diagnostics.current_torque_sample_details, {})
 
     def test_sends_position_torque_offset_sample(self):
         d = make_driver()
         gcmd = MockGCmd({"TARGET": 500, "SAMPLE_DELAY_MS": 2, "VOLTAGE_LIMIT": 29000})
 
-        d.cmd_FOCI_POSITION_TORQUE_OFFSET_TEST(gcmd)
+        d.diagnostics.position_torque_offset_test(gcmd)
 
         self.assertEqual(
             d.position_torque_offset_sample_test_cmd.last_args,
@@ -1345,7 +1347,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d = make_driver()
         gcmd = MockGCmd({"UQ": 512, "UD": -256, "SAMPLE_DELAY_MS": 2})
 
-        d.cmd_FOCI_VOLTAGE_STEP_TEST(gcmd)
+        d.diagnostics.voltage_step_test(gcmd)
 
         self.assertEqual(
             d.voltage_step_test_cmd.last_args,
@@ -1356,7 +1358,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_voltage_step_result_formats_sample_fields(self):
         d = make_driver()
 
-        d._handle_voltage_step_result(
+        d.diagnostics.handle_voltage_step_result(
             {
                 "status": 0,
                 "uq_ext": 512,
@@ -1414,7 +1416,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_current_torque_sample_result_formats_sample_fields(self):
         d = make_driver()
 
-        d._handle_current_torque_sample_detail_result(
+        d.diagnostics.handle_current_torque_sample_detail_result(
             {
                 "target": 500,
                 "flux_target": -125,
@@ -1430,7 +1432,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "ff_torque": -42,
             }
         )
-        d._handle_current_torque_sample_result(
+        d.diagnostics.handle_current_torque_sample_result(
             {
                 "status": 0,
                 "target": 500,
@@ -1483,7 +1485,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("ff_velocity=17", out)
         self.assertIn("ff_torque=-42", out)
         self.assertIn("status_flags=0x00008000", out)
-        self.assertEqual(d._current_torque_sample_details, {})
+        self.assertEqual(d.diagnostics.current_torque_sample_details, {})
 
 
 # =========================================================================
