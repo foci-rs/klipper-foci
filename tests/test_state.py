@@ -509,13 +509,13 @@ class TestChipResetDetected(unittest.TestCase):
     """Verify host recovery when firmware reports CHIP_RESET_DETECTED."""
 
     def test_calibration_error_names_includes_code_2(self):
-        from foci import FociDriver
+        from klipper_foci.driver import FociDriver
 
         self.assertIn(2, FociDriver.CALIBRATION_ERROR_NAMES)
         self.assertIn("CHIP_RESET_DETECTED", FociDriver.CALIBRATION_ERROR_NAMES[2])
 
     def test_commission_error_names_includes_code_18(self):
-        from foci import FociDriver
+        from klipper_foci.driver import FociDriver
 
         self.assertIn(18, FociDriver.COMMISSION_ERROR_NAMES)
         self.assertIn("CHIP_RESET_DETECTED", FociDriver.COMMISSION_ERROR_NAMES[18])
@@ -1598,7 +1598,7 @@ class TestValidateAndLoadConfig(unittest.TestCase):
 class TestNameMaps(unittest.TestCase):
     def test_all_phase_ids_have_names(self):
         """Every wire code 1-17 should have a name."""
-        from foci import FociDriver
+        from klipper_foci.driver import FociDriver
 
         for phase_id in range(1, 18):
             self.assertIn(
@@ -1608,7 +1608,7 @@ class TestNameMaps(unittest.TestCase):
             )
 
     def test_hard_fault_codes_are_subset_of_error_names(self):
-        from foci import FociDriver
+        from klipper_foci.driver import FociDriver
 
         for code in FociDriver.HARD_FAULT_CODES:
             self.assertIn(

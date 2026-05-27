@@ -5,6 +5,17 @@ import pytest
 from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
 
 
+def test_package_entry_points_import_driver_and_global_config():
+    import klipper_foci
+    from klipper_foci.driver import FociDriver
+    from klipper_foci.registry import FociGlobalConfig
+
+    assert klipper_foci.FociDriver is FociDriver
+    assert klipper_foci.FociGlobalConfig is FociGlobalConfig
+    assert callable(klipper_foci.load_config)
+    assert callable(klipper_foci.load_config_prefix)
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

@@ -2,7 +2,7 @@
 
 import pytest
 
-from foci import FociDriver
+from klipper_foci.driver import FociDriver
 
 from tests.mocks import CommandError, make_driver, MockCommand, MockGCmd
 

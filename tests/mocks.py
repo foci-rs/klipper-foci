@@ -7,7 +7,7 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
-from foci import FociDriver
+from klipper_foci.driver import FociDriver
 
 
 class CommandError(Exception):

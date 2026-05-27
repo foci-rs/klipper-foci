@@ -4,10 +4,12 @@
 # Copyright (C) 2026 Morton Jonuschat
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-try:
-    from .foci import FociDriver
-except ImportError:
-    from foci import FociDriver  # type: ignore[no-redef]  # flat import for pytest
+from .driver import FociDriver
+from .registry import FociGlobalConfig
+
+
+def load_config(config):
+    return FociGlobalConfig(config)
 
 
 def load_config_prefix(config):
