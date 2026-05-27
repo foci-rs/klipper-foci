@@ -24,8 +24,11 @@ class ControlsWorkflow:
         position_p = self._get_outer_gain(gcmd, "POSITION_P")
         position_i = self._get_outer_gain(gcmd, "POSITION_I")
 
-        self.driver.set_position_gains_cmd.send(
-            [self.driver.oid, position_p, position_i, velocity_p, velocity_i]
+        self.driver.protocol.set_position_gains(
+            position_p,
+            position_i,
+            velocity_p,
+            velocity_i,
         )
 
         self.driver.pid_velocity_p = velocity_p
@@ -59,9 +62,7 @@ class ControlsWorkflow:
         torque_p = gcmd.get_int("TORQUE_P", minval=0, maxval=65535)
         torque_i = gcmd.get_int("TORQUE_I", minval=0, maxval=65535)
 
-        self.driver.set_pid_gains_cmd.send(
-            [self.driver.oid, flux_p, flux_i, torque_p, torque_i]
-        )
+        self.driver.protocol.set_pid_gains(flux_p, flux_i, torque_p, torque_i)
 
         if self.driver.state.active_gains is not None:
             self.driver.state.active_gains["flux_p"] = flux_p
@@ -98,7 +99,7 @@ class ControlsWorkflow:
             raise gcmd.error("FOCI %s: RUN_CURRENT must be above 0" % self.driver.name)
 
         run_ma = int(run_current * 1000.0 + 0.5)
-        self.driver.set_current_cmd.send([self.driver.oid, run_ma])
+        self.driver.protocol.set_current(run_ma)
         self.driver.run_current = run_current
 
         gcmd.respond_info(
@@ -116,9 +117,7 @@ class ControlsWorkflow:
             maxval=65535,
         )
 
-        self.driver.set_velocity_feedforward_cmd.send(
-            [self.driver.oid, enable, multiplier]
-        )
+        self.driver.protocol.set_velocity_feedforward(bool(enable), multiplier)
         self.driver.velocity_feedforward = enable != 0
         self.driver.velocity_feedforward_multiplier = multiplier
 
@@ -377,7 +376,7 @@ class ControlsWorkflow:
             maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
         )
 
-        self.driver.set_voltage_limit_cmd.send([self.driver.oid, voltage_limit])
+        self.driver.protocol.set_voltage_limit(voltage_limit)
 
         gcmd.respond_info(
             "FOCI %s voltage limit set: pidout_uq_ud_limit=%d"

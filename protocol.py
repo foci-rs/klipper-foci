@@ -356,6 +356,99 @@ class FociProtocol:
         """Bind MCU commands and response handlers for one FOCI driver."""
         self.commands.bind(self.driver, mcu, oid)
 
+    def set_current(self, run_ma: int) -> None:
+        self.commands.set_current.send([self.driver.oid, run_ma])
+
+    def set_voltage_limit(self, voltage_limit: int) -> None:
+        self.commands.set_voltage_limit.send([self.driver.oid, voltage_limit])
+
+    def set_encoder(self, channel: int, encoder_ppr: int) -> None:
+        self.commands.set_encoder.send([self.driver.oid, channel, encoder_ppr])
+
+    def set_encoder_direction(self, channel: int, encoder_reversed: bool) -> None:
+        self.commands.set_encoder_dir.send(
+            [self.driver.oid, channel, int(encoder_reversed)]
+        )
+
+    def set_pid_gains(
+        self,
+        flux_p: int,
+        flux_i: int,
+        torque_p: int,
+        torque_i: int,
+    ) -> None:
+        self.commands.set_pid_gains.send(
+            [self.driver.oid, flux_p, flux_i, torque_p, torque_i]
+        )
+
+    def set_velocity_filter(self, filter_hz: int) -> None:
+        self.commands.set_velocity_filter.send([self.driver.oid, filter_hz])
+
+    def set_torque_filter(self, filter_hz: int) -> None:
+        self.commands.set_torque_filter.send([self.driver.oid, filter_hz])
+
+    def set_position_filter(self, filter_hz: int) -> None:
+        self.commands.set_position_filter.send([self.driver.oid, filter_hz])
+
+    def set_flux_filter(self, filter_hz: int) -> None:
+        self.commands.set_flux_filter.send([self.driver.oid, filter_hz])
+
+    def set_position_gains(
+        self,
+        position_p: int,
+        position_i: int,
+        velocity_p: int,
+        velocity_i: int,
+    ) -> None:
+        self.commands.set_position_gains.send(
+            [self.driver.oid, position_p, position_i, velocity_p, velocity_i]
+        )
+
+    def set_velocity_feedforward(self, enable: bool, multiplier: int) -> None:
+        self.commands.set_velocity_feedforward.send(
+            [self.driver.oid, int(enable), multiplier]
+        )
+
+    def set_velocity_limit(self, velocity_limit: int) -> None:
+        self.commands.set_velocity_limit.send([self.driver.oid, velocity_limit])
+
+    def configure_startup(
+        self,
+        *,
+        current_ma: int,
+        voltage_limit: int,
+        channel: int,
+        encoder_ppr: int,
+        encoder_reversed: bool,
+        pid_gains: tuple[int, int, int, int] | None,
+        filter_hz: dict[str, int],
+        position_gains: tuple[int, int, int, int] | None,
+        velocity_feedforward: tuple[bool, int],
+        velocity_limit: int | None,
+    ) -> None:
+        """Apply connect-time firmware configuration in the existing order."""
+        self.set_current(current_ma)
+        self.set_voltage_limit(voltage_limit)
+        self.set_encoder(channel, encoder_ppr)
+        self.set_encoder_direction(channel, encoder_reversed)
+        if pid_gains is not None:
+            self.set_pid_gains(*pid_gains)
+        if filter_hz.get("velocity", 0) > 0:
+            self.set_velocity_filter(filter_hz["velocity"])
+        if filter_hz.get("torque", 0) > 0:
+            self.set_torque_filter(filter_hz["torque"])
+        if filter_hz.get("position", 0) > 0:
+            self.set_position_filter(filter_hz["position"])
+        if filter_hz.get("flux", 0) > 0:
+            self.set_flux_filter(filter_hz["flux"])
+        if position_gains is not None:
+            self.set_position_gains(*position_gains)
+        enable_feedforward, multiplier = velocity_feedforward
+        if enable_feedforward:
+            self.set_velocity_feedforward(True, multiplier)
+        if velocity_limit is not None:
+            self.set_velocity_limit(velocity_limit)
+
     def install_driver_aliases(self) -> None:
         """Install temporary driver command aliases during Pass 3 migration."""
         for driver_name, command_name in COMMAND_ALIAS_MAP.items():

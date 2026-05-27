@@ -108,3 +108,135 @@ def test_driver_mcu_identify_binds_protocol_and_keeps_temporary_aliases():
     assert driver.protocol.commands.set_current is driver.set_current_cmd
     assert driver.protocol.commands.calibrate is driver.calibrate_cmd
     assert ("foci_calibrate_result", driver.oid) in response_names(driver.mcu)
+
+
+class RecordingCommand:
+    def __init__(self, name, calls):
+        self.name = name
+        self.calls = calls
+        self.last_args = None
+
+    def send(self, args=None):
+        self.last_args = args
+        self.calls.append((self.name, args))
+        return None
+
+
+def install_recording_commands(commands, names):
+    calls = []
+    for name in names:
+        setattr(commands, name, RecordingCommand(name, calls))
+    return calls
+
+
+def test_configure_startup_sends_existing_connect_payload_order():
+    driver = make_driver()
+    commands = driver.protocol.commands
+    calls = install_recording_commands(
+        commands,
+        [
+            "set_current",
+            "set_voltage_limit",
+            "set_encoder",
+            "set_encoder_dir",
+            "set_pid_gains",
+            "set_velocity_filter",
+            "set_torque_filter",
+            "set_position_filter",
+            "set_flux_filter",
+            "set_position_gains",
+            "set_velocity_feedforward",
+            "set_velocity_limit",
+        ],
+    )
+
+    driver.protocol.configure_startup(
+        current_ma=800,
+        voltage_limit=16000,
+        channel=0,
+        encoder_ppr=1000,
+        encoder_reversed=True,
+        pid_gains=(100, 200, 300, 400),
+        filter_hz={
+            "velocity": 80,
+            "torque": 90,
+            "position": 100,
+            "flux": 110,
+        },
+        position_gains=(700, 0, 1100, 0),
+        velocity_feedforward=(True, 8),
+        velocity_limit=50000,
+    )
+
+    assert calls == [
+        ("set_current", [driver.oid, 800]),
+        ("set_voltage_limit", [driver.oid, 16000]),
+        ("set_encoder", [driver.oid, 0, 1000]),
+        ("set_encoder_dir", [driver.oid, 0, 1]),
+        ("set_pid_gains", [driver.oid, 100, 200, 300, 400]),
+        ("set_velocity_filter", [driver.oid, 80]),
+        ("set_torque_filter", [driver.oid, 90]),
+        ("set_position_filter", [driver.oid, 100]),
+        ("set_flux_filter", [driver.oid, 110]),
+        ("set_position_gains", [driver.oid, 700, 0, 1100, 0]),
+        ("set_velocity_feedforward", [driver.oid, 1, 8]),
+        ("set_velocity_limit", [driver.oid, 50000]),
+    ]
+
+
+def test_configure_startup_skips_unset_optional_payloads():
+    driver = make_driver()
+    commands = driver.protocol.commands
+    calls = install_recording_commands(
+        commands,
+        [
+            "set_current",
+            "set_voltage_limit",
+            "set_encoder",
+            "set_encoder_dir",
+            "set_pid_gains",
+            "set_velocity_filter",
+            "set_position_gains",
+            "set_velocity_feedforward",
+            "set_velocity_limit",
+        ],
+    )
+
+    driver.protocol.configure_startup(
+        current_ma=800,
+        voltage_limit=16000,
+        channel=0,
+        encoder_ppr=1000,
+        encoder_reversed=False,
+        pid_gains=None,
+        filter_hz={"velocity": 0, "torque": 0, "position": 0, "flux": 0},
+        position_gains=None,
+        velocity_feedforward=(False, 1),
+        velocity_limit=None,
+    )
+
+    assert calls == [
+        ("set_current", [driver.oid, 800]),
+        ("set_voltage_limit", [driver.oid, 16000]),
+        ("set_encoder", [driver.oid, 0, 1000]),
+        ("set_encoder_dir", [driver.oid, 0, 0]),
+    ]
+
+
+def test_fine_grained_control_methods_send_existing_payloads():
+    driver = make_driver()
+
+    driver.protocol.set_current(1700)
+    driver.protocol.set_pid_gains(1, 2, 3, 4)
+    driver.protocol.set_position_gains(5, 6, 7, 8)
+    driver.protocol.set_velocity_feedforward(True, 9)
+    driver.protocol.set_velocity_limit(10)
+    driver.protocol.set_voltage_limit(11000)
+
+    commands = driver.protocol.commands
+    assert commands.set_current.last_args == [driver.oid, 1700]
+    assert commands.set_pid_gains.last_args == [driver.oid, 1, 2, 3, 4]
+    assert commands.set_position_gains.last_args == [driver.oid, 5, 6, 7, 8]
+    assert commands.set_velocity_feedforward.last_args == [driver.oid, 1, 9]
+    assert commands.set_velocity_limit.last_args == [driver.oid, 10]
+    assert commands.set_voltage_limit.last_args == [driver.oid, 11000]

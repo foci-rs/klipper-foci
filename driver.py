@@ -557,48 +557,42 @@ class FociDriver:
         does not match the encoder's natural resolution.
         """
         run_ma: int = int(self.run_current * 1000.0)
-        self.set_current_cmd.send([self.oid, run_ma])
-        self.set_voltage_limit_cmd.send([self.oid, self.voltage_limit])
-        self.set_encoder_cmd.send([self.oid, self.channel, self.encoder_ppr])
-        self.set_encoder_dir_cmd.send(
-            [self.oid, self.channel, int(self.encoder_reversed)]
-        )
-        # Send saved PID gains if present (all-or-none validated at config time).
-        # Otherwise firmware uses conservative defaults.
+        pid_gains = None
         if self.pid_flux_p is not None:
-            self.set_pid_gains_cmd.send(
-                [
-                    self.oid,
-                    self.pid_flux_p,
-                    self.pid_flux_i,
-                    self.pid_torque_p,
-                    self.pid_torque_i,
-                ]
+            pid_gains = (
+                self.pid_flux_p,
+                self.pid_flux_i,
+                self.pid_torque_p,
+                self.pid_torque_i,
             )
-        if self.velocity_filter_hz > 0:
-            self.set_velocity_filter_cmd.send([self.oid, self.velocity_filter_hz])
-        if self.torque_filter_hz > 0:
-            self.set_torque_filter_cmd.send([self.oid, self.torque_filter_hz])
-        if self.position_filter_hz > 0:
-            self.set_position_filter_cmd.send([self.oid, self.position_filter_hz])
-        if self.flux_filter_hz > 0:
-            self.set_flux_filter_cmd.send([self.oid, self.flux_filter_hz])
+        position_gains = None
         if self.pid_position_p is not None:
-            self.set_position_gains_cmd.send(
-                [
-                    self.oid,
-                    self.pid_position_p,
-                    self.pid_position_i,
-                    self.pid_velocity_p,
-                    self.pid_velocity_i,
-                ]
+            position_gains = (
+                self.pid_position_p,
+                self.pid_position_i,
+                self.pid_velocity_p,
+                self.pid_velocity_i,
             )
-        if self.velocity_feedforward:
-            self.set_velocity_feedforward_cmd.send(
-                [self.oid, 1, self.velocity_feedforward_multiplier]
-            )
-        if self.pid_velocity_limit is not None:
-            self.set_velocity_limit_cmd.send([self.oid, self.pid_velocity_limit])
+        self.protocol.configure_startup(
+            current_ma=run_ma,
+            voltage_limit=self.voltage_limit,
+            channel=self.channel,
+            encoder_ppr=self.encoder_ppr,
+            encoder_reversed=self.encoder_reversed,
+            pid_gains=pid_gains,
+            filter_hz={
+                "velocity": self.velocity_filter_hz,
+                "torque": self.torque_filter_hz,
+                "position": self.position_filter_hz,
+                "flux": self.flux_filter_hz,
+            },
+            position_gains=position_gains,
+            velocity_feedforward=(
+                self.velocity_feedforward,
+                self.velocity_feedforward_multiplier,
+            ),
+            velocity_limit=self.pid_velocity_limit,
+        )
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
         if configured_steps != encoder_steps:
