@@ -1706,7 +1706,7 @@ class CommissionModelSurfacingTests(unittest.TestCase):
                 driver.commissioning.result = result
                 driver.commissioning.done = True
 
-        driver.commission_cmd = CompleteCommissionCommand()
+        driver.protocol.commands.commission = CompleteCommissionCommand()
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
         driver.commissioning.commission(gcmd)

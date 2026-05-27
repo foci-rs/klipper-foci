@@ -83,7 +83,7 @@ class SelftestWorkflow:
             self.status = 0
             self.driver.commissioning.clear_details()
 
-            self.driver.selftest_cmd.send([self.driver.oid])
+            self.driver.protocol.run_selftest()
 
             deadline = reactor.monotonic() + 15.0
             while not self.complete:

@@ -240,3 +240,82 @@ def test_fine_grained_control_methods_send_existing_payloads():
     assert commands.set_velocity_feedforward.last_args == [driver.oid, 1, 9]
     assert commands.set_velocity_limit.last_args == [driver.oid, 10]
     assert commands.set_voltage_limit.last_args == [driver.oid, 11000]
+
+
+def test_core_workflow_methods_send_existing_payloads():
+    driver = make_driver()
+
+    driver.protocol.set_auto_calibrate_on_enable(True)
+    driver.protocol.run_calibration()
+    driver.protocol.run_commission(2)
+    driver.protocol.run_selftest()
+    driver.protocol.dump_registers()
+
+    commands = driver.protocol.commands
+    assert commands.set_auto_calibrate_on_enable.last_args == [driver.oid, 1]
+    assert commands.calibrate.last_args == [driver.oid]
+    assert commands.commission.last_args == [driver.oid, 2]
+    assert commands.selftest.last_args == [driver.oid]
+    assert commands.dump_registers.last_args == [driver.oid]
+
+
+def test_run_tune_sends_existing_payload():
+    driver = make_driver()
+
+    driver.protocol.run_tune(
+        profile_code=1,
+        mode_code=2,
+        inner_lambda=1200,
+        theta_e=160,
+        current_ringing=7,
+        current_bw=500,
+        tau_e_us=730,
+        tau_e_crosscheck_us=731,
+        tau_residual_permille=3,
+        inner_warning_flags=4,
+    )
+
+    assert driver.protocol.commands.tune.last_args == [
+        driver.oid,
+        1,
+        2,
+        1200,
+        160,
+        7,
+        500,
+        730,
+        731,
+        3,
+        4,
+    ]
+
+
+def test_preload_active_gains_sends_existing_payloads():
+    driver = make_driver()
+    gains = {
+        "flux_p": 11,
+        "flux_i": 12,
+        "torque_p": 13,
+        "torque_i": 14,
+        "velocity_p": 21,
+        "velocity_i": 22,
+        "position_p": 23,
+        "position_i": 24,
+        "velocity_limit": 25000,
+        "velocity_filter_hz": 80,
+        "torque_filter_hz": 90,
+        "position_filter_hz": 100,
+        "flux_filter_hz": 110,
+    }
+
+    driver.protocol.preload_active_gains(gains, voltage_limit=29000)
+
+    commands = driver.protocol.commands
+    assert commands.set_voltage_limit.last_args == [driver.oid, 29000]
+    assert commands.set_pid_gains.last_args == [driver.oid, 11, 12, 13, 14]
+    assert commands.set_position_gains.last_args == [driver.oid, 23, 24, 21, 22]
+    assert commands.set_velocity_limit.last_args == [driver.oid, 25000]
+    assert commands.set_velocity_filter.last_args == [driver.oid, 80]
+    assert commands.set_torque_filter.last_args == [driver.oid, 90]
+    assert commands.set_position_filter.last_args == [driver.oid, 100]
+    assert commands.set_flux_filter.last_args == [driver.oid, 110]

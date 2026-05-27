@@ -204,9 +204,9 @@ def test_format_fail_status_returns_error_marker():
 
 def test_cmd_selftest_builds_multiline_report():
     d = make_driver()
-    d.selftest_cmd = MockCommand()
+    d.protocol.commands.selftest = MockCommand()
 
-    # Drive the response stream synchronously when selftest_cmd.send is called.
+    # Drive the response stream synchronously when the self-test command is sent.
     def drive_stream(_args):
         for result in [
             {"stage": 1, "status": 0, "value": (0x0ADC << 16) | 0x0CDC},
@@ -221,7 +221,7 @@ def test_cmd_selftest_builds_multiline_report():
             d.selftest.handle_selftest_result(result)
         d.selftest.handle_selftest_done({"status": 0})
 
-    d.selftest_cmd.send = drive_stream
+    d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
     d.selftest.selftest(gcmd)
@@ -242,7 +242,7 @@ def test_cmd_selftest_builds_multiline_report():
 
 def test_cmd_selftest_duplicate_stage_updates_without_inflating_report():
     d = make_driver()
-    d.selftest_cmd = MockCommand()
+    d.protocol.commands.selftest = MockCommand()
 
     def drive_stream(_args):
         for result in [
@@ -257,7 +257,7 @@ def test_cmd_selftest_duplicate_stage_updates_without_inflating_report():
             d.selftest.handle_selftest_result(result)
         d.selftest.handle_selftest_done({"status": 0})
 
-    d.selftest_cmd.send = drive_stream
+    d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
     d.selftest.selftest(gcmd)
@@ -271,7 +271,7 @@ def test_cmd_selftest_duplicate_stage_updates_without_inflating_report():
 
 def test_cmd_selftest_failure_raises_and_still_emits_report():
     d = make_driver()
-    d.selftest_cmd = MockCommand()
+    d.protocol.commands.selftest = MockCommand()
 
     # Stage 1 fails; firmware emits a foci_selftest_result then foci_selftest_done
     # with the ADC calibration fault code (4 = "ADC calibration fault").
@@ -289,7 +289,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
         d.selftest.handle_selftest_result({"stage": 1, "status": 1, "value": 0})
         d.selftest.handle_selftest_done({"status": 4})
 
-    d.selftest_cmd.send = drive_stream
+    d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
     with pytest.raises(CommandError):
@@ -306,13 +306,13 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
 
 def test_cmd_selftest_pass_does_not_raise():
     d = make_driver()
-    d.selftest_cmd = MockCommand()
+    d.protocol.commands.selftest = MockCommand()
 
     def drive_stream(_args):
         d.selftest.handle_selftest_result({"stage": 4, "status": 0, "value": 0})
         d.selftest.handle_selftest_done({"status": 0})
 
-    d.selftest_cmd.send = drive_stream
+    d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
     d.selftest.selftest(gcmd)  # must not raise

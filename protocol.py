@@ -449,6 +449,78 @@ class FociProtocol:
         if velocity_limit is not None:
             self.set_velocity_limit(velocity_limit)
 
+    def set_auto_calibrate_on_enable(self, allowed: bool) -> None:
+        self.commands.set_auto_calibrate_on_enable.send([self.driver.oid, int(allowed)])
+
+    def preload_active_gains(self, gains: dict[str, int], voltage_limit: int) -> None:
+        self.set_voltage_limit(voltage_limit)
+        self.set_pid_gains(
+            gains["flux_p"],
+            gains["flux_i"],
+            gains["torque_p"],
+            gains["torque_i"],
+        )
+        if gains.get("velocity_p") is not None:
+            self.set_position_gains(
+                gains["position_p"],
+                gains["position_i"],
+                gains["velocity_p"],
+                gains["velocity_i"],
+            )
+        if gains.get("velocity_limit"):
+            self.set_velocity_limit(gains["velocity_limit"])
+        for filter_name, setter in (
+            ("velocity", self.set_velocity_filter),
+            ("torque", self.set_torque_filter),
+            ("position", self.set_position_filter),
+            ("flux", self.set_flux_filter),
+        ):
+            hz = gains.get("%s_filter_hz" % filter_name, 0)
+            if hz > 0:
+                setter(hz)
+
+    def run_calibration(self) -> None:
+        self.commands.calibrate.send([self.driver.oid])
+
+    def run_commission(self, profile_code: int) -> None:
+        self.commands.commission.send([self.driver.oid, profile_code])
+
+    def run_tune(
+        self,
+        *,
+        profile_code: int,
+        mode_code: int,
+        inner_lambda: int,
+        theta_e: int,
+        current_ringing: int,
+        current_bw: int,
+        tau_e_us: int,
+        tau_e_crosscheck_us: int,
+        tau_residual_permille: int,
+        inner_warning_flags: int,
+    ) -> None:
+        self.commands.tune.send(
+            [
+                self.driver.oid,
+                profile_code,
+                mode_code,
+                inner_lambda,
+                theta_e,
+                current_ringing,
+                current_bw,
+                tau_e_us,
+                tau_e_crosscheck_us,
+                tau_residual_permille,
+                inner_warning_flags,
+            ]
+        )
+
+    def run_selftest(self) -> None:
+        self.commands.selftest.send([self.driver.oid])
+
+    def dump_registers(self) -> None:
+        self.commands.dump_registers.send([self.driver.oid])
+
     def install_driver_aliases(self) -> None:
         """Install temporary driver command aliases during Pass 3 migration."""
         for driver_name, command_name in COMMAND_ALIAS_MAP.items():

@@ -84,47 +84,17 @@ class HomingWorkflow:
 
     def set_auto_calibrate_on_enable_allowed(self, allowed: bool) -> None:
         """Tell firmware whether raw enable may start auto-calibration."""
-        if self.driver.set_auto_calibrate_on_enable_cmd is not None:
-            self.driver.set_auto_calibrate_on_enable_cmd.send(
-                [self.driver.oid, int(allowed)]
-            )
+        self.driver.protocol.set_auto_calibrate_on_enable(allowed)
 
     def apply_active_gains_to_firmware(self) -> None:
         """Preload saved FOCI gains into firmware state before enabling."""
         gains = self.driver.state.active_gains
         if gains is None:
             return
-        self.driver.set_voltage_limit_cmd.send(
-            [self.driver.oid, self.driver.voltage_limit]
+        self.driver.protocol.preload_active_gains(
+            gains,
+            voltage_limit=self.driver.voltage_limit,
         )
-        self.driver.set_pid_gains_cmd.send(
-            [
-                self.driver.oid,
-                gains["flux_p"],
-                gains["flux_i"],
-                gains["torque_p"],
-                gains["torque_i"],
-            ]
-        )
-        if gains.get("velocity_p") is not None:
-            self.driver.set_position_gains_cmd.send(
-                [
-                    self.driver.oid,
-                    gains["position_p"],
-                    gains["position_i"],
-                    gains["velocity_p"],
-                    gains["velocity_i"],
-                ]
-            )
-        if gains.get("velocity_limit"):
-            self.driver.set_velocity_limit_cmd.send(
-                [self.driver.oid, gains["velocity_limit"]]
-            )
-        for filter_name in ("velocity", "torque", "position", "flux"):
-            hz = gains.get("%s_filter_hz" % filter_name, 0)
-            if hz > 0:
-                cmd = getattr(self.driver, "set_%s_filter_cmd" % filter_name)
-                cmd.send([self.driver.oid, hz])
 
     def invalidate_homing(self) -> None:
         """Mark all kinematic axes affected by this stepper as unhomed."""
@@ -189,7 +159,7 @@ class HomingWorkflow:
             self.driver.state.calibration_completion = reactor.completion()
             t_start = reactor.monotonic()
             self.set_auto_calibrate_on_enable_allowed(True)
-            self.driver.calibrate_cmd.send([self.driver.oid])
+            self.driver.protocol.run_calibration()
             params = self.driver.state.calibration_completion.wait(t_start + 5.0)
             t_elapsed = reactor.monotonic() - t_start
             self.driver.state.calibration_completion = None

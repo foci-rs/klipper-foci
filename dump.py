@@ -40,7 +40,7 @@ class RegisterDumpWorkflow:
         reactor = self.driver.printer.get_reactor()
         self._dump_buffer.clear()
         self._dump_complete = False
-        self.driver.dump_cmd.send([self.driver.oid])
+        self.driver.protocol.dump_registers()
 
         # Wait for dump completion. The serial reader thread calls
         # handle_dump_done which sets _dump_complete.

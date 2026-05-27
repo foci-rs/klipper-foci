@@ -267,7 +267,7 @@ class CommissioningWorkflow:
             self.last_phase_id = None
             self.clear_details()
 
-            self.driver.commission_cmd.send([self.driver.oid, profile_code])
+            self.driver.protocol.run_commission(profile_code)
 
             reactor = self.driver.printer.get_reactor()
             eventtime = reactor.monotonic()

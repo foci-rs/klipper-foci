@@ -153,20 +153,17 @@ class AutotuneWorkflow:
             self.result = None
             self.driver.commissioning.error_code = 0
 
-            self.driver.tune_cmd.send(
-                [
-                    self.driver.oid,
-                    PROFILE_MAP[profile_name],
-                    MODE_MAP[mode_name],
-                    inner_lambda,
-                    theta_e,
-                    ringing,
-                    bandwidth,
-                    tau_e_us,
-                    tau_e_crosscheck_us,
-                    tau_residual_permille,
-                    inner_warning_flags,
-                ]
+            self.driver.protocol.run_tune(
+                profile_code=PROFILE_MAP[profile_name],
+                mode_code=MODE_MAP[mode_name],
+                inner_lambda=inner_lambda,
+                theta_e=theta_e,
+                current_ringing=ringing,
+                current_bw=bandwidth,
+                tau_e_us=tau_e_us,
+                tau_e_crosscheck_us=tau_e_crosscheck_us,
+                tau_residual_permille=tau_residual_permille,
+                inner_warning_flags=inner_warning_flags,
             )
 
             reactor = self.driver.printer.get_reactor()
