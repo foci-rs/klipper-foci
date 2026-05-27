@@ -120,22 +120,22 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     GcodeCommandSpec(
         "FOCI_TRACE",
         "advanced",
-        "driver",
-        "cmd_FOCI_TRACE",
+        "trace",
+        "trace",
         "Fetch and display trace capture buffer",
     ),
     GcodeCommandSpec(
         "FOCI_TRACE_START",
         "advanced",
-        "driver",
-        "cmd_FOCI_TRACE_START",
+        "trace",
+        "trace_start",
         "Start FOCI per-tick trace capture",
     ),
     GcodeCommandSpec(
         "FOCI_TRACE_STOP",
         "advanced",
-        "driver",
-        "cmd_FOCI_TRACE_STOP",
+        "trace",
+        "trace_stop",
         "Stop FOCI per-tick trace capture",
     ),
     GcodeCommandSpec(

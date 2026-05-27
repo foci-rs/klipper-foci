@@ -320,6 +320,24 @@ def test_active_diagnostics_register_diagnostics_workflow_handlers():
     )
 
 
+def test_trace_commands_register_legacy_trace_workflow_handlers():
+    printer = build_driver_with_mode("advanced")
+    gcode = printer.lookup_object("gcode")
+    command_names = {"FOCI_TRACE_START", "FOCI_TRACE_STOP", "FOCI_TRACE"}
+
+    handlers = {
+        args[0]: args[3]
+        for args, _kwargs in gcode._mux_commands
+        if args[0] in command_names
+    }
+
+    assert set(handlers) == command_names
+    assert all(
+        handler.__self__.__class__.__name__ == "LegacyTraceWorkflow"
+        for handler in handlers.values()
+    )
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {
@@ -522,11 +540,11 @@ def test_dual_mcu_drivers_keep_runtime_state_separate():
 
     driver_x.state.operation_lock = True
     driver_x.state.inhibited = True
-    driver_x._trace_info = {"owner": "x"}
+    driver_x.trace.trace_info = {"owner": "x"}
 
     assert driver_y.state.operation_lock is False
     assert driver_y.state.inhibited is False
-    assert driver_y._trace_info is None
+    assert driver_y.trace.trace_info is None
 
 
 def test_step1_rejected_when_mcu_pin_dictionary_lacks_step1():

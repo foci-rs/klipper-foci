@@ -1497,21 +1497,21 @@ class TestTraceControlCommands(unittest.TestCase):
     def test_trace_start_defaults_to_full_preset(self):
         d = make_driver()
 
-        d.cmd_FOCI_TRACE_START(MockGCmd())
+        d.trace.trace_start(MockGCmd())
 
         self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 1])
 
     def test_trace_start_accepts_fast_preset(self):
         d = make_driver()
 
-        d.cmd_FOCI_TRACE_START(MockGCmd({"PRESET": "fast"}))
+        d.trace.trace_start(MockGCmd({"PRESET": "fast"}))
 
         self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 0])
 
     def test_trace_start_accepts_velocity_preset(self):
         d = make_driver()
 
-        d.cmd_FOCI_TRACE_START(MockGCmd({"PRESET": "velocity"}))
+        d.trace.trace_start(MockGCmd({"PRESET": "velocity"}))
 
         self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 2])
 
@@ -1519,14 +1519,14 @@ class TestTraceControlCommands(unittest.TestCase):
         d = make_driver()
 
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_TRACE_START(MockGCmd({"PRESET": "wide"}))
+            d.trace.trace_start(MockGCmd({"PRESET": "wide"}))
 
         self.assertIn("unknown trace preset", str(ctx.exception).lower())
 
     def test_trace_stop_sends_stop_command(self):
         d = make_driver()
 
-        d.cmd_FOCI_TRACE_STOP(MockGCmd())
+        d.trace.trace_stop(MockGCmd())
 
         self.assertEqual(d.trace_stop_cmd.last_args, [d.oid])
 

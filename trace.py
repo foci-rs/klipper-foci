@@ -8,6 +8,7 @@ cover the legacy G-code trace use cases.
 from __future__ import annotations
 
 import math
+import struct
 
 TRACE_FAST_HEADERS = [
     "tick",
@@ -471,3 +472,196 @@ def _format_trace_summary(
         )
 
     return lines
+
+
+class LegacyTraceWorkflow:
+    """Legacy G-code trace capture workflow pending deprecation."""
+
+    def __init__(self, driver) -> None:
+        self.driver = driver
+        self.trace_info: dict | None = None
+        self.trace_info_received = False
+
+    def handle_trace_info_result(self, params: dict) -> None:
+        """Handle foci_trace_info_result response from firmware."""
+        self.trace_info = params
+        self.trace_info_received = True
+
+    def trace_start(self, gcmd) -> None:
+        """Start per-tick trace capture for the selected stepper."""
+        preset_name = gcmd.get("PRESET", "full").lower()
+        presets = {"fast": 0, "full": 1, "velocity": 2, "hold": 3}
+        if preset_name not in presets:
+            raise gcmd.error(
+                "FOCI %s: unknown trace preset '%s' "
+                "(expected fast, full, velocity, or hold)"
+                % (self.driver.name, preset_name)
+            )
+        self.driver.trace_start_cmd.send([self.driver.oid, presets[preset_name]])
+        gcmd.respond_info(
+            "FOCI %s trace capture started (%s preset)"
+            % (self.driver.name, preset_name)
+        )
+
+    def trace_stop(self, gcmd) -> None:
+        """Stop per-tick trace capture for the selected stepper."""
+        self.driver.trace_stop_cmd.send([self.driver.oid])
+        gcmd.respond_info("FOCI %s trace capture stopped" % self.driver.name)
+
+    def trace(self, gcmd) -> None:
+        """Fetch and display the trace capture buffer."""
+        format_name = gcmd.get("FORMAT", "table").lower()
+        phase_filter = gcmd.get_int("PHASE", None)
+
+        self.trace_info = None
+        self.trace_info_received = False
+        self.driver.trace_info_cmd.send([self.driver.oid])
+
+        reactor = self.driver.printer.get_reactor()
+        deadline = reactor.monotonic() + 5.0
+        while not self.trace_info_received:
+            if reactor.monotonic() > deadline:
+                raise gcmd.error("FOCI %s: trace info timed out" % self.driver.name)
+            reactor.pause(reactor.monotonic() + 0.05)
+
+        info = self.trace_info
+        state = info.get("state", 0)
+        count = info.get("count", 0)
+        generation = info.get("generation", 0)
+
+        if state != 2 or count == 0:
+            gcmd.respond_info("FOCI %s: no trace data available" % self.driver.name)
+            return
+
+        preset = info.get("preset", 0)
+        dropped = info.get("dropped", 0)
+        sample_period = info.get("sample_period_us", 1000)
+
+        if preset == 1:  # Full
+            sample_size = 48
+            fmt = "<HBBiiIiIiIiiii"
+            headers = TRACE_FULL_HEADERS
+        elif preset == 2:  # Velocity
+            sample_size = 52
+            fmt = "<HBBiiIiIiiiiiii"
+            headers = TRACE_VELOCITY_HEADERS
+        elif preset == 3:  # Hold
+            sample_size = 52
+            fmt = "<HBBiiIiIiiiIIii"
+            headers = TRACE_HOLD_HEADERS
+        else:  # Fast
+            sample_size = 28
+            fmt = "<HBBiiIiIi"
+            headers = TRACE_FAST_HEADERS
+
+        def _i16(val: int) -> int:
+            """Convert unsigned 16-bit half to signed i16."""
+            return val - 0x10000 if val >= 0x8000 else val
+
+        samples = []
+        for i in range(count):
+            params = self.driver.trace_fetch_cmd.send([self.driver.oid, i, generation])
+            status = params.get("status", 2)
+            if status != 0:
+                status_names = {1: "capture still active", 2: "invalid"}
+                gcmd.respond_info(
+                    "FOCI %s: trace fetch aborted at offset %d: %s"
+                    % (
+                        self.driver.name,
+                        i,
+                        status_names.get(status, "unknown"),
+                    )
+                )
+                return
+            data = params.get("data", b"")
+            if len(data) != sample_size:
+                gcmd.respond_info(
+                    "FOCI %s: unexpected sample size %d (expected %d)"
+                    % (self.driver.name, len(data), sample_size)
+                )
+                return
+            fields = struct.unpack(fmt, data)
+
+            if preset == 1:
+                row = list(fields[:3])
+                row.extend(list(fields[3:5]))
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))
+                row.append(_i16(tf_act & 0xFFFF))
+                row.extend(list(fields[6:9]))
+                tf_tgt = fields[9]
+                row.append(_i16((tf_tgt >> 16) & 0xFFFF))
+                row.append(_i16(tf_tgt & 0xFFFF))
+                row.extend(list(fields[10:]))
+            elif preset == 2:
+                row = list(fields[:3])
+                row.extend(list(fields[3:5]))
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))
+                row.append(_i16(tf_act & 0xFFFF))
+                row.extend(list(fields[6:9]))
+                row.extend(list(fields[9:]))
+            elif preset == 3:
+                row = list(fields[:3])
+                row.extend(list(fields[3:5]))
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))
+                row.append(_i16(tf_act & 0xFFFF))
+                row.extend(list(fields[6:9]))
+                row.extend(list(fields[9:11]))
+                foc_uq_ud = fields[11]
+                row.append(_i16((foc_uq_ud >> 16) & 0xFFFF))
+                row.append(_i16(foc_uq_ud & 0xFFFF))
+                foc_uq_ud_limited = fields[12]
+                row.append(_i16((foc_uq_ud_limited >> 16) & 0xFFFF))
+                row.append(_i16(foc_uq_ud_limited & 0xFFFF))
+                row.extend(list(fields[13:]))
+            else:
+                row = list(fields[:3])
+                row.extend(list(fields[3:5]))
+                tf_act = fields[5]
+                row.append(_i16((tf_act >> 16) & 0xFFFF))
+                row.append(_i16(tf_act & 0xFFFF))
+                row.extend(list(fields[6:]))
+            samples.append(row)
+
+        if phase_filter is not None:
+            phase_col = 1
+            samples = [s for s in samples if s[phase_col] == phase_filter]
+
+        if not samples:
+            gcmd.respond_info("FOCI %s: no samples match filter" % self.driver.name)
+            return
+
+        preset_names = {1: "full", 2: "velocity", 3: "hold"}
+        preset_name = preset_names.get(preset, "fast")
+        expected_tick_step = {1: 2, 2: 2, 3: 10}.get(preset, 1)
+        header = "FOCI %s trace: %d samples" % (self.driver.name, len(samples))
+        if dropped > 0:
+            header += " (%d dropped)" % dropped
+        header += ", %s preset, %dus period" % (preset_name, sample_period)
+
+        if format_name == "summary":
+            lines = _format_trace_summary(
+                self.driver.name,
+                samples,
+                headers,
+                preset_name,
+                sample_period,
+                dropped,
+                expected_tick_step,
+            )
+        elif format_name == "csv":
+            lines = [header, ",".join(headers)]
+            for row in samples:
+                lines.append(",".join(str(v) for v in row))
+        else:
+            lines = [header]
+            col_widths = [max(len(h), 8) for h in headers]
+            lines.append("  ".join(h.rjust(w) for h, w in zip(headers, col_widths)))
+            for row in samples:
+                lines.append(
+                    "  ".join(str(v).rjust(w) for v, w in zip(row, col_widths))
+                )
+
+        gcmd.respond_info("\n".join(lines))
