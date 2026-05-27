@@ -8,6 +8,8 @@ Run: cd foci/klipper-foci && python -m pytest tests/ -v
 
 import unittest
 
+from klipper_foci.homing import HomingWorkflow
+
 from tests.mocks import (
     CommandError,
     MockCartesianKinematics,
@@ -114,28 +116,28 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         d = make_driver()
         d.state.is_calibrated = True
         # Should return without error or side effects
-        d._ensure_calibrated()
+        d.homing.ensure_calibrated()
 
     def test_inhibited_raises_even_if_already_calibrated(self):
         d = make_driver()
         d.state.is_calibrated = True
         d.state.inhibited = True
         with self.assertRaises(CommandError) as ctx:
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_raises_if_inhibited(self):
         d = make_driver()
         d.state.inhibited = True
         with self.assertRaises(CommandError) as ctx:
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_raises_if_no_active_gains(self):
         d = make_driver()
         d.state.active_gains = None
         with self.assertRaises(CommandError) as ctx:
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
         self.assertIn("no commissioned gains", str(ctx.exception))
 
     def test_raises_if_lock_held(self):
@@ -143,13 +145,13 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         d.state.active_gains = SAMPLE_ACTIVE_GAINS
         d.state.operation_lock = True
         with self.assertRaises(CommandError) as ctx:
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
         self.assertIn("another FOCI operation", str(ctx.exception))
 
     def test_does_not_recalibrate_if_already_calibrated(self):
         d = make_driver()
         d.state.is_calibrated = True
-        d._ensure_calibrated()
+        d.homing.ensure_calibrated()
         # calibrate_cmd should NOT have been sent
         self.assertIsNone(d.calibrate_cmd.last_args)
 
@@ -446,7 +448,7 @@ class TestStateTransitions(unittest.TestCase):
         d = make_driver()
         d.state.inhibited = True
         with self.assertRaises(CommandError) as ctx:
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_inhibited_blocks_autotune(self):
@@ -464,14 +466,14 @@ class TestStateTransitions(unittest.TestCase):
         d.voltage_limit = 29000
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
 
-        d._apply_active_gains_to_firmware()
+        d.homing.apply_active_gains_to_firmware()
 
         self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 29000])
 
     def test_disable_callback_clears_calibrated(self):
         d = make_driver()
         d.state.is_calibrated = True
-        d._handle_stepper_enable(0.0, False)
+        d.homing.handle_stepper_enable(0.0, False)
         self.assertFalse(d.state.is_calibrated)
 
     def test_enable_callback_calibrates_before_marking_enabled(self):
@@ -494,14 +496,14 @@ class TestStateTransitions(unittest.TestCase):
             "adc_i1": 33256,
             "encoder_count": 0,
         }
-        d._handle_stepper_enable(0.0, True)
+        d.homing.handle_stepper_enable(0.0, True)
         self.assertEqual(d.calibrate_cmd.last_args, [0])
         self.assertTrue(d.state.is_calibrated)
 
     def test_ensure_calibrated_skips_if_already_true(self):
         d = make_driver()
         d.state.is_calibrated = True
-        d._ensure_calibrated()
+        d.homing.ensure_calibrated()
         self.assertIsNone(d.calibrate_cmd.last_args)
 
 
@@ -509,10 +511,8 @@ class TestChipResetDetected(unittest.TestCase):
     """Verify host recovery when firmware reports CHIP_RESET_DETECTED."""
 
     def test_calibration_error_names_includes_code_2(self):
-        from klipper_foci.driver import FociDriver
-
-        self.assertIn(2, FociDriver.CALIBRATION_ERROR_NAMES)
-        self.assertIn("CHIP_RESET_DETECTED", FociDriver.CALIBRATION_ERROR_NAMES[2])
+        self.assertIn(2, HomingWorkflow.CALIBRATION_ERROR_NAMES)
+        self.assertIn("CHIP_RESET_DETECTED", HomingWorkflow.CALIBRATION_ERROR_NAMES[2])
 
     def test_commission_error_names_includes_code_18(self):
         from klipper_foci.driver import FociDriver
@@ -534,7 +534,7 @@ class TestChipResetDetected(unittest.TestCase):
         }
 
         with self.assertRaises(CommandError) as ctx:
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
 
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
         self.assertFalse(d.state.is_calibrated)
@@ -556,7 +556,7 @@ class TestChipResetDetected(unittest.TestCase):
             "encoder_count": 0,
         }
         with self.assertRaises(CommandError):
-            d._ensure_calibrated()
+            d.homing.ensure_calibrated()
 
         reactor.completion_result = {
             "oid": 0,
@@ -565,7 +565,7 @@ class TestChipResetDetected(unittest.TestCase):
             "adc_i1": 100,
             "encoder_count": 1234,
         }
-        d._ensure_calibrated()
+        d.homing.ensure_calibrated()
 
         self.assertTrue(d.state.is_calibrated)
         self.assertFalse(d.state.inhibited)
@@ -601,12 +601,12 @@ class TestHomingInvalidation(unittest.TestCase):
         d = make_driver()
         d.printer._objects.pop("toolhead", None)
         # Should not raise
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
 
     def test_noop_for_none_kinematics(self):
         d = make_driver(kinematics=MockNoneKinematics())
         # NoneKinematics has no rails or clear_homing_state — should be a no-op
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
 
     def test_noop_when_no_rails_attribute(self):
         """Kinematics with clear_homing_state but no rails attribute."""
@@ -616,12 +616,12 @@ class TestHomingInvalidation(unittest.TestCase):
                 raise AssertionError("should not be called")
 
         d = make_driver(kinematics=MinimalKin())
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
 
     def test_noop_when_stepper_not_on_any_rail(self):
         kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_a", kinematics=kin)
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         self.assertIsNone(kin._cleared_axes)
 
     def test_cartesian_clears_matched_axis(self):
@@ -630,7 +630,7 @@ class TestHomingInvalidation(unittest.TestCase):
             stepper_name="stepper_x",
             kinematics=kin,
         )
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         # Cartesian: stepper_x is rail 0 → axis 0 (x)
         self.assertIn(0, kin._cleared_axes)
         self.assertIn("x", kin._cleared_axes)
@@ -639,7 +639,7 @@ class TestHomingInvalidation(unittest.TestCase):
     def test_cartesian_clears_y_axis(self):
         kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_y", kinematics=kin)
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         self.assertIn(1, kin._cleared_axes)
         self.assertIn("y", kin._cleared_axes)
         self.assertNotIn(0, kin._cleared_axes)
@@ -648,7 +648,7 @@ class TestHomingInvalidation(unittest.TestCase):
     def test_cartesian_clears_z_axis(self):
         kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_z", kinematics=kin)
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         self.assertIn(2, kin._cleared_axes)
         self.assertIn("z", kin._cleared_axes)
         self.assertNotIn(0, kin._cleared_axes)
@@ -659,7 +659,7 @@ class TestHomingInvalidation(unittest.TestCase):
             stepper_name="stepper_x",
             kinematics=kin,
         )
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         # CoreXY: rail 0 maps to axes (0, 1) → x and y
         self.assertIn(0, kin._cleared_axes)
         self.assertIn(1, kin._cleared_axes)
@@ -670,7 +670,7 @@ class TestHomingInvalidation(unittest.TestCase):
     def test_corexy_clears_both_axes_for_y_motor(self):
         kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_y", kinematics=kin)
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         # CoreXY: rail 1 maps to axes (0, 1) → x and y
         self.assertIn(0, kin._cleared_axes)
         self.assertIn(1, kin._cleared_axes)
@@ -679,7 +679,7 @@ class TestHomingInvalidation(unittest.TestCase):
     def test_corexy_z_only_clears_z(self):
         kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_z", kinematics=kin)
-        d._invalidate_homing()
+        d.homing.invalidate_homing()
         # CoreXY: rail 2 maps to axis (2,) → z only
         self.assertIn(2, kin._cleared_axes)
         self.assertNotIn(0, kin._cleared_axes)
@@ -700,9 +700,9 @@ class TestHomingCalibrationCoupling(unittest.TestCase):
         def ensure_calibrated():
             calls.append(d.stepper_name)
 
-        d._ensure_calibrated = ensure_calibrated
+        d.homing.ensure_calibrated = ensure_calibrated
 
-        d._handle_home_rails_begin(None, [kin.rails[0]])
+        d.homing.handle_home_rails_begin(None, [kin.rails[0]])
 
         self.assertEqual(calls, ["stepper_y"])
 
@@ -714,9 +714,9 @@ class TestHomingCalibrationCoupling(unittest.TestCase):
         def ensure_calibrated():
             calls.append(d.stepper_name)
 
-        d._ensure_calibrated = ensure_calibrated
+        d.homing.ensure_calibrated = ensure_calibrated
 
-        d._handle_home_rails_begin(None, [kin.rails[1]])
+        d.homing.handle_home_rails_begin(None, [kin.rails[1]])
 
         self.assertEqual(calls, ["stepper_x"])
 
@@ -728,9 +728,9 @@ class TestHomingCalibrationCoupling(unittest.TestCase):
         def ensure_calibrated():
             calls.append(d.stepper_name)
 
-        d._ensure_calibrated = ensure_calibrated
+        d.homing.ensure_calibrated = ensure_calibrated
 
-        d._handle_home_rails_begin(None, [kin.rails[0]])
+        d.homing.handle_home_rails_begin(None, [kin.rails[0]])
 
         self.assertEqual(calls, [])
 

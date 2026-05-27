@@ -220,6 +220,27 @@ def test_expert_control_commands_register_controls_workflow_handlers():
     )
 
 
+def test_homing_events_register_homing_workflow_callbacks():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    make_config_driver(printer, sections, "foci stepper_x")
+
+    for event in (
+        "homing:home_rails_begin",
+        "homing:homing_move_begin",
+        "homing:homing_move_end",
+    ):
+        callbacks = printer._event_handlers[event]
+        assert callbacks[0].__self__.__class__.__name__ == "HomingWorkflow"
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

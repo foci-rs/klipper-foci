@@ -30,7 +30,7 @@ def test_homing_move_end_reports_matching_stepper_positions():
         ]
     )
 
-    driver._handle_homing_move_end(homing_move)
+    driver.homing.handle_homing_move_end(homing_move)
 
     assert len(gcode._responses) == 1
     assert gcode._responses[0] == (
@@ -81,9 +81,9 @@ def test_homing_move_end_reports_step_history_summary():
         ],
     )
 
-    driver._handle_homing_move_begin(homing_move)
+    driver.homing.handle_homing_move_begin(homing_move)
     toolhead.last_move_time = 13.0
-    driver._handle_homing_move_end(homing_move)
+    driver.homing.handle_homing_move_end(homing_move)
 
     assert len(gcode._responses) == 3
     assert gcode._responses[1] == (
@@ -157,9 +157,9 @@ def test_homing_move_end_reports_signed_step_history_details():
         ],
     )
 
-    driver._handle_homing_move_begin(homing_move)
+    driver.homing.handle_homing_move_begin(homing_move)
     toolhead.last_move_time = 21.0
-    driver._handle_homing_move_end(homing_move)
+    driver.homing.handle_homing_move_end(homing_move)
 
     assert len(gcode._responses) == 3
     assert gcode._responses[1] == (
@@ -194,6 +194,6 @@ def test_homing_move_end_ignores_unrelated_moves():
         ]
     )
 
-    driver._handle_homing_move_end(homing_move)
+    driver.homing.handle_homing_move_end(homing_move)
 
     assert gcode._responses == []

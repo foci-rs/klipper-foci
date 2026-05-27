@@ -8,8 +8,10 @@ state fields directly and call methods under test.
 from __future__ import annotations
 
 from klipper_foci.controls import ControlsWorkflow
+from klipper_foci.commissioning import CommissioningWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
+from klipper_foci.homing import HomingWorkflow
 from klipper_foci.registry import FociGlobalConfig
 from klipper_foci.state import FociRuntimeState
 
@@ -512,7 +514,8 @@ def make_driver(
     driver.state = FociRuntimeState()
     driver.dump = RegisterDumpWorkflow(driver)
     driver.controls = ControlsWorkflow(driver)
-    driver._enable_patched = False
+    driver.homing = HomingWorkflow(driver)
+    driver.commissioning = CommissioningWorkflow(driver)
 
     # Commission polling state
     driver._commission_done = False
@@ -525,7 +528,6 @@ def make_driver(
     driver._selftest_results = []
     driver._selftest_complete = False
     driver._selftest_status = 0
-    driver._homing_move_start_times = {}
 
     # Config values (needed by some methods)
     driver.microsteps = 20

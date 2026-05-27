@@ -1,0 +1,461 @@
+"""Homing, enable, and calibration workflow for FOCI."""
+
+from __future__ import annotations
+
+import logging
+
+
+class HomingWorkflow:
+    """Coordinate calibration-on-enable and homing-related reporting."""
+
+    # Status codes for foci_calibrate_response (CalibrationError::status_code).
+    # This is a separate namespace from commissioning errors because calibration
+    # and commission paths report through different message types.
+    CALIBRATION_ERROR_NAMES: dict[int, str] = {
+        1: "SPI_ERROR (TMC4671 not responding)",
+        2: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
+        5: "ALREADY_ENABLED",
+        6: "INTERNAL_ERROR",
+        7: "CONFIG_FAULT (run-time configuration missing)",
+    }
+
+    # Kinematics coupling map: in coupled kinematics a single motor affects
+    # multiple Cartesian axes. Maps rail index -> affected axes.
+    COUPLED_AXES = {
+        "CoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
+        "CoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},
+        "HybridCoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
+        "HybridCoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},
+    }
+
+    def __init__(self, driver) -> None:
+        self.driver = driver
+        self._homing_move_start_times: dict[int, float] = {}
+        self._enable_patched = False
+
+    def install_enable_hooks(self) -> None:
+        """Install Klipper enable hooks that run FOCI calibration before enable."""
+        if self._enable_patched:
+            return
+        self._enable_patched = True
+        stepper_enable = self.driver.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
+        enable_line.register_state_callback(self.handle_stepper_enable)
+        force_move = self.driver.printer.lookup_object("force_move", None)
+        if force_move is not None:
+            orig_force_enable = force_move._force_enable
+            workflow = self
+
+            def _wrapped_force_enable(stepper, _orig=orig_force_enable):
+                name = stepper.get_name()
+                if name == workflow.driver.stepper_name:
+                    workflow.ensure_calibrated()
+                return _orig(stepper)
+
+            force_move._force_enable = _wrapped_force_enable
+        for _name, ms in self.driver.printer.lookup_objects("manual_stepper"):
+            steppers = getattr(ms, "steppers", [])
+            if steppers and steppers[0].get_name() == self.driver.stepper_name:
+                orig_do_enable = ms.do_enable
+                workflow = self
+
+                def _wrapped_do_enable(enable, _orig=orig_do_enable, _foci=workflow):
+                    if enable:
+                        _foci.ensure_calibrated()
+                    _orig(enable)
+
+                ms.do_enable = _wrapped_do_enable
+
+    def handle_calibrate_response(self, params) -> None:
+        """Handle foci_calibrate_response message from firmware."""
+        if self.driver.state.calibration_completion is not None:
+            self.driver.state.calibration_completion.complete(params)
+
+    def set_auto_calibrate_on_enable_allowed(self, allowed: bool) -> None:
+        """Tell firmware whether raw enable may start auto-calibration."""
+        if self.driver.set_auto_calibrate_on_enable_cmd is not None:
+            self.driver.set_auto_calibrate_on_enable_cmd.send(
+                [self.driver.oid, int(allowed)]
+            )
+
+    def apply_active_gains_to_firmware(self) -> None:
+        """Preload saved FOCI gains into firmware state before enabling."""
+        gains = self.driver.state.active_gains
+        if gains is None:
+            return
+        self.driver.set_voltage_limit_cmd.send(
+            [self.driver.oid, self.driver.voltage_limit]
+        )
+        self.driver.set_pid_gains_cmd.send(
+            [
+                self.driver.oid,
+                gains["flux_p"],
+                gains["flux_i"],
+                gains["torque_p"],
+                gains["torque_i"],
+            ]
+        )
+        if gains.get("velocity_p") is not None:
+            self.driver.set_position_gains_cmd.send(
+                [
+                    self.driver.oid,
+                    gains["position_p"],
+                    gains["position_i"],
+                    gains["velocity_p"],
+                    gains["velocity_i"],
+                ]
+            )
+        if gains.get("velocity_limit"):
+            self.driver.set_velocity_limit_cmd.send(
+                [self.driver.oid, gains["velocity_limit"]]
+            )
+        for filter_name in ("velocity", "torque", "position", "flux"):
+            hz = gains.get("%s_filter_hz" % filter_name, 0)
+            if hz > 0:
+                cmd = getattr(self.driver, "set_%s_filter_cmd" % filter_name)
+                cmd.send([self.driver.oid, hz])
+
+    def invalidate_homing(self) -> None:
+        """Mark all kinematic axes affected by this stepper as unhomed."""
+        toolhead = self.driver.printer.lookup_object("toolhead", None)
+        if toolhead is None:
+            return
+        kin = toolhead.get_kinematics()
+        if not hasattr(kin, "clear_homing_state"):
+            return
+        rails = getattr(kin, "rails", None)
+        if rails is None:
+            return
+        matched_rails = set()
+        for i, rail in enumerate(rails):
+            for stepper in rail.get_steppers():
+                if stepper.get_name() == self.driver.stepper_name:
+                    matched_rails.add(i)
+        if not matched_rails:
+            return
+        coupling = self.COUPLED_AXES.get(type(kin).__name__)
+        axes_to_clear = set()
+        for rail_index in matched_rails:
+            if coupling and rail_index in coupling:
+                axes_to_clear.update(coupling[rail_index])
+            elif rail_index < 3:
+                axes_to_clear.add(rail_index)
+        if axes_to_clear:
+            clear_arg = set()
+            for i in axes_to_clear:
+                clear_arg.add(i)
+                clear_arg.add("xyz"[i])
+            kin.clear_homing_state(clear_arg)
+            axis_names = "".join("xyz"[i] for i in sorted(axes_to_clear))
+            logging.info(
+                "FOCI %s: marked axes %s unhomed (encoder re-zeroed)",
+                self.driver.name,
+                axis_names,
+            )
+
+    def ensure_calibrated(self) -> None:
+        """Run calibration if not already calibrated. Blocks until complete."""
+        if self.driver.state.inhibited:
+            raise self.driver.printer.command_error(
+                "FOCI %s: operation inhibited after failed FOCI_COMMISSION. "
+                "Retry FOCI_COMMISSION or restart Klipper." % self.driver.name
+            )
+        if self.driver.state.is_calibrated:
+            return
+        if self.driver.state.active_gains is None:
+            raise self.driver.printer.command_error(
+                "FOCI %s: no commissioned gains available. "
+                "Run FOCI_COMMISSION first." % self.driver.name
+            )
+        if not self.driver.state.try_acquire():
+            raise self.driver.printer.command_error(
+                "FOCI %s: another FOCI operation is in progress" % self.driver.name
+            )
+        try:
+            self.apply_active_gains_to_firmware()
+
+            reactor = self.driver.printer.get_reactor()
+            self.driver.state.calibration_completion = reactor.completion()
+            t_start = reactor.monotonic()
+            self.set_auto_calibrate_on_enable_allowed(True)
+            self.driver.calibrate_cmd.send([self.driver.oid])
+            params = self.driver.state.calibration_completion.wait(t_start + 5.0)
+            t_elapsed = reactor.monotonic() - t_start
+            self.driver.state.calibration_completion = None
+
+            logging.info(
+                "FOCI %s: calibrate response after %.3fs: %s",
+                self.driver.name,
+                t_elapsed,
+                params,
+            )
+
+            if params is None:
+                raise self.driver.printer.command_error(
+                    "FOCI %s: calibration timed out (no response from firmware)"
+                    % self.driver.name
+                )
+            status = params.get("status", 255)
+            if status == 5:
+                self.driver.state.is_calibrated = True
+                logging.info(
+                    "FOCI %s: already calibrated (firmware auto-cal)",
+                    self.driver.name,
+                )
+                return
+            if status != 0:
+                msg = self.CALIBRATION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
+                if status == 2:
+                    self.driver.commissioning.handle_chip_reset_detected()
+                raise self.driver.printer.command_error(
+                    "FOCI %s calibration failed: %s" % (self.driver.name, msg)
+                )
+            self.driver.state.is_calibrated = True
+            logging.info(
+                "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
+                self.driver.name,
+                params.get("adc_i0", 0),
+                params.get("adc_i1", 0),
+                params.get("encoder_count", 0),
+            )
+        finally:
+            self.driver.state.release()
+
+    def handle_home_rails_begin(self, homing_state, rails) -> None:
+        """Ensure calibration before homing any axis driven by this stepper."""
+        toolhead = self.driver.printer.lookup_object("toolhead", None)
+        if toolhead is not None:
+            kin = toolhead.get_kinematics()
+            all_rails = getattr(kin, "rails", None)
+            if all_rails is not None:
+                homed_axes = set()
+                for homed_rail in rails:
+                    for rail_index, rail in enumerate(all_rails):
+                        if rail is homed_rail:
+                            if rail_index < 3:
+                                homed_axes.add(rail_index)
+                            break
+
+                matched_rails = set()
+                for rail_index, rail in enumerate(all_rails):
+                    for stepper in rail.get_steppers():
+                        if stepper.get_name() == self.driver.stepper_name:
+                            matched_rails.add(rail_index)
+
+                coupling = self.COUPLED_AXES.get(type(kin).__name__)
+                driver_axes = set()
+                for rail_index in matched_rails:
+                    if coupling and rail_index in coupling:
+                        driver_axes.update(coupling[rail_index])
+                    elif rail_index < 3:
+                        driver_axes.add(rail_index)
+
+                if homed_axes and driver_axes and homed_axes & driver_axes:
+                    self.ensure_calibrated()
+                    return
+
+        dominated_steppers = set()
+        for rail in rails:
+            for stepper in rail.get_steppers():
+                dominated_steppers.add(stepper.get_name())
+        if self.driver.stepper_name in dominated_steppers:
+            self.ensure_calibrated()
+
+    def handle_homing_move_begin(self, homing_move) -> None:
+        """Record the homing move print-time window for step history diagnostics."""
+        toolhead = getattr(homing_move, "toolhead", None)
+        if toolhead is None:
+            return
+        get_last_move_time = getattr(toolhead, "get_last_move_time", None)
+        if get_last_move_time is None:
+            return
+        self._homing_move_start_times[id(homing_move)] = float(get_last_move_time())
+
+    def handle_homing_move_end(self, homing_move) -> None:
+        """Report FOCI stepper positions captured by Kalico homing."""
+        gcode = self.driver.printer.lookup_object("gcode", None)
+        if gcode is None:
+            return
+        start_time = self._homing_move_start_times.pop(id(homing_move), None)
+        for sp in getattr(homing_move, "stepper_positions", []):
+            if getattr(sp, "stepper_name", None) != self.driver.stepper_name:
+                continue
+            start_pos = int(sp.start_pos)
+            trig_pos = int(sp.trig_pos)
+            halt_pos = int(sp.halt_pos)
+            move_steps = halt_pos - start_pos
+            over_steps = halt_pos - trig_pos
+            step_dist = float(sp.stepper.get_step_dist())
+            gcode.respond_info(
+                "FOCI_HOME_POSITION %s endstop=%s start=%d trig=%d halt=%d"
+                " move_steps=%d over_steps=%d move_mm=%.3f over_mm=%.3f"
+                % (
+                    self.driver.stepper_name,
+                    sp.endstop_name,
+                    start_pos,
+                    trig_pos,
+                    halt_pos,
+                    move_steps,
+                    over_steps,
+                    move_steps * step_dist,
+                    over_steps * step_dist,
+                )
+            )
+            self._report_homing_step_history(gcode, homing_move, sp, start_time)
+            return
+
+    def _report_homing_step_history(self, gcode, homing_move, sp, start_time) -> None:
+        """Report Kalico stepcompress history for one homing stepper."""
+        if start_time is None:
+            return
+        toolhead = getattr(homing_move, "toolhead", None)
+        if toolhead is None:
+            return
+        get_last_move_time = getattr(toolhead, "get_last_move_time", None)
+        get_mcu = getattr(sp.stepper, "get_mcu", None)
+        dump_steps = getattr(sp.stepper, "dump_steps", None)
+        if get_last_move_time is None or get_mcu is None or dump_steps is None:
+            return
+        mcu = get_mcu()
+        print_time_to_clock = getattr(mcu, "print_time_to_clock", None)
+        if print_time_to_clock is None:
+            return
+
+        end_time = float(get_last_move_time())
+        start_clock = int(print_time_to_clock(start_time))
+        end_clock = int(print_time_to_clock(end_time))
+        history = self._extract_step_history(sp.stepper, start_clock, end_clock)
+        if not history:
+            return
+
+        move_history = [step for step in history if int(step.step_count) != 0]
+        marker_history = [step for step in history if int(step.step_count) == 0]
+        if not move_history:
+            return
+
+        signed_steps = sum(int(step.step_count) for step in move_history)
+        abs_steps = sum(abs(int(step.step_count)) for step in move_history)
+        pos_steps = sum(
+            int(step.step_count) for step in move_history if int(step.step_count) > 0
+        )
+        neg_steps = sum(
+            -int(step.step_count) for step in move_history if int(step.step_count) < 0
+        )
+        dir_changes = self._count_history_dir_changes(move_history)
+        gap_steps = self._sum_history_position_gaps(move_history)
+        first = move_history[0]
+        last = move_history[-1]
+        planned_start = int(first.start_position)
+        planned_end = int(last.start_position) + int(last.step_count)
+        step_dist = float(sp.stepper.get_step_dist())
+        gcode.respond_info(
+            "FOCI_HOME_STEP_HISTORY %s start_clock=%d end_clock=%d"
+            " segments=%d move_segments=%d marker_segments=%d signed_steps=%d"
+            " abs_steps=%d pos_steps=%d neg_steps=%d dir_changes=%d"
+            " gap_steps=%d planned_start=%d planned_end=%d first_clock=%d"
+            " last_clock=%d signed_mm=%.3f abs_mm=%.3f"
+            % (
+                self.driver.stepper_name,
+                start_clock,
+                end_clock,
+                len(history),
+                len(move_history),
+                len(marker_history),
+                signed_steps,
+                abs_steps,
+                pos_steps,
+                neg_steps,
+                dir_changes,
+                gap_steps,
+                planned_start,
+                planned_end,
+                int(first.first_clock),
+                int(last.last_clock),
+                signed_steps * step_dist,
+                abs_steps * step_dist,
+            )
+        )
+        gcode.respond_info(
+            "FOCI_HOME_STEP_SEGMENTS %s first=%s last=%s markers=%s"
+            % (
+                self.driver.stepper_name,
+                self._format_history_segment_edges(move_history[:4]),
+                self._format_history_segment_edges(move_history[-4:]),
+                self._format_history_markers(marker_history[:4]),
+            )
+        )
+
+    def _extract_step_history(self, stepper, start_clock, end_clock):
+        """Return chronological stepcompress history overlapping a clock window."""
+        batch_size = 128
+        batches = []
+        window_end = end_clock
+        for _ in range(8):
+            data, count = stepper.dump_steps(batch_size, start_clock, window_end)
+            if not count:
+                break
+            batches.append((data, count))
+            if count < batch_size:
+                break
+            window_end = int(data[count - 1].first_clock)
+
+        history = []
+        for data, count in reversed(batches):
+            for idx in range(count - 1, -1, -1):
+                history.append(data[idx])
+        return history
+
+    def _count_history_dir_changes(self, history) -> int:
+        """Count sign changes between consecutive non-zero history segments."""
+        changes = 0
+        last_sign = 0
+        for step in history:
+            count = int(step.step_count)
+            sign = 1 if count > 0 else -1
+            if last_sign and sign != last_sign:
+                changes += 1
+            last_sign = sign
+        return changes
+
+    def _sum_history_position_gaps(self, history) -> int:
+        """Return total absolute discontinuity between history segments."""
+        gap_steps = 0
+        last_end = None
+        for step in history:
+            start = int(step.start_position)
+            if last_end is not None:
+                gap_steps += abs(start - last_end)
+            last_end = start + int(step.step_count)
+        return gap_steps
+
+    def _format_history_segment_edges(self, history) -> str:
+        """Format compact signed segment edges for homing diagnostics."""
+        if not history:
+            return "none"
+        return ",".join(
+            "%d:%d:%+d@%d/%+d"
+            % (
+                int(step.first_clock),
+                int(step.start_position),
+                int(step.step_count),
+                int(step.interval),
+                int(step.add),
+            )
+            for step in history
+        )
+
+    def _format_history_markers(self, history) -> str:
+        """Format zero-count reset/query markers for homing diagnostics."""
+        if not history:
+            return "none"
+        return ",".join(
+            "%d:%d" % (int(step.first_clock), int(step.start_position))
+            for step in history
+        )
+
+    def handle_stepper_enable(self, print_time, is_enable) -> None:
+        """Synchronize FOCI calibration state with Klipper stepper enable."""
+        if is_enable:
+            self.ensure_calibrated()
+        else:
+            self.driver.state.is_calibrated = False
