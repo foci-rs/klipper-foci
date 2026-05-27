@@ -22,10 +22,7 @@ from klipper_foci.trace import (
 
 
 def _i16(val: int) -> int:
-    """Convert unsigned 16-bit half to signed i16.
-
-    Duplicated from foci.py cmd_FOCI_TRACE (local function).
-    """
+    """Convert unsigned 16-bit half to signed i16."""
     return val - 0x10000 if val >= 0x8000 else val
 
 
