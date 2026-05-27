@@ -274,6 +274,28 @@ def test_autotune_registers_autotune_workflow_handler():
     assert handler.__self__.__class__.__name__ == "AutotuneWorkflow"
 
 
+def test_observation_diagnostics_register_diagnostics_workflow_handlers():
+    printer = build_driver_with_mode("advanced")
+    gcode = printer.lookup_object("gcode")
+    command_names = {
+        "FOCI_STEP_POSITION",
+        "FOCI_STEPPER_STATS",
+        "FOCI_DISPATCH_STATS",
+    }
+
+    handlers = {
+        args[0]: args[3]
+        for args, _kwargs in gcode._mux_commands
+        if args[0] in command_names
+    }
+
+    assert set(handlers) == command_names
+    assert all(
+        handler.__self__.__class__.__name__ == "DiagnosticsWorkflow"
+        for handler in handlers.values()
+    )
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

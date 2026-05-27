@@ -23,7 +23,7 @@ def test_step_position_diagnostic_reports_raw_host_and_klipper_delta():
     driver.stepper_get_position_cmd = MockCommand({"pos": -19176})
     gcmd = MockGCmd()
 
-    driver.cmd_FOCI_STEP_POSITION(gcmd)
+    driver.diagnostics.step_position(gcmd)
 
     assert driver.stepper_get_position_cmd.last_args == [10]
     assert "FOCI_STEP_POSITION stepper_x:" in gcmd.last_info
@@ -50,7 +50,7 @@ def test_step_position_diagnostic_leaves_non_inverted_raw_position_unchanged():
     driver.stepper_get_position_cmd = MockCommand({"pos": 8125})
     gcmd = MockGCmd()
 
-    driver.cmd_FOCI_STEP_POSITION(gcmd)
+    driver.diagnostics.step_position(gcmd)
 
     assert driver.stepper_get_position_cmd.last_args == [12]
     assert "raw=8125" in gcmd.last_info

@@ -59,7 +59,7 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
     )
     gcmd = MockGCmd()
 
-    driver.cmd_FOCI_STEPPER_STATS(gcmd)
+    driver.diagnostics.stepper_stats(gcmd)
 
     assert driver.stepper_stats_cmd.last_args == [10]
     assert driver.stepper_exec_stats_cmd.last_args == [10]
@@ -141,7 +141,7 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     )
     gcmd = MockGCmd({"RESET": 1})
 
-    driver.cmd_FOCI_DISPATCH_STATS(gcmd)
+    driver.diagnostics.dispatch_stats(gcmd)
 
     assert driver.stepper_perf_stats_cmd.last_args == [10, 1]
     assert "FOCI_DISPATCH_STATS stepper_x:" in gcmd.last_info

@@ -8,7 +8,7 @@ def test_stepper_event_handler_formats_known_reason_for_gcode_output():
     gcode = MockGCode()
     driver.printer._objects["gcode"] = gcode
 
-    driver._handle_stepper_event(
+    driver.diagnostics.handle_stepper_event(
         {
             "reason": 4,
             "channel": 0,
@@ -34,7 +34,7 @@ def test_stepper_event_handler_formats_unknown_reason_without_crashing():
     gcode = MockGCode()
     driver.printer._objects["gcode"] = gcode
 
-    driver._handle_stepper_event(
+    driver.diagnostics.handle_stepper_event(
         {
             "reason": 99,
             "channel": 0,
@@ -57,7 +57,7 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
     gcode = MockGCode()
     driver.printer._objects["gcode"] = gcode
 
-    driver._handle_stepper_perf_event(
+    driver.diagnostics.handle_stepper_perf_event(
         {
             "reason": 2,
             "channel": 0,

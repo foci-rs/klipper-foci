@@ -10,6 +10,7 @@ from __future__ import annotations
 from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
+from klipper_foci.diagnostics import DiagnosticsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
 from klipper_foci.homing import HomingWorkflow
@@ -520,6 +521,7 @@ def make_driver(
     driver.commissioning = CommissioningWorkflow(driver)
     driver.selftest = SelftestWorkflow(driver)
     driver.autotune = AutotuneWorkflow(driver)
+    driver.diagnostics = DiagnosticsWorkflow(driver)
 
     # Config values (needed by some methods)
     driver.microsteps = 20

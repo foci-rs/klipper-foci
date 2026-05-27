@@ -99,22 +99,22 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     GcodeCommandSpec(
         "FOCI_STEP_POSITION",
         "advanced",
-        "driver",
-        "cmd_FOCI_STEP_POSITION",
+        "diagnostics",
+        "step_position",
         "Query raw FOCI MCU step position without syncing Klipper",
     ),
     GcodeCommandSpec(
         "FOCI_STEPPER_STATS",
         "advanced",
-        "driver",
-        "cmd_FOCI_STEPPER_STATS",
+        "diagnostics",
+        "stepper_stats",
         "Query FOCI MCU step queue/execution counters without motion",
     ),
     GcodeCommandSpec(
         "FOCI_DISPATCH_STATS",
         "advanced",
-        "driver",
-        "cmd_FOCI_DISPATCH_STATS",
+        "diagnostics",
+        "dispatch_stats",
         "Query FOCI MCU step-dispatch cycle counters without motion",
     ),
     GcodeCommandSpec(
