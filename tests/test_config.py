@@ -317,12 +317,12 @@ def test_dual_mcu_drivers_keep_runtime_state_separate():
     driver_x = make_config_driver(printer, sections, "foci stepper_x")
     driver_y = make_config_driver(printer, sections, "foci stepper_y")
 
-    driver_x._foci_lock = True
-    driver_x._inhibited = True
+    driver_x.state.operation_lock = True
+    driver_x.state.inhibited = True
     driver_x._trace_info = {"owner": "x"}
 
-    assert driver_y._foci_lock is False
-    assert driver_y._inhibited is False
+    assert driver_y.state.operation_lock is False
+    assert driver_y.state.inhibited is False
     assert driver_y._trace_info is None
 
 

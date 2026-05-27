@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from klipper_foci.driver import FociDriver
 from klipper_foci.registry import FociGlobalConfig
+from klipper_foci.state import FociRuntimeState
 
 
 class CommandError(Exception):
@@ -506,13 +507,7 @@ def make_driver(
     driver.printer = printer
 
     # Volatile state (matches __init__ lines 700-719)
-    driver.is_calibrated = False
-    driver._calibration_completion = None
-    driver._inhibited = False
-    driver._commissioned_result = None
-    driver._active_gains = None
-    driver._runtime_status = None
-    driver._foci_lock = False
+    driver.state = FociRuntimeState()
     driver._enable_patched = False
 
     # Commission polling state

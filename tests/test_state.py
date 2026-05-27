@@ -88,20 +88,20 @@ class MockConfigFile:
 class TestOperationLock(unittest.TestCase):
     def test_acquire_when_free(self):
         d = make_driver()
-        self.assertTrue(d._try_acquire_foci_lock())
-        self.assertTrue(d._foci_lock)
+        self.assertTrue(d.state.try_acquire())
+        self.assertTrue(d.state.operation_lock)
 
     def test_acquire_when_held(self):
         d = make_driver()
-        d._foci_lock = True
-        self.assertFalse(d._try_acquire_foci_lock())
+        d.state.operation_lock = True
+        self.assertFalse(d.state.try_acquire())
 
     def test_release_makes_available(self):
         d = make_driver()
-        d._foci_lock = True
-        d._release_foci_lock()
-        self.assertFalse(d._foci_lock)
-        self.assertTrue(d._try_acquire_foci_lock())
+        d.state.operation_lock = True
+        d.state.release()
+        self.assertFalse(d.state.operation_lock)
+        self.assertTrue(d.state.try_acquire())
 
 
 # =========================================================================
@@ -112,43 +112,43 @@ class TestOperationLock(unittest.TestCase):
 class TestEnsureCalibratedGates(unittest.TestCase):
     def test_returns_immediately_if_already_calibrated(self):
         d = make_driver()
-        d.is_calibrated = True
+        d.state.is_calibrated = True
         # Should return without error or side effects
         d._ensure_calibrated()
 
     def test_inhibited_raises_even_if_already_calibrated(self):
         d = make_driver()
-        d.is_calibrated = True
-        d._inhibited = True
+        d.state.is_calibrated = True
+        d.state.inhibited = True
         with self.assertRaises(CommandError) as ctx:
             d._ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_raises_if_inhibited(self):
         d = make_driver()
-        d._inhibited = True
+        d.state.inhibited = True
         with self.assertRaises(CommandError) as ctx:
             d._ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_raises_if_no_active_gains(self):
         d = make_driver()
-        d._active_gains = None
+        d.state.active_gains = None
         with self.assertRaises(CommandError) as ctx:
             d._ensure_calibrated()
         self.assertIn("no commissioned gains", str(ctx.exception))
 
     def test_raises_if_lock_held(self):
         d = make_driver()
-        d._active_gains = SAMPLE_ACTIVE_GAINS
-        d._foci_lock = True
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS
+        d.state.operation_lock = True
         with self.assertRaises(CommandError) as ctx:
             d._ensure_calibrated()
         self.assertIn("another FOCI operation", str(ctx.exception))
 
     def test_does_not_recalibrate_if_already_calibrated(self):
         d = make_driver()
-        d.is_calibrated = True
+        d.state.is_calibrated = True
         d._ensure_calibrated()
         # calibrate_cmd should NOT have been sent
         self.assertIsNone(d.calibrate_cmd.last_args)
@@ -162,7 +162,7 @@ class TestEnsureCalibratedGates(unittest.TestCase):
 class TestCommissionGates(unittest.TestCase):
     def test_raises_if_lock_held(self):
         d = make_driver()
-        d._foci_lock = True
+        d.state.operation_lock = True
         gcmd = MockGCmd({"PROFILE": "balanced"})
         with self.assertRaises(CommandError) as ctx:
             d.cmd_FOCI_COMMISSION(gcmd)
@@ -198,8 +198,8 @@ class TestCommissionGates(unittest.TestCase):
     def test_does_not_require_prior_commissioning(self):
         """Commission works on virgin hardware (no prior gains)."""
         d = make_driver()
-        d._active_gains = None
-        d._runtime_status = None
+        d.state.active_gains = None
+        d.state.runtime_status = "uncommissioned"
         gcmd = MockGCmd({"PROFILE": "balanced"})
         d._commission_done = True
         d._commission_result = SAMPLE_COMMISSION_RESULT
@@ -245,15 +245,15 @@ class TestCommissionGates(unittest.TestCase):
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(kinematics=kinematics, homed_axes=homed_axes)
-        d.is_calibrated = True
-        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
-        d._runtime_status = "commissioned"
-        d._commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
+        d.state.is_calibrated = True
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.runtime_status = "commissioned"
+        d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         return d
 
     def test_raises_if_lock_held(self):
         d = self._commissioned_driver()
-        d._foci_lock = True
+        d.state.operation_lock = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
             d.cmd_FOCI_AUTOTUNE(gcmd)
@@ -261,7 +261,7 @@ class TestAutotuneGates(unittest.TestCase):
 
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()
-        d._inhibited = True
+        d.state.inhibited = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
             d.cmd_FOCI_AUTOTUNE(gcmd)
@@ -269,7 +269,7 @@ class TestAutotuneGates(unittest.TestCase):
 
     def test_raises_if_not_commissioned(self):
         d = self._commissioned_driver()
-        d._runtime_status = None
+        d.state.runtime_status = "uncommissioned"
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
             d.cmd_FOCI_AUTOTUNE(gcmd)
@@ -277,7 +277,7 @@ class TestAutotuneGates(unittest.TestCase):
 
     def test_raises_if_not_calibrated(self):
         d = self._commissioned_driver()
-        d.is_calibrated = False
+        d.state.is_calibrated = False
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
             d.cmd_FOCI_AUTOTUNE(gcmd)
@@ -320,7 +320,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_accepts_tuned_conservative_as_commissioned(self):
         """A motor with tuned_conservative status can be re-tuned."""
         d = self._commissioned_driver()
-        d._runtime_status = "tuned_conservative"
+        d.state.runtime_status = "tuned_conservative"
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         # Should get past the "not commissioned" gate
         try:
@@ -367,8 +367,8 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertIn("safety fault", str(ctx.exception))
         self.assertFalse(enable_line.is_motor_enabled())
-        self.assertFalse(d.is_calibrated)
-        self.assertTrue(d._inhibited)
+        self.assertFalse(d.state.is_calibrated)
+        self.assertTrue(d.state.inhibited)
         self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
 
 
@@ -380,17 +380,17 @@ class TestAutotuneGates(unittest.TestCase):
 class TestStateTransitions(unittest.TestCase):
     def test_commission_failure_sets_inhibited(self):
         d = make_driver()
-        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
-        d._runtime_status = "commissioned"
-        d._commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
-        d.is_calibrated = True
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.runtime_status = "commissioned"
+        d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
+        d.state.is_calibrated = True
         # Simulate failure
         d._on_commission_failure()
-        self.assertTrue(d._inhibited)
-        self.assertIsNone(d._active_gains)
-        self.assertIsNone(d._runtime_status)
-        self.assertIsNone(d._commissioned_result)
-        self.assertFalse(d.is_calibrated)
+        self.assertTrue(d.state.inhibited)
+        self.assertIsNone(d.state.active_gains)
+        self.assertEqual(d.state.runtime_status, "uncommissioned")
+        self.assertIsNone(d.state.commissioned_result)
+        self.assertFalse(d.state.is_calibrated)
         self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
 
     def test_connect_allows_auto_calibrate_only_with_valid_config(self):
@@ -424,7 +424,7 @@ class TestStateTransitions(unittest.TestCase):
 
     def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):
         d = make_driver()
-        d._inhibited = True
+        d.state.inhibited = True
         d.autotune_status = "commissioned"
         d.pid_flux_p = 100
         d.pid_flux_i = 200
@@ -444,16 +444,16 @@ class TestStateTransitions(unittest.TestCase):
 
     def test_inhibited_blocks_ensure_calibrated(self):
         d = make_driver()
-        d._inhibited = True
+        d.state.inhibited = True
         with self.assertRaises(CommandError) as ctx:
             d._ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
     def test_inhibited_blocks_autotune(self):
         d = make_driver()
-        d._inhibited = True
-        d._runtime_status = "commissioned"
-        d.is_calibrated = True
+        d.state.inhibited = True
+        d.state.runtime_status = "commissioned"
+        d.state.is_calibrated = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
             d.cmd_FOCI_AUTOTUNE(gcmd)
@@ -462,7 +462,7 @@ class TestStateTransitions(unittest.TestCase):
     def test_active_gain_apply_resends_configured_voltage_limit(self):
         d = make_driver()
         d.voltage_limit = 29000
-        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
 
         d._apply_active_gains_to_firmware()
 
@@ -470,14 +470,14 @@ class TestStateTransitions(unittest.TestCase):
 
     def test_disable_callback_clears_calibrated(self):
         d = make_driver()
-        d.is_calibrated = True
+        d.state.is_calibrated = True
         d._handle_stepper_enable(0.0, False)
-        self.assertFalse(d.is_calibrated)
+        self.assertFalse(d.state.is_calibrated)
 
     def test_enable_callback_calibrates_before_marking_enabled(self):
         d = make_driver()
-        d.is_calibrated = False
-        d._active_gains = {
+        d.state.is_calibrated = False
+        d.state.active_gains = {
             "flux_p": 711,
             "flux_i": 159,
             "torque_p": 711,
@@ -496,11 +496,11 @@ class TestStateTransitions(unittest.TestCase):
         }
         d._handle_stepper_enable(0.0, True)
         self.assertEqual(d.calibrate_cmd.last_args, [0])
-        self.assertTrue(d.is_calibrated)
+        self.assertTrue(d.state.is_calibrated)
 
     def test_ensure_calibrated_skips_if_already_true(self):
         d = make_driver()
-        d.is_calibrated = True
+        d.state.is_calibrated = True
         d._ensure_calibrated()
         self.assertIsNone(d.calibrate_cmd.last_args)
 
@@ -522,9 +522,9 @@ class TestChipResetDetected(unittest.TestCase):
 
     def test_ensure_calibrated_chip_reset_clears_is_calibrated(self):
         d = make_driver()
-        d.is_calibrated = False
-        d._inhibited = False
-        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.is_calibrated = False
+        d.state.inhibited = False
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         d.printer.get_reactor().completion_result = {
             "oid": 0,
             "status": 2,
@@ -537,15 +537,15 @@ class TestChipResetDetected(unittest.TestCase):
             d._ensure_calibrated()
 
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
-        self.assertFalse(d.is_calibrated)
-        self.assertFalse(d._inhibited)
+        self.assertFalse(d.state.is_calibrated)
+        self.assertFalse(d.state.inhibited)
         self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
 
     def test_ensure_calibrated_chip_reset_allows_retry(self):
         d = make_driver()
-        d.is_calibrated = False
-        d._inhibited = False
-        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.is_calibrated = False
+        d.state.inhibited = False
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         reactor = d.printer.get_reactor()
 
         reactor.completion_result = {
@@ -567,13 +567,13 @@ class TestChipResetDetected(unittest.TestCase):
         }
         d._ensure_calibrated()
 
-        self.assertTrue(d.is_calibrated)
-        self.assertFalse(d._inhibited)
+        self.assertTrue(d.state.is_calibrated)
+        self.assertFalse(d.state.inhibited)
 
     def test_commission_chip_reset_does_not_inhibit_retry(self):
         d = make_driver()
-        d.is_calibrated = True
-        d._inhibited = False
+        d.state.is_calibrated = True
+        d.state.inhibited = False
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
         def drive_chip_reset(_args):
@@ -586,8 +586,8 @@ class TestChipResetDetected(unittest.TestCase):
             d.cmd_FOCI_COMMISSION(gcmd)
 
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
-        self.assertFalse(d.is_calibrated)
-        self.assertFalse(d._inhibited)
+        self.assertFalse(d.state.is_calibrated)
+        self.assertFalse(d.state.inhibited)
         self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
 
 
@@ -746,10 +746,10 @@ class TestCommandHomingInvalidation(unittest.TestCase):
     def _driver_with_cartesian(self):
         kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_x", kinematics=kin, homed_axes="xyz")
-        d.is_calibrated = True
-        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
-        d._runtime_status = "commissioned"
-        d._commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
+        d.state.is_calibrated = True
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.runtime_status = "commissioned"
+        d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         return d, kin
 
     def test_commission_invalidates_homing(self):
@@ -823,7 +823,7 @@ class TestDebugGainsCommand(unittest.TestCase):
 
     def test_updates_active_gains_without_persisting(self):
         d = make_driver()
-        d._active_gains = dict(SAMPLE_ACTIVE_GAINS)
+        d.state.active_gains = dict(SAMPLE_ACTIVE_GAINS)
 
         d.cmd_FOCI_SET_GAINS(
             MockGCmd(
@@ -836,10 +836,10 @@ class TestDebugGainsCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d._active_gains["velocity_p"], 512)
-        self.assertEqual(d._active_gains["velocity_i"], 0)
-        self.assertEqual(d._active_gains["position_p"], 256)
-        self.assertEqual(d._active_gains["position_i"], 0)
+        self.assertEqual(d.state.active_gains["velocity_p"], 512)
+        self.assertEqual(d.state.active_gains["velocity_i"], 0)
+        self.assertEqual(d.state.active_gains["position_p"], 256)
+        self.assertEqual(d.state.active_gains["position_i"], 0)
 
     def test_sets_inner_current_gains_as_raw_register_values(self):
         d = make_driver()
@@ -862,7 +862,7 @@ class TestDebugGainsCommand(unittest.TestCase):
 
     def test_updates_active_inner_gains_without_persisting(self):
         d = make_driver()
-        d._active_gains = dict(SAMPLE_ACTIVE_GAINS)
+        d.state.active_gains = dict(SAMPLE_ACTIVE_GAINS)
 
         d.cmd_FOCI_SET_INNER_GAINS(
             MockGCmd(
@@ -875,10 +875,10 @@ class TestDebugGainsCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d._active_gains["flux_p"], 706)
-        self.assertEqual(d._active_gains["flux_i"], 162)
-        self.assertEqual(d._active_gains["torque_p"], 706)
-        self.assertEqual(d._active_gains["torque_i"], 162)
+        self.assertEqual(d.state.active_gains["flux_p"], 706)
+        self.assertEqual(d.state.active_gains["flux_i"], 162)
+        self.assertEqual(d.state.active_gains["torque_p"], 706)
+        self.assertEqual(d.state.active_gains["torque_i"], 162)
 
 
 # =========================================================================
@@ -1548,9 +1548,9 @@ class TestValidateAndLoadConfig(unittest.TestCase):
         d.position_filter_hz = 200
         d.flux_filter_hz = 0
         d._validate_and_load_config()
-        self.assertIsNotNone(d._active_gains)
-        self.assertEqual(d._runtime_status, "commissioned")
-        self.assertEqual(d._active_gains["velocity_p"], 1152)
+        self.assertIsNotNone(d.state.active_gains)
+        self.assertEqual(d.state.runtime_status, "commissioned")
+        self.assertEqual(d.state.active_gains["velocity_p"], 1152)
 
     def test_loads_tuned_gains_from_config(self):
         d = make_driver()
@@ -1569,16 +1569,16 @@ class TestValidateAndLoadConfig(unittest.TestCase):
         d.position_filter_hz = 200
         d.flux_filter_hz = 0
         d._validate_and_load_config()
-        self.assertIsNotNone(d._active_gains)
-        self.assertEqual(d._runtime_status, "tuned_conservative")
-        self.assertEqual(d._active_gains["position_p"], 432)
+        self.assertIsNotNone(d.state.active_gains)
+        self.assertEqual(d.state.runtime_status, "tuned_conservative")
+        self.assertEqual(d.state.active_gains["position_p"], 432)
 
     def test_virgin_hardware_leaves_gains_none(self):
         d = make_driver()
         d.autotune_status = None
         d._validate_and_load_config()
-        self.assertIsNone(d._active_gains)
-        self.assertIsNone(d._runtime_status)
+        self.assertIsNone(d.state.active_gains)
+        self.assertEqual(d.state.runtime_status, "uncommissioned")
 
     def test_missing_fields_leaves_gains_none(self):
         d = make_driver()
@@ -1586,8 +1586,8 @@ class TestValidateAndLoadConfig(unittest.TestCase):
         d.pid_flux_p = 256
         # Missing other required fields
         d._validate_and_load_config()
-        self.assertIsNone(d._active_gains)
-        self.assertIsNone(d._runtime_status)
+        self.assertIsNone(d.state.active_gains)
+        self.assertEqual(d.state.runtime_status, "uncommissioned")
 
 
 # =========================================================================
@@ -1672,7 +1672,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
 
     def test_default_persisted_values_resolve_to_documented_defaults(self):
         driver = make_driver()
-        driver._commissioned_result = None
+        driver.state.commissioned_result = None
         driver.identified_lambda_us = 700
         # All identified_tau_*/identified_inner_warning_flags default None
         tau, cross, perm, flags = driver._resolve_inner_confidence()
@@ -1685,7 +1685,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
 
     def test_fresh_stage1_result_wins_over_persisted(self):
         driver = make_driver()
-        driver._commissioned_result = {
+        driver.state.commissioned_result = {
             "tau_e_us": 1234,
             "tau_e_crosscheck_us": 1100,
             "tau_residual_permille": 50,
@@ -1697,7 +1697,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
 
     def test_persisted_values_load_from_config(self):
         driver = make_driver()
-        driver._commissioned_result = None
+        driver.state.commissioned_result = None
         driver.identified_tau_e_us = 800
         driver.identified_tau_e_crosscheck_us = 750
         driver.identified_tau_residual_permille = 60

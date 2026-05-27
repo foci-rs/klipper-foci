@@ -16,6 +16,7 @@ from .registers import (
     FieldHelper,
 )
 from .registry import register_gcode_commands
+from .state import FociRuntimeState
 from .trace import (
     TRACE_FAST_HEADERS,
     TRACE_FULL_HEADERS,
@@ -394,13 +395,10 @@ class FociDriver:
         self.stepper_perf_stats_cmd = None
 
         # Trace capture state
+        self.state = FociRuntimeState()
         self._trace_info: dict | None = None
         self._trace_info_received: bool = False
         self._homing_move_start_times: dict[int, float] = {}
-
-        # Calibration state
-        self.is_calibrated = False
-        self._calibration_completion = None
 
         # Dump state
         self._dump_buffer: dict[int, int] = {}
@@ -413,14 +411,6 @@ class FociDriver:
 
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
-        self._inhibited: bool = False
-        self._commissioned_result: dict | None = None  # CommissionResult cache
-        self._active_gains: dict | None = None  # SavedGains for re-enable
-        self._runtime_status: str | None = (
-            None  # 'commissioned'|'tuned'|'tuned_conservative'
-        )
-        self._foci_lock: bool = False  # Operation lock (non-blocking try-acquire)
-
         # Commissioning phase tracking (used by commission/tune progress callbacks)
         self._last_phase_id: int | None = None
         self._commission_result: dict | None = None  # inner or outer result
@@ -1642,6 +1632,8 @@ class FociDriver:
         status = self.autotune_status
         if status is None:
             # No prior commissioning -- virgin hardware
+            self.state.runtime_status = "uncommissioned"
+            self.state.active_gains = None
             return
 
         valid_statuses = ("commissioned", "tuned", "tuned_conservative")
@@ -1653,6 +1645,8 @@ class FociDriver:
                 status,
                 ", ".join(valid_statuses),
             )
+            self.state.runtime_status = "uncommissioned"
+            self.state.active_gains = None
             return
 
         # Mandatory for all statuses: current-loop gains + inner-tuning params
@@ -1696,11 +1690,13 @@ class FociDriver:
                 status,
                 ", ".join(missing),
             )
+            self.state.runtime_status = "uncommissioned"
+            self.state.active_gains = None
             return
 
         # All required fields present -- build _active_gains
         if status == "commissioned":
-            self._active_gains = {
+            self.state.active_gains = {
                 "flux_p": self.pid_flux_p,
                 "flux_i": self.pid_flux_i,
                 "torque_p": self.pid_torque_p,
@@ -1716,7 +1712,7 @@ class FociDriver:
                 "flux_filter_hz": self.flux_filter_hz,
             }
         else:  # tuned or tuned_conservative
-            self._active_gains = {
+            self.state.active_gains = {
                 "flux_p": self.pid_flux_p,
                 "flux_i": self.pid_flux_i,
                 "torque_p": self.pid_torque_p,
@@ -1731,7 +1727,7 @@ class FociDriver:
                 "position_filter_hz": self.position_filter_hz,
                 "flux_filter_hz": self.flux_filter_hz,
             }
-        self._runtime_status = status
+        self.state.runtime_status = status
         logging.info(
             "FOCI %s: loaded config, status=%s, active gains ready",
             self.name,
@@ -1805,10 +1801,10 @@ class FociDriver:
                 )
             )
         self._validate_and_load_config()
-        if self._active_gains is not None and not self._inhibited:
+        if self.state.active_gains is not None and not self.state.inhibited:
             self._apply_active_gains_to_firmware()
         self._set_auto_calibrate_on_enable_allowed(
-            self._active_gains is not None and not self._inhibited
+            self.state.active_gains is not None and not self.state.inhibited
         )
         if not self._enable_patched:
             self._enable_patched = True
@@ -1846,25 +1842,8 @@ class FociDriver:
         Args:
             params: Message parameters dict from the MCU response.
         """
-        if self._calibration_completion is not None:
-            self._calibration_completion.complete(params)
-
-    def _try_acquire_foci_lock(self) -> bool:
-        """Non-blocking try-acquire of the FOCI operation lock.
-
-        Returns True if lock acquired, False if another operation holds it.
-        The lock prevents concurrent FOCI operations on this stepper.
-        Klipper is single-threaded (reactor pattern), so a boolean flag
-        is sufficient -- no mutex needed.
-        """
-        if self._foci_lock:
-            return False
-        self._foci_lock = True
-        return True
-
-    def _release_foci_lock(self) -> None:
-        """Release the FOCI operation lock. Must be called on every exit path."""
-        self._foci_lock = False
+        if self.state.calibration_completion is not None:
+            self.state.calibration_completion.complete(params)
 
     def _set_auto_calibrate_on_enable_allowed(self, allowed: bool) -> None:
         """Tell firmware whether raw enable may start auto-calibration."""
@@ -1873,7 +1852,7 @@ class FociDriver:
 
     def _apply_active_gains_to_firmware(self) -> None:
         """Preload saved FOCI gains into firmware state before enabling."""
-        gains = self._active_gains
+        gains = self.state.active_gains
         if gains is None:
             return
         self.set_voltage_limit_cmd.send([self.oid, self.voltage_limit])
@@ -1982,19 +1961,19 @@ class FociDriver:
         - Marks kinematic axes unhomed (encoder re-zeroing)
         - Preloads gains from _active_gains into firmware atomics
         """
-        if self._inhibited:
+        if self.state.inhibited:
             raise self.printer.command_error(
                 "FOCI %s: operation inhibited after failed FOCI_COMMISSION. "
                 "Retry FOCI_COMMISSION or restart Klipper." % self.name
             )
-        if self.is_calibrated:
+        if self.state.is_calibrated:
             return
-        if self._active_gains is None:
+        if self.state.active_gains is None:
             raise self.printer.command_error(
                 "FOCI %s: no commissioned gains available. "
                 "Run FOCI_COMMISSION first." % self.name
             )
-        if not self._try_acquire_foci_lock():
+        if not self.state.try_acquire():
             raise self.printer.command_error(
                 "FOCI %s: another FOCI operation is in progress" % self.name
             )
@@ -2004,13 +1983,13 @@ class FociDriver:
 
             # Send calibrate and wait for response
             reactor = self.printer.get_reactor()
-            self._calibration_completion = reactor.completion()
+            self.state.calibration_completion = reactor.completion()
             t_start = reactor.monotonic()
             self._set_auto_calibrate_on_enable_allowed(True)
             self.calibrate_cmd.send([self.oid])
-            params = self._calibration_completion.wait(t_start + 5.0)
+            params = self.state.calibration_completion.wait(t_start + 5.0)
             t_elapsed = reactor.monotonic() - t_start
-            self._calibration_completion = None
+            self.state.calibration_completion = None
 
             logging.info(
                 "FOCI %s: calibrate response after %.3fs: %s",
@@ -2028,7 +2007,7 @@ class FociDriver:
             if status == 5:
                 # ALREADY_ENABLED: firmware auto-calibrated on enable before
                 # this foci_calibrate arrived. Motor is calibrated and running.
-                self.is_calibrated = True
+                self.state.is_calibrated = True
                 logging.info(
                     "FOCI %s: already calibrated (firmware auto-cal)", self.name
                 )
@@ -2040,7 +2019,7 @@ class FociDriver:
                 raise self.printer.command_error(
                     "FOCI %s calibration failed: %s" % (self.name, msg)
                 )
-            self.is_calibrated = True
+            self.state.is_calibrated = True
             logging.info(
                 "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
                 self.name,
@@ -2049,7 +2028,7 @@ class FociDriver:
                 params.get("encoder_count", 0),
             )
         finally:
-            self._release_foci_lock()
+            self.state.release()
 
     def _handle_home_rails_begin(self, homing_state, rails) -> None:
         """Ensure calibration before homing any axis driven by this stepper.
@@ -2303,7 +2282,7 @@ class FociDriver:
         if is_enable:
             self._ensure_calibrated()
         else:
-            self.is_calibrated = False
+            self.state.is_calibrated = False
 
     def cmd_FOCI_SELFTEST(self, gcmd) -> None:
         """Run TMC4671 self-test and emit a per-stage report.
@@ -2315,7 +2294,7 @@ class FociDriver:
         Selftest includes encoder alignment, so homing is invalidated at
         command-accepted time.
         """
-        if not self._try_acquire_foci_lock():
+        if not self.state.try_acquire():
             raise gcmd.error(
                 "FOCI %s: another FOCI operation is in progress" % self.name
             )
@@ -2339,7 +2318,7 @@ class FociDriver:
                     )
                 reactor.pause(reactor.monotonic() + 0.05)
         finally:
-            self._release_foci_lock()
+            self.state.release()
 
         status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
         lines = ["Self-Test: %s" % self.stepper_name]
@@ -2398,7 +2377,7 @@ class FociDriver:
         profile_code = self.PROFILE_MAP[profile_name]
 
         # Hard gates -- before any side effects
-        if not self._try_acquire_foci_lock():
+        if not self.state.try_acquire():
             raise gcmd.error(
                 "FOCI %s: another FOCI operation is in progress" % self.name
             )
@@ -2413,7 +2392,7 @@ class FociDriver:
             if enable_line.is_motor_enabled():
                 enable_line.motor_disable(toolhead.get_last_move_time())
 
-            self.is_calibrated = False
+            self.state.is_calibrated = False
             self._invalidate_homing()
 
             # Send commission command and wait
@@ -2478,11 +2457,11 @@ class FociDriver:
             # Terminal state: motor enabled, holding. Mark the host state before
             # syncing Klipper's enable tracker so the enable callback sees the
             # already-armed motor instead of starting a second calibration.
-            self.is_calibrated = True
-            self._inhibited = False
+            self.state.is_calibrated = True
+            self.state.inhibited = False
             self._set_auto_calibrate_on_enable_allowed(True)
-            self._commissioned_result = result
-            self._active_gains = {
+            self.state.commissioned_result = result
+            self.state.active_gains = {
                 "flux_p": result["flux_p"],
                 "flux_i": result["flux_i"],
                 "torque_p": result["torque_p"],
@@ -2497,7 +2476,7 @@ class FociDriver:
                 "position_filter_hz": 0,
                 "flux_filter_hz": 0,
             }
-            self._runtime_status = "commissioned"
+            self.state.runtime_status = "commissioned"
             enable_line.motor_enable(toolhead.get_last_move_time())
 
             # Persist to config
@@ -2523,21 +2502,21 @@ class FociDriver:
                     % (self.name, self._format_inner_warning_flags(flags))
                 )
         finally:
-            self._release_foci_lock()
+            self.state.release()
 
     def _on_commission_failure(self) -> None:
         """Handle Stage 1 failure state transitions."""
-        self.is_calibrated = False
-        self._commissioned_result = None
-        self._active_gains = None
-        self._runtime_status = None
-        self._inhibited = True
+        self.state.is_calibrated = False
+        self.state.commissioned_result = None
+        self.state.active_gains = None
+        self.state.runtime_status = "uncommissioned"
+        self.state.inhibited = True
         self._set_auto_calibrate_on_enable_allowed(False)
 
     def _handle_chip_reset_detected(self) -> None:
         """Clear calibration after firmware reports chip reset without inhibiting."""
-        self.is_calibrated = False
-        self._inhibited = False
+        self.state.is_calibrated = False
+        self.state.inhibited = False
         self._set_auto_calibrate_on_enable_allowed(True)
 
     def _maybe_clear_calibration_for_chip_reset(self, status: int) -> None:
@@ -2645,8 +2624,8 @@ class FociDriver:
         values fall back to documented defaults when absent (used only
         for old configs that pre-date this field set).
         """
-        if self._commissioned_result is not None:
-            r = self._commissioned_result
+        if self.state.commissioned_result is not None:
+            r = self.state.commissioned_result
             return (
                 r.get("tau_e_us", 0),
                 r.get("tau_e_crosscheck_us", 0),
@@ -2711,21 +2690,21 @@ class FociDriver:
             )
 
         # Hard gates -- before any side effects
-        if not self._try_acquire_foci_lock():
+        if not self.state.try_acquire():
             raise gcmd.error(
                 "FOCI %s: another FOCI operation is in progress" % self.name
             )
 
         try:
-            if self._inhibited:
+            if self.state.inhibited:
                 raise gcmd.error(
                     "FOCI %s: inhibited after failed FOCI_COMMISSION" % self.name
                 )
-            if self._runtime_status is None:
+            if self.state.runtime_status == "uncommissioned":
                 raise gcmd.error(
                     "FOCI %s: not commissioned. Run FOCI_COMMISSION first." % self.name
                 )
-            if not self.is_calibrated:
+            if not self.state.is_calibrated:
                 raise gcmd.error(
                     "FOCI %s: not calibrated. Enable motor, re-home, then retry."
                     % self.name
@@ -2750,7 +2729,7 @@ class FociDriver:
             toolhead.wait_moves()
 
             # Post-wait revalidation
-            if not self.is_calibrated:
+            if not self.state.is_calibrated:
                 raise gcmd.error("FOCI %s: calibration lost during wait" % self.name)
             if hasattr(kinematics, "rails"):
                 kin_status = toolhead.get_status(toolhead.get_last_move_time())
@@ -2760,11 +2739,11 @@ class FociDriver:
             self._invalidate_homing()
 
             # Get inner-tuning params from cache or config
-            if self._commissioned_result is not None:
-                inner_lambda = self._commissioned_result["lambda_us"]
-                theta_e = self._commissioned_result["theta_e_us"]
-                ringing = self._commissioned_result["ringing_count"]
-                bandwidth = self._commissioned_result["bandwidth_hz"]
+            if self.state.commissioned_result is not None:
+                inner_lambda = self.state.commissioned_result["lambda_us"]
+                theta_e = self.state.commissioned_result["theta_e_us"]
+                ringing = self.state.commissioned_result["ringing_count"]
+                bandwidth = self.state.commissioned_result["bandwidth_hz"]
             else:
                 inner_lambda = self.identified_lambda_us
                 theta_e = self.identified_theta_e_us
@@ -2863,11 +2842,11 @@ class FociDriver:
                 tune_status = "tuned"
 
             # Update _active_gains with tuned outer gains + existing current-loop
-            self._active_gains = {
-                "flux_p": self._active_gains["flux_p"],
-                "flux_i": self._active_gains["flux_i"],
-                "torque_p": self._active_gains["torque_p"],
-                "torque_i": self._active_gains["torque_i"],
+            self.state.active_gains = {
+                "flux_p": self.state.active_gains["flux_p"],
+                "flux_i": self.state.active_gains["flux_i"],
+                "torque_p": self.state.active_gains["torque_p"],
+                "torque_i": self.state.active_gains["torque_i"],
                 "velocity_p": result["velocity_p"],
                 "velocity_i": result["velocity_i"],
                 "position_p": result["position_p"],
@@ -2878,7 +2857,7 @@ class FociDriver:
                 "position_filter_hz": result["position_filter_hz"],
                 "flux_filter_hz": result["flux_filter_hz"],
             }
-            self._runtime_status = tune_status
+            self.state.runtime_status = tune_status
 
             # Persist tuned gains
             self._persist_tune_results(result, mode_name, tune_status)
@@ -2904,7 +2883,7 @@ class FociDriver:
                     )
                 )
         finally:
-            self._release_foci_lock()
+            self.state.release()
 
     def cmd_FOCI_SET_GAINS(self, gcmd) -> None:
         """Set outer-loop gains for live bringup debugging.
@@ -2927,11 +2906,11 @@ class FociDriver:
         self.pid_velocity_i = velocity_i
         self.pid_position_p = position_p
         self.pid_position_i = position_i
-        if self._active_gains is not None:
-            self._active_gains["velocity_p"] = velocity_p
-            self._active_gains["velocity_i"] = velocity_i
-            self._active_gains["position_p"] = position_p
-            self._active_gains["position_i"] = position_i
+        if self.state.active_gains is not None:
+            self.state.active_gains["velocity_p"] = velocity_p
+            self.state.active_gains["velocity_i"] = velocity_i
+            self.state.active_gains["position_p"] = position_p
+            self.state.active_gains["position_i"] = position_i
 
         gcmd.respond_info(
             "FOCI %s debug gains set: vel_p=%d/256 vel_i=%d/256"
@@ -2956,11 +2935,11 @@ class FociDriver:
 
         self.set_pid_gains_cmd.send([self.oid, flux_p, flux_i, torque_p, torque_i])
 
-        if self._active_gains is not None:
-            self._active_gains["flux_p"] = flux_p
-            self._active_gains["flux_i"] = flux_i
-            self._active_gains["torque_p"] = torque_p
-            self._active_gains["torque_i"] = torque_i
+        if self.state.active_gains is not None:
+            self.state.active_gains["flux_p"] = flux_p
+            self.state.active_gains["flux_i"] = flux_i
+            self.state.active_gains["torque_p"] = torque_p
+            self.state.active_gains["torque_i"] = torque_i
 
         gcmd.respond_info(
             "FOCI %s inner gains set: flux_p=%d/256"
