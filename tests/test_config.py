@@ -338,6 +338,21 @@ def test_trace_commands_register_legacy_trace_workflow_handlers():
     )
 
 
+def test_foci_driver_no_longer_exposes_gcode_command_methods():
+    from klipper_foci.driver import FociDriver
+
+    command_methods = [name for name in dir(FociDriver) if name.startswith("cmd_FOCI_")]
+
+    assert command_methods == []
+    assert not hasattr(FociDriver, "cmd_DUMP_FOCI")
+
+
+def test_registry_no_longer_points_at_driver_component():
+    from klipper_foci.registry import GCODE_COMMANDS
+
+    assert all(spec.component != "driver" for spec in GCODE_COMMANDS)
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

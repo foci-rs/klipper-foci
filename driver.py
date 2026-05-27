@@ -25,9 +25,6 @@ from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
 from .trace import LegacyTraceWorkflow
 
-log = logging.getLogger(__name__)
-
-
 ######################################################################
 # FociDriver - per-axis driver instance
 ######################################################################
@@ -691,12 +688,11 @@ class FociDriver:
         return params["value"]
 
     def _validate_and_load_config(self) -> None:
-        """Validate persisted config and populate _active_gains/_runtime_status.
+        """Validate persisted config and populate active gains/runtime status.
 
         Called from _handle_connect. Checks that all mandatory fields for the
         claimed autotune_status are present. If any are missing, logs a warning
-        and leaves _active_gains and _runtime_status as None (motor cannot be
-        enabled until FOCI_COMMISSION is run).
+        and leaves active gains unset with runtime status uncommissioned.
         """
         status = self.autotune_status
         if status is None:
@@ -763,7 +759,7 @@ class FociDriver:
             self.state.active_gains = None
             return
 
-        # All required fields present -- build _active_gains
+        # All required fields present -- build active gains.
         if status == "commissioned":
             self.state.active_gains = {
                 "flux_p": self.pid_flux_p,

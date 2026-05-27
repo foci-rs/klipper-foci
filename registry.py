@@ -233,9 +233,7 @@ def register_gcode_commands(
     for spec in command_specs:
         if not mode_allows(mode, spec.min_mode):
             continue
-        component = (
-            driver if spec.component == "driver" else getattr(driver, spec.component)
-        )
+        component = getattr(driver, spec.component)
         gcode.register_mux_command(
             spec.name,
             "STEPPER",
