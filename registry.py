@@ -50,8 +50,8 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     GcodeCommandSpec(
         "FOCI_SELFTEST",
         "default",
-        "driver",
-        "cmd_FOCI_SELFTEST",
+        "selftest",
+        "selftest",
         "Run TMC4671 self-test for a FOCI stepper",
     ),
     GcodeCommandSpec(

@@ -780,7 +780,7 @@ class TestCommandHomingInvalidation(unittest.TestCase):
     def test_selftest_invalidates_homing(self):
         d, kin = self._driver_with_cartesian()
         try:
-            d.cmd_FOCI_SELFTEST(MockGCmd())
+            d.selftest.selftest(MockGCmd())
         except (CommandError, AttributeError, TypeError):
             pass
         self.assertIsNotNone(kin._cleared_axes)

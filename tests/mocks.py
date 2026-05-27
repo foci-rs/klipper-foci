@@ -13,6 +13,7 @@ from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
 from klipper_foci.homing import HomingWorkflow
 from klipper_foci.registry import FociGlobalConfig
+from klipper_foci.selftest import SelftestWorkflow
 from klipper_foci.state import FociRuntimeState
 
 
@@ -516,11 +517,7 @@ def make_driver(
     driver.controls = ControlsWorkflow(driver)
     driver.homing = HomingWorkflow(driver)
     driver.commissioning = CommissioningWorkflow(driver)
-
-    # Selftest streaming state
-    driver._selftest_results = []
-    driver._selftest_complete = False
-    driver._selftest_status = 0
+    driver.selftest = SelftestWorkflow(driver)
 
     # Config values (needed by some methods)
     driver.microsteps = 20

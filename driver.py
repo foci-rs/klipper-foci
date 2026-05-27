@@ -12,7 +12,6 @@ from .commissioning import (
     HARD_FAULT_CODES,
     PROFILE_MAP,
     CommissioningWorkflow,
-    format_commission_detail,
     format_inner_warning_flags,
 )
 from .controls import (
@@ -24,6 +23,7 @@ from .dump import RegisterDumpWorkflow
 from .homing import HomingWorkflow
 from .registers import REGISTERS
 from .registry import register_gcode_commands
+from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
 from .trace import (
     TRACE_FAST_HEADERS,
@@ -62,7 +62,6 @@ class FociDriver:
     cmd_FOCI_DISPATCH_STATS_help = (
         "Query FOCI MCU step-dispatch cycle counters without motion"
     )
-    cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
     cmd_FOCI_AUTOTUNE_help = (
         "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)"
     )
@@ -384,11 +383,7 @@ class FociDriver:
         self.controls = ControlsWorkflow(self)
         self.homing = HomingWorkflow(self)
         self.commissioning = CommissioningWorkflow(self)
-
-        # Selftest streaming state (populated by foci_selftest_result / foci_selftest_done).
-        self._selftest_results: list[dict] = []
-        self._selftest_complete: bool = False
-        self._selftest_status: int = 0
+        self.selftest = SelftestWorkflow(self)
 
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
@@ -693,12 +688,12 @@ class FociDriver:
             self.oid,
         )
         self.mcu._serial.register_response(
-            self._handle_selftest_result,
+            self.selftest.handle_selftest_result,
             "foci_selftest_result",
             self.oid,
         )
         self.mcu._serial.register_response(
-            self._handle_selftest_done,
+            self.selftest.handle_selftest_done,
             "foci_selftest_done",
             self.oid,
         )
@@ -766,64 +761,6 @@ class FociDriver:
         "nominal": 1,
         "high_inertia": 2,
     }
-
-    SELFTEST_STAGES: dict[int, str] = {
-        1: "ADC calibration",
-        2: "Motor coil A",
-        3: "Motor coil B",
-        4: "Phase wiring",
-        5: "Encoder",
-        6: "Encoder direction",
-        7: "Resistance",
-        8: "Inductance",
-    }
-
-    @staticmethod
-    def _format_selftest_value(stage: int, status: int, value: int) -> str:
-        """Return a stage-specific detail string (empty string for bare PASS).
-
-        ``value`` is decoded per the firmware-side encoding in foci-core:
-
-        - stage 1 (ADC calibration): low 16 bits = offset_i0, high 16 bits = offset_i1
-        - stages 2, 3 (coil currents): i16 bit-reinterpreted as u16, then zero-extended
-        - stage 4 (phase wiring): value is always 0
-        - stage 5 (encoder delta): unsigned magnitude (sign in stage 6)
-        - stage 6 (encoder direction): 0 = increasing, 1 = reversed
-        - stage 7 (resistance): milliohms
-        - stage 8 (inductance): microhenries
-
-        Args:
-            stage: Stage number (1–8) as reported by the firmware.
-            status: 0 = pass, non-zero = fail.
-            value: Stage-specific encoded value from the firmware.
-
-        Returns:
-            A parenthesised detail string, or an empty string when no
-            per-stage detail is applicable (e.g. bare phase-wiring pass).
-        """
-        if status != 0:
-            return " (FAIL, raw=%d)" % value
-        if stage == 1:
-            offset_i0 = value & 0xFFFF
-            offset_i1 = (value >> 16) & 0xFFFF
-            return " (offset_i0=%d, offset_i1=%d)" % (offset_i0, offset_i1)
-        if stage in (2, 3):
-            # Value is an i16 whose two's-complement bit pattern was stored
-            # in the low 16 bits of a u32. Reinterpret bit 15 as sign.
-            low16 = value & 0xFFFF
-            signed = low16 if low16 < 0x8000 else low16 - 0x10000
-            return " (current=%d)" % signed
-        if stage == 4:
-            return ""
-        if stage == 5:
-            return " (delta=%d)" % value
-        if stage == 6:
-            return " (reversed)" if value == 1 else " (increasing)"
-        if stage == 7:
-            return " (%.1f ohm)" % (value / 1000.0)
-        if stage == 8:
-            return " (%.1f mH)" % (value / 1000.0)
-        return ""
 
     def _handle_tune_result(self, params: dict) -> None:
         """Handle foci_tune_result from firmware (Stage 2 completion)."""
@@ -1133,24 +1070,6 @@ class FociDriver:
         gcode = self.printer.lookup_object("gcode", None)
         if gcode is not None:
             gcode.respond_info(message)
-
-    def _handle_selftest_result(self, params: dict) -> None:
-        """Collect one stage result streamed during FOCI_SELFTEST."""
-        result = {
-            "stage": params["stage"],
-            "status": params["status"],
-            "value": params["value"],
-        }
-        for idx, existing in enumerate(self._selftest_results):
-            if existing["stage"] == result["stage"]:
-                self._selftest_results[idx] = result
-                return
-        self._selftest_results.append(result)
-
-    def _handle_selftest_done(self, params: dict) -> None:
-        """Terminal signal for FOCI_SELFTEST."""
-        self._selftest_complete = True
-        self._selftest_status = params["status"]
 
     def cmd_FOCI_STEP_POSITION(self, gcmd) -> None:
         """Query raw MCU step position without updating Klipper state."""
@@ -1500,87 +1419,6 @@ class FociDriver:
             self.state.active_gains is not None and not self.state.inhibited
         )
         self.homing.install_enable_hooks()
-
-    def cmd_FOCI_SELFTEST(self, gcmd) -> None:
-        """Run TMC4671 self-test and emit a per-stage report.
-
-        Sends foci_selftest; firmware streams foci_selftest_result for
-        each completed stage and a terminal foci_selftest_done. This
-        handler collects the stream and formats the GCode console report.
-
-        Selftest includes encoder alignment, so homing is invalidated at
-        command-accepted time.
-        """
-        if not self.state.try_acquire():
-            raise gcmd.error(
-                "FOCI %s: another FOCI operation is in progress" % self.name
-            )
-        try:
-            self.homing.invalidate_homing()
-
-            reactor = self.printer.get_reactor()
-            self._selftest_results = []
-            self._selftest_complete = False
-            self._selftest_status = 0
-            self.commissioning.clear_details()
-
-            self.selftest_cmd.send([self.oid])
-
-            # Wait for the terminal foci_selftest_done message (15 s timeout).
-            deadline = reactor.monotonic() + 15.0
-            while not self._selftest_complete:
-                if reactor.monotonic() > deadline:
-                    raise self.printer.command_error(
-                        "FOCI %s: selftest timed out" % self.stepper_name
-                    )
-                reactor.pause(reactor.monotonic() + 0.05)
-        finally:
-            self.state.release()
-
-        status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
-        lines = ["Self-Test: %s" % self.stepper_name]
-        passed = 0
-        total = len(self._selftest_results)
-        for result in self._selftest_results:
-            stage_id = result["stage"]
-            stage_status = result["status"]
-            stage_value = result["value"]
-            name = self.SELFTEST_STAGES.get(stage_id, "Stage %d" % stage_id)
-            status_str = status_names.get(stage_status, "?")
-            detail = self._format_selftest_value(stage_id, stage_status, stage_value)
-            dots = "." * max(1, 35 - len(name))
-            lines.append("  %s %s %s%s" % (name, dots, status_str, detail))
-            if stage_status == 0:
-                passed += 1
-
-        if self.commissioning.details:
-            lines.append("Diagnostics:")
-            for detail in self.commissioning.details:
-                lines.append("  %s" % format_commission_detail(detail))
-
-        if self._selftest_status == 0:
-            overall = "PASS"
-        else:
-            err = COMMISSION_ERROR_NAMES.get(
-                self._selftest_status, "unknown error %d" % self._selftest_status
-            )
-            self.commissioning.maybe_clear_calibration_for_chip_reset(
-                self._selftest_status
-            )
-            overall = "FAIL (%s)" % err
-        lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
-        gcmd.respond_info("\n".join(lines))
-
-        if self._selftest_status != 0:
-            err = COMMISSION_ERROR_NAMES.get(
-                self._selftest_status, "unknown error %d" % self._selftest_status
-            )
-            self.commissioning.maybe_clear_calibration_for_chip_reset(
-                self._selftest_status
-            )
-            raise self.printer.command_error(
-                "FOCI %s: selftest failed: %s" % (self.stepper_name, err)
-            )
 
     def _resolve_inner_confidence(self) -> tuple[int, int, int, int]:
         """Resolve the four Phase 1 inner-confidence fields for Stage 2.
