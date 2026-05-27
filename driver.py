@@ -7,7 +7,14 @@
 
 import logging
 
-from .commissioning import CommissioningWorkflow
+from .commissioning import (
+    COMMISSION_ERROR_NAMES,
+    HARD_FAULT_CODES,
+    PROFILE_MAP,
+    CommissioningWorkflow,
+    format_commission_detail,
+    format_inner_warning_flags,
+)
 from .controls import (
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
     MIN_RAW_VOLTAGE_LIMIT,
@@ -56,7 +63,6 @@ class FociDriver:
         "Query FOCI MCU step-dispatch cycle counters without motion"
     )
     cmd_FOCI_SELFTEST_help = "Run TMC4671 self-test for a FOCI stepper"
-    cmd_FOCI_COMMISSION_help = "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)"
     cmd_FOCI_AUTOTUNE_help = (
         "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)"
     )
@@ -387,12 +393,6 @@ class FociDriver:
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
         # Commissioning phase tracking (used by commission/tune progress callbacks)
-        self._last_phase_id: int | None = None
-        self._commission_result: dict | None = None  # inner or outer result
-        self._commission_done: bool = False
-        self._commission_error_code: int = 0
-        self._commission_details: list[dict] = []
-
         # Register GCode commands
         gcode = self.printer.lookup_object("gcode")
         register_gcode_commands(self, gcode, self.foci_mode)
@@ -572,10 +572,12 @@ class FociDriver:
             " tau_residual_permille=%hu inner_warning_flags=%c"
         )
         self.mcu._serial.register_response(
-            self._handle_commission_phase, "foci_commission_phase", self.oid
+            self.commissioning.handle_commission_phase,
+            "foci_commission_phase",
+            self.oid,
         )
         self.mcu._serial.register_response(
-            self._handle_commission_result,
+            self.commissioning.handle_commission_result,
             "foci_commission_result",
             self.oid,
         )
@@ -701,7 +703,7 @@ class FociDriver:
             self.oid,
         )
         self.mcu._serial.register_response(
-            self._handle_commission_detail,
+            self.commissioning.handle_commission_detail,
             "foci_commission_detail",
             self.oid,
         )
@@ -749,26 +751,6 @@ class FociDriver:
     # Commissioning phase/error/profile/mode maps
     # -----------------------------------------------------------------
 
-    PHASE_NAMES: dict[int, str] = {
-        1: "ADC calibration",
-        2: "Coil check",
-        3: "Phase wiring",
-        4: "Encoder check",
-        5: "Electrical ID",
-        6: "Current tune",
-        7: "Current validation",
-        8: "Inner done",
-        9: "Mechanical ID",
-        10: "Velocity tune",
-        11: "Velocity validation",
-        12: "Position tune",
-        13: "Filter selection",
-        14: "Commit",
-        15: "Outer done",
-        16: "Encoder alignment",
-        17: "Closed-loop entry",
-    }
-
     STEPPER_EVENT_REASON_NAMES: dict[int, str] = {
         1: "queue_empty",
         2: "missed_deadline_load",
@@ -777,53 +759,6 @@ class FociDriver:
         5: "p1_stop",
         6: "reset_step_clock",
         7: "tmc_disable_signal",
-    }
-
-    COMMISSION_ERROR_NAMES: dict[int, str] = {
-        1: "motor already enabled",
-        2: "no current detected",
-        3: "SPI communication error",
-        4: "ADC calibration fault",
-        5: "coil connectivity fault",
-        6: "phase wiring fault",
-        7: "encoder fault",
-        8: "electrical identification failed",
-        9: "current validation failed",
-        10: "mechanical identification failed",
-        11: "velocity validation failed",
-        12: "position tune failed",
-        13: "encoder not aligned",
-        14: "shutdown requested",
-        15: "commissioning already running",
-        16: "command queue full",
-        17: "safety envelope violation",
-        18: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
-    }
-
-    # Error codes that indicate a hard-disable fault: firmware has
-    # disabled the motor and cleared its state. The host must sync
-    # its enable line and clear is_calibrated.
-    # 3 = SPI error, 9 = current validation failed (post-restore
-    # stability check in Stage 2), 14 = shutdown, 17 = safety envelope.
-    HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
-
-    # Bit-to-name mapping for the firmware-side `inner_warning_flags`
-    # bitfield (matches docs/specs/2026-04-30-inner-commissioning-stability.md
-    # §4). Bit 7 is reserved for future Phase 2 use.
-    INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
-        (1 << 0, "coil R mismatch"),
-        (1 << 1, "coil tau mismatch"),
-        (1 << 2, "tau residual"),
-        (1 << 3, "theta/tau ratio"),
-        (1 << 4, "current validation retry"),
-        (1 << 5, "current gains fell back to defaults"),
-        (1 << 6, "host-default confidence (no fresh measurement)"),
-    ]
-
-    PROFILE_MAP: dict[str, int] = {
-        "conservative": 0,
-        "balanced": 1,
-        "stiff": 2,
     }
 
     MODE_MAP: dict[str, int] = {
@@ -842,121 +777,6 @@ class FociDriver:
         7: "Resistance",
         8: "Inductance",
     }
-
-    ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
-        1: "excitation",
-        2: "coil A resistance",
-        3: "coil B resistance",
-        4: "coil A inductance",
-        5: "coil B inductance",
-        6: "transient",
-        20: "no usable per-coil samples",
-        21: "only one coil produced non-zero tau",
-        22: "model scale rounded to zero",
-        23: "resistance below short threshold",
-        24: "resistance above open threshold",
-        25: "coil resistance mismatch",
-        26: "coil tau mismatch",
-        27: "tau crosscheck unmeasurable",
-        28: "tau residual too high",
-        29: "transport delay too large",
-    }
-
-    @classmethod
-    def _format_commission_detail(cls, detail: dict) -> str:
-        phase_name = cls.PHASE_NAMES.get(detail["phase"], "Phase %d" % detail["phase"])
-        code = detail["code"]
-        name = cls.ELECTRICAL_ID_DETAIL_NAMES.get(code, "diagnostic %d" % code)
-        value0 = detail["value0"]
-        value1 = detail["value1"]
-        value2 = detail["value2"]
-        if detail["phase"] == 2 and code in (1, 2):
-            coil = "A" if code == 1 else "B"
-            expected = value0 if value0 < 0x8000 else value0 - 0x10000
-            other = value1 if value1 < 0x8000 else value1 - 0x10000
-            status = "FAIL" if detail["status"] else "PASS"
-            return (
-                "%s: coil %s sample %s "
-                "(expected=%d counts, other=%d counts, raw=0x%08x)"
-                % (phase_name, coil, status, expected, other, value2)
-            )
-        if code == 1:
-            return "%s: %s (voltage_count=%d, didt_cycles=%d, sample_period=%dus)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
-        if code in (2, 3):
-            return "%s: %s (avg_current=%d counts, r=%d mOhm, samples=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
-        if code in (4, 5):
-            return "%s: %s (avg_delta=%d counts, tau=%dus, samples=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
-        if code == 6:
-            return "%s: %s (steady_state=%d counts, theta=%dus, crosscheck=%dus)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
-        if code in (25, 26):
-            return "%s: %s (%d permille, limit=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-            )
-        if code == 28:
-            return "%s: %s (%d permille, tau=%dus, crosscheck=%dus)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
-        if code in (23, 24):
-            return "%s: %s (r_count_milli=%d, limit=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-            )
-        if code == 22:
-            return "%s: %s (l_int=%d, l_count_micro=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-            )
-        if code == 29:
-            return "%s: %s (theta_us=%d, tau_us=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-            )
-        if value0 or value1 or value2:
-            return "%s: %s (value0=%d, value1=%d, value2=%d)" % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
-        return "%s: %s" % (phase_name, name)
 
     @staticmethod
     def _format_selftest_value(stage: int, status: int, value: int) -> str:
@@ -1005,35 +825,10 @@ class FociDriver:
             return " (%.1f mH)" % (value / 1000.0)
         return ""
 
-    def _handle_commission_phase(self, params: dict) -> None:
-        """Handle foci_commission_phase message from firmware.
-
-        Caches the most recent phase ID for failure reporting and
-        reports phase transitions to the Klipper console. A message with
-        phase=0 and nonzero status signals a command admission failure before
-        a terminal result message exists. The Stage 1 and Stage 2 poll loops
-        both watch this error code so they can report the real failure instead
-        of timing out.
-        """
-        phase_id = params.get("phase", 0)
-        status = params.get("status", 0)
-        if phase_id > 0 and status == 0:
-            self._last_phase_id = phase_id
-            phase_name = self.PHASE_NAMES.get(phase_id, "Phase %d" % phase_id)
-            gcode = self.printer.lookup_object("gcode")
-            gcode.respond_info("FOCI %s autotune: %s" % (self.stepper_name, phase_name))
-        elif phase_id == 0 and status != 0:
-            self._commission_error_code = status
-
-    def _handle_commission_result(self, params: dict) -> None:
-        """Handle foci_commission_result from firmware (Stage 1 completion)."""
-        self._commission_result = params
-        self._commission_done = True
-
     def _handle_tune_result(self, params: dict) -> None:
         """Handle foci_tune_result from firmware (Stage 2 completion)."""
-        self._commission_result = params
-        self._commission_done = True
+        self.commissioning.result = params
+        self.commissioning.done = True
 
     def _handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
@@ -1356,19 +1151,6 @@ class FociDriver:
         """Terminal signal for FOCI_SELFTEST."""
         self._selftest_complete = True
         self._selftest_status = params["status"]
-
-    def _handle_commission_detail(self, params: dict) -> None:
-        """Collect structured commissioning diagnostic detail."""
-        self._commission_details.append(
-            {
-                "phase": params["phase"],
-                "code": params["code"],
-                "status": params["status"],
-                "value0": params["value0"],
-                "value1": params["value1"],
-                "value2": params["value2"],
-            }
-        )
 
     def cmd_FOCI_STEP_POSITION(self, gcmd) -> None:
         """Query raw MCU step position without updating Klipper state."""
@@ -1740,7 +1522,7 @@ class FociDriver:
             self._selftest_results = []
             self._selftest_complete = False
             self._selftest_status = 0
-            self._commission_details = []
+            self.commissioning.clear_details()
 
             self.selftest_cmd.send([self.oid])
 
@@ -1771,15 +1553,15 @@ class FociDriver:
             if stage_status == 0:
                 passed += 1
 
-        if self._commission_details:
+        if self.commissioning.details:
             lines.append("Diagnostics:")
-            for detail in self._commission_details:
-                lines.append("  %s" % self._format_commission_detail(detail))
+            for detail in self.commissioning.details:
+                lines.append("  %s" % format_commission_detail(detail))
 
         if self._selftest_status == 0:
             overall = "PASS"
         else:
-            err = self.COMMISSION_ERROR_NAMES.get(
+            err = COMMISSION_ERROR_NAMES.get(
                 self._selftest_status, "unknown error %d" % self._selftest_status
             )
             self.commissioning.maybe_clear_calibration_for_chip_reset(
@@ -1790,7 +1572,7 @@ class FociDriver:
         gcmd.respond_info("\n".join(lines))
 
         if self._selftest_status != 0:
-            err = self.COMMISSION_ERROR_NAMES.get(
+            err = COMMISSION_ERROR_NAMES.get(
                 self._selftest_status, "unknown error %d" % self._selftest_status
             )
             self.commissioning.maybe_clear_calibration_for_chip_reset(
@@ -1799,255 +1581,6 @@ class FociDriver:
             raise self.printer.command_error(
                 "FOCI %s: selftest failed: %s" % (self.stepper_name, err)
             )
-
-    def cmd_FOCI_COMMISSION(self, gcmd) -> None:
-        """Stage 1: commission motor for safe printer motion.
-
-        Runs full diagnostic chain, electrical ID, current tune, current
-        validation, and closed-loop entry with conservative fallback gains.
-        Does not require homing. Leaves motor enabled and holding.
-        """
-        profile_name = gcmd.get("PROFILE", "balanced").lower()
-        if profile_name not in self.PROFILE_MAP:
-            raise gcmd.error(
-                "Unknown profile '%s'. Options: %s"
-                % (profile_name, ", ".join(self.PROFILE_MAP.keys()))
-            )
-        profile_code = self.PROFILE_MAP[profile_name]
-
-        # Hard gates -- before any side effects
-        if not self.state.try_acquire():
-            raise gcmd.error(
-                "FOCI %s: another FOCI operation is in progress" % self.name
-            )
-        try:
-            # Setup sequence (lock held)
-            toolhead = self.printer.lookup_object("toolhead")
-            toolhead.wait_moves()
-
-            # Disable motor if enabled
-            stepper_enable = self.printer.lookup_object("stepper_enable")
-            enable_line = stepper_enable.lookup_enable(self.stepper_name)
-            if enable_line.is_motor_enabled():
-                enable_line.motor_disable(toolhead.get_last_move_time())
-
-            self.state.is_calibrated = False
-            self.homing.invalidate_homing()
-
-            # Send commission command and wait
-            self._commission_done = False
-            self._commission_result = None
-            self._commission_error_code = 0
-            self._last_phase_id = None
-            self._commission_details = []
-
-            self.commission_cmd.send([self.oid, profile_code])
-
-            # Wait for result (up to 30 seconds -- full commissioning takes time)
-            reactor = self.printer.get_reactor()
-            eventtime = reactor.monotonic()
-            timeout = eventtime + 30.0
-            while not self._commission_done:
-                eventtime = reactor.pause(eventtime + 0.1)
-                if eventtime > timeout:
-                    self._on_commission_failure()
-                    raise gcmd.error("FOCI %s: FOCI_COMMISSION timed out" % self.name)
-                if self._commission_error_code != 0:
-                    error_name = self.COMMISSION_ERROR_NAMES.get(
-                        self._commission_error_code,
-                        "UNKNOWN(%d)" % self._commission_error_code,
-                    )
-                    if self._commission_error_code == 18:
-                        self.commissioning.handle_chip_reset_detected()
-                    else:
-                        self._on_commission_failure()
-                    phase_name = self.PHASE_NAMES.get(
-                        self._last_phase_id or 0, "unknown"
-                    )
-                    if self._commission_details:
-                        detail_lines = [
-                            "FOCI %s commissioning diagnostics:" % self.stepper_name
-                        ]
-                        detail_lines.extend(
-                            "  %s" % self._format_commission_detail(detail)
-                            for detail in self._commission_details
-                        )
-                        gcmd.respond_info("\n".join(detail_lines))
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_COMMISSION failed at %s: %s"
-                        % (self.name, phase_name, error_name)
-                    )
-
-            # Success -- update state
-            result = self._commission_result
-            status = result.get("status", 255)
-            if status > 1:
-                error_name = self.COMMISSION_ERROR_NAMES.get(
-                    status, "UNKNOWN(%d)" % status
-                )
-                if status == 18:
-                    self.commissioning.handle_chip_reset_detected()
-                else:
-                    self._on_commission_failure()
-                raise gcmd.error(
-                    "FOCI %s: FOCI_COMMISSION failed: %s" % (self.name, error_name)
-                )
-
-            # Terminal state: motor enabled, holding. Mark the host state before
-            # syncing Klipper's enable tracker so the enable callback sees the
-            # already-armed motor instead of starting a second calibration.
-            self.state.is_calibrated = True
-            self.state.inhibited = False
-            self.homing.set_auto_calibrate_on_enable_allowed(True)
-            self.state.commissioned_result = result
-            self.state.active_gains = {
-                "flux_p": result["flux_p"],
-                "flux_i": result["flux_i"],
-                "torque_p": result["torque_p"],
-                "torque_i": result["torque_i"],
-                "velocity_p": result["fallback_velocity_p"],
-                "velocity_i": result["fallback_velocity_i"],
-                "position_p": result["fallback_position_p"],
-                "position_i": result["fallback_position_i"],
-                "velocity_limit": result["fallback_velocity_limit"],
-                "velocity_filter_hz": 0,
-                "torque_filter_hz": 0,
-                "position_filter_hz": 0,
-                "flux_filter_hz": 0,
-            }
-            self.state.runtime_status = "commissioned"
-            enable_line.motor_enable(toolhead.get_last_move_time())
-
-            # Persist to config
-            self._persist_commission_results(result, profile_name)
-
-            status_str = "accepted" if status == 0 else "accepted with warnings"
-            gcmd.respond_info(
-                "FOCI %s commissioned (%s): "
-                "r_count_milli=%d l_count_micro=%d R_int=%d L_int=%d"
-                % (
-                    self.name,
-                    status_str,
-                    result["r_mohm"],
-                    result["l_uh"],
-                    result.get("r_int", 0),
-                    result.get("l_int", 0),
-                )
-            )
-            flags = result.get("inner_warning_flags", 0)
-            if flags:
-                gcmd.respond_info(
-                    "FOCI %s inner confidence: %s"
-                    % (self.name, self._format_inner_warning_flags(flags))
-                )
-        finally:
-            self.state.release()
-
-    def _on_commission_failure(self) -> None:
-        """Handle Stage 1 failure state transitions."""
-        self.state.is_calibrated = False
-        self.state.commissioned_result = None
-        self.state.active_gains = None
-        self.state.runtime_status = "uncommissioned"
-        self.state.inhibited = True
-        self.homing.set_auto_calibrate_on_enable_allowed(False)
-
-    def _handle_chip_reset_detected(self) -> None:
-        """Clear calibration after firmware reports chip reset without inhibiting."""
-        self.state.is_calibrated = False
-        self.state.inhibited = False
-        self.homing.set_auto_calibrate_on_enable_allowed(True)
-
-    def _persist_commission_results(self, result: dict, profile_name: str) -> None:
-        """Persist Stage 1 results to printer.cfg (pending SAVE_CONFIG)."""
-        configfile = self.printer.lookup_object("configfile")
-        configfile.set(self.name, "pid_flux_p", "%d" % result["flux_p"])
-        configfile.set(self.name, "pid_flux_i", "%d" % result["flux_i"])
-        configfile.set(self.name, "pid_torque_p", "%d" % result["torque_p"])
-        configfile.set(self.name, "pid_torque_i", "%d" % result["torque_i"])
-        configfile.set(
-            self.name,
-            "commissioned_velocity_p",
-            "%d" % result["fallback_velocity_p"],
-        )
-        configfile.set(
-            self.name,
-            "commissioned_velocity_i",
-            "%d" % result["fallback_velocity_i"],
-        )
-        configfile.set(
-            self.name,
-            "commissioned_position_p",
-            "%d" % result["fallback_position_p"],
-        )
-        configfile.set(
-            self.name,
-            "commissioned_position_i",
-            "%d" % result["fallback_position_i"],
-        )
-        configfile.set(
-            self.name,
-            "commissioned_velocity_limit",
-            "%d" % result["fallback_velocity_limit"],
-        )
-        configfile.set(
-            self.name,
-            "identified_r_count_milli",
-            "%d" % result["r_mohm"],
-        )
-        configfile.set(
-            self.name,
-            "identified_l_count_micro",
-            "%d" % result["l_uh"],
-        )
-        configfile.set(
-            self.name,
-            "identified_r_int",
-            "%d" % result.get("r_int", 0),
-        )
-        configfile.set(
-            self.name,
-            "identified_l_int",
-            "%d" % result.get("l_int", 0),
-        )
-        configfile.set(self.name, "identified_lambda_us", "%d" % result["lambda_us"])
-        configfile.set(
-            self.name,
-            "identified_theta_e_us",
-            "%d" % result["theta_e_us"],
-        )
-        configfile.set(
-            self.name,
-            "identified_ringing_count",
-            "%d" % result["ringing_count"],
-        )
-        configfile.set(
-            self.name,
-            "identified_bandwidth_hz",
-            "%d" % result["bandwidth_hz"],
-        )
-        configfile.set(
-            self.name,
-            "identified_tau_e_us",
-            "%d" % result.get("tau_e_us", 0),
-        )
-        configfile.set(
-            self.name,
-            "identified_tau_e_crosscheck_us",
-            "%d" % result.get("tau_e_crosscheck_us", 0),
-        )
-        configfile.set(
-            self.name,
-            "identified_tau_residual_permille",
-            "%d" % result.get("tau_residual_permille", 1000),
-        )
-        configfile.set(
-            self.name,
-            "identified_inner_warning_flags",
-            "%d" % result.get("inner_warning_flags", 0),
-        )
-        configfile.set(self.name, "autotune_profile", profile_name)
-        configfile.set(self.name, "autotune_status", "commissioned")
 
     def _resolve_inner_confidence(self) -> tuple[int, int, int, int]:
         """Resolve the four Phase 1 inner-confidence fields for Stage 2.
@@ -2097,12 +1630,6 @@ class FociDriver:
             inner_warning_flags,
         )
 
-    def _format_inner_warning_flags(self, flags: int) -> str:
-        """Decode an `inner_warning_flags` bitfield into a human-readable
-        comma-separated list of warning names."""
-        names = [name for bit, name in self.INNER_WARNING_FLAG_NAMES if flags & bit]
-        return ", ".join(names) if names else "none"
-
     def cmd_FOCI_AUTOTUNE(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing.
 
@@ -2112,10 +1639,10 @@ class FociDriver:
         """
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
-        if profile_name not in self.PROFILE_MAP:
+        if profile_name not in PROFILE_MAP:
             raise gcmd.error(
                 "FOCI %s: unknown profile '%s' (expected: %s)"
-                % (self.name, profile_name, ", ".join(sorted(self.PROFILE_MAP)))
+                % (self.name, profile_name, ", ".join(sorted(PROFILE_MAP)))
             )
         if mode_name not in self.MODE_MAP:
             raise gcmd.error(
@@ -2192,14 +1719,14 @@ class FociDriver:
             ) = self._resolve_inner_confidence()
 
             # Send tune command
-            self._commission_done = False
-            self._commission_result = None
-            self._commission_error_code = 0
+            self.commissioning.done = False
+            self.commissioning.result = None
+            self.commissioning.error_code = 0
 
             self.tune_cmd.send(
                 [
                     self.oid,
-                    self.PROFILE_MAP[profile_name],
+                    PROFILE_MAP[profile_name],
                     self.MODE_MAP[mode_name],
                     inner_lambda,
                     theta_e,
@@ -2218,28 +1745,26 @@ class FociDriver:
             reactor = self.printer.get_reactor()
             eventtime = reactor.monotonic()
             timeout = eventtime + 30.0
-            while not self._commission_done:
+            while not self.commissioning.done:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if eventtime > timeout:
                     raise gcmd.error("FOCI %s: FOCI_AUTOTUNE timed out" % self.name)
-                if self._commission_error_code != 0:
-                    error_name = self.COMMISSION_ERROR_NAMES.get(
-                        self._commission_error_code,
-                        "UNKNOWN(%d)" % self._commission_error_code,
+                if self.commissioning.error_code != 0:
+                    error_name = COMMISSION_ERROR_NAMES.get(
+                        self.commissioning.error_code,
+                        "UNKNOWN(%d)" % self.commissioning.error_code,
                     )
                     self.commissioning.maybe_clear_calibration_for_chip_reset(
-                        self._commission_error_code
+                        self.commissioning.error_code
                     )
                     raise gcmd.error(
                         "FOCI %s: FOCI_AUTOTUNE failed: %s" % (self.name, error_name)
                     )
 
-            result = self._commission_result
+            result = self.commissioning.result
             status = result.get("status", 255)
             if status > 1:
-                error_name = self.COMMISSION_ERROR_NAMES.get(
-                    status, "UNKNOWN(%d)" % status
-                )
+                error_name = COMMISSION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
                 if status == 18:
                     self.commissioning.handle_chip_reset_detected()
                     stepper_enable = self.printer.lookup_object("stepper_enable")
@@ -2249,11 +1774,11 @@ class FociDriver:
                         "FOCI %s: FOCI_AUTOTUNE chip reset: %s "
                         "(motor disabled by firmware)" % (self.name, error_name)
                     )
-                elif status in self.HARD_FAULT_CODES:
+                elif status in HARD_FAULT_CODES:
                     # Hard fault: firmware disabled motor, cleared state.
                     # Sync host-side state and block raw-enable auto-calibration
                     # until a fresh Stage 1 commission succeeds.
-                    self._on_commission_failure()
+                    self.commissioning.on_commission_failure()
                     stepper_enable = self.printer.lookup_object("stepper_enable")
                     enable_line = stepper_enable.lookup_enable(self.stepper_name)
                     enable_line.motor_disable(toolhead.get_last_move_time())
@@ -2313,7 +1838,7 @@ class FociDriver:
                     "FOCI %s inner confidence: %s"
                     % (
                         self.name,
-                        self._format_inner_warning_flags(inner_warning_flags),
+                        format_inner_warning_flags(inner_warning_flags),
                     )
                 )
         finally:

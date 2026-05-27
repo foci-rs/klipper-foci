@@ -57,8 +57,8 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     GcodeCommandSpec(
         "FOCI_COMMISSION",
         "default",
-        "driver",
-        "cmd_FOCI_COMMISSION",
+        "commissioning",
+        "commission",
         "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)",
     ),
     GcodeCommandSpec(

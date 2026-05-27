@@ -2,12 +2,375 @@
 
 from __future__ import annotations
 
+PHASE_NAMES: dict[int, str] = {
+    1: "ADC calibration",
+    2: "Coil check",
+    3: "Phase wiring",
+    4: "Encoder check",
+    5: "Electrical ID",
+    6: "Current tune",
+    7: "Current validation",
+    8: "Inner done",
+    9: "Mechanical ID",
+    10: "Velocity tune",
+    11: "Velocity validation",
+    12: "Position tune",
+    13: "Filter selection",
+    14: "Commit",
+    15: "Outer done",
+    16: "Encoder alignment",
+    17: "Closed-loop entry",
+}
+
+COMMISSION_ERROR_NAMES: dict[int, str] = {
+    1: "motor already enabled",
+    2: "no current detected",
+    3: "SPI communication error",
+    4: "ADC calibration fault",
+    5: "coil connectivity fault",
+    6: "phase wiring fault",
+    7: "encoder fault",
+    8: "electrical identification failed",
+    9: "current validation failed",
+    10: "mechanical identification failed",
+    11: "velocity validation failed",
+    12: "position tune failed",
+    13: "encoder not aligned",
+    14: "shutdown requested",
+    15: "commissioning already running",
+    16: "command queue full",
+    17: "safety envelope violation",
+    18: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
+}
+
+# Error codes that indicate a hard-disable fault: firmware has disabled the
+# motor and cleared its state. The host must sync its enable line and clear
+# is_calibrated.
+HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
+
+# Bit-to-name mapping for the firmware-side `inner_warning_flags` bitfield.
+INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
+    (1 << 0, "coil R mismatch"),
+    (1 << 1, "coil tau mismatch"),
+    (1 << 2, "tau residual"),
+    (1 << 3, "theta/tau ratio"),
+    (1 << 4, "current validation retry"),
+    (1 << 5, "current gains fell back to defaults"),
+    (1 << 6, "host-default confidence (no fresh measurement)"),
+]
+
+PROFILE_MAP: dict[str, int] = {
+    "conservative": 0,
+    "balanced": 1,
+    "stiff": 2,
+}
+
+ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
+    1: "excitation",
+    2: "coil A resistance",
+    3: "coil B resistance",
+    4: "coil A inductance",
+    5: "coil B inductance",
+    6: "transient",
+    20: "no usable per-coil samples",
+    21: "only one coil produced non-zero tau",
+    22: "model scale rounded to zero",
+    23: "resistance below short threshold",
+    24: "resistance above open threshold",
+    25: "coil resistance mismatch",
+    26: "coil tau mismatch",
+    27: "tau crosscheck unmeasurable",
+    28: "tau residual too high",
+    29: "transport delay too large",
+}
+
+
+def format_commission_detail(detail: dict) -> str:
+    """Format one structured commissioning diagnostic detail."""
+    phase_name = PHASE_NAMES.get(detail["phase"], "Phase %d" % detail["phase"])
+    code = detail["code"]
+    name = ELECTRICAL_ID_DETAIL_NAMES.get(code, "diagnostic %d" % code)
+    value0 = detail["value0"]
+    value1 = detail["value1"]
+    value2 = detail["value2"]
+    if detail["phase"] == 2 and code in (1, 2):
+        coil = "A" if code == 1 else "B"
+        expected = value0 if value0 < 0x8000 else value0 - 0x10000
+        other = value1 if value1 < 0x8000 else value1 - 0x10000
+        status = "FAIL" if detail["status"] else "PASS"
+        return (
+            "%s: coil %s sample %s "
+            "(expected=%d counts, other=%d counts, raw=0x%08x)"
+            % (phase_name, coil, status, expected, other, value2)
+        )
+    if code == 1:
+        return "%s: %s (voltage_count=%d, didt_cycles=%d, sample_period=%dus)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
+        )
+    if code in (2, 3):
+        return "%s: %s (avg_current=%d counts, r=%d mOhm, samples=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
+        )
+    if code in (4, 5):
+        return "%s: %s (avg_delta=%d counts, tau=%dus, samples=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
+        )
+    if code == 6:
+        return "%s: %s (steady_state=%d counts, theta=%dus, crosscheck=%dus)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
+        )
+    if code in (25, 26):
+        return "%s: %s (%d permille, limit=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+        )
+    if code == 28:
+        return "%s: %s (%d permille, tau=%dus, crosscheck=%dus)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
+        )
+    if code in (23, 24):
+        return "%s: %s (r_count_milli=%d, limit=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+        )
+    if code == 22:
+        return "%s: %s (l_int=%d, l_count_micro=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+        )
+    if code == 29:
+        return "%s: %s (theta_us=%d, tau_us=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+        )
+    if value0 or value1 or value2:
+        return "%s: %s (value0=%d, value1=%d, value2=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
+        )
+    return "%s: %s" % (phase_name, name)
+
+
+def format_inner_warning_flags(flags: int) -> str:
+    """Decode an inner_warning_flags bitfield into warning names."""
+    names = [name for bit, name in INNER_WARNING_FLAG_NAMES if flags & bit]
+    return ", ".join(names) if names else "none"
+
 
 class CommissioningWorkflow:
-    """Run Stage 1 commissioning and own commissioning state transitions."""
+    """Run Stage 1 commissioning and track commissioning responses."""
 
     def __init__(self, driver) -> None:
         self.driver = driver
+        self.last_phase_id: int | None = None
+        self.result: dict | None = None
+        self.done = False
+        self.error_code = 0
+        self.details: list[dict] = []
+
+    def clear_details(self) -> None:
+        """Clear structured commissioning diagnostic details."""
+        self.details = []
+
+    def handle_commission_phase(self, params: dict) -> None:
+        """Handle foci_commission_phase messages from firmware."""
+        phase_id = params.get("phase", 0)
+        status = params.get("status", 0)
+        if phase_id > 0 and status == 0:
+            self.last_phase_id = phase_id
+            phase_name = PHASE_NAMES.get(phase_id, "Phase %d" % phase_id)
+            gcode = self.driver.printer.lookup_object("gcode")
+            gcode.respond_info(
+                "FOCI %s autotune: %s" % (self.driver.stepper_name, phase_name)
+            )
+        elif phase_id == 0 and status != 0:
+            self.error_code = status
+
+    def handle_commission_result(self, params: dict) -> None:
+        """Handle foci_commission_result from firmware."""
+        self.result = params
+        self.done = True
+
+    def handle_commission_detail(self, params: dict) -> None:
+        """Collect structured commissioning diagnostic detail."""
+        self.details.append(
+            {
+                "phase": params["phase"],
+                "code": params["code"],
+                "status": params["status"],
+                "value0": params["value0"],
+                "value1": params["value1"],
+                "value2": params["value2"],
+            }
+        )
+
+    def commission(self, gcmd) -> None:
+        """Stage 1: commission motor for safe printer motion."""
+        profile_name = gcmd.get("PROFILE", "balanced").lower()
+        if profile_name not in PROFILE_MAP:
+            raise gcmd.error(
+                "Unknown profile '%s'. Options: %s"
+                % (profile_name, ", ".join(PROFILE_MAP.keys()))
+            )
+        profile_code = PROFILE_MAP[profile_name]
+
+        if not self.driver.state.try_acquire():
+            raise gcmd.error(
+                "FOCI %s: another FOCI operation is in progress" % self.driver.name
+            )
+        try:
+            toolhead = self.driver.printer.lookup_object("toolhead")
+            toolhead.wait_moves()
+
+            stepper_enable = self.driver.printer.lookup_object("stepper_enable")
+            enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
+            if enable_line.is_motor_enabled():
+                enable_line.motor_disable(toolhead.get_last_move_time())
+
+            self.driver.state.is_calibrated = False
+            self.driver.homing.invalidate_homing()
+
+            self.done = False
+            self.result = None
+            self.error_code = 0
+            self.last_phase_id = None
+            self.clear_details()
+
+            self.driver.commission_cmd.send([self.driver.oid, profile_code])
+
+            reactor = self.driver.printer.get_reactor()
+            eventtime = reactor.monotonic()
+            timeout = eventtime + 30.0
+            while not self.done:
+                eventtime = reactor.pause(eventtime + 0.1)
+                if eventtime > timeout:
+                    self.on_commission_failure()
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_COMMISSION timed out" % self.driver.name
+                    )
+                if self.error_code != 0:
+                    error_name = COMMISSION_ERROR_NAMES.get(
+                        self.error_code,
+                        "UNKNOWN(%d)" % self.error_code,
+                    )
+                    if self.error_code == 18:
+                        self.handle_chip_reset_detected()
+                    else:
+                        self.on_commission_failure()
+                    phase_name = PHASE_NAMES.get(self.last_phase_id or 0, "unknown")
+                    if self.details:
+                        detail_lines = [
+                            "FOCI %s commissioning diagnostics:"
+                            % self.driver.stepper_name
+                        ]
+                        detail_lines.extend(
+                            "  %s" % format_commission_detail(detail)
+                            for detail in self.details
+                        )
+                        gcmd.respond_info("\n".join(detail_lines))
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_COMMISSION failed at %s: %s"
+                        % (self.driver.name, phase_name, error_name)
+                    )
+
+            result = self.result
+            status = result.get("status", 255)
+            if status > 1:
+                error_name = COMMISSION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
+                if status == 18:
+                    self.handle_chip_reset_detected()
+                else:
+                    self.on_commission_failure()
+                raise gcmd.error(
+                    "FOCI %s: FOCI_COMMISSION failed: %s"
+                    % (self.driver.name, error_name)
+                )
+
+            self.driver.state.is_calibrated = True
+            self.driver.state.inhibited = False
+            self.driver.homing.set_auto_calibrate_on_enable_allowed(True)
+            self.driver.state.commissioned_result = result
+            self.driver.state.active_gains = {
+                "flux_p": result["flux_p"],
+                "flux_i": result["flux_i"],
+                "torque_p": result["torque_p"],
+                "torque_i": result["torque_i"],
+                "velocity_p": result["fallback_velocity_p"],
+                "velocity_i": result["fallback_velocity_i"],
+                "position_p": result["fallback_position_p"],
+                "position_i": result["fallback_position_i"],
+                "velocity_limit": result["fallback_velocity_limit"],
+                "velocity_filter_hz": 0,
+                "torque_filter_hz": 0,
+                "position_filter_hz": 0,
+                "flux_filter_hz": 0,
+            }
+            self.driver.state.runtime_status = "commissioned"
+            enable_line.motor_enable(toolhead.get_last_move_time())
+
+            self.persist_commission_results(result, profile_name)
+
+            status_str = "accepted" if status == 0 else "accepted with warnings"
+            gcmd.respond_info(
+                "FOCI %s commissioned (%s): "
+                "r_count_milli=%d l_count_micro=%d R_int=%d L_int=%d"
+                % (
+                    self.driver.name,
+                    status_str,
+                    result["r_mohm"],
+                    result["l_uh"],
+                    result.get("r_int", 0),
+                    result.get("l_int", 0),
+                )
+            )
+            flags = result.get("inner_warning_flags", 0)
+            if flags:
+                gcmd.respond_info(
+                    "FOCI %s inner confidence: %s"
+                    % (self.driver.name, format_inner_warning_flags(flags))
+                )
+        finally:
+            self.driver.state.release()
+
+    def on_commission_failure(self) -> None:
+        """Handle Stage 1 failure state transitions."""
+        self.driver.state.is_calibrated = False
+        self.driver.state.commissioned_result = None
+        self.driver.state.active_gains = None
+        self.driver.state.runtime_status = "uncommissioned"
+        self.driver.state.inhibited = True
+        self.driver.homing.set_auto_calibrate_on_enable_allowed(False)
 
     def handle_chip_reset_detected(self) -> None:
         """Clear calibration after firmware reports chip reset without inhibiting."""
@@ -19,3 +382,96 @@ class CommissioningWorkflow:
         """Apply chip-reset recovery for CommissionError status 18."""
         if status == 18:
             self.handle_chip_reset_detected()
+
+    def persist_commission_results(self, result: dict, profile_name: str) -> None:
+        """Persist Stage 1 results to printer.cfg pending SAVE_CONFIG."""
+        configfile = self.driver.printer.lookup_object("configfile")
+        configfile.set(self.driver.name, "pid_flux_p", "%d" % result["flux_p"])
+        configfile.set(self.driver.name, "pid_flux_i", "%d" % result["flux_i"])
+        configfile.set(self.driver.name, "pid_torque_p", "%d" % result["torque_p"])
+        configfile.set(self.driver.name, "pid_torque_i", "%d" % result["torque_i"])
+        configfile.set(
+            self.driver.name,
+            "commissioned_velocity_p",
+            "%d" % result["fallback_velocity_p"],
+        )
+        configfile.set(
+            self.driver.name,
+            "commissioned_velocity_i",
+            "%d" % result["fallback_velocity_i"],
+        )
+        configfile.set(
+            self.driver.name,
+            "commissioned_position_p",
+            "%d" % result["fallback_position_p"],
+        )
+        configfile.set(
+            self.driver.name,
+            "commissioned_position_i",
+            "%d" % result["fallback_position_i"],
+        )
+        configfile.set(
+            self.driver.name,
+            "commissioned_velocity_limit",
+            "%d" % result["fallback_velocity_limit"],
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_r_count_milli",
+            "%d" % result["r_mohm"],
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_l_count_micro",
+            "%d" % result["l_uh"],
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_r_int",
+            "%d" % result.get("r_int", 0),
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_l_int",
+            "%d" % result.get("l_int", 0),
+        )
+        configfile.set(
+            self.driver.name, "identified_lambda_us", "%d" % result["lambda_us"]
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_theta_e_us",
+            "%d" % result["theta_e_us"],
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_ringing_count",
+            "%d" % result["ringing_count"],
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_bandwidth_hz",
+            "%d" % result["bandwidth_hz"],
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_tau_e_us",
+            "%d" % result.get("tau_e_us", 0),
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_tau_e_crosscheck_us",
+            "%d" % result.get("tau_e_crosscheck_us", 0),
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_tau_residual_permille",
+            "%d" % result.get("tau_residual_permille", 1000),
+        )
+        configfile.set(
+            self.driver.name,
+            "identified_inner_warning_flags",
+            "%d" % result.get("inner_warning_flags", 0),
+        )
+        configfile.set(self.driver.name, "autotune_profile", profile_name)
+        configfile.set(self.driver.name, "autotune_status", "commissioned")

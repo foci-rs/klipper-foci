@@ -8,6 +8,12 @@ Run: cd foci/klipper-foci && python -m pytest tests/ -v
 
 import unittest
 
+from klipper_foci.commissioning import (
+    COMMISSION_ERROR_NAMES,
+    HARD_FAULT_CODES,
+    PHASE_NAMES,
+    format_inner_warning_flags,
+)
 from klipper_foci.homing import HomingWorkflow
 
 from tests.mocks import (
@@ -167,14 +173,14 @@ class TestCommissionGates(unittest.TestCase):
         d.state.operation_lock = True
         gcmd = MockGCmd({"PROFILE": "balanced"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
         self.assertIn("another FOCI operation", str(ctx.exception))
 
     def test_rejects_invalid_profile(self):
         d = make_driver()
         gcmd = MockGCmd({"PROFILE": "turbo"})
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
         self.assertIn("unknown profile", str(ctx.exception).lower())
 
     def test_does_not_require_homed_state(self):
@@ -183,14 +189,14 @@ class TestCommissionGates(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced"})
         # Will fail at the commission_cmd.send polling loop, but should
         # NOT fail at a homing gate. Simulate immediate firmware response.
-        d._commission_done = True
-        d._commission_result = SAMPLE_COMMISSION_RESULT
+        d.commissioning.done = True
+        d.commissioning.result = SAMPLE_COMMISSION_RESULT
         # The polling loop needs a reactor
         d.printer._objects["reactor"] = MockReactor()
         # This will fail because we don't have full mock infrastructure
         # for the success path, but it should NOT raise "not homed"
         try:
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
         except (CommandError, AttributeError, TypeError):
             # Expected — incomplete mocks for full path
             pass
@@ -203,10 +209,10 @@ class TestCommissionGates(unittest.TestCase):
         d.state.active_gains = None
         d.state.runtime_status = "uncommissioned"
         gcmd = MockGCmd({"PROFILE": "balanced"})
-        d._commission_done = True
-        d._commission_result = SAMPLE_COMMISSION_RESULT
+        d.commissioning.done = True
+        d.commissioning.result = SAMPLE_COMMISSION_RESULT
         try:
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
         except (CommandError, AttributeError, TypeError):
             pass
         # Should not raise "not commissioned"
@@ -216,7 +222,7 @@ class TestCommissionGates(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
         def drive_failure(_args):
-            d._handle_commission_detail(
+            d.commissioning.handle_commission_detail(
                 {
                     "phase": 5,
                     "code": 28,
@@ -226,12 +232,12 @@ class TestCommissionGates(unittest.TestCase):
                     "value2": 1328,
                 }
             )
-            d._handle_commission_phase({"phase": 0, "status": 8})
+            d.commissioning.handle_commission_phase({"phase": 0, "status": 8})
 
         d.commission_cmd.send = drive_failure
 
         with self.assertRaises(CommandError):
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
 
         self.assertIn("commissioning diagnostics", gcmd.last_info)
         self.assertIn("tau residual", gcmd.last_info)
@@ -337,7 +343,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         def pause_and_report_admission_failure(deadline):
             reactor._time = deadline
-            d._handle_commission_phase({"phase": 0, "status": 15})
+            d.commissioning.handle_commission_phase({"phase": 0, "status": 15})
             return reactor._time
 
         reactor.pause = pause_and_report_admission_failure
@@ -387,7 +393,7 @@ class TestStateTransitions(unittest.TestCase):
         d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         d.state.is_calibrated = True
         # Simulate failure
-        d._on_commission_failure()
+        d.commissioning.on_commission_failure()
         self.assertTrue(d.state.inhibited)
         self.assertIsNone(d.state.active_gains)
         self.assertEqual(d.state.runtime_status, "uncommissioned")
@@ -515,10 +521,8 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn("CHIP_RESET_DETECTED", HomingWorkflow.CALIBRATION_ERROR_NAMES[2])
 
     def test_commission_error_names_includes_code_18(self):
-        from klipper_foci.driver import FociDriver
-
-        self.assertIn(18, FociDriver.COMMISSION_ERROR_NAMES)
-        self.assertIn("CHIP_RESET_DETECTED", FociDriver.COMMISSION_ERROR_NAMES[18])
+        self.assertIn(18, COMMISSION_ERROR_NAMES)
+        self.assertIn("CHIP_RESET_DETECTED", COMMISSION_ERROR_NAMES[18])
 
     def test_ensure_calibrated_chip_reset_clears_is_calibrated(self):
         d = make_driver()
@@ -577,13 +581,13 @@ class TestChipResetDetected(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
         def drive_chip_reset(_args):
-            d._commission_error_code = 18
-            d._last_phase_id = 17
+            d.commissioning.error_code = 18
+            d.commissioning.last_phase_id = 17
 
         d.commission_cmd.send = drive_chip_reset
 
         with self.assertRaises(CommandError) as ctx:
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
 
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
         self.assertFalse(d.state.is_calibrated)
@@ -755,10 +759,10 @@ class TestCommandHomingInvalidation(unittest.TestCase):
     def test_commission_invalidates_homing(self):
         d, kin = self._driver_with_cartesian()
         gcmd = MockGCmd({"PROFILE": "balanced"})
-        d._commission_done = True
-        d._commission_result = SAMPLE_COMMISSION_RESULT
+        d.commissioning.done = True
+        d.commissioning.result = SAMPLE_COMMISSION_RESULT
         try:
-            d.cmd_FOCI_COMMISSION(gcmd)
+            d.commissioning.commission(gcmd)
         except (CommandError, AttributeError, TypeError):
             pass
         # Homing should have been invalidated
@@ -1598,22 +1602,18 @@ class TestValidateAndLoadConfig(unittest.TestCase):
 class TestNameMaps(unittest.TestCase):
     def test_all_phase_ids_have_names(self):
         """Every wire code 1-17 should have a name."""
-        from klipper_foci.driver import FociDriver
-
         for phase_id in range(1, 18):
             self.assertIn(
                 phase_id,
-                FociDriver.PHASE_NAMES,
+                PHASE_NAMES,
                 f"PhaseId wire code {phase_id} missing from PHASE_NAMES",
             )
 
     def test_hard_fault_codes_are_subset_of_error_names(self):
-        from klipper_foci.driver import FociDriver
-
-        for code in FociDriver.HARD_FAULT_CODES:
+        for code in HARD_FAULT_CODES:
             self.assertIn(
                 code,
-                FociDriver.COMMISSION_ERROR_NAMES,
+                COMMISSION_ERROR_NAMES,
                 f"Hard fault code {code} missing from COMMISSION_ERROR_NAMES",
             )
 
@@ -1624,7 +1624,9 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         configfile = MockConfigFile()
         driver.printer._objects["configfile"] = configfile
 
-        driver._persist_commission_results(complete_commission_result(), "balanced")
+        driver.commissioning.persist_commission_results(
+            complete_commission_result(), "balanced"
+        )
 
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_count_milli")],
@@ -1652,13 +1654,13 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
         class CompleteCommissionCommand:
             def send(self, _args):
-                driver._commission_result = result
-                driver._commission_done = True
+                driver.commissioning.result = result
+                driver.commissioning.done = True
 
         driver.commission_cmd = CompleteCommissionCommand()
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
-        driver.cmd_FOCI_COMMISSION(gcmd)
+        driver.commissioning.commission(gcmd)
 
         self.assertIn("r_count_milli=1700 l_count_micro=3300", gcmd.last_info)
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
@@ -1706,15 +1708,13 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
         self.assertEqual((tau, cross, perm, flags), (800, 750, 60, 0x01))
 
     def test_format_inner_warning_flags_lists_active_bits(self):
-        driver = make_driver()
         # Bits 0 (R mismatch) + 4 (retry).
-        text = driver._format_inner_warning_flags((1 << 0) | (1 << 4))
+        text = format_inner_warning_flags((1 << 0) | (1 << 4))
         self.assertIn("coil R mismatch", text)
         self.assertIn("current validation retry", text)
 
     def test_format_inner_warning_flags_empty_when_clean(self):
-        driver = make_driver()
-        self.assertEqual(driver._format_inner_warning_flags(0), "none")
+        self.assertEqual(format_inner_warning_flags(0), "none")
 
 
 if __name__ == "__main__":

@@ -241,6 +241,17 @@ def test_homing_events_register_homing_workflow_callbacks():
         assert callbacks[0].__self__.__class__.__name__ == "HomingWorkflow"
 
 
+def test_commission_registers_commissioning_workflow_handler():
+    printer = build_driver_with_mode("default")
+    gcode = printer.lookup_object("gcode")
+
+    handler = next(
+        args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_COMMISSION"
+    )
+
+    assert handler.__self__.__class__.__name__ == "CommissioningWorkflow"
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

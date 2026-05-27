@@ -517,13 +517,6 @@ def make_driver(
     driver.homing = HomingWorkflow(driver)
     driver.commissioning = CommissioningWorkflow(driver)
 
-    # Commission polling state
-    driver._commission_done = False
-    driver._commission_result = None
-    driver._commission_error_code = 0
-    driver._last_phase_id = None
-    driver._commission_details = []
-
     # Selftest streaming state
     driver._selftest_results = []
     driver._selftest_complete = False

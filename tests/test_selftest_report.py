@@ -2,6 +2,7 @@
 
 import pytest
 
+from klipper_foci.commissioning import format_commission_detail
 from klipper_foci.driver import FociDriver
 
 from tests.mocks import CommandError, make_driver, MockCommand, MockGCmd
@@ -25,8 +26,8 @@ def test_selftest_done_handler_marks_complete():
 
 def test_commission_detail_handler_appends_to_details():
     d = make_driver()
-    d._commission_details = []
-    d._handle_commission_detail(
+    d.commissioning.details = []
+    d.commissioning.handle_commission_detail(
         {
             "phase": 5,
             "code": 28,
@@ -36,7 +37,7 @@ def test_commission_detail_handler_appends_to_details():
             "value2": 0,
         }
     )
-    assert d._commission_details == [
+    assert d.commissioning.details == [
         {
             "phase": 5,
             "code": 28,
@@ -49,7 +50,7 @@ def test_commission_detail_handler_appends_to_details():
 
 
 def test_format_commission_detail_tau_residual():
-    line = FociDriver._format_commission_detail(
+    line = format_commission_detail(
         {
             "phase": 5,
             "code": 28,
@@ -67,7 +68,7 @@ def test_format_commission_detail_tau_residual():
 
 
 def test_format_commission_detail_measurements():
-    excitation = FociDriver._format_commission_detail(
+    excitation = format_commission_detail(
         {
             "phase": 5,
             "code": 1,
@@ -77,7 +78,7 @@ def test_format_commission_detail_measurements():
             "value2": 160,
         }
     )
-    resistance = FociDriver._format_commission_detail(
+    resistance = format_commission_detail(
         {
             "phase": 5,
             "code": 2,
@@ -87,7 +88,7 @@ def test_format_commission_detail_measurements():
             "value2": 1000,
         }
     )
-    inductance = FociDriver._format_commission_detail(
+    inductance = format_commission_detail(
         {
             "phase": 5,
             "code": 4,
@@ -97,7 +98,7 @@ def test_format_commission_detail_measurements():
             "value2": 5000,
         }
     )
-    transient = FociDriver._format_commission_detail(
+    transient = format_commission_detail(
         {
             "phase": 5,
             "code": 6,
@@ -122,7 +123,7 @@ def test_format_commission_detail_measurements():
 
 
 def test_format_commission_detail_coil_check_sample():
-    line = FociDriver._format_commission_detail(
+    line = format_commission_detail(
         {
             "phase": 2,
             "code": 1,
@@ -275,7 +276,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
     # Stage 1 fails; firmware emits a foci_selftest_result then foci_selftest_done
     # with the ADC calibration fault code (4 = "ADC calibration fault").
     def drive_stream(_args):
-        d._handle_commission_detail(
+        d.commissioning.handle_commission_detail(
             {
                 "phase": 5,
                 "code": 28,
