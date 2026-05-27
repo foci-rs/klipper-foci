@@ -341,8 +341,8 @@ class MockMCU:
         self.allowed_pins = set(allowed_pins) if allowed_pins is not None else None
         self._next_oid = 1
         self._config_callbacks = []
-        self.config_cmds = []
-        self.query_cmds = []
+        self.config_commands = []
+        self.query_commands = []
         self._serial = MockSerial()
 
     def create_oid(self):
@@ -358,7 +358,7 @@ class MockMCU:
             callback()
 
     def add_config_cmd(self, cmd):
-        self.config_cmds.append(cmd)
+        self.config_commands.append(cmd)
 
     def alloc_command_queue(self):
         return object()
@@ -367,7 +367,7 @@ class MockMCU:
         return MockCommand()
 
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
-        self.query_cmds.append((_send_fmt, _recv_fmt, oid))
+        self.query_commands.append((_send_fmt, _recv_fmt, oid))
         return MockCommand()
 
 
@@ -601,6 +601,5 @@ def make_driver(
     driver.mcu = MockMCU()
     if bind_protocol:
         driver.protocol.bind_mcu(driver.mcu, driver.oid)
-        driver.protocol.install_driver_aliases()
 
     return driver

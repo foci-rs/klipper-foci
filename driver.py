@@ -299,40 +299,6 @@ class FociDriver:
         self.oid: int | None = None
         self.stepper_oid: int | None = None
 
-        # Command handles — resolved in _handle_mcu_identify after
-        # the MCU data dictionary is loaded.
-        self.set_current_cmd = None
-        self.set_encoder_cmd = None
-        self.set_encoder_dir_cmd = None
-        self.selftest_cmd = None
-        self.read_reg_cmd = None
-        self.calibrate_cmd = None
-        self.dump_cmd = None
-        self.set_pid_gains_cmd = None
-        self.commission_cmd = None
-        self.tune_cmd = None
-        self.set_velocity_filter_cmd = None
-        self.set_position_gains_cmd = None
-        self.set_velocity_feedforward_cmd = None
-        self.set_velocity_transient_feedforward_cmd = None
-        self.set_accel_feedforward_cmd = None
-        self.set_decoupling_feedforward_cmd = None
-        self.set_position_lead_cmd = None
-        self.set_phase_advance_cmd = None
-        self.set_velocity_limit_cmd = None
-        self.set_voltage_limit_cmd = None
-        self.set_auto_calibrate_on_enable_cmd = None
-        self.trace_info_cmd = None
-        self.trace_fetch_cmd = None
-        self.trace_start_cmd = None
-        self.trace_stop_cmd = None
-        self.stepper_get_position_cmd = None
-        self.stepper_stats_cmd = None
-        self.stepper_exec_stats_cmd = None
-        self.stepper_timing_stats_cmd = None
-        self.stepper_stop_stats_cmd = None
-        self.stepper_perf_stats_cmd = None
-
         self.protocol = FociProtocol(self)
         self.state = FociRuntimeState()
         self.dump = RegisterDumpWorkflow(self)
@@ -414,7 +380,6 @@ class FociDriver:
         self.stepper_oid = self._resolve_stepper_oid()
         self.oid = self.stepper_oid
         self.protocol.bind_mcu(self.mcu, self.oid)
-        self.protocol.install_driver_aliases()
 
     def _read_register(self, reg_name: str) -> int:
         """Read a single TMC4671 register via the firmware.
@@ -429,13 +394,8 @@ class FociDriver:
             command_error: If raw register access is not available in this
                 firmware build.
         """
-        if self.read_reg_cmd is None:
-            raise self.printer.command_error(
-                "Raw register access requires dev firmware build"
-            )
         addr = REGISTERS[reg_name]
-        params = self.read_reg_cmd.send([self.oid, addr])
-        return params["value"]
+        return self.protocol.read_register(addr)
 
     def _validate_and_load_config(self) -> None:
         """Validate persisted config and populate active gains/runtime status.

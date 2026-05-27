@@ -158,8 +158,8 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         d = make_driver()
         d.state.is_calibrated = True
         d.homing.ensure_calibrated()
-        # calibrate_cmd should NOT have been sent
-        self.assertIsNone(d.calibrate_cmd.last_args)
+        # Calibration should not have been requested.
+        self.assertIsNone(d.protocol.commands.calibrate.last_args)
 
 
 # =========================================================================
@@ -187,7 +187,7 @@ class TestCommissionGates(unittest.TestCase):
         """Commission should not check homing — it works from cold boot."""
         d = make_driver()
         gcmd = MockGCmd({"PROFILE": "balanced"})
-        # Will fail at the commission_cmd.send polling loop, but should
+        # Will fail in the commission polling loop, but should
         # NOT fail at a homing gate. Simulate immediate firmware response.
         d.commissioning.done = True
         d.commissioning.result = SAMPLE_COMMISSION_RESULT
@@ -234,7 +234,7 @@ class TestCommissionGates(unittest.TestCase):
             )
             d.commissioning.handle_commission_phase({"phase": 0, "status": 8})
 
-        d.commission_cmd.send = drive_failure
+        d.protocol.commands.commission.send = drive_failure
 
         with self.assertRaises(CommandError):
             d.commissioning.commission(gcmd)
@@ -377,7 +377,9 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertFalse(enable_line.is_motor_enabled())
         self.assertFalse(d.state.is_calibrated)
         self.assertTrue(d.state.inhibited)
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
+        )
 
 
 # =========================================================================
@@ -446,12 +448,16 @@ class TestStateTransitions(unittest.TestCase):
         self.assertEqual(d.state.runtime_status, "uncommissioned")
         self.assertIsNone(d.state.commissioned_result)
         self.assertFalse(d.state.is_calibrated)
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
+        )
 
     def test_connect_allows_auto_calibrate_only_with_valid_config(self):
         d = make_driver()
         d._handle_connect()
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
+        )
 
         d = make_driver()
         d.autotune_status = "commissioned"
@@ -469,13 +475,19 @@ class TestStateTransitions(unittest.TestCase):
         d.commissioned_position_i = 0
         d.commissioned_velocity_limit = 50_000
         d._handle_connect()
-        self.assertEqual(d.set_pid_gains_cmd.last_args, [d.oid, 100, 200, 300, 400])
         self.assertEqual(
-            d.set_position_gains_cmd.last_args,
+            d.protocol.commands.set_pid_gains.last_args, [d.oid, 100, 200, 300, 400]
+        )
+        self.assertEqual(
+            d.protocol.commands.set_position_gains.last_args,
             [d.oid, 700, 0, 1100, 0],
         )
-        self.assertEqual(d.set_velocity_limit_cmd.last_args, [d.oid, 50_000])
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
+        self.assertEqual(
+            d.protocol.commands.set_velocity_limit.last_args, [d.oid, 50_000]
+        )
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1]
+        )
 
     def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):
         d = make_driver()
@@ -495,7 +507,9 @@ class TestStateTransitions(unittest.TestCase):
         d.commissioned_position_i = 0
         d.commissioned_velocity_limit = 50_000
         d._handle_connect()
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 0])
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
+        )
 
     def test_inhibited_blocks_ensure_calibrated(self):
         d = make_driver()
@@ -521,7 +535,9 @@ class TestStateTransitions(unittest.TestCase):
 
         d.homing.apply_active_gains_to_firmware()
 
-        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 29000])
+        self.assertEqual(
+            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 29000]
+        )
 
     def test_disable_callback_clears_calibrated(self):
         d = make_driver()
@@ -550,14 +566,14 @@ class TestStateTransitions(unittest.TestCase):
             "encoder_count": 0,
         }
         d.homing.handle_stepper_enable(0.0, True)
-        self.assertEqual(d.calibrate_cmd.last_args, [0])
+        self.assertEqual(d.protocol.commands.calibrate.last_args, [0])
         self.assertTrue(d.state.is_calibrated)
 
     def test_ensure_calibrated_skips_if_already_true(self):
         d = make_driver()
         d.state.is_calibrated = True
         d.homing.ensure_calibrated()
-        self.assertIsNone(d.calibrate_cmd.last_args)
+        self.assertIsNone(d.protocol.commands.calibrate.last_args)
 
 
 class TestChipResetDetected(unittest.TestCase):
@@ -590,7 +606,9 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(d.state.inhibited)
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1]
+        )
 
     def test_ensure_calibrated_chip_reset_allows_retry(self):
         d = make_driver()
@@ -631,7 +649,7 @@ class TestChipResetDetected(unittest.TestCase):
             d.commissioning.error_code = 18
             d.commissioning.last_phase_id = 17
 
-        d.commission_cmd.send = drive_chip_reset
+        d.protocol.commands.commission.send = drive_chip_reset
 
         with self.assertRaises(CommandError) as ctx:
             d.commissioning.commission(gcmd)
@@ -639,7 +657,9 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(d.state.inhibited)
-        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
+        self.assertEqual(
+            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1]
+        )
 
 
 # =========================================================================
@@ -845,7 +865,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         gcmd = MockGCmd({"RUN_CURRENT": 1.7})
         d.controls.set_current(gcmd)
 
-        self.assertEqual(d.set_current_cmd.last_args, [d.oid, 1700])
+        self.assertEqual(d.protocol.commands.set_current.last_args, [d.oid, 1700])
         self.assertEqual(d.run_current, 1.7)
         self.assertIn("run_current=1.700A", gcmd.last_info)
 
@@ -864,7 +884,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.set_position_gains_cmd.last_args,
+            d.protocol.commands.set_position_gains.last_args,
             [d.oid, 256, 0, 512, 0],
         )
         self.assertEqual(d.pid_velocity_p, 512)
@@ -907,7 +927,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.set_pid_gains_cmd.last_args,
+            d.protocol.commands.set_pid_gains.last_args,
             [d.oid, 706, 162, 706, 162],
         )
 
@@ -950,7 +970,9 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_velocity_feedforward_cmd.last_args, [d.oid, 1, 8])
+        self.assertEqual(
+            d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 1, 8]
+        )
         self.assertTrue(d.velocity_feedforward)
         self.assertEqual(d.velocity_feedforward_multiplier, 8)
 
@@ -966,7 +988,9 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_velocity_feedforward_cmd.last_args, [d.oid, 0, 4])
+        self.assertEqual(
+            d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 0, 4]
+        )
         self.assertFalse(d.velocity_feedforward)
         self.assertEqual(d.velocity_feedforward_multiplier, 4)
 
@@ -993,7 +1017,7 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.set_velocity_transient_feedforward_cmd.last_args,
+            d.protocol.commands.set_velocity_transient_feedforward.last_args,
             [d.oid, 1, 400, 750, 1200, 10000],
         )
         self.assertTrue(d.velocity_transient_feedforward)
@@ -1018,7 +1042,7 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.set_velocity_transient_feedforward_cmd.last_args,
+            d.protocol.commands.set_velocity_transient_feedforward.last_args,
             [d.oid, 0, 250, 500, 900, 10000],
         )
         self.assertFalse(d.velocity_transient_feedforward)
@@ -1047,7 +1071,9 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 1, 750, 250])
+        self.assertEqual(
+            d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 750, 250]
+        )
         self.assertTrue(d.accel_feedforward)
         self.assertEqual(d.accel_feedforward_accel_gain, 750)
         self.assertEqual(d.accel_feedforward_decel_gain, 250)
@@ -1064,7 +1090,9 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 1, 500, 500])
+        self.assertEqual(
+            d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 500, 500]
+        )
         self.assertTrue(d.accel_feedforward)
         self.assertEqual(d.accel_feedforward_accel_gain, 500)
         self.assertEqual(d.accel_feedforward_decel_gain, 500)
@@ -1082,7 +1110,9 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_accel_feedforward_cmd.last_args, [d.oid, 0, 750, 250])
+        self.assertEqual(
+            d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 0, 750, 250]
+        )
         self.assertFalse(d.accel_feedforward)
         self.assertEqual(d.accel_feedforward_accel_gain, 750)
         self.assertEqual(d.accel_feedforward_decel_gain, 250)
@@ -1112,7 +1142,7 @@ class TestDecouplingFeedforwardCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.set_decoupling_feedforward_cmd.last_args,
+            d.protocol.commands.set_decoupling_feedforward.last_args,
             [d.oid, 1, 3000, 4095, 50, 65536, 25000, 500],
         )
         self.assertTrue(d.decoupling_feedforward)
@@ -1143,7 +1173,9 @@ class TestPositionLeadCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.set_position_lead_cmd.last_args, [d.oid, 1, 10, 20])
+        self.assertEqual(
+            d.protocol.commands.set_position_lead.last_args, [d.oid, 1, 10, 20]
+        )
         self.assertTrue(d.position_lead)
         self.assertEqual(d.position_lead_gain, 10)
         self.assertEqual(d.position_lead_max_counts, 20)
@@ -1155,7 +1187,9 @@ class TestPositionLeadCommand(unittest.TestCase):
 
         d.controls.set_position_lead(MockGCmd({"ENABLE": 0}))
 
-        self.assertEqual(d.set_position_lead_cmd.last_args, [d.oid, 0, 10, 20])
+        self.assertEqual(
+            d.protocol.commands.set_position_lead.last_args, [d.oid, 0, 10, 20]
+        )
         self.assertFalse(d.position_lead)
         self.assertEqual(d.position_lead_gain, 10)
         self.assertEqual(d.position_lead_max_counts, 20)
@@ -1182,7 +1216,7 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.set_phase_advance_cmd.last_args,
+            d.protocol.commands.set_phase_advance.last_args,
             [d.oid, 1, -60000, 64, 16],
         )
         self.assertTrue(d.phase_advance)
@@ -1199,7 +1233,7 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
         d.controls.set_phase_advance(MockGCmd({"ENABLE": 0}))
 
         self.assertEqual(
-            d.set_phase_advance_cmd.last_args,
+            d.protocol.commands.set_phase_advance.last_args,
             [d.oid, 0, 60000, 64, 16],
         )
         self.assertFalse(d.phase_advance)
@@ -1212,7 +1246,9 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
 
         d.controls.set_phase_advance(MockGCmd({}))
 
-        self.assertEqual(d.set_phase_advance_cmd.last_args, [d.oid, 1, 0, 0, 16])
+        self.assertEqual(
+            d.protocol.commands.set_phase_advance.last_args, [d.oid, 1, 0, 0, 16]
+        )
         self.assertTrue(d.phase_advance)
         self.assertEqual(d.phase_advance_gain_ppm, 0)
         self.assertEqual(d.phase_advance_max_counts, 0)
@@ -1231,7 +1267,9 @@ class TestVoltageLimitCommand(unittest.TestCase):
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 20000})
         d.controls.set_voltage_limit(gcmd)
 
-        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 20000])
+        self.assertEqual(
+            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000]
+        )
         self.assertIn("pidout_uq_ud_limit=20000", gcmd.last_info)
 
     def test_accepts_voltage_limit_at_chip_max(self):
@@ -1240,7 +1278,9 @@ class TestVoltageLimitCommand(unittest.TestCase):
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 32767})
         d.controls.set_voltage_limit(gcmd)
 
-        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 32767])
+        self.assertEqual(
+            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 32767]
+        )
         self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
 
     def test_accepts_voltage_limit_at_chip_min(self):
@@ -1249,7 +1289,7 @@ class TestVoltageLimitCommand(unittest.TestCase):
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 0})
         d.controls.set_voltage_limit(gcmd)
 
-        self.assertEqual(d.set_voltage_limit_cmd.last_args, [d.oid, 0])
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 0])
         self.assertIn("pidout_uq_ud_limit=0", gcmd.last_info)
 
 
@@ -1265,7 +1305,9 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         gcmd = MockGCmd({"TARGET": 250})
         d.diagnostics.current_step_test(gcmd)
 
-        self.assertEqual(d.current_step_test_cmd.last_args, [d.oid, 250, 80, 12000])
+        self.assertEqual(
+            d.protocol.commands.current_step_test.last_args, [d.oid, 250, 80, 12000]
+        )
         self.assertIn("target=250", gcmd.last_info)
 
     def test_sends_explicit_current_step_parameters(self):
@@ -1275,7 +1317,9 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
             MockGCmd({"TARGET": -500, "DURATION_MS": 120, "VOLTAGE_LIMIT": 20000})
         )
 
-        self.assertEqual(d.current_step_test_cmd.last_args, [d.oid, -500, 120, 20000])
+        self.assertEqual(
+            d.protocol.commands.current_step_test.last_args, [d.oid, -500, 120, 20000]
+        )
 
     def test_current_step_result_formats_motion_and_supply_fields(self):
         d = make_driver()
@@ -1320,7 +1364,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.current_vector_step_test_cmd.last_args,
+            d.protocol.commands.current_vector_step_test.last_args,
             [d.oid, 0, 250, 120, 20000],
         )
 
@@ -1373,7 +1417,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         )
 
         self.assertEqual(
-            d.current_torque_sample_test_cmd.last_args,
+            d.protocol.commands.current_torque_sample_test.last_args,
             [d.oid, 500, -125, 5, 29000],
         )
         self.assertEqual(d.diagnostics.current_torque_sample_details, {})
@@ -1385,7 +1429,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.position_torque_offset_test(gcmd)
 
         self.assertEqual(
-            d.position_torque_offset_sample_test_cmd.last_args,
+            d.protocol.commands.position_torque_offset_sample_test.last_args,
             [d.oid, 500, 2, 29000],
         )
         self.assertIn("position-torque-offset", gcmd.last_info)
@@ -1397,7 +1441,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.voltage_step_test(gcmd)
 
         self.assertEqual(
-            d.voltage_step_test_cmd.last_args,
+            d.protocol.commands.voltage_step_test.last_args,
             [d.oid, 512, -256, 2],
         )
         self.assertIn("voltage-step", gcmd.last_info)
@@ -1546,21 +1590,21 @@ class TestTraceControlCommands(unittest.TestCase):
 
         d.trace.trace_start(MockGCmd())
 
-        self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 1])
+        self.assertEqual(d.protocol.commands.trace_start.last_args, [d.oid, 1])
 
     def test_trace_start_accepts_fast_preset(self):
         d = make_driver()
 
         d.trace.trace_start(MockGCmd({"PRESET": "fast"}))
 
-        self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 0])
+        self.assertEqual(d.protocol.commands.trace_start.last_args, [d.oid, 0])
 
     def test_trace_start_accepts_velocity_preset(self):
         d = make_driver()
 
         d.trace.trace_start(MockGCmd({"PRESET": "velocity"}))
 
-        self.assertEqual(d.trace_start_cmd.last_args, [d.oid, 2])
+        self.assertEqual(d.protocol.commands.trace_start.last_args, [d.oid, 2])
 
     def test_trace_start_rejects_unknown_preset(self):
         d = make_driver()
@@ -1575,7 +1619,7 @@ class TestTraceControlCommands(unittest.TestCase):
 
         d.trace.trace_stop(MockGCmd())
 
-        self.assertEqual(d.trace_stop_cmd.last_args, [d.oid])
+        self.assertEqual(d.protocol.commands.trace_stop.last_args, [d.oid])
 
 
 # =========================================================================

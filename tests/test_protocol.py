@@ -42,12 +42,12 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         "stepper_get_position oid=%c",
         "stepper_position oid=%c pos=%i",
         driver.oid,
-    ) in mcu.query_cmds
+    ) in mcu.query_commands
     assert (
         "foci_stepper_perf_stats oid=%c clear=%c",
         commands.STEPPER_PERF_STATS_RESPONSE,
         driver.oid,
-    ) in mcu.query_cmds
+    ) in mcu.query_commands
 
     registrations = response_names(mcu)
     assert ("foci_dump_value", driver.oid) in registrations
@@ -94,7 +94,7 @@ def test_read_register_returns_value_from_optional_query():
     assert driver.protocol.commands.read_register.last_args == [driver.oid, 0x6C]
 
 
-def test_driver_mcu_identify_binds_protocol_and_keeps_temporary_aliases():
+def test_driver_mcu_identify_binds_protocol_without_driver_aliases():
     driver = make_driver(
         stepper_name="stepper_x",
         kinematics=MockCartesianKinematics([["stepper_x"]]),
@@ -105,8 +105,9 @@ def test_driver_mcu_identify_binds_protocol_and_keeps_temporary_aliases():
     driver._handle_mcu_identify()
 
     assert driver.protocol.commands.set_current is not None
-    assert driver.protocol.commands.set_current is driver.set_current_cmd
-    assert driver.protocol.commands.calibrate is driver.calibrate_cmd
+    assert driver.protocol.commands.calibrate is not None
+    assert not hasattr(driver, "set_current_cmd")
+    assert not hasattr(driver, "calibrate_cmd")
     assert ("foci_calibrate_result", driver.oid) in response_names(driver.mcu)
 
 
@@ -319,3 +320,23 @@ def test_preload_active_gains_sends_existing_payloads():
     assert commands.set_torque_filter.last_args == [driver.oid, 90]
     assert commands.set_position_filter.last_args == [driver.oid, 100]
     assert commands.set_flux_filter.last_args == [driver.oid, 110]
+
+
+def test_mock_driver_exposes_protocol_commands_without_driver_command_aliases():
+    driver = make_driver()
+
+    assert driver.protocol.commands.set_current is not None
+    assert driver.protocol.commands.current_step_test is not None
+    assert driver.protocol.commands.trace_start is not None
+
+    for name in (
+        "set_current_cmd",
+        "calibrate_cmd",
+        "commission_cmd",
+        "tune_cmd",
+        "selftest_cmd",
+        "dump_cmd",
+        "current_step_test_cmd",
+        "trace_start_cmd",
+    ):
+        assert not hasattr(driver, name)

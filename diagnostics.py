@@ -346,7 +346,10 @@ class DiagnosticsWorkflow:
 
     def step_position(self, gcmd) -> None:
         """Query raw MCU step position without updating Klipper state."""
-        if self.driver.stepper_get_position_cmd is None or self.driver.oid is None:
+        if (
+            self.driver.protocol.commands.stepper_get_position is None
+            or self.driver.oid is None
+        ):
             raise gcmd.error("FOCI_STEP_POSITION is not available before MCU identify")
 
         stepper = self.driver._find_linked_stepper()
@@ -356,7 +359,9 @@ class DiagnosticsWorkflow:
                 % self.driver.stepper_name
             )
 
-        params = self.driver.stepper_get_position_cmd.send([self.driver.oid])
+        params = self.driver.protocol.commands.stepper_get_position.send(
+            [self.driver.oid]
+        )
         if params is None or "pos" not in params:
             raise gcmd.error("FOCI_STEP_POSITION query returned no position")
 
@@ -391,17 +396,17 @@ class DiagnosticsWorkflow:
 
     def stepper_stats(self, gcmd) -> None:
         """Query MCU step queue and execution counters."""
-        query_cmds = (
-            ("stats", self.driver.stepper_stats_cmd),
-            ("exec_stats", self.driver.stepper_exec_stats_cmd),
-            ("timing_stats", self.driver.stepper_timing_stats_cmd),
-            ("stop_stats", self.driver.stepper_stop_stats_cmd),
+        queries = (
+            ("stats", self.driver.protocol.commands.stepper_stats),
+            ("exec_stats", self.driver.protocol.commands.stepper_exec_stats),
+            ("timing_stats", self.driver.protocol.commands.stepper_timing_stats),
+            ("stop_stats", self.driver.protocol.commands.stepper_stop_stats),
         )
-        if self.driver.oid is None or any(cmd is None for _, cmd in query_cmds):
+        if self.driver.oid is None or any(cmd is None for _, cmd in queries):
             raise gcmd.error("FOCI_STEPPER_STATS is not available before MCU identify")
 
         params = {}
-        for name, cmd in query_cmds:
+        for name, cmd in queries:
             response = cmd.send([self.driver.oid])
             if response is None:
                 raise gcmd.error("FOCI_STEPPER_STATS %s query returned no data" % name)
@@ -450,11 +455,16 @@ class DiagnosticsWorkflow:
 
     def dispatch_stats(self, gcmd) -> None:
         """Query MCU step-dispatch cycle counters."""
-        if self.driver.oid is None or self.driver.stepper_perf_stats_cmd is None:
+        if (
+            self.driver.oid is None
+            or self.driver.protocol.commands.stepper_perf_stats is None
+        ):
             raise gcmd.error("FOCI_DISPATCH_STATS is not available before MCU identify")
 
         clear = gcmd.get_int("RESET", 0, minval=0, maxval=1)
-        response = self.driver.stepper_perf_stats_cmd.send([self.driver.oid, clear])
+        response = self.driver.protocol.commands.stepper_perf_stats.send(
+            [self.driver.oid, clear]
+        )
         if response is None:
             raise gcmd.error("FOCI_DISPATCH_STATS query returned no data")
 
@@ -517,7 +527,7 @@ class DiagnosticsWorkflow:
             maxval=29000,
         )
 
-        self.driver.current_step_test_cmd.send(
+        self.driver.protocol.commands.current_step_test.send(
             [self.driver.oid, target, duration_ms, voltage_limit]
         )
 
@@ -539,7 +549,7 @@ class DiagnosticsWorkflow:
             maxval=29000,
         )
 
-        self.driver.current_vector_step_test_cmd.send(
+        self.driver.protocol.commands.current_vector_step_test.send(
             [
                 self.driver.oid,
                 torque_target,
@@ -581,7 +591,7 @@ class DiagnosticsWorkflow:
             None,
         )
 
-        self.driver.current_torque_sample_test_cmd.send(
+        self.driver.protocol.commands.current_torque_sample_test.send(
             [
                 self.driver.oid,
                 target,
@@ -617,7 +627,7 @@ class DiagnosticsWorkflow:
         self.current_torque_sample_details.pop(detail_key, None)
         self.current_torque_sample_labels[detail_key] = "position torque offset sample"
 
-        self.driver.position_torque_offset_sample_test_cmd.send(
+        self.driver.protocol.commands.position_torque_offset_sample_test.send(
             [self.driver.oid, target, sample_delay_ms, voltage_limit]
         )
 
@@ -633,7 +643,7 @@ class DiagnosticsWorkflow:
         ud_ext = gcmd.get_int("UD", 0, minval=-1024, maxval=1024)
         sample_delay_ms = gcmd.get_int("SAMPLE_DELAY_MS", 2, minval=1, maxval=20)
 
-        self.driver.voltage_step_test_cmd.send(
+        self.driver.protocol.commands.voltage_step_test.send(
             [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
         )
 

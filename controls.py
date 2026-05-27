@@ -154,7 +154,7 @@ class ControlsWorkflow:
             maxval=10000,
         )
 
-        self.driver.set_velocity_transient_feedforward_cmd.send(
+        self.driver.protocol.commands.set_velocity_transient_feedforward.send(
             [self.driver.oid, enable, lead_time_us, gain, max_offset, rate_hz]
         )
         self.driver.velocity_transient_feedforward = enable != 0
@@ -211,7 +211,7 @@ class ControlsWorkflow:
             maxval=65535,
         )
 
-        self.driver.set_accel_feedforward_cmd.send(
+        self.driver.protocol.commands.set_accel_feedforward.send(
             [self.driver.oid, enable, accel_gain, decel_gain]
         )
         self.driver.accel_feedforward = enable != 0
@@ -264,7 +264,7 @@ class ControlsWorkflow:
             maxval=32767,
         )
 
-        self.driver.set_decoupling_feedforward_cmd.send(
+        self.driver.protocol.commands.set_decoupling_feedforward.send(
             [
                 self.driver.oid,
                 enable,
@@ -316,7 +316,7 @@ class ControlsWorkflow:
             maxval=200,
         )
 
-        self.driver.set_position_lead_cmd.send(
+        self.driver.protocol.commands.set_position_lead.send(
             [self.driver.oid, enable, gain, max_counts]
         )
         self.driver.position_lead = enable != 0
@@ -350,7 +350,7 @@ class ControlsWorkflow:
             maxval=65535,
         )
 
-        self.driver.set_phase_advance_cmd.send(
+        self.driver.protocol.commands.set_phase_advance.send(
             [self.driver.oid, enable, gain_ppm, max_counts, deadband]
         )
         self.driver.phase_advance = enable != 0

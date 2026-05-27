@@ -376,7 +376,7 @@ def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     driver_x._handle_mcu_identify()
     driver_y._handle_mcu_identify()
 
-    assert mcu.config_cmds == []
+    assert mcu.config_commands == []
     assert driver_x.oid == 10
     assert driver_y.oid == 12
 
@@ -427,7 +427,7 @@ def test_perf_stats_query_format_includes_scheduler_attribution_fields():
 
     send_fmt, recv_fmt, oid = next(
         query
-        for query in chips["foci"].query_cmds
+        for query in chips["foci"].query_commands
         if query[0] == "foci_stepper_perf_stats oid=%c clear=%c"
     )
     assert send_fmt == "foci_stepper_perf_stats oid=%c clear=%c"
@@ -456,7 +456,7 @@ def test_configured_voltage_limit_is_sent_on_connect():
     driver._handle_connect()
 
     assert driver.voltage_limit == 29000
-    assert driver.set_voltage_limit_cmd.last_args == [10, 29000]
+    assert driver.protocol.commands.set_voltage_limit.last_args == [10, 29000]
 
 
 def test_configured_voltage_limit_accepts_raw_chip_range():
@@ -526,8 +526,8 @@ def test_dual_mcu_single_channel_uses_stepper_oids_without_foci_config():
     driver_x._handle_mcu_identify()
     driver_y._handle_mcu_identify()
 
-    assert mcu_x.config_cmds == []
-    assert mcu_y.config_cmds == []
+    assert mcu_x.config_commands == []
+    assert mcu_y.config_commands == []
     assert driver_x.oid == 10
     assert driver_y.oid == 12
 

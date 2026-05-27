@@ -6,7 +6,7 @@ from tests.mocks import MockCommand, MockGCmd, make_driver
 def test_stepper_stats_diagnostic_formats_firmware_counters():
     driver = make_driver(stepper_name="stepper_x")
     driver.oid = 10
-    driver.stepper_stats_cmd = MockCommand(
+    driver.protocol.commands.stepper_stats = MockCommand(
         {
             "oid": 10,
             "channel": 0,
@@ -21,7 +21,7 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
             "queue_len": 0,
         }
     )
-    driver.stepper_exec_stats_cmd = MockCommand(
+    driver.protocol.commands.stepper_exec_stats = MockCommand(
         {
             "executed_pos_steps": 39538,
             "executed_neg_steps": 0,
@@ -29,7 +29,7 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
             "missed_deadline_count": 0,
         }
     )
-    driver.stepper_timing_stats_cmd = MockCommand(
+    driver.protocol.commands.stepper_timing_stats = MockCommand(
         {
             "activation_count": 2,
             "last_activation_clock": 123456,
@@ -42,7 +42,7 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
             "first_step_delay_ticks": 546,
         }
     )
-    driver.stepper_stop_stats_cmd = MockCommand(
+    driver.protocol.commands.stepper_stop_stats = MockCommand(
         {
             "stop_count": 1,
             "stop_drained_segments": 44,
@@ -61,10 +61,10 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
 
     driver.diagnostics.stepper_stats(gcmd)
 
-    assert driver.stepper_stats_cmd.last_args == [10]
-    assert driver.stepper_exec_stats_cmd.last_args == [10]
-    assert driver.stepper_timing_stats_cmd.last_args == [10]
-    assert driver.stepper_stop_stats_cmd.last_args == [10]
+    assert driver.protocol.commands.stepper_stats.last_args == [10]
+    assert driver.protocol.commands.stepper_exec_stats.last_args == [10]
+    assert driver.protocol.commands.stepper_timing_stats.last_args == [10]
+    assert driver.protocol.commands.stepper_stop_stats.last_args == [10]
     assert "FOCI_STEPPER_STATS stepper_x:" in gcmd.last_info
     assert "channel=0" in gcmd.last_info
     assert "position=-26360" in gcmd.last_info
@@ -105,7 +105,7 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
 def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     driver = make_driver(stepper_name="stepper_x")
     driver.oid = 10
-    driver.stepper_perf_stats_cmd = MockCommand(
+    driver.protocol.commands.stepper_perf_stats = MockCommand(
         {
             "oid": 10,
             "channel": 0,
@@ -143,7 +143,7 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
 
     driver.diagnostics.dispatch_stats(gcmd)
 
-    assert driver.stepper_perf_stats_cmd.last_args == [10, 1]
+    assert driver.protocol.commands.stepper_perf_stats.last_args == [10, 1]
     assert "FOCI_DISPATCH_STATS stepper_x:" in gcmd.last_info
     assert "channel=0" in gcmd.last_info
     assert "crit_max_cycles=190000" in gcmd.last_info
