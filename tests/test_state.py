@@ -505,6 +505,92 @@ class TestStateTransitions(unittest.TestCase):
         self.assertIsNone(d.calibrate_cmd.last_args)
 
 
+class TestChipResetDetected(unittest.TestCase):
+    """Verify host recovery when firmware reports CHIP_RESET_DETECTED."""
+
+    def test_calibration_error_names_includes_code_2(self):
+        from foci import FociDriver
+
+        self.assertIn(2, FociDriver.CALIBRATION_ERROR_NAMES)
+        self.assertIn("CHIP_RESET_DETECTED", FociDriver.CALIBRATION_ERROR_NAMES[2])
+
+    def test_commission_error_names_includes_code_18(self):
+        from foci import FociDriver
+
+        self.assertIn(18, FociDriver.COMMISSION_ERROR_NAMES)
+        self.assertIn("CHIP_RESET_DETECTED", FociDriver.COMMISSION_ERROR_NAMES[18])
+
+    def test_ensure_calibrated_chip_reset_clears_is_calibrated(self):
+        d = make_driver()
+        d.is_calibrated = False
+        d._inhibited = False
+        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.printer.get_reactor().completion_result = {
+            "oid": 0,
+            "status": 2,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 0,
+        }
+
+        with self.assertRaises(CommandError) as ctx:
+            d._ensure_calibrated()
+
+        self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
+        self.assertFalse(d.is_calibrated)
+        self.assertFalse(d._inhibited)
+        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
+
+    def test_ensure_calibrated_chip_reset_allows_retry(self):
+        d = make_driver()
+        d.is_calibrated = False
+        d._inhibited = False
+        d._active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        reactor = d.printer.get_reactor()
+
+        reactor.completion_result = {
+            "oid": 0,
+            "status": 2,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 0,
+        }
+        with self.assertRaises(CommandError):
+            d._ensure_calibrated()
+
+        reactor.completion_result = {
+            "oid": 0,
+            "status": 0,
+            "adc_i0": 100,
+            "adc_i1": 100,
+            "encoder_count": 1234,
+        }
+        d._ensure_calibrated()
+
+        self.assertTrue(d.is_calibrated)
+        self.assertFalse(d._inhibited)
+
+    def test_commission_chip_reset_does_not_inhibit_retry(self):
+        d = make_driver()
+        d.is_calibrated = True
+        d._inhibited = False
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        def drive_chip_reset(_args):
+            d._commission_error_code = 18
+            d._last_phase_id = 17
+
+        d.commission_cmd.send = drive_chip_reset
+
+        with self.assertRaises(CommandError) as ctx:
+            d.cmd_FOCI_COMMISSION(gcmd)
+
+        self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
+        self.assertFalse(d.is_calibrated)
+        self.assertFalse(d._inhibited)
+        self.assertEqual(d.set_auto_calibrate_on_enable_cmd.last_args, [d.oid, 1])
+
+
 # =========================================================================
 # 6. Homing invalidation
 # =========================================================================

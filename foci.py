@@ -2022,6 +2022,18 @@ class FociDriver:
         15: "commissioning already running",
         16: "command queue full",
         17: "safety envelope violation",
+        18: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
+    }
+
+    # Status codes for foci_calibrate_response (CalibrationError::status_code).
+    # This is a separate namespace from COMMISSION_ERROR_NAMES because
+    # calibration and commission paths report through different message types.
+    CALIBRATION_ERROR_NAMES: dict[int, str] = {
+        1: "SPI_ERROR (TMC4671 not responding)",
+        2: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
+        5: "ALREADY_ENABLED",
+        6: "INTERNAL_ERROR",
+        7: "CONFIG_FAULT (run-time configuration missing)",
     }
 
     # Error codes that indicate a hard-disable fault: firmware has
@@ -3198,22 +3210,9 @@ class FociDriver:
                 )
                 return
             if status != 0:
-                # Raw CommissionError status codes (1-17) from firmware.
-                status_names = {
-                    1: "MOTOR_ENABLED",
-                    2: "NO_CURRENT (current limit not configured)",
-                    3: "SPI_ERROR (TMC4671 not responding)",
-                    4: "ADC_FAULT (ADC offsets out of range: I0=%d I1=%d)"
-                    % (params.get("adc_i0", 0), params.get("adc_i1", 0)),
-                    5: "COIL_FAULT (coil not connected)",
-                    6: "PHASE_FAULT (phase wiring error)",
-                    7: "ENCODER_FAULT (encoder not connected or unstable)",
-                    8: "ELECTRICAL_ID_FAILED",
-                    9: "CURRENT_VALIDATION_FAILED",
-                    13: "ENCODER_NOT_ALIGNED",
-                    16: "QUEUE_FULL (firmware command queue full)",
-                }
-                msg = status_names.get(status, "UNKNOWN(%d)" % status)
+                msg = self.CALIBRATION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
+                if status == 2:
+                    self._handle_chip_reset_detected()
                 raise self.printer.command_error(
                     "FOCI %s calibration failed: %s" % (self.name, msg)
                 )
@@ -3545,6 +3544,7 @@ class FociDriver:
             err = self.COMMISSION_ERROR_NAMES.get(
                 self._selftest_status, "unknown error %d" % self._selftest_status
             )
+            self._maybe_clear_calibration_for_chip_reset(self._selftest_status)
             overall = "FAIL (%s)" % err
         lines.append("Result: %s (%d/%d stages)" % (overall, passed, total))
         gcmd.respond_info("\n".join(lines))
@@ -3553,6 +3553,7 @@ class FociDriver:
             err = self.COMMISSION_ERROR_NAMES.get(
                 self._selftest_status, "unknown error %d" % self._selftest_status
             )
+            self._maybe_clear_calibration_for_chip_reset(self._selftest_status)
             raise self.printer.command_error(
                 "FOCI %s: selftest failed: %s" % (self.stepper_name, err)
             )
@@ -3610,11 +3611,14 @@ class FociDriver:
                     self._on_commission_failure()
                     raise gcmd.error("FOCI %s: FOCI_COMMISSION timed out" % self.name)
                 if self._commission_error_code != 0:
-                    self._on_commission_failure()
                     error_name = self.COMMISSION_ERROR_NAMES.get(
                         self._commission_error_code,
                         "UNKNOWN(%d)" % self._commission_error_code,
                     )
+                    if self._commission_error_code == 18:
+                        self._handle_chip_reset_detected()
+                    else:
+                        self._on_commission_failure()
                     phase_name = self.PHASE_NAMES.get(
                         self._last_phase_id or 0, "unknown"
                     )
@@ -3636,10 +3640,15 @@ class FociDriver:
             result = self._commission_result
             status = result.get("status", 255)
             if status > 1:
-                self._on_commission_failure()
+                error_name = self.COMMISSION_ERROR_NAMES.get(
+                    status, "UNKNOWN(%d)" % status
+                )
+                if status == 18:
+                    self._handle_chip_reset_detected()
+                else:
+                    self._on_commission_failure()
                 raise gcmd.error(
-                    "FOCI %s: FOCI_COMMISSION failed (unexpected status %d)"
-                    % (self.name, status)
+                    "FOCI %s: FOCI_COMMISSION failed: %s" % (self.name, error_name)
                 )
 
             # Terminal state: motor enabled, holding. Mark the host state before
@@ -3700,6 +3709,17 @@ class FociDriver:
         self._runtime_status = None
         self._inhibited = True
         self._set_auto_calibrate_on_enable_allowed(False)
+
+    def _handle_chip_reset_detected(self) -> None:
+        """Clear calibration after firmware reports chip reset without inhibiting."""
+        self.is_calibrated = False
+        self._inhibited = False
+        self._set_auto_calibrate_on_enable_allowed(True)
+
+    def _maybe_clear_calibration_for_chip_reset(self, status: int) -> None:
+        """Apply chip-reset recovery for CommissionError status 18."""
+        if status == 18:
+            self._handle_chip_reset_detected()
 
     def _persist_commission_results(self, result: dict, profile_name: str) -> None:
         """Persist Stage 1 results to printer.cfg (pending SAVE_CONFIG)."""
@@ -3970,6 +3990,9 @@ class FociDriver:
                         self._commission_error_code,
                         "UNKNOWN(%d)" % self._commission_error_code,
                     )
+                    self._maybe_clear_calibration_for_chip_reset(
+                        self._commission_error_code
+                    )
                     raise gcmd.error(
                         "FOCI %s: FOCI_AUTOTUNE failed: %s" % (self.name, error_name)
                     )
@@ -3980,7 +4003,16 @@ class FociDriver:
                 error_name = self.COMMISSION_ERROR_NAMES.get(
                     status, "UNKNOWN(%d)" % status
                 )
-                if status in self.HARD_FAULT_CODES:
+                if status == 18:
+                    self._handle_chip_reset_detected()
+                    stepper_enable = self.printer.lookup_object("stepper_enable")
+                    enable_line = stepper_enable.lookup_enable(self.stepper_name)
+                    enable_line.motor_disable(toolhead.get_last_move_time())
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_AUTOTUNE chip reset: %s "
+                        "(motor disabled by firmware)" % (self.name, error_name)
+                    )
+                elif status in self.HARD_FAULT_CODES:
                     # Hard fault: firmware disabled motor, cleared state.
                     # Sync host-side state and block raw-enable auto-calibration
                     # until a fresh Stage 1 commission succeeds.
