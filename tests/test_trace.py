@@ -11,7 +11,7 @@ import math
 import struct
 import unittest
 
-from klipper_foci.driver import (
+from klipper_foci.trace import (
     TRACE_FAST_HEADERS,
     TRACE_FULL_HEADERS,
     TRACE_HOLD_HEADERS,
