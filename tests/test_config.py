@@ -117,6 +117,43 @@ def test_invalid_global_foci_mode_reports_valid_modes():
         assert mode in message
 
 
+def test_registry_resolves_component_handler_and_inline_help():
+    from klipper_foci.registry import GcodeCommandSpec, register_gcode_commands
+
+    class Component:
+        def handle(self, gcmd):
+            return None
+
+    class Driver:
+        stepper_name = "stepper_x"
+
+        def __init__(self):
+            self.component = Component()
+
+    printer = build_driver_with_mode("default")
+    gcode = printer.lookup_object("gcode")
+    gcode._mux_commands.clear()
+
+    driver = Driver()
+    specs = (
+        GcodeCommandSpec(
+            name="FOCI_TEST",
+            min_mode="default",
+            component="component",
+            handler_name="handle",
+            help_text="test command",
+        ),
+    )
+
+    register_gcode_commands(driver, gcode, "default", command_specs=specs)
+
+    args, kwargs = gcode._mux_commands[0]
+    assert args[:3] == ("FOCI_TEST", "STEPPER", "stepper_x")
+    assert args[3].__self__ is driver.component
+    assert args[3].__func__ is driver.component.handle.__func__
+    assert kwargs["desc"] == "test command"
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

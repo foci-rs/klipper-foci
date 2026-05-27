@@ -27,142 +27,193 @@ class GcodeCommandSpec:
 
     name: str
     min_mode: str
+    component: str
     handler_name: str
-    help_attr: str
+    help_text: str
 
 
 GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
-    GcodeCommandSpec("DUMP_FOCI", "default", "cmd_DUMP_FOCI", "cmd_DUMP_FOCI_help"),
-    GcodeCommandSpec("DUMP_TMC", "default", "cmd_DUMP_FOCI", "cmd_DUMP_FOCI_help"),
     GcodeCommandSpec(
-        "FOCI_SELFTEST", "default", "cmd_FOCI_SELFTEST", "cmd_FOCI_SELFTEST_help"
+        "DUMP_FOCI",
+        "default",
+        "driver",
+        "cmd_DUMP_FOCI",
+        "Dump TMC4671 register state for a FOCI stepper",
+    ),
+    GcodeCommandSpec(
+        "DUMP_TMC",
+        "default",
+        "driver",
+        "cmd_DUMP_FOCI",
+        "Dump TMC4671 register state for a FOCI stepper",
+    ),
+    GcodeCommandSpec(
+        "FOCI_SELFTEST",
+        "default",
+        "driver",
+        "cmd_FOCI_SELFTEST",
+        "Run TMC4671 self-test for a FOCI stepper",
     ),
     GcodeCommandSpec(
         "FOCI_COMMISSION",
         "default",
+        "driver",
         "cmd_FOCI_COMMISSION",
-        "cmd_FOCI_COMMISSION_help",
+        "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)",
     ),
     GcodeCommandSpec(
-        "FOCI_AUTOTUNE", "default", "cmd_FOCI_AUTOTUNE", "cmd_FOCI_AUTOTUNE_help"
+        "FOCI_AUTOTUNE",
+        "default",
+        "driver",
+        "cmd_FOCI_AUTOTUNE",
+        "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)",
     ),
     GcodeCommandSpec(
-        "FOCI_SET_GAINS", "default", "cmd_FOCI_SET_GAINS", "cmd_FOCI_SET_GAINS_help"
+        "FOCI_SET_GAINS",
+        "default",
+        "driver",
+        "cmd_FOCI_SET_GAINS",
+        "Set FOCI outer gains for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_INNER_GAINS",
         "default",
+        "driver",
         "cmd_FOCI_SET_INNER_GAINS",
-        "cmd_FOCI_SET_INNER_GAINS_help",
+        "Set FOCI inner current gains for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_CURRENT",
         "default",
+        "driver",
         "cmd_FOCI_SET_CURRENT",
-        "cmd_FOCI_SET_CURRENT_help",
+        "Set FOCI run current for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_VELOCITY_FEEDFORWARD",
         "default",
+        "driver",
         "cmd_FOCI_SET_VELOCITY_FEEDFORWARD",
-        "cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help",
+        "Set FOCI velocity feedforward runtime multiplier for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_STEP_POSITION",
         "advanced",
+        "driver",
         "cmd_FOCI_STEP_POSITION",
-        "cmd_FOCI_STEP_POSITION_help",
+        "Query raw FOCI MCU step position without syncing Klipper",
     ),
     GcodeCommandSpec(
         "FOCI_STEPPER_STATS",
         "advanced",
+        "driver",
         "cmd_FOCI_STEPPER_STATS",
-        "cmd_FOCI_STEPPER_STATS_help",
+        "Query FOCI MCU step queue/execution counters without motion",
     ),
     GcodeCommandSpec(
         "FOCI_DISPATCH_STATS",
         "advanced",
+        "driver",
         "cmd_FOCI_DISPATCH_STATS",
-        "cmd_FOCI_DISPATCH_STATS_help",
+        "Query FOCI MCU step-dispatch cycle counters without motion",
     ),
-    GcodeCommandSpec("FOCI_TRACE", "advanced", "cmd_FOCI_TRACE", "cmd_FOCI_TRACE_help"),
+    GcodeCommandSpec(
+        "FOCI_TRACE",
+        "advanced",
+        "driver",
+        "cmd_FOCI_TRACE",
+        "Fetch and display trace capture buffer",
+    ),
     GcodeCommandSpec(
         "FOCI_TRACE_START",
         "advanced",
+        "driver",
         "cmd_FOCI_TRACE_START",
-        "cmd_FOCI_TRACE_START_help",
+        "Start FOCI per-tick trace capture",
     ),
     GcodeCommandSpec(
         "FOCI_TRACE_STOP",
         "advanced",
+        "driver",
         "cmd_FOCI_TRACE_STOP",
-        "cmd_FOCI_TRACE_STOP_help",
+        "Stop FOCI per-tick trace capture",
     ),
     GcodeCommandSpec(
         "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
         "expert",
+        "driver",
         "cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
-        "cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD_help",
+        "Set FOCI diagnostic velocity transient feedforward for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_ACCEL_FEEDFORWARD",
         "expert",
+        "driver",
         "cmd_FOCI_SET_ACCEL_FEEDFORWARD",
-        "cmd_FOCI_SET_ACCEL_FEEDFORWARD_help",
+        "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_DECOUPLING_FEEDFORWARD",
         "expert",
+        "driver",
         "cmd_FOCI_SET_DECOUPLING_FEEDFORWARD",
-        "cmd_FOCI_SET_DECOUPLING_FEEDFORWARD_help",
+        "Set FOCI diagnostic q/d decoupling proxy feedforward for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_POSITION_LEAD",
         "expert",
+        "driver",
         "cmd_FOCI_SET_POSITION_LEAD",
-        "cmd_FOCI_SET_POSITION_LEAD_help",
+        "Set FOCI diagnostic position-target lead for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_PHASE_ADVANCE",
         "expert",
+        "driver",
         "cmd_FOCI_SET_PHASE_ADVANCE",
-        "cmd_FOCI_SET_PHASE_ADVANCE_help",
+        "Set FOCI diagnostic commutation phase advance for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_SET_VOLTAGE_LIMIT",
         "expert",
+        "driver",
         "cmd_FOCI_SET_VOLTAGE_LIMIT",
-        "cmd_FOCI_SET_VOLTAGE_LIMIT_help",
+        "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics",
     ),
     GcodeCommandSpec(
         "FOCI_CURRENT_STEP_TEST",
         "expert",
+        "driver",
         "cmd_FOCI_CURRENT_STEP_TEST",
-        "cmd_FOCI_CURRENT_STEP_TEST_help",
+        "Run a bounded FOCI current-loop step diagnostic",
     ),
     GcodeCommandSpec(
         "FOCI_CURRENT_VECTOR_STEP_TEST",
         "expert",
+        "driver",
         "cmd_FOCI_CURRENT_VECTOR_STEP_TEST",
-        "cmd_FOCI_CURRENT_VECTOR_STEP_TEST_help",
+        "Run a bounded FOCI current-vector step diagnostic",
     ),
     GcodeCommandSpec(
         "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
         "expert",
+        "driver",
         "cmd_FOCI_CURRENT_TORQUE_SAMPLE_TEST",
-        "cmd_FOCI_CURRENT_TORQUE_SAMPLE_TEST_help",
+        "Run a bounded FOCI torque pulse and sample it early",
     ),
     GcodeCommandSpec(
         "FOCI_POSITION_TORQUE_OFFSET_TEST",
         "expert",
+        "driver",
         "cmd_FOCI_POSITION_TORQUE_OFFSET_TEST",
-        "cmd_FOCI_POSITION_TORQUE_OFFSET_TEST_help",
+        "Run a bounded FOCI position-mode torque-offset sample",
     ),
     GcodeCommandSpec(
         "FOCI_VOLTAGE_STEP_TEST",
         "expert",
+        "driver",
         "cmd_FOCI_VOLTAGE_STEP_TEST",
-        "cmd_FOCI_VOLTAGE_STEP_TEST_help",
+        "Run a bounded FOCI open-loop voltage-vector diagnostic",
     ),
 )
 
@@ -172,15 +223,23 @@ def mode_allows(active_mode: str, min_mode: str) -> bool:
     return MODE_LEVELS[active_mode] >= MODE_LEVELS[min_mode]
 
 
-def register_gcode_commands(driver, gcode, mode: str) -> None:
+def register_gcode_commands(
+    driver,
+    gcode,
+    mode: str,
+    command_specs: tuple[GcodeCommandSpec, ...] = GCODE_COMMANDS,
+) -> None:
     """Register all host-visible G-code commands allowed by `mode`."""
-    for spec in GCODE_COMMANDS:
+    for spec in command_specs:
         if not mode_allows(mode, spec.min_mode):
             continue
+        component = (
+            driver if spec.component == "driver" else getattr(driver, spec.component)
+        )
         gcode.register_mux_command(
             spec.name,
             "STEPPER",
             driver.stepper_name,
-            getattr(driver, spec.handler_name),
-            desc=getattr(driver, spec.help_attr),
+            getattr(component, spec.handler_name),
+            desc=spec.help_text,
         )
