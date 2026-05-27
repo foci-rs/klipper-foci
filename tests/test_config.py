@@ -16,6 +16,107 @@ def test_package_entry_points_import_driver_and_global_config():
     assert callable(klipper_foci.load_config_prefix)
 
 
+DEFAULT_COMMANDS = {
+    "FOCI_SELFTEST",
+    "FOCI_COMMISSION",
+    "FOCI_AUTOTUNE",
+    "DUMP_FOCI",
+    "DUMP_TMC",
+    "FOCI_SET_GAINS",
+    "FOCI_SET_INNER_GAINS",
+    "FOCI_SET_CURRENT",
+    "FOCI_SET_VELOCITY_FEEDFORWARD",
+}
+
+ADVANCED_COMMANDS = {
+    "FOCI_STEP_POSITION",
+    "FOCI_STEPPER_STATS",
+    "FOCI_DISPATCH_STATS",
+    "FOCI_TRACE_START",
+    "FOCI_TRACE_STOP",
+    "FOCI_TRACE",
+}
+
+EXPERT_COMMANDS = {
+    "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
+    "FOCI_SET_ACCEL_FEEDFORWARD",
+    "FOCI_SET_DECOUPLING_FEEDFORWARD",
+    "FOCI_SET_POSITION_LEAD",
+    "FOCI_SET_PHASE_ADVANCE",
+    "FOCI_SET_VOLTAGE_LIMIT",
+    "FOCI_CURRENT_STEP_TEST",
+    "FOCI_CURRENT_VECTOR_STEP_TEST",
+    "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
+    "FOCI_POSITION_TORQUE_OFFSET_TEST",
+    "FOCI_VOLTAGE_STEP_TEST",
+}
+
+
+def registered_command_names(printer):
+    gcode = printer.lookup_object("gcode")
+    return {args[0] for args, _kwargs in gcode._mux_commands}
+
+
+def build_driver_with_mode(mode=None):
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        },
+        foci_mode=mode,
+    )
+    make_config_driver(printer, sections, "foci stepper_x")
+    return printer
+
+
+def test_absent_foci_section_registers_default_commands_only():
+    printer = build_driver_with_mode(None)
+
+    assert registered_command_names(printer) == DEFAULT_COMMANDS
+
+
+def test_explicit_default_mode_registers_default_commands_only():
+    printer = build_driver_with_mode("default")
+
+    assert registered_command_names(printer) == DEFAULT_COMMANDS
+
+
+def test_advanced_mode_registers_default_and_advanced_commands_only():
+    printer = build_driver_with_mode("advanced")
+
+    assert registered_command_names(printer) == DEFAULT_COMMANDS | ADVANCED_COMMANDS
+    assert "FOCI_VOLTAGE_STEP_TEST" not in registered_command_names(printer)
+
+
+def test_expert_mode_registers_default_advanced_and_expert_commands():
+    printer = build_driver_with_mode("expert")
+
+    assert registered_command_names(printer) == (
+        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS
+    )
+
+
+def test_developer_mode_matches_expert_until_dev_only_commands_exist():
+    printer = build_driver_with_mode("developer")
+
+    assert registered_command_names(printer) == (
+        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS
+    )
+
+
+def test_invalid_global_foci_mode_reports_valid_modes():
+    with pytest.raises(CommandError) as excinfo:
+        build_driver_with_mode("unsafe")
+
+    message = str(excinfo.value)
+    assert "mode" in message
+    for mode in ("default", "advanced", "expert", "developer"):
+        assert mode in message
+
+
 def test_same_mcu_dual_channel_uses_stepper_oids_without_foci_config():
     printer, chips, sections = make_config_printer(
         {

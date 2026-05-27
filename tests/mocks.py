@@ -8,6 +8,7 @@ state fields directly and call methods under test.
 from __future__ import annotations
 
 from klipper_foci.driver import FociDriver
+from klipper_foci.registry import FociGlobalConfig
 
 
 class CommandError(Exception):
@@ -31,6 +32,15 @@ class MockPrinter:
 
     def register_event_handler(self, event, callback):
         self._event_handlers.setdefault(event, []).append(callback)
+
+    def load_object(self, config, name):
+        if name in self._objects:
+            return self._objects[name]
+        if name == "foci":
+            obj = FociGlobalConfig(config.getsection("foci"))
+            self._objects[name] = obj
+            return obj
+        return self.lookup_object(name)
 
     def command_error(self, msg):
         return CommandError(msg)
@@ -426,10 +436,12 @@ class MockConfig:
         return CommandError(msg)
 
 
-def make_config_printer(stepper_sections, chips=None, kinematics=None):
+def make_config_printer(stepper_sections, chips=None, kinematics=None, foci_mode=None):
     """Create a printer/config section set for FociDriver construction."""
     chips = chips or {"foci": MockMCU("foci")}
     sections = {}
+    if foci_mode is not None:
+        sections["foci"] = {"mode": foci_mode}
     stepper_names = []
     next_stepper_oid = 10
     for name, values in stepper_sections.items():

@@ -15,6 +15,7 @@ from .registers import (
     Fields,
     FieldHelper,
 )
+from .registry import register_gcode_commands
 from .trace import (
     TRACE_FAST_HEADERS,
     TRACE_FULL_HEADERS,
@@ -104,6 +105,8 @@ class FociDriver:
         self._current_torque_sample_labels: dict[tuple[int, int, int, int], str] = {}
 
         self.printer = config.get_printer()
+        self.global_config = self.printer.load_object(config, "foci")
+        self.foci_mode: str = self.global_config.mode
 
         # Required motor config
         self.run_current: float = config.getfloat("run_current", above=0.0)
@@ -433,188 +436,7 @@ class FociDriver:
 
         # Register GCode commands
         gcode = self.printer.lookup_object("gcode")
-        gcode.register_mux_command(
-            "DUMP_FOCI",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_DUMP_FOCI,
-            desc=self.cmd_DUMP_FOCI_help,
-        )
-        gcode.register_mux_command(
-            "DUMP_TMC",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_DUMP_FOCI,
-            desc=self.cmd_DUMP_FOCI_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SELFTEST",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SELFTEST,
-            desc=self.cmd_FOCI_SELFTEST_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_COMMISSION",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_COMMISSION,
-            desc=self.cmd_FOCI_COMMISSION_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_AUTOTUNE",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_AUTOTUNE,
-            desc=self.cmd_FOCI_AUTOTUNE_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_GAINS",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_GAINS,
-            desc=self.cmd_FOCI_SET_GAINS_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_INNER_GAINS",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_INNER_GAINS,
-            desc=self.cmd_FOCI_SET_INNER_GAINS_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_CURRENT",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_CURRENT,
-            desc=self.cmd_FOCI_SET_CURRENT_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_VELOCITY_FEEDFORWARD",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD,
-            desc=self.cmd_FOCI_SET_VELOCITY_FEEDFORWARD_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD,
-            desc=self.cmd_FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_ACCEL_FEEDFORWARD",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_ACCEL_FEEDFORWARD,
-            desc=self.cmd_FOCI_SET_ACCEL_FEEDFORWARD_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_DECOUPLING_FEEDFORWARD",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_DECOUPLING_FEEDFORWARD,
-            desc=self.cmd_FOCI_SET_DECOUPLING_FEEDFORWARD_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_POSITION_LEAD",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_POSITION_LEAD,
-            desc=self.cmd_FOCI_SET_POSITION_LEAD_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_PHASE_ADVANCE",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_PHASE_ADVANCE,
-            desc=self.cmd_FOCI_SET_PHASE_ADVANCE_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_SET_VOLTAGE_LIMIT",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_SET_VOLTAGE_LIMIT,
-            desc=self.cmd_FOCI_SET_VOLTAGE_LIMIT_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_CURRENT_STEP_TEST",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_CURRENT_STEP_TEST,
-            desc=self.cmd_FOCI_CURRENT_STEP_TEST_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_CURRENT_VECTOR_STEP_TEST",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_CURRENT_VECTOR_STEP_TEST,
-            desc=self.cmd_FOCI_CURRENT_VECTOR_STEP_TEST_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_CURRENT_TORQUE_SAMPLE_TEST,
-            desc=self.cmd_FOCI_CURRENT_TORQUE_SAMPLE_TEST_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_POSITION_TORQUE_OFFSET_TEST",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_POSITION_TORQUE_OFFSET_TEST,
-            desc=self.cmd_FOCI_POSITION_TORQUE_OFFSET_TEST_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_VOLTAGE_STEP_TEST",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_VOLTAGE_STEP_TEST,
-            desc=self.cmd_FOCI_VOLTAGE_STEP_TEST_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_TRACE",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_TRACE,
-            desc=self.cmd_FOCI_TRACE_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_TRACE_START",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_TRACE_START,
-            desc=self.cmd_FOCI_TRACE_START_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_TRACE_STOP",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_TRACE_STOP,
-            desc=self.cmd_FOCI_TRACE_STOP_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_STEP_POSITION",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_STEP_POSITION,
-            desc=self.cmd_FOCI_STEP_POSITION_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_STEPPER_STATS",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_STEPPER_STATS,
-            desc=self.cmd_FOCI_STEPPER_STATS_help,
-        )
-        gcode.register_mux_command(
-            "FOCI_DISPATCH_STATS",
-            "STEPPER",
-            self.stepper_name,
-            self.cmd_FOCI_DISPATCH_STATS,
-            desc=self.cmd_FOCI_DISPATCH_STATS_help,
-        )
+        register_gcode_commands(self, gcode, self.foci_mode)
 
         # Lifecycle events
         self.printer.register_event_handler(
