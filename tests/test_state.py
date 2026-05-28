@@ -1715,7 +1715,7 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
     def test_default_persisted_values_resolve_to_documented_defaults(self):
         driver = make_driver()
         driver.state.commissioned_result = None
-        driver.identified_lambda_us = 700
+        driver.config.identified_lambda_us = 700
         # All identified_tau_*/identified_inner_warning_flags default None
         tau, cross, perm, flags = driver.autotune.resolve_inner_confidence()
         # `tau_e_us = max(identified_lambda_us, 1000)` for old configs.
@@ -1733,17 +1733,17 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
             "tau_residual_permille": 50,
             "inner_warning_flags": 0x02,
         }
-        driver.identified_tau_e_us = 9999
+        driver.config.identified_tau_e_us = 9999
         tau, cross, perm, flags = driver.autotune.resolve_inner_confidence()
         self.assertEqual((tau, cross, perm, flags), (1234, 1100, 50, 0x02))
 
     def test_persisted_values_load_from_config(self):
         driver = make_driver()
         driver.state.commissioned_result = None
-        driver.identified_tau_e_us = 800
-        driver.identified_tau_e_crosscheck_us = 750
-        driver.identified_tau_residual_permille = 60
-        driver.identified_inner_warning_flags = 0x01
+        driver.config.identified_tau_e_us = 800
+        driver.config.identified_tau_e_crosscheck_us = 750
+        driver.config.identified_tau_residual_permille = 60
+        driver.config.identified_inner_warning_flags = 0x01
         tau, cross, perm, flags = driver.autotune.resolve_inner_confidence()
         self.assertEqual((tau, cross, perm, flags), (800, 750, 60, 0x01))
 

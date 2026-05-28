@@ -40,22 +40,24 @@ class AutotuneWorkflow:
                 r.get("inner_warning_flags", 0),
             )
 
-        tau_e_us = self.driver.identified_tau_e_us
+        config = self.driver.config
+
+        tau_e_us = config.identified_tau_e_us
         if tau_e_us is None:
-            if self.driver.identified_lambda_us is None:
+            if config.identified_lambda_us is None:
                 tau_e_us = 1000
             else:
-                tau_e_us = max(self.driver.identified_lambda_us, 1000)
+                tau_e_us = max(config.identified_lambda_us, 1000)
 
-        tau_e_crosscheck_us = self.driver.identified_tau_e_crosscheck_us
+        tau_e_crosscheck_us = config.identified_tau_e_crosscheck_us
         if tau_e_crosscheck_us is None:
             tau_e_crosscheck_us = 0
 
-        tau_residual_permille = self.driver.identified_tau_residual_permille
+        tau_residual_permille = config.identified_tau_residual_permille
         if tau_residual_permille is None:
             tau_residual_permille = 1000
 
-        inner_warning_flags = self.driver.identified_inner_warning_flags
+        inner_warning_flags = config.identified_inner_warning_flags
         if inner_warning_flags is None:
             # Bit 6: host-defaulted confidence data (no fresh measurement).
             inner_warning_flags = 0x40
@@ -137,10 +139,11 @@ class AutotuneWorkflow:
                 ringing = self.driver.state.commissioned_result["ringing_count"]
                 bandwidth = self.driver.state.commissioned_result["bandwidth_hz"]
             else:
-                inner_lambda = self.driver.identified_lambda_us
-                theta_e = self.driver.identified_theta_e_us
-                ringing = self.driver.identified_ringing_count
-                bandwidth = self.driver.identified_bandwidth_hz
+                config = self.driver.config
+                inner_lambda = config.identified_lambda_us
+                theta_e = config.identified_theta_e_us
+                ringing = config.identified_ringing_count
+                bandwidth = config.identified_bandwidth_hz
 
             (
                 tau_e_us,
