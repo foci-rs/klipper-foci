@@ -25,7 +25,6 @@ from .registers import REGISTERS
 from .registry import register_gcode_commands
 from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
-from .trace import LegacyTraceWorkflow
 
 ######################################################################
 # FociDriver - per-axis driver instance
@@ -61,7 +60,6 @@ class FociDriver:
         self.selftest = SelftestWorkflow(self)
         self.autotune = AutotuneWorkflow(self)
         self.diagnostics = DiagnosticsWorkflow(self)
-        self.trace = LegacyTraceWorkflow(self)
 
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md

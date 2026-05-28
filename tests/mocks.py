@@ -19,7 +19,6 @@ from klipper_foci.protocol import FociProtocol
 from klipper_foci.registry import FociGlobalConfig
 from klipper_foci.selftest import SelftestWorkflow
 from klipper_foci.state import FociRuntimeState
-from klipper_foci.trace import LegacyTraceWorkflow
 
 
 class CommandError(Exception):
@@ -525,7 +524,6 @@ def make_driver(
     driver.selftest = SelftestWorkflow(driver)
     driver.autotune = AutotuneWorkflow(driver)
     driver.diagnostics = DiagnosticsWorkflow(driver)
-    driver.trace = LegacyTraceWorkflow(driver)
 
     driver.mcu = MockMCU()
     printer._objects["pins"] = MockPins({"foci": driver.mcu})

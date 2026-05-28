@@ -34,7 +34,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.tune is not None
     assert commands.selftest is not None
     assert commands.dump_registers is not None
-    assert commands.trace_fetch is not None
     assert commands.stepper_perf_stats is not None
     assert commands.current_step_test is not None
 
@@ -58,7 +57,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_tune_result", driver.oid) in registrations
     assert ("foci_selftest_result", driver.oid) in registrations
     assert ("foci_selftest_done", driver.oid) in registrations
-    assert ("foci_trace_info_result", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations
     assert ("foci_stepper_perf_event", None) in registrations
 
@@ -433,22 +431,6 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
     ]
 
 
-def test_trace_protocol_methods_send_existing_payloads():
-    driver = make_driver()
-    driver.protocol.commands.trace_fetch = MockCommand({"status": 0, "data": b"sample"})
-
-    driver.protocol.trace_start(preset=1)
-    driver.protocol.trace_stop()
-    driver.protocol.trace_info()
-    result = driver.protocol.trace_fetch(offset=7, generation=3)
-
-    assert driver.protocol.commands.trace_start.last_args == [driver.oid, 1]
-    assert driver.protocol.commands.trace_stop.last_args == [driver.oid]
-    assert driver.protocol.commands.trace_info.last_args == [driver.oid]
-    assert driver.protocol.commands.trace_fetch.last_args == [driver.oid, 7, 3]
-    assert result == {"status": 0, "data": b"sample"}
-
-
 def test_core_workflow_methods_send_existing_payloads():
     driver = make_driver()
 
@@ -533,7 +515,6 @@ def test_mock_driver_exposes_protocol_commands_without_driver_command_aliases():
 
     assert driver.protocol.commands.set_current is not None
     assert driver.protocol.commands.current_step_test is not None
-    assert driver.protocol.commands.trace_start is not None
 
     for name in (
         "set_current_cmd",
@@ -543,6 +524,5 @@ def test_mock_driver_exposes_protocol_commands_without_driver_command_aliases():
         "selftest_cmd",
         "dump_cmd",
         "current_step_test_cmd",
-        "trace_start_cmd",
     ):
         assert not hasattr(driver, name)

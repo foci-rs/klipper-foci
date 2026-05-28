@@ -1592,49 +1592,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
 
 # =========================================================================
-# 14. FOCI_TRACE_START / FOCI_TRACE_STOP debug commands
-# =========================================================================
-
-
-class TestTraceControlCommands(unittest.TestCase):
-    def test_trace_start_defaults_to_full_preset(self):
-        d = make_driver()
-
-        d.trace.trace_start(MockGCmd())
-
-        self.assertEqual(d.protocol.commands.trace_start.last_args, [d.oid, 1])
-
-    def test_trace_start_accepts_fast_preset(self):
-        d = make_driver()
-
-        d.trace.trace_start(MockGCmd({"PRESET": "fast"}))
-
-        self.assertEqual(d.protocol.commands.trace_start.last_args, [d.oid, 0])
-
-    def test_trace_start_accepts_velocity_preset(self):
-        d = make_driver()
-
-        d.trace.trace_start(MockGCmd({"PRESET": "velocity"}))
-
-        self.assertEqual(d.protocol.commands.trace_start.last_args, [d.oid, 2])
-
-    def test_trace_start_rejects_unknown_preset(self):
-        d = make_driver()
-
-        with self.assertRaises(CommandError) as ctx:
-            d.trace.trace_start(MockGCmd({"PRESET": "wide"}))
-
-        self.assertIn("unknown trace preset", str(ctx.exception).lower())
-
-    def test_trace_stop_sends_stop_command(self):
-        d = make_driver()
-
-        d.trace.trace_stop(MockGCmd())
-
-        self.assertEqual(d.protocol.commands.trace_stop.last_args, [d.oid])
-
-
-# =========================================================================
 # 11. Phase and error name coverage
 # =========================================================================
 

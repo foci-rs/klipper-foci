@@ -67,10 +67,6 @@ class FociMcuCommands:
         self.position_torque_offset_sample_test = None
         self.voltage_step_test = None
         self.set_auto_calibrate_on_enable = None
-        self.trace_info = None
-        self.trace_start = None
-        self.trace_stop = None
-        self.trace_fetch = None
 
     def bind(self, driver, mcu, oid: int) -> None:
         """Bind MCU command handles and response callbacks for one FOCI OID."""
@@ -263,19 +259,6 @@ class FociMcuCommands:
         )
         self.set_auto_calibrate_on_enable = mcu.lookup_command(
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
-        )
-        self.trace_info = mcu.lookup_command("foci_trace_info oid=%c")
-        self.trace_start = mcu.lookup_command("foci_trace_start oid=%c preset=%c")
-        self.trace_stop = mcu.lookup_command("foci_trace_stop oid=%c")
-        self.trace_fetch = mcu.lookup_query_command(
-            "foci_trace_fetch oid=%c offset=%hu generation=%c",
-            "foci_trace_data oid=%c offset=%hu status=%c data=%*s",
-            oid=oid,
-        )
-        mcu._serial.register_response(
-            driver.trace.handle_trace_info_result,
-            "foci_trace_info_result",
-            oid,
         )
         mcu._serial.register_response(
             driver.selftest.handle_selftest_result,
@@ -560,18 +543,6 @@ class FociProtocol:
         self.commands.voltage_step_test.send(
             [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
         )
-
-    def trace_start(self, *, preset: int) -> None:
-        self.commands.trace_start.send([self.driver.oid, preset])
-
-    def trace_stop(self) -> None:
-        self.commands.trace_stop.send([self.driver.oid])
-
-    def trace_info(self) -> None:
-        self.commands.trace_info.send([self.driver.oid])
-
-    def trace_fetch(self, *, offset: int, generation: int) -> dict:
-        return self.commands.trace_fetch.send([self.driver.oid, offset, generation])
 
     def configure_startup(
         self,

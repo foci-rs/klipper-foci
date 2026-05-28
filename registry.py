@@ -118,27 +118,6 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Query FOCI MCU step-dispatch cycle counters without motion",
     ),
     GcodeCommandSpec(
-        "FOCI_TRACE",
-        "advanced",
-        "trace",
-        "trace",
-        "Fetch and display trace capture buffer",
-    ),
-    GcodeCommandSpec(
-        "FOCI_TRACE_START",
-        "advanced",
-        "trace",
-        "trace_start",
-        "Start FOCI per-tick trace capture",
-    ),
-    GcodeCommandSpec(
-        "FOCI_TRACE_STOP",
-        "advanced",
-        "trace",
-        "trace_stop",
-        "Stop FOCI per-tick trace capture",
-    ),
-    GcodeCommandSpec(
         "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
         "expert",
         "controls",
