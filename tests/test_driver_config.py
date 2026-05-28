@@ -7,6 +7,8 @@ from dataclasses import fields
 import pytest
 
 from klipper_foci.config import (
+    CONTROL_SETTING_FIELDS,
+    FociControlSettings,
     FociDriverConfig,
     RuntimeValidationResult,
     parse_driver_config,
@@ -96,6 +98,49 @@ CONFIG_FIELD_NAMES = {
 }
 
 
+EXPECTED_CONTROL_SETTING_FIELDS = (
+    "run_current",
+    "voltage_limit",
+    "pid_flux_p",
+    "pid_flux_i",
+    "pid_torque_p",
+    "pid_torque_i",
+    "velocity_filter_hz",
+    "torque_filter_hz",
+    "position_filter_hz",
+    "flux_filter_hz",
+    "pid_position_p",
+    "pid_position_i",
+    "pid_velocity_p",
+    "pid_velocity_i",
+    "velocity_feedforward",
+    "velocity_feedforward_multiplier",
+    "velocity_transient_feedforward",
+    "velocity_transient_lead_time_us",
+    "velocity_transient_gain",
+    "velocity_transient_max_offset",
+    "velocity_transient_rate_hz",
+    "accel_feedforward",
+    "accel_feedforward_accel_gain",
+    "accel_feedforward_decel_gain",
+    "decoupling_feedforward",
+    "decoupling_r_int",
+    "decoupling_l_int",
+    "decoupling_pole_pairs",
+    "decoupling_position_units_per_rev",
+    "decoupling_f_pwm_hz",
+    "decoupling_max_offset",
+    "position_lead",
+    "position_lead_gain",
+    "position_lead_max_counts",
+    "phase_advance",
+    "phase_advance_gain_ppm",
+    "phase_advance_max_counts",
+    "phase_advance_deadband",
+    "pid_velocity_limit",
+)
+
+
 def make_foci_config(stepper_values=None, foci_values=None, chips=None):
     stepper_values = dict(stepper_values or {})
     stepper_values.setdefault("step_pin", "foci:STEP0")
@@ -112,6 +157,17 @@ def make_foci_config(stepper_values=None, foci_values=None, chips=None):
 
 def test_foci_driver_config_field_inventory_is_explicit():
     assert {field.name for field in fields(FociDriverConfig)} == CONFIG_FIELD_NAMES
+
+
+def test_foci_control_settings_field_inventory_and_types_match_config():
+    settings_fields = tuple(field.name for field in fields(FociControlSettings))
+    assert settings_fields == EXPECTED_CONTROL_SETTING_FIELDS
+    assert CONTROL_SETTING_FIELDS == EXPECTED_CONTROL_SETTING_FIELDS
+
+    config_types = {field.name: field.type for field in fields(FociDriverConfig)}
+    settings_types = {field.name: field.type for field in fields(FociControlSettings)}
+    for field_name in EXPECTED_CONTROL_SETTING_FIELDS:
+        assert settings_types[field_name] == config_types[field_name]
 
 
 def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
@@ -467,3 +523,73 @@ def test_handle_connect_installs_validation_result():
 
     assert driver.state.runtime_status == "commissioned"
     assert driver.state.active_gains["velocity_p"] == 1100
+
+
+def test_handle_connect_reads_payloads_from_settings_not_config():
+    _printer, _chips, sections, config = make_foci_config(
+        foci_values={
+            "run_current": 0.8,
+            "encoder_ppr": 1200,
+            "voltage_limit": 16000,
+            "velocity_feedforward": False,
+            "velocity_feedforward_multiplier": 1,
+        }
+    )
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver.settings.run_current = 1.5
+    driver.settings.voltage_limit = 22000
+    driver.settings.pid_flux_p = 101
+    driver.settings.pid_flux_i = 102
+    driver.settings.pid_torque_p = 103
+    driver.settings.pid_torque_i = 104
+    driver.settings.pid_position_p = 201
+    driver.settings.pid_position_i = 202
+    driver.settings.pid_velocity_p = 203
+    driver.settings.pid_velocity_i = 204
+    driver.settings.velocity_filter_hz = 40
+    driver.settings.torque_filter_hz = 50
+    driver.settings.position_filter_hz = 60
+    driver.settings.flux_filter_hz = 70
+    driver.settings.velocity_feedforward = True
+    driver.settings.velocity_feedforward_multiplier = 9
+    driver.settings.pid_velocity_limit = 123456
+
+    driver.config.run_current = 0.1
+    driver.config.voltage_limit = 0
+    driver.config.pid_flux_p = None
+    driver.config.pid_position_p = None
+    driver.config.velocity_filter_hz = 0
+    driver.config.velocity_feedforward = False
+    driver.config.velocity_feedforward_multiplier = 1
+    driver.config.pid_velocity_limit = None
+
+    driver._handle_connect()
+
+    assert driver.protocol.commands.set_current.last_args == [10, 1500]
+    assert driver.protocol.commands.set_voltage_limit.last_args == [10, 22000]
+    assert driver.protocol.commands.set_pid_gains.last_args == [
+        10,
+        101,
+        102,
+        103,
+        104,
+    ]
+    assert driver.protocol.commands.set_position_gains.last_args == [
+        10,
+        201,
+        202,
+        203,
+        204,
+    ]
+    assert driver.protocol.commands.set_velocity_filter.last_args == [10, 40]
+    assert driver.protocol.commands.set_torque_filter.last_args == [10, 50]
+    assert driver.protocol.commands.set_position_filter.last_args == [10, 60]
+    assert driver.protocol.commands.set_flux_filter.last_args == [10, 70]
+    assert driver.protocol.commands.set_velocity_feedforward.last_args == [
+        10,
+        1,
+        9,
+    ]
+    assert driver.protocol.commands.set_velocity_limit.last_args == [10, 123456]

@@ -10,6 +10,7 @@ from __future__ import annotations
 from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
+from klipper_foci.config import FociControlSettings
 from klipper_foci.diagnostics import DiagnosticsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
@@ -601,6 +602,7 @@ def make_driver(
     # make_driver bypasses FociDriver.__init__; point config at the mirrored
     # driver fields so tests that mutate them before _handle_connect stay live.
     driver.config = driver
+    driver.settings = FociControlSettings.from_config(driver)
 
     driver.mcu = MockMCU()
     if bind_protocol:

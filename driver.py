@@ -11,7 +11,11 @@ from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
 )
-from .config import parse_driver_config, validate_runtime_config
+from .config import (
+    FociControlSettings,
+    parse_driver_config,
+    validate_runtime_config,
+)
 from .controls import (
     ControlsWorkflow,
 )
@@ -39,6 +43,7 @@ class FociDriver:
         self.foci_mode: str = self.global_config.mode
 
         self.config = parse_driver_config(config)
+        self.settings = FociControlSettings.from_config(self.config)
         for field in fields(self.config):
             setattr(self, field.name, getattr(self.config, field.name))
 
@@ -152,42 +157,43 @@ class FociDriver:
         PPR to the firmware. Warns if the configured microstep resolution
         does not match the encoder's natural resolution.
         """
-        run_ma: int = int(self.run_current * 1000.0)
+        settings = self.settings
+        run_ma: int = int(settings.run_current * 1000.0)
         pid_gains = None
-        if self.pid_flux_p is not None:
+        if settings.pid_flux_p is not None:
             pid_gains = (
-                self.pid_flux_p,
-                self.pid_flux_i,
-                self.pid_torque_p,
-                self.pid_torque_i,
+                settings.pid_flux_p,
+                settings.pid_flux_i,
+                settings.pid_torque_p,
+                settings.pid_torque_i,
             )
         position_gains = None
-        if self.pid_position_p is not None:
+        if settings.pid_position_p is not None:
             position_gains = (
-                self.pid_position_p,
-                self.pid_position_i,
-                self.pid_velocity_p,
-                self.pid_velocity_i,
+                settings.pid_position_p,
+                settings.pid_position_i,
+                settings.pid_velocity_p,
+                settings.pid_velocity_i,
             )
         self.protocol.configure_startup(
             current_ma=run_ma,
-            voltage_limit=self.voltage_limit,
+            voltage_limit=settings.voltage_limit,
             channel=self.channel,
             encoder_ppr=self.encoder_ppr,
             encoder_reversed=self.encoder_reversed,
             pid_gains=pid_gains,
             filter_hz={
-                "velocity": self.velocity_filter_hz,
-                "torque": self.torque_filter_hz,
-                "position": self.position_filter_hz,
-                "flux": self.flux_filter_hz,
+                "velocity": settings.velocity_filter_hz,
+                "torque": settings.torque_filter_hz,
+                "position": settings.position_filter_hz,
+                "flux": settings.flux_filter_hz,
             },
             position_gains=position_gains,
             velocity_feedforward=(
-                self.velocity_feedforward,
-                self.velocity_feedforward_multiplier,
+                settings.velocity_feedforward,
+                settings.velocity_feedforward_multiplier,
             ),
-            velocity_limit=self.pid_velocity_limit,
+            velocity_limit=settings.pid_velocity_limit,
         )
         encoder_steps: int = self.encoder_ppr * 4
         configured_steps: int = self.microsteps * self.full_steps
