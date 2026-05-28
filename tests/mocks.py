@@ -7,16 +7,10 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
-from dataclasses import fields
-
 from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
-from klipper_foci.config import (
-    CONTROL_SETTING_FIELDS,
-    FociControlSettings,
-    parse_driver_config,
-)
+from klipper_foci.config import FociControlSettings, parse_driver_config
 from klipper_foci.diagnostics import DiagnosticsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
@@ -521,7 +515,7 @@ def make_driver(
     printer._objects["stepper_enable"] = MockStepperEnable()
     driver.printer = printer
 
-    # Volatile state (matches __init__ lines 700-719)
+    # Runtime collaborators installed by FociDriver.__init__.
     driver.protocol = FociProtocol(driver)
     driver.state = FociRuntimeState()
     driver.dump = RegisterDumpWorkflow(driver)
@@ -554,10 +548,10 @@ def make_driver(
     }
     driver.config = parse_driver_config(MockConfig(printer, sections, driver.name))
     driver.settings = FociControlSettings.from_config(driver.config)
-    for field in fields(driver.config):
-        if field.name in CONTROL_SETTING_FIELDS:
-            continue
-        setattr(driver, field.name, getattr(driver.config, field.name))
+    driver.name = driver.config.name
+    driver.stepper_name = driver.config.stepper_name
+    driver.mcu = driver.config.mcu
+    driver.channel = driver.config.channel
 
     if bind_protocol:
         driver.protocol.bind_mcu(driver.mcu, driver.oid)
