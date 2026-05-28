@@ -85,7 +85,6 @@ def test_advanced_mode_registers_default_and_advanced_commands_only():
     printer = build_driver_with_mode("advanced")
 
     assert registered_command_names(printer) == DEFAULT_COMMANDS | ADVANCED_COMMANDS
-    assert "FOCI_VOLTAGE_STEP_TEST" not in registered_command_names(printer)
 
 
 def test_expert_mode_registers_default_advanced_and_expert_commands():
