@@ -530,7 +530,7 @@ class TestStateTransitions(unittest.TestCase):
 
     def test_active_gain_apply_resends_configured_voltage_limit(self):
         d = make_driver()
-        d.voltage_limit = 29000
+        d.settings.voltage_limit = 29000
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
 
         d.homing.apply_active_gains_to_firmware()
@@ -866,7 +866,8 @@ class TestDebugGainsCommand(unittest.TestCase):
         d.controls.set_current(gcmd)
 
         self.assertEqual(d.protocol.commands.set_current.last_args, [d.oid, 1700])
-        self.assertEqual(d.run_current, 1.7)
+        self.assertEqual(d.settings.run_current, 1.7)
+        self.assertEqual(d.config.run_current, 0.8)
         self.assertIn("run_current=1.700A", gcmd.last_info)
 
     def test_sets_position_and_velocity_gains_as_q8_8(self):
@@ -887,10 +888,10 @@ class TestDebugGainsCommand(unittest.TestCase):
             d.protocol.commands.set_position_gains.last_args,
             [d.oid, 256, 0, 512, 0],
         )
-        self.assertEqual(d.pid_velocity_p, 512)
-        self.assertEqual(d.pid_velocity_i, 0)
-        self.assertEqual(d.pid_position_p, 256)
-        self.assertEqual(d.pid_position_i, 0)
+        self.assertEqual(d.settings.pid_velocity_p, 512)
+        self.assertEqual(d.settings.pid_velocity_i, 0)
+        self.assertEqual(d.settings.pid_position_p, 256)
+        self.assertEqual(d.settings.pid_position_i, 0)
 
     def test_updates_active_gains_without_persisting(self):
         d = make_driver()
@@ -973,12 +974,12 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 1, 8]
         )
-        self.assertTrue(d.velocity_feedforward)
-        self.assertEqual(d.velocity_feedforward_multiplier, 8)
+        self.assertTrue(d.settings.velocity_feedforward)
+        self.assertEqual(d.settings.velocity_feedforward_multiplier, 8)
 
     def test_disable_preserves_configured_multiplier(self):
         d = make_driver()
-        d.velocity_feedforward_multiplier = 4
+        d.settings.velocity_feedforward_multiplier = 4
 
         d.controls.set_velocity_feedforward(
             MockGCmd(
@@ -991,8 +992,8 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 0, 4]
         )
-        self.assertFalse(d.velocity_feedforward)
-        self.assertEqual(d.velocity_feedforward_multiplier, 4)
+        self.assertFalse(d.settings.velocity_feedforward)
+        self.assertEqual(d.settings.velocity_feedforward_multiplier, 4)
 
 
 # =========================================================================
@@ -1020,18 +1021,18 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
             d.protocol.commands.set_velocity_transient_feedforward.last_args,
             [d.oid, 1, 400, 750, 1200, 10000],
         )
-        self.assertTrue(d.velocity_transient_feedforward)
-        self.assertEqual(d.velocity_transient_lead_time_us, 400)
-        self.assertEqual(d.velocity_transient_gain, 750)
-        self.assertEqual(d.velocity_transient_max_offset, 1200)
-        self.assertEqual(d.velocity_transient_rate_hz, 10000)
+        self.assertTrue(d.settings.velocity_transient_feedforward)
+        self.assertEqual(d.settings.velocity_transient_lead_time_us, 400)
+        self.assertEqual(d.settings.velocity_transient_gain, 750)
+        self.assertEqual(d.settings.velocity_transient_max_offset, 1200)
+        self.assertEqual(d.settings.velocity_transient_rate_hz, 10000)
 
     def test_disable_preserves_transient_parameters(self):
         d = make_driver()
-        d.velocity_transient_lead_time_us = 250
-        d.velocity_transient_gain = 500
-        d.velocity_transient_max_offset = 900
-        d.velocity_transient_rate_hz = 10000
+        d.settings.velocity_transient_lead_time_us = 250
+        d.settings.velocity_transient_gain = 500
+        d.settings.velocity_transient_max_offset = 900
+        d.settings.velocity_transient_rate_hz = 10000
 
         d.controls.set_velocity_transient_feedforward(
             MockGCmd(
@@ -1045,11 +1046,11 @@ class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
             d.protocol.commands.set_velocity_transient_feedforward.last_args,
             [d.oid, 0, 250, 500, 900, 10000],
         )
-        self.assertFalse(d.velocity_transient_feedforward)
-        self.assertEqual(d.velocity_transient_lead_time_us, 250)
-        self.assertEqual(d.velocity_transient_gain, 500)
-        self.assertEqual(d.velocity_transient_max_offset, 900)
-        self.assertEqual(d.velocity_transient_rate_hz, 10000)
+        self.assertFalse(d.settings.velocity_transient_feedforward)
+        self.assertEqual(d.settings.velocity_transient_lead_time_us, 250)
+        self.assertEqual(d.settings.velocity_transient_gain, 500)
+        self.assertEqual(d.settings.velocity_transient_max_offset, 900)
+        self.assertEqual(d.settings.velocity_transient_rate_hz, 10000)
 
 
 # =========================================================================
@@ -1074,9 +1075,9 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 750, 250]
         )
-        self.assertTrue(d.accel_feedforward)
-        self.assertEqual(d.accel_feedforward_accel_gain, 750)
-        self.assertEqual(d.accel_feedforward_decel_gain, 250)
+        self.assertTrue(d.settings.accel_feedforward)
+        self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
+        self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
 
     def test_gain_alias_sets_both_split_gains(self):
         d = make_driver()
@@ -1093,14 +1094,14 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 500, 500]
         )
-        self.assertTrue(d.accel_feedforward)
-        self.assertEqual(d.accel_feedforward_accel_gain, 500)
-        self.assertEqual(d.accel_feedforward_decel_gain, 500)
+        self.assertTrue(d.settings.accel_feedforward)
+        self.assertEqual(d.settings.accel_feedforward_accel_gain, 500)
+        self.assertEqual(d.settings.accel_feedforward_decel_gain, 500)
 
     def test_disable_preserves_configured_gain(self):
         d = make_driver()
-        d.accel_feedforward_accel_gain = 750
-        d.accel_feedforward_decel_gain = 250
+        d.settings.accel_feedforward_accel_gain = 750
+        d.settings.accel_feedforward_decel_gain = 250
 
         d.controls.set_accel_feedforward(
             MockGCmd(
@@ -1113,9 +1114,9 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 0, 750, 250]
         )
-        self.assertFalse(d.accel_feedforward)
-        self.assertEqual(d.accel_feedforward_accel_gain, 750)
-        self.assertEqual(d.accel_feedforward_decel_gain, 250)
+        self.assertFalse(d.settings.accel_feedforward)
+        self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
+        self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
 
 
 # =========================================================================
@@ -1145,13 +1146,13 @@ class TestDecouplingFeedforwardCommand(unittest.TestCase):
             d.protocol.commands.set_decoupling_feedforward.last_args,
             [d.oid, 1, 3000, 4095, 50, 65536, 25000, 500],
         )
-        self.assertTrue(d.decoupling_feedforward)
-        self.assertEqual(d.decoupling_r_int, 3000)
-        self.assertEqual(d.decoupling_l_int, 4095)
-        self.assertEqual(d.decoupling_pole_pairs, 50)
-        self.assertEqual(d.decoupling_position_units_per_rev, 65536)
-        self.assertEqual(d.decoupling_f_pwm_hz, 25000)
-        self.assertEqual(d.decoupling_max_offset, 500)
+        self.assertTrue(d.settings.decoupling_feedforward)
+        self.assertEqual(d.settings.decoupling_r_int, 3000)
+        self.assertEqual(d.settings.decoupling_l_int, 4095)
+        self.assertEqual(d.settings.decoupling_pole_pairs, 50)
+        self.assertEqual(d.settings.decoupling_position_units_per_rev, 65536)
+        self.assertEqual(d.settings.decoupling_f_pwm_hz, 25000)
+        self.assertEqual(d.settings.decoupling_max_offset, 500)
 
 
 # =========================================================================
@@ -1176,23 +1177,23 @@ class TestPositionLeadCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_position_lead.last_args, [d.oid, 1, 10, 20]
         )
-        self.assertTrue(d.position_lead)
-        self.assertEqual(d.position_lead_gain, 10)
-        self.assertEqual(d.position_lead_max_counts, 20)
+        self.assertTrue(d.settings.position_lead)
+        self.assertEqual(d.settings.position_lead_gain, 10)
+        self.assertEqual(d.settings.position_lead_max_counts, 20)
 
     def test_disable_preserves_position_lead_gain_and_cap(self):
         d = make_driver()
-        d.position_lead_gain = 10
-        d.position_lead_max_counts = 20
+        d.settings.position_lead_gain = 10
+        d.settings.position_lead_max_counts = 20
 
         d.controls.set_position_lead(MockGCmd({"ENABLE": 0}))
 
         self.assertEqual(
             d.protocol.commands.set_position_lead.last_args, [d.oid, 0, 10, 20]
         )
-        self.assertFalse(d.position_lead)
-        self.assertEqual(d.position_lead_gain, 10)
-        self.assertEqual(d.position_lead_max_counts, 20)
+        self.assertFalse(d.settings.position_lead)
+        self.assertEqual(d.settings.position_lead_gain, 10)
+        self.assertEqual(d.settings.position_lead_max_counts, 20)
 
 
 # =========================================================================
@@ -1219,16 +1220,16 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
             d.protocol.commands.set_phase_advance.last_args,
             [d.oid, 1, -60000, 64, 16],
         )
-        self.assertTrue(d.phase_advance)
-        self.assertEqual(d.phase_advance_gain_ppm, -60000)
-        self.assertEqual(d.phase_advance_max_counts, 64)
-        self.assertEqual(d.phase_advance_deadband, 16)
+        self.assertTrue(d.settings.phase_advance)
+        self.assertEqual(d.settings.phase_advance_gain_ppm, -60000)
+        self.assertEqual(d.settings.phase_advance_max_counts, 64)
+        self.assertEqual(d.settings.phase_advance_deadband, 16)
 
     def test_disable_preserves_phase_advance_parameters(self):
         d = make_driver()
-        d.phase_advance_gain_ppm = 60000
-        d.phase_advance_max_counts = 64
-        d.phase_advance_deadband = 16
+        d.settings.phase_advance_gain_ppm = 60000
+        d.settings.phase_advance_max_counts = 64
+        d.settings.phase_advance_deadband = 16
 
         d.controls.set_phase_advance(MockGCmd({"ENABLE": 0}))
 
@@ -1236,10 +1237,10 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
             d.protocol.commands.set_phase_advance.last_args,
             [d.oid, 0, 60000, 64, 16],
         )
-        self.assertFalse(d.phase_advance)
-        self.assertEqual(d.phase_advance_gain_ppm, 60000)
-        self.assertEqual(d.phase_advance_max_counts, 64)
-        self.assertEqual(d.phase_advance_deadband, 16)
+        self.assertFalse(d.settings.phase_advance)
+        self.assertEqual(d.settings.phase_advance_gain_ppm, 60000)
+        self.assertEqual(d.settings.phase_advance_max_counts, 64)
+        self.assertEqual(d.settings.phase_advance_deadband, 16)
 
     def test_enable_with_no_parameters_is_safe_noop(self):
         d = make_driver()
@@ -1249,10 +1250,10 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.set_phase_advance.last_args, [d.oid, 1, 0, 0, 16]
         )
-        self.assertTrue(d.phase_advance)
-        self.assertEqual(d.phase_advance_gain_ppm, 0)
-        self.assertEqual(d.phase_advance_max_counts, 0)
-        self.assertEqual(d.phase_advance_deadband, 16)
+        self.assertTrue(d.settings.phase_advance)
+        self.assertEqual(d.settings.phase_advance_gain_ppm, 0)
+        self.assertEqual(d.settings.phase_advance_max_counts, 0)
+        self.assertEqual(d.settings.phase_advance_deadband, 16)
 
 
 # =========================================================================
@@ -1291,6 +1292,17 @@ class TestVoltageLimitCommand(unittest.TestCase):
 
         self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 0])
         self.assertIn("pidout_uq_ud_limit=0", gcmd.last_info)
+
+    def test_voltage_limit_change_is_used_by_homing_preload(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+
+        d.controls.set_voltage_limit(MockGCmd({"VOLTAGE_LIMIT": 20000}))
+        d.homing.apply_active_gains_to_firmware()
+
+        self.assertEqual(
+            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000]
+        )
 
 
 # =========================================================================

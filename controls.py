@@ -31,10 +31,10 @@ class ControlsWorkflow:
             velocity_i,
         )
 
-        self.driver.pid_velocity_p = velocity_p
-        self.driver.pid_velocity_i = velocity_i
-        self.driver.pid_position_p = position_p
-        self.driver.pid_position_i = position_i
+        self.driver.settings.pid_velocity_p = velocity_p
+        self.driver.settings.pid_velocity_i = velocity_i
+        self.driver.settings.pid_position_p = position_p
+        self.driver.settings.pid_position_i = position_i
         if self.driver.state.active_gains is not None:
             self.driver.state.active_gains["velocity_p"] = velocity_p
             self.driver.state.active_gains["velocity_i"] = velocity_i
@@ -64,6 +64,10 @@ class ControlsWorkflow:
 
         self.driver.protocol.set_pid_gains(flux_p, flux_i, torque_p, torque_i)
 
+        self.driver.settings.pid_flux_p = flux_p
+        self.driver.settings.pid_flux_i = flux_i
+        self.driver.settings.pid_torque_p = torque_p
+        self.driver.settings.pid_torque_i = torque_i
         if self.driver.state.active_gains is not None:
             self.driver.state.active_gains["flux_p"] = flux_p
             self.driver.state.active_gains["flux_i"] = flux_i
@@ -100,7 +104,7 @@ class ControlsWorkflow:
 
         run_ma = int(run_current * 1000.0 + 0.5)
         self.driver.protocol.set_current(run_ma)
-        self.driver.run_current = run_current
+        self.driver.settings.run_current = run_current
 
         gcmd.respond_info(
             "FOCI %s run current set: run_current=%.3fA run_ma=%d"
@@ -112,14 +116,14 @@ class ControlsWorkflow:
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
         multiplier = gcmd.get_int(
             "MULTIPLIER",
-            self.driver.velocity_feedforward_multiplier,
+            self.driver.settings.velocity_feedforward_multiplier,
             minval=0,
             maxval=65535,
         )
 
         self.driver.protocol.set_velocity_feedforward(bool(enable), multiplier)
-        self.driver.velocity_feedforward = enable != 0
-        self.driver.velocity_feedforward_multiplier = multiplier
+        self.driver.settings.velocity_feedforward = enable != 0
+        self.driver.settings.velocity_feedforward_multiplier = multiplier
 
         gcmd.respond_info(
             "FOCI %s velocity feedforward set: enable=%d multiplier=%d"
@@ -131,25 +135,25 @@ class ControlsWorkflow:
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
         lead_time_us = gcmd.get_int(
             "LEAD_TIME_US",
-            self.driver.velocity_transient_lead_time_us,
+            self.driver.settings.velocity_transient_lead_time_us,
             minval=0,
             maxval=65535,
         )
         gain = gcmd.get_int(
             "GAIN",
-            self.driver.velocity_transient_gain,
+            self.driver.settings.velocity_transient_gain,
             minval=0,
             maxval=65535,
         )
         max_offset = gcmd.get_int(
             "MAX_OFFSET",
-            self.driver.velocity_transient_max_offset,
+            self.driver.settings.velocity_transient_max_offset,
             minval=0,
             maxval=32767,
         )
         rate_hz = gcmd.get_int(
             "RATE_HZ",
-            self.driver.velocity_transient_rate_hz,
+            self.driver.settings.velocity_transient_rate_hz,
             minval=1000,
             maxval=10000,
         )
@@ -157,11 +161,11 @@ class ControlsWorkflow:
         self.driver.protocol.commands.set_velocity_transient_feedforward.send(
             [self.driver.oid, enable, lead_time_us, gain, max_offset, rate_hz]
         )
-        self.driver.velocity_transient_feedforward = enable != 0
-        self.driver.velocity_transient_lead_time_us = lead_time_us
-        self.driver.velocity_transient_gain = gain
-        self.driver.velocity_transient_max_offset = max_offset
-        self.driver.velocity_transient_rate_hz = rate_hz
+        self.driver.settings.velocity_transient_feedforward = enable != 0
+        self.driver.settings.velocity_transient_lead_time_us = lead_time_us
+        self.driver.settings.velocity_transient_gain = gain
+        self.driver.settings.velocity_transient_max_offset = max_offset
+        self.driver.settings.velocity_transient_rate_hz = rate_hz
 
         gcmd.respond_info(
             "FOCI %s velocity transient feedforward set: enable=%d"
@@ -196,8 +200,8 @@ class ControlsWorkflow:
             default_accel_gain = alias_gain
             default_decel_gain = alias_gain
         else:
-            default_accel_gain = self.driver.accel_feedforward_accel_gain
-            default_decel_gain = self.driver.accel_feedforward_decel_gain
+            default_accel_gain = self.driver.settings.accel_feedforward_accel_gain
+            default_decel_gain = self.driver.settings.accel_feedforward_decel_gain
         accel_gain = gcmd.get_int(
             "ACCEL_GAIN",
             default_accel_gain,
@@ -214,9 +218,9 @@ class ControlsWorkflow:
         self.driver.protocol.commands.set_accel_feedforward.send(
             [self.driver.oid, enable, accel_gain, decel_gain]
         )
-        self.driver.accel_feedforward = enable != 0
-        self.driver.accel_feedforward_accel_gain = accel_gain
-        self.driver.accel_feedforward_decel_gain = decel_gain
+        self.driver.settings.accel_feedforward = enable != 0
+        self.driver.settings.accel_feedforward_accel_gain = accel_gain
+        self.driver.settings.accel_feedforward_decel_gain = decel_gain
 
         gcmd.respond_info(
             "FOCI %s acceleration feedforward set: enable=%d"
@@ -229,37 +233,37 @@ class ControlsWorkflow:
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
         r_int = gcmd.get_int(
             "R_INT",
-            self.driver.decoupling_r_int,
+            self.driver.settings.decoupling_r_int,
             minval=1,
             maxval=0xFFFFFFFF,
         )
         l_int = gcmd.get_int(
             "L_INT",
-            self.driver.decoupling_l_int,
+            self.driver.settings.decoupling_l_int,
             minval=1,
             maxval=0xFFFFFFFF,
         )
         pole_pairs = gcmd.get_int(
             "POLE_PAIRS",
-            self.driver.decoupling_pole_pairs,
+            self.driver.settings.decoupling_pole_pairs,
             minval=1,
             maxval=65535,
         )
         position_units_per_rev = gcmd.get_int(
             "POSITION_UNITS_PER_REV",
-            self.driver.decoupling_position_units_per_rev,
+            self.driver.settings.decoupling_position_units_per_rev,
             minval=1,
             maxval=0xFFFFFFFF,
         )
         f_pwm_hz = gcmd.get_int(
             "F_PWM_HZ",
-            self.driver.decoupling_f_pwm_hz,
+            self.driver.settings.decoupling_f_pwm_hz,
             minval=1,
             maxval=0xFFFFFFFF,
         )
         max_offset = gcmd.get_int(
             "MAX_OFFSET",
-            self.driver.decoupling_max_offset,
+            self.driver.settings.decoupling_max_offset,
             minval=0,
             maxval=32767,
         )
@@ -276,13 +280,13 @@ class ControlsWorkflow:
                 max_offset,
             ]
         )
-        self.driver.decoupling_feedforward = enable != 0
-        self.driver.decoupling_r_int = r_int
-        self.driver.decoupling_l_int = l_int
-        self.driver.decoupling_pole_pairs = pole_pairs
-        self.driver.decoupling_position_units_per_rev = position_units_per_rev
-        self.driver.decoupling_f_pwm_hz = f_pwm_hz
-        self.driver.decoupling_max_offset = max_offset
+        self.driver.settings.decoupling_feedforward = enable != 0
+        self.driver.settings.decoupling_r_int = r_int
+        self.driver.settings.decoupling_l_int = l_int
+        self.driver.settings.decoupling_pole_pairs = pole_pairs
+        self.driver.settings.decoupling_position_units_per_rev = position_units_per_rev
+        self.driver.settings.decoupling_f_pwm_hz = f_pwm_hz
+        self.driver.settings.decoupling_max_offset = max_offset
 
         gcmd.respond_info(
             "FOCI %s decoupling feedforward set: enable=%d"
@@ -305,13 +309,13 @@ class ControlsWorkflow:
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
         gain = gcmd.get_int(
             "GAIN",
-            self.driver.position_lead_gain,
+            self.driver.settings.position_lead_gain,
             minval=0,
             maxval=65535,
         )
         max_counts = gcmd.get_int(
             "MAX_COUNTS",
-            self.driver.position_lead_max_counts,
+            self.driver.settings.position_lead_max_counts,
             minval=0,
             maxval=200,
         )
@@ -319,9 +323,9 @@ class ControlsWorkflow:
         self.driver.protocol.commands.set_position_lead.send(
             [self.driver.oid, enable, gain, max_counts]
         )
-        self.driver.position_lead = enable != 0
-        self.driver.position_lead_gain = gain
-        self.driver.position_lead_max_counts = max_counts
+        self.driver.settings.position_lead = enable != 0
+        self.driver.settings.position_lead_gain = gain
+        self.driver.settings.position_lead_max_counts = max_counts
 
         gcmd.respond_info(
             "FOCI %s position lead set: enable=%d gain=%d max_counts=%d"
@@ -333,19 +337,19 @@ class ControlsWorkflow:
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
         gain_ppm = gcmd.get_int(
             "GAIN_PPM",
-            self.driver.phase_advance_gain_ppm,
+            self.driver.settings.phase_advance_gain_ppm,
             minval=-2_000_000,
             maxval=2_000_000,
         )
         max_counts = gcmd.get_int(
             "MAX_COUNTS",
-            self.driver.phase_advance_max_counts,
+            self.driver.settings.phase_advance_max_counts,
             minval=0,
             maxval=512,
         )
         deadband = gcmd.get_int(
             "DEADBAND",
-            self.driver.phase_advance_deadband,
+            self.driver.settings.phase_advance_deadband,
             minval=0,
             maxval=65535,
         )
@@ -353,10 +357,10 @@ class ControlsWorkflow:
         self.driver.protocol.commands.set_phase_advance.send(
             [self.driver.oid, enable, gain_ppm, max_counts, deadband]
         )
-        self.driver.phase_advance = enable != 0
-        self.driver.phase_advance_gain_ppm = gain_ppm
-        self.driver.phase_advance_max_counts = max_counts
-        self.driver.phase_advance_deadband = deadband
+        self.driver.settings.phase_advance = enable != 0
+        self.driver.settings.phase_advance_gain_ppm = gain_ppm
+        self.driver.settings.phase_advance_max_counts = max_counts
+        self.driver.settings.phase_advance_deadband = deadband
 
         gcmd.respond_info(
             "FOCI %s phase advance set: enable=%d gain_ppm=%d"
@@ -377,6 +381,7 @@ class ControlsWorkflow:
         )
 
         self.driver.protocol.set_voltage_limit(voltage_limit)
+        self.driver.settings.voltage_limit = voltage_limit
 
         gcmd.respond_info(
             "FOCI %s voltage limit set: pidout_uq_ud_limit=%d"

@@ -93,7 +93,7 @@ class HomingWorkflow:
             return
         self.driver.protocol.preload_active_gains(
             gains,
-            voltage_limit=self.driver.voltage_limit,
+            voltage_limit=self.driver.settings.voltage_limit,
         )
 
     def invalidate_homing(self) -> None:
