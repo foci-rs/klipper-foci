@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from .constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
+from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 
 OPENFFBOARD_CPU_CYCLES_PER_US = 168
 
