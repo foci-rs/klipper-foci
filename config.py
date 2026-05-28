@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from .constants import (
     DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
@@ -90,6 +90,59 @@ class FociDriverConfig:
     autotune_profile: str | None
     autotune_mode: str | None
     autotune_status: str | None
+
+
+@dataclass
+class FociControlSettings:
+    """Mutable live control settings seeded from parsed driver config."""
+
+    run_current: float
+    voltage_limit: int
+    pid_flux_p: int | None
+    pid_flux_i: int | None
+    pid_torque_p: int | None
+    pid_torque_i: int | None
+    velocity_filter_hz: int
+    torque_filter_hz: int
+    position_filter_hz: int
+    flux_filter_hz: int
+    pid_position_p: int | None
+    pid_position_i: int | None
+    pid_velocity_p: int | None
+    pid_velocity_i: int | None
+    velocity_feedforward: bool
+    velocity_feedforward_multiplier: int
+    velocity_transient_feedforward: bool
+    velocity_transient_lead_time_us: int
+    velocity_transient_gain: int
+    velocity_transient_max_offset: int
+    velocity_transient_rate_hz: int
+    accel_feedforward: bool
+    accel_feedforward_accel_gain: int
+    accel_feedforward_decel_gain: int
+    decoupling_feedforward: bool
+    decoupling_r_int: int
+    decoupling_l_int: int
+    decoupling_pole_pairs: int
+    decoupling_position_units_per_rev: int
+    decoupling_f_pwm_hz: int
+    decoupling_max_offset: int
+    position_lead: bool
+    position_lead_gain: int
+    position_lead_max_counts: int
+    phase_advance: bool
+    phase_advance_gain_ppm: int
+    phase_advance_max_counts: int
+    phase_advance_deadband: int
+    pid_velocity_limit: int | None
+
+    @classmethod
+    def from_config(cls, config: FociDriverConfig) -> "FociControlSettings":
+        """Seed mutable live settings from parsed config values."""
+        return cls(**{field.name: getattr(config, field.name) for field in fields(cls)})
+
+
+CONTROL_SETTING_FIELDS = tuple(field.name for field in fields(FociControlSettings))
 
 
 @dataclass
