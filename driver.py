@@ -12,6 +12,7 @@ from .commissioning import (
     CommissioningWorkflow,
 )
 from .config import (
+    CONTROL_SETTING_FIELDS,
     FociControlSettings,
     parse_driver_config,
     validate_runtime_config,
@@ -45,6 +46,8 @@ class FociDriver:
         self.config = parse_driver_config(config)
         self.settings = FociControlSettings.from_config(self.config)
         for field in fields(self.config):
+            if field.name in CONTROL_SETTING_FIELDS:
+                continue
             setattr(self, field.name, getattr(self.config, field.name))
 
         # Runtime FOCI commands use the Klipper stepper OID. It is resolved

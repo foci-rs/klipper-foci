@@ -7,10 +7,16 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
+from dataclasses import fields
+
 from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
-from klipper_foci.config import FociControlSettings
+from klipper_foci.config import (
+    CONTROL_SETTING_FIELDS,
+    FociControlSettings,
+    parse_driver_config,
+)
 from klipper_foci.diagnostics import DiagnosticsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
@@ -527,84 +533,32 @@ def make_driver(
     driver.diagnostics = DiagnosticsWorkflow(driver)
     driver.trace = LegacyTraceWorkflow(driver)
 
-    # Config values (needed by some methods)
-    driver.microsteps = 20
-    driver.full_steps = 200
-    driver.encoder_ppr = 1000
-    driver.encoder_reversed = False
-    driver.run_current = 0.8
-    driver.voltage_limit = 16000
-    driver.velocity_feedforward = False
-    driver.velocity_feedforward_multiplier = 1
-    driver.velocity_transient_feedforward = False
-    driver.velocity_transient_lead_time_us = 0
-    driver.velocity_transient_gain = 0
-    driver.velocity_transient_max_offset = 0
-    driver.velocity_transient_rate_hz = 1000
-    driver.accel_feedforward = False
-    driver.accel_feedforward_accel_gain = 1000
-    driver.accel_feedforward_decel_gain = 1000
-    driver.decoupling_feedforward = False
-    driver.decoupling_r_int = 3000
-    driver.decoupling_l_int = 4095
-    driver.decoupling_pole_pairs = 50
-    driver.decoupling_position_units_per_rev = 65536
-    driver.decoupling_f_pwm_hz = 25000
-    driver.decoupling_max_offset = 500
-    driver.position_lead = False
-    driver.position_lead_gain = 0
-    driver.position_lead_max_counts = 0
-    driver.phase_advance = False
-    driver.phase_advance_gain_ppm = 0
-    driver.phase_advance_max_counts = 0
-    driver.phase_advance_deadband = 16
-
-    # Identified values (from prior commission, used by AUTOTUNE)
-    driver.identified_r_int = None
-    driver.identified_l_int = None
-    driver.identified_lambda_us = 0
-    driver.identified_theta_e_us = 160
-    driver.identified_ringing_count = 7
-    driver.identified_bandwidth_hz = 0
-
-    # Phase 1 inner-confidence fields (added 2026-04-30). Default to None
-    # so the autotune workflow exercises the host-default fallback.
-    driver.identified_tau_e_us = None
-    driver.identified_tau_e_crosscheck_us = None
-    driver.identified_tau_residual_permille = None
-    driver.identified_inner_warning_flags = None
-
-    # Persisted gain fields
-    driver.pid_flux_p = None
-    driver.pid_flux_i = None
-    driver.pid_torque_p = None
-    driver.pid_torque_i = None
-    driver.pid_position_p = None
-    driver.pid_position_i = None
-    driver.pid_velocity_p = None
-    driver.pid_velocity_i = None
-    driver.pid_velocity_limit = None
-
-    # Commissioned fallback gains (from SAVE_CONFIG)
-    driver.commissioned_velocity_p = None
-    driver.commissioned_velocity_i = None
-    driver.commissioned_position_p = None
-    driver.commissioned_position_i = None
-    driver.commissioned_velocity_limit = None
-
-    # Persisted status and filter config
-    driver.autotune_status = None
-    driver.velocity_filter_hz = 0
-    driver.torque_filter_hz = 0
-    driver.position_filter_hz = 0
-    driver.flux_filter_hz = 0
-
-    # make_driver bypasses FociDriver.__init__; point config at the mirrored
-    # driver fields so tests that mutate them before _handle_connect stay live.
-    driver.config = driver
-    driver.settings = FociControlSettings.from_config(driver)
-
     driver.mcu = MockMCU()
+    printer._objects["pins"] = MockPins({"foci": driver.mcu})
+    sections = {
+        driver.stepper_name: {
+            "microsteps": 20,
+            "full_steps_per_rotation": 200,
+            "step_pin": "foci:STEP0",
+            "dir_pin": "foci:DIR0",
+        },
+        driver.name: {
+            "run_current": 0.8,
+            "encoder_ppr": 1000,
+            "voltage_limit": 16000,
+            "identified_lambda_us": 0,
+            "identified_theta_e_us": 160,
+            "identified_ringing_count": 7,
+            "identified_bandwidth_hz": 0,
+        },
+    }
+    driver.config = parse_driver_config(MockConfig(printer, sections, driver.name))
+    driver.settings = FociControlSettings.from_config(driver.config)
+    for field in fields(driver.config):
+        if field.name in CONTROL_SETTING_FIELDS:
+            continue
+        setattr(driver, field.name, getattr(driver.config, field.name))
+
     if bind_protocol:
         driver.protocol.bind_mcu(driver.mcu, driver.oid)
 

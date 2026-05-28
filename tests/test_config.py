@@ -455,7 +455,7 @@ def test_configured_voltage_limit_is_sent_on_connect():
 
     driver._handle_connect()
 
-    assert driver.voltage_limit == 29000
+    assert driver.settings.voltage_limit == 29000
     assert driver.protocol.commands.set_voltage_limit.last_args == [10, 29000]
 
 
@@ -480,8 +480,8 @@ def test_configured_voltage_limit_accepts_raw_chip_range():
     driver_x = make_config_driver(printer, sections, "foci stepper_x")
     driver_y = make_config_driver(printer, sections, "foci stepper_y")
 
-    assert driver_x.voltage_limit == 0
-    assert driver_y.voltage_limit == 32767
+    assert driver_x.settings.voltage_limit == 0
+    assert driver_y.settings.voltage_limit == 32767
 
 
 def test_configured_voltage_limit_rejects_values_above_chip_range():

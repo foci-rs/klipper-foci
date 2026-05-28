@@ -354,7 +354,7 @@ def test_parse_driver_config_supports_dual_mcu_binding():
     assert parsed_y.channel == 1
 
 
-def test_foci_driver_stores_config_and_mirrors_all_config_fields():
+def test_foci_driver_stores_config_and_runtime_settings():
     _printer, _chips, sections, config = make_foci_config(
         stepper_values={"microsteps": 16, "full_steps_per_rotation": 400},
         foci_values={"run_current": 0.9, "encoder_ppr": 1200},
@@ -363,12 +363,22 @@ def test_foci_driver_stores_config_and_mirrors_all_config_fields():
     driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
 
     assert isinstance(driver.config, FociDriverConfig)
+    assert isinstance(driver.settings, FociControlSettings)
     assert driver.config.run_current == 0.9
+    assert driver.settings.run_current == 0.9
     assert driver.config.encoder_ppr == 1200
+    assert driver.encoder_ppr == 1200
     assert driver.config.microsteps == 16
+    assert driver.microsteps == 16
     assert driver.config.full_steps == 400
-    for field in fields(driver.config):
-        assert getattr(driver, field.name) == getattr(driver.config, field.name)
+    assert driver.full_steps == 400
+    for field_name in CONTROL_SETTING_FIELDS:
+        assert getattr(driver.settings, field_name) == getattr(
+            driver.config, field_name
+        )
+        assert not hasattr(driver, field_name), (
+            f"{field_name} should live on driver.settings, not the driver facade"
+        )
 
 
 def parsed_config_with(foci_values):

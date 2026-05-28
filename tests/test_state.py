@@ -460,20 +460,20 @@ class TestStateTransitions(unittest.TestCase):
         )
 
         d = make_driver()
-        d.autotune_status = "commissioned"
-        d.pid_flux_p = 100
-        d.pid_flux_i = 200
-        d.pid_torque_p = 300
-        d.pid_torque_i = 400
-        d.identified_lambda_us = 1200
-        d.identified_theta_e_us = 100
-        d.identified_ringing_count = 0
-        d.identified_bandwidth_hz = 500
-        d.commissioned_velocity_p = 1100
-        d.commissioned_velocity_i = 0
-        d.commissioned_position_p = 700
-        d.commissioned_position_i = 0
-        d.commissioned_velocity_limit = 50_000
+        d.config.autotune_status = "commissioned"
+        d.config.pid_flux_p = 100
+        d.config.pid_flux_i = 200
+        d.config.pid_torque_p = 300
+        d.config.pid_torque_i = 400
+        d.config.identified_lambda_us = 1200
+        d.config.identified_theta_e_us = 100
+        d.config.identified_ringing_count = 0
+        d.config.identified_bandwidth_hz = 500
+        d.config.commissioned_velocity_p = 1100
+        d.config.commissioned_velocity_i = 0
+        d.config.commissioned_position_p = 700
+        d.config.commissioned_position_i = 0
+        d.config.commissioned_velocity_limit = 50_000
         d._handle_connect()
         self.assertEqual(
             d.protocol.commands.set_pid_gains.last_args, [d.oid, 100, 200, 300, 400]
@@ -492,20 +492,20 @@ class TestStateTransitions(unittest.TestCase):
     def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):
         d = make_driver()
         d.state.inhibited = True
-        d.autotune_status = "commissioned"
-        d.pid_flux_p = 100
-        d.pid_flux_i = 200
-        d.pid_torque_p = 300
-        d.pid_torque_i = 400
-        d.identified_lambda_us = 1200
-        d.identified_theta_e_us = 100
-        d.identified_ringing_count = 0
-        d.identified_bandwidth_hz = 500
-        d.commissioned_velocity_p = 1100
-        d.commissioned_velocity_i = 0
-        d.commissioned_position_p = 700
-        d.commissioned_position_i = 0
-        d.commissioned_velocity_limit = 50_000
+        d.config.autotune_status = "commissioned"
+        d.config.pid_flux_p = 100
+        d.config.pid_flux_i = 200
+        d.config.pid_torque_p = 300
+        d.config.pid_torque_i = 400
+        d.config.identified_lambda_us = 1200
+        d.config.identified_theta_e_us = 100
+        d.config.identified_ringing_count = 0
+        d.config.identified_bandwidth_hz = 500
+        d.config.commissioned_velocity_p = 1100
+        d.config.commissioned_velocity_i = 0
+        d.config.commissioned_position_p = 700
+        d.config.commissioned_position_i = 0
+        d.config.commissioned_velocity_limit = 50_000
         d._handle_connect()
         self.assertEqual(
             d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
