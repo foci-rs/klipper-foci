@@ -497,9 +497,7 @@ class LegacyTraceWorkflow:
                 "(expected fast, full, velocity, or hold)"
                 % (self.driver.name, preset_name)
             )
-        self.driver.protocol.commands.trace_start.send(
-            [self.driver.oid, presets[preset_name]]
-        )
+        self.driver.protocol.trace_start(preset=presets[preset_name])
         gcmd.respond_info(
             "FOCI %s trace capture started (%s preset)"
             % (self.driver.name, preset_name)
@@ -507,7 +505,7 @@ class LegacyTraceWorkflow:
 
     def trace_stop(self, gcmd) -> None:
         """Stop per-tick trace capture for the selected stepper."""
-        self.driver.protocol.commands.trace_stop.send([self.driver.oid])
+        self.driver.protocol.trace_stop()
         gcmd.respond_info("FOCI %s trace capture stopped" % self.driver.name)
 
     def trace(self, gcmd) -> None:
@@ -517,7 +515,7 @@ class LegacyTraceWorkflow:
 
         self.trace_info = None
         self.trace_info_received = False
-        self.driver.protocol.commands.trace_info.send([self.driver.oid])
+        self.driver.protocol.trace_info()
 
         reactor = self.driver.printer.get_reactor()
         deadline = reactor.monotonic() + 5.0
@@ -562,9 +560,7 @@ class LegacyTraceWorkflow:
 
         samples = []
         for i in range(count):
-            params = self.driver.protocol.commands.trace_fetch.send(
-                [self.driver.oid, i, generation]
-            )
+            params = self.driver.protocol.trace_fetch(offset=i, generation=generation)
             status = params.get("status", 2)
             if status != 0:
                 status_names = {1: "capture still active", 2: "invalid"}

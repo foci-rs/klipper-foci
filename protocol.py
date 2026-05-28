@@ -561,6 +561,18 @@ class FociProtocol:
             [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
         )
 
+    def trace_start(self, *, preset: int) -> None:
+        self.commands.trace_start.send([self.driver.oid, preset])
+
+    def trace_stop(self) -> None:
+        self.commands.trace_stop.send([self.driver.oid])
+
+    def trace_info(self) -> None:
+        self.commands.trace_info.send([self.driver.oid])
+
+    def trace_fetch(self, *, offset: int, generation: int) -> dict:
+        return self.commands.trace_fetch.send([self.driver.oid, offset, generation])
+
     def configure_startup(
         self,
         *,

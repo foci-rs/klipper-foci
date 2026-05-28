@@ -433,6 +433,22 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
     ]
 
 
+def test_trace_protocol_methods_send_existing_payloads():
+    driver = make_driver()
+    driver.protocol.commands.trace_fetch = MockCommand({"status": 0, "data": b"sample"})
+
+    driver.protocol.trace_start(preset=1)
+    driver.protocol.trace_stop()
+    driver.protocol.trace_info()
+    result = driver.protocol.trace_fetch(offset=7, generation=3)
+
+    assert driver.protocol.commands.trace_start.last_args == [driver.oid, 1]
+    assert driver.protocol.commands.trace_stop.last_args == [driver.oid]
+    assert driver.protocol.commands.trace_info.last_args == [driver.oid]
+    assert driver.protocol.commands.trace_fetch.last_args == [driver.oid, 7, 3]
+    assert result == {"status": 0, "data": b"sample"}
+
+
 def test_core_workflow_methods_send_existing_payloads():
     driver = make_driver()
 
