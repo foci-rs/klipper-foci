@@ -369,6 +369,84 @@ class FociProtocol:
     def set_velocity_limit(self, velocity_limit: int) -> None:
         self.commands.set_velocity_limit.send([self.driver.oid, velocity_limit])
 
+    def set_velocity_transient_feedforward(
+        self,
+        *,
+        enable: bool,
+        lead_time_us: int,
+        gain: int,
+        max_offset: int,
+        rate_hz: int,
+    ) -> None:
+        self.commands.set_velocity_transient_feedforward.send(
+            [
+                self.driver.oid,
+                int(enable),
+                lead_time_us,
+                gain,
+                max_offset,
+                rate_hz,
+            ]
+        )
+
+    def set_accel_feedforward(
+        self,
+        *,
+        enable: bool,
+        accel_gain: int,
+        decel_gain: int,
+    ) -> None:
+        self.commands.set_accel_feedforward.send(
+            [self.driver.oid, int(enable), accel_gain, decel_gain]
+        )
+
+    def set_decoupling_feedforward(
+        self,
+        *,
+        enable: bool,
+        r_int: int,
+        l_int: int,
+        pole_pairs: int,
+        position_units_per_rev: int,
+        f_pwm_hz: int,
+        max_offset: int,
+    ) -> None:
+        self.commands.set_decoupling_feedforward.send(
+            [
+                self.driver.oid,
+                int(enable),
+                r_int,
+                l_int,
+                pole_pairs,
+                position_units_per_rev,
+                f_pwm_hz,
+                max_offset,
+            ]
+        )
+
+    def set_position_lead(
+        self,
+        *,
+        enable: bool,
+        gain: int,
+        max_counts: int,
+    ) -> None:
+        self.commands.set_position_lead.send(
+            [self.driver.oid, int(enable), gain, max_counts]
+        )
+
+    def set_phase_advance(
+        self,
+        *,
+        enable: bool,
+        gain_ppm: int,
+        max_counts: int,
+        deadband: int,
+    ) -> None:
+        self.commands.set_phase_advance.send(
+            [self.driver.oid, int(enable), gain_ppm, max_counts, deadband]
+        )
+
     def configure_startup(
         self,
         *,

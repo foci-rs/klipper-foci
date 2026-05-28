@@ -243,6 +243,77 @@ def test_fine_grained_control_methods_send_existing_payloads():
     assert commands.set_voltage_limit.last_args == [driver.oid, 11000]
 
 
+def test_expert_control_protocol_methods_send_existing_payloads():
+    driver = make_driver()
+
+    driver.protocol.set_velocity_transient_feedforward(
+        enable=True,
+        lead_time_us=400,
+        gain=750,
+        max_offset=1200,
+        rate_hz=10000,
+    )
+    driver.protocol.set_accel_feedforward(
+        enable=False,
+        accel_gain=750,
+        decel_gain=250,
+    )
+    driver.protocol.set_decoupling_feedforward(
+        enable=True,
+        r_int=3000,
+        l_int=4095,
+        pole_pairs=50,
+        position_units_per_rev=65536,
+        f_pwm_hz=25000,
+        max_offset=500,
+    )
+    driver.protocol.set_position_lead(
+        enable=True,
+        gain=10,
+        max_counts=20,
+    )
+    driver.protocol.set_phase_advance(
+        enable=False,
+        gain_ppm=60000,
+        max_counts=64,
+        deadband=16,
+    )
+
+    commands = driver.protocol.commands
+    assert commands.set_velocity_transient_feedforward.last_args == [
+        driver.oid,
+        1,
+        400,
+        750,
+        1200,
+        10000,
+    ]
+    assert commands.set_accel_feedforward.last_args == [
+        driver.oid,
+        0,
+        750,
+        250,
+    ]
+    assert commands.set_decoupling_feedforward.last_args == [
+        driver.oid,
+        1,
+        3000,
+        4095,
+        50,
+        65536,
+        25000,
+        500,
+    ]
+    assert commands.set_position_lead.last_args == [driver.oid, 1, 10, 20]
+    assert commands.set_phase_advance.last_args == [
+        driver.oid,
+        0,
+        60000,
+        64,
+        16,
+    ]
+
+
 def test_core_workflow_methods_send_existing_payloads():
     driver = make_driver()
 
