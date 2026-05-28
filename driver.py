@@ -7,15 +7,13 @@
 
 import logging
 
+from dataclasses import fields
+
 from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
 )
-from .constants import (
-    DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
-    MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
-    MIN_RAW_VOLTAGE_LIMIT,
-)
+from .config import parse_driver_config
 from .controls import (
     ControlsWorkflow,
 )
@@ -33,266 +31,18 @@ from .trace import LegacyTraceWorkflow
 # FociDriver - per-axis driver instance
 ######################################################################
 
-STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
-
 
 class FociDriver:
     """Klipper extras driver for a single TMC4671 FOC channel."""
 
     def __init__(self, config) -> None:
-        # Parse section name: [foci stepper_x]
-        self.stepper_name: str = " ".join(config.get_name().split()[1:])
-        self.name: str = config.get_name()
-
         self.printer = config.get_printer()
         self.global_config = self.printer.load_object(config, "foci")
         self.foci_mode: str = self.global_config.mode
 
-        # Required motor config
-        self.run_current: float = config.getfloat("run_current", above=0.0)
-        self.encoder_ppr: int = config.getint("encoder_ppr", minval=1)
-        self.voltage_limit: int = config.getint(
-            "voltage_limit",
-            DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
-            minval=MIN_RAW_VOLTAGE_LIMIT,
-            maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
-        )
-        # Encoder count direction relative to motor rotation.
-        # "default" = encoder counts up when motor drives forward.
-        # "reversed" = encoder counts down when motor drives forward
-        #              (swap A/B wiring or mount orientation).
-        dir_choice: str = config.getchoice(
-            "encoder_direction",
-            {"default": False, "reversed": True},
-            default="default",
-        )
-        self.encoder_reversed: bool = dir_choice
-
-        # Optional PID gains (from FOCI_AUTOTUNE + SAVE_CONFIG or manual).
-        # All four must be set together or not at all.
-        self.pid_flux_p: int | None = config.getint(
-            "pid_flux_p", None, minval=0, maxval=65535
-        )
-        self.pid_flux_i: int | None = config.getint(
-            "pid_flux_i", None, minval=0, maxval=65535
-        )
-        self.pid_torque_p: int | None = config.getint(
-            "pid_torque_p", None, minval=0, maxval=65535
-        )
-        self.pid_torque_i: int | None = config.getint(
-            "pid_torque_i", None, minval=0, maxval=65535
-        )
-        pid_gains = [
-            self.pid_flux_p,
-            self.pid_flux_i,
-            self.pid_torque_p,
-            self.pid_torque_i,
-        ]
-        pid_set = [v for v in pid_gains if v is not None]
-        if pid_set and len(pid_set) != 4:
-            raise config.error(
-                "PID gains must be set as a complete group"
-                " (pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i)."
-                " Found %d of 4 in [%s]" % (len(pid_set), self.name)
-            )
-
-        # Optional biquad low-pass filters (0 = disabled, 10..1000 Hz)
-        self.velocity_filter_hz: int = config.getint(
-            "velocity_filter_hz", 0, minval=0, maxval=1000
-        )
-        if self.velocity_filter_hz != 0 and self.velocity_filter_hz < 10:
-            raise config.error(
-                "velocity_filter_hz must be 0 (disabled) or 10..1000 in [%s]"
-                % self.name
-            )
-        self.torque_filter_hz: int = config.getint(
-            "torque_filter_hz", 0, minval=0, maxval=1000
-        )
-        if self.torque_filter_hz != 0 and self.torque_filter_hz < 10:
-            raise config.error(
-                "torque_filter_hz must be 0 (disabled) or 10..1000 in [%s]" % self.name
-            )
-        self.position_filter_hz: int = config.getint(
-            "position_filter_hz", 0, minval=0, maxval=1000
-        )
-        if self.position_filter_hz != 0 and self.position_filter_hz < 10:
-            raise config.error(
-                "position_filter_hz must be 0 (disabled) or 10..1000 in [%s]"
-                % self.name
-            )
-        self.flux_filter_hz: int = config.getint(
-            "flux_filter_hz", 0, minval=0, maxval=1000
-        )
-        if self.flux_filter_hz != 0 and self.flux_filter_hz < 10:
-            raise config.error(
-                "flux_filter_hz must be 0 (disabled) or 10..1000 in [%s]" % self.name
-            )
-
-        # Optional position/velocity PID gains (Q8.8 raw register values)
-        self.pid_position_p: int | None = config.getint(
-            "pid_position_p", None, minval=0, maxval=32767
-        )
-        self.pid_position_i: int | None = config.getint(
-            "pid_position_i", None, minval=0, maxval=32767
-        )
-        self.pid_velocity_p: int | None = config.getint(
-            "pid_velocity_p", None, minval=0, maxval=32767
-        )
-        self.pid_velocity_i: int | None = config.getint(
-            "pid_velocity_i", None, minval=0, maxval=32767
-        )
-        pos_gains = [
-            self.pid_position_p,
-            self.pid_position_i,
-            self.pid_velocity_p,
-            self.pid_velocity_i,
-        ]
-        pos_set = [v for v in pos_gains if v is not None]
-        if pos_set and len(pos_set) != 4:
-            raise config.error(
-                "pid_position_p/i and pid_velocity_p/i must be set together"
-                " (pid_position_p, pid_position_i, pid_velocity_p, pid_velocity_i)."
-                " Found %d of 4 in [%s]" % (len(pos_set), self.name)
-            )
-
-        # Velocity feedforward (boolean, default disabled)
-        self.velocity_feedforward: bool = config.getboolean(
-            "velocity_feedforward", False
-        )
-        self.velocity_feedforward_multiplier: int = config.getint(
-            "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
-        )
-        self.velocity_transient_feedforward: bool = False
-        self.velocity_transient_lead_time_us: int = 0
-        self.velocity_transient_gain: int = 0
-        self.velocity_transient_max_offset: int = 0
-        self.velocity_transient_rate_hz: int = 1000
-        self.accel_feedforward: bool = False
-        self.accel_feedforward_accel_gain: int = 1000
-        self.accel_feedforward_decel_gain: int = 1000
-        self.decoupling_feedforward: bool = False
-        self.decoupling_r_int: int = 3000
-        self.decoupling_l_int: int = 4095
-        self.decoupling_pole_pairs: int = 50
-        self.decoupling_position_units_per_rev: int = 65536
-        self.decoupling_f_pwm_hz: int = 25000
-        self.decoupling_max_offset: int = 500
-        self.position_lead: bool = False
-        self.position_lead_gain: int = 0
-        self.position_lead_max_counts: int = 0
-        self.phase_advance: bool = False
-        self.phase_advance_gain_ppm: int = 0
-        self.phase_advance_max_counts: int = 0
-        self.phase_advance_deadband: int = 16
-
-        # PID velocity limit (caps position PID output, anti-windup).
-        # 0 or unset = unconstrained (0x7FFFFFFF). Units: TMC4671 internal
-        # velocity. Appropriate value depends on motor/encoder config.
-        self.pid_velocity_limit: int | None = config.getint(
-            "pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
-        )
-
-        # Commissioned fallback gains (from Stage 1, separate from tuned gains)
-        self.commissioned_velocity_p: int | None = config.getint(
-            "commissioned_velocity_p", None, minval=0, maxval=32767
-        )
-        self.commissioned_velocity_i: int | None = config.getint(
-            "commissioned_velocity_i", None, minval=0, maxval=32767
-        )
-        self.commissioned_position_p: int | None = config.getint(
-            "commissioned_position_p", None, minval=0, maxval=32767
-        )
-        self.commissioned_position_i: int | None = config.getint(
-            "commissioned_position_i", None, minval=0, maxval=32767
-        )
-        self.commissioned_velocity_limit: int | None = config.getint(
-            "commissioned_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
-        )
-
-        # Inner-tuning parameters (persisted by Stage 1 for Stage 2 restart)
-        self.identified_r_int: int | None = config.getint(
-            "identified_r_int", None, minval=0
-        )
-        self.identified_l_int: int | None = config.getint(
-            "identified_l_int", None, minval=0
-        )
-        self.identified_r_count_milli: int | None = config.getint(
-            "identified_r_count_milli", None, minval=0
-        )
-        self.identified_l_count_micro: int | None = config.getint(
-            "identified_l_count_micro", None, minval=0
-        )
-        self.identified_lambda_us: int | None = config.getint(
-            "identified_lambda_us", None, minval=0
-        )
-        self.identified_theta_e_us: int | None = config.getint(
-            "identified_theta_e_us", None, minval=0
-        )
-        self.identified_ringing_count: int | None = config.getint(
-            "identified_ringing_count", None, minval=0, maxval=255
-        )
-        self.identified_bandwidth_hz: int | None = config.getint(
-            "identified_bandwidth_hz", None, minval=0
-        )
-
-        # Phase 1 inner-confidence fields (added 2026-04-30). Optional in
-        # the persisted config: old configs that never ran the new firmware
-        # leave these unset and the autotune workflow substitutes
-        # documented defaults (bit 6 = host-default confidence).
-        self.identified_tau_e_us: int | None = config.getint(
-            "identified_tau_e_us", None, minval=0
-        )
-        self.identified_tau_e_crosscheck_us: int | None = config.getint(
-            "identified_tau_e_crosscheck_us", None, minval=0
-        )
-        self.identified_tau_residual_permille: int | None = config.getint(
-            "identified_tau_residual_permille", None, minval=0, maxval=1000
-        )
-        self.identified_inner_warning_flags: int | None = config.getint(
-            "identified_inner_warning_flags", None, minval=0, maxval=255
-        )
-
-        # Stage 2 model parameters persisted for traceability.
-        self.identified_j_eff: int | None = config.getint(
-            "identified_j_eff", None, minval=0
-        )
-        self.identified_b_eff: int | None = config.getint(
-            "identified_b_eff", None, minval=0
-        )
-
-        # Persisted profile/mode labels from SAVE_CONFIG.
-        self.autotune_profile: str | None = config.get("autotune_profile", None)
-        self.autotune_mode: str | None = config.get("autotune_mode", None)
-
-        # Autotune status (commissioned / tuned / tuned_conservative)
-        self.autotune_status: str | None = config.get("autotune_status", None)
-
-        # Find stepper config section. The stepper may be defined as
-        # [manual_stepper stepper_x], [stepper stepper_x], or [stepper_x]
-        # depending on kinematics. The foci section always uses the short
-        # name: [foci stepper_x].
-        if not config.has_section(self.stepper_name):
-            raise config.error(
-                "[%s] cannot find stepper section for '%s'"
-                % (self.name, self.stepper_name)
-            )
-        stepper_config = config.getsection(self.stepper_name)
-
-        self.microsteps: int = stepper_config.getint("microsteps")
-        self.full_steps: int = stepper_config.getint("full_steps_per_rotation", 200)
-
-        # Resolve MCU and channel from step_pin
-        step_pin: str = stepper_config.get("step_pin")
-        ppins = self.printer.lookup_object("pins")
-        pin_params = ppins.parse_pin(step_pin, can_invert=True)
-        pin_name: str = pin_params["pin"]
-        if pin_name not in STEP_PINS:
-            raise config.error(
-                "[%s] step_pin '%s' is not a FOCI STEP pin (expected one"
-                " of: %s)" % (self.name, pin_name, ", ".join(sorted(STEP_PINS)))
-            )
-        self.mcu = pin_params["chip"]
-        self.channel: int = STEP_PINS[pin_name]
+        self.config = parse_driver_config(config)
+        for field in fields(self.config):
+            setattr(self, field.name, getattr(self.config, field.name))
 
         # Runtime FOCI commands use the Klipper stepper OID. It is resolved
         # after MCU identification, when Klipper has loaded all steppers.
