@@ -98,6 +98,19 @@ CONFIG_FIELD_NAMES = {
 }
 
 
+DRIVER_CONFIG_FACADE_FIELDS = {
+    "name",
+    "stepper_name",
+    "mcu",
+    "channel",
+}
+
+
+DISALLOWED_DRIVER_CONFIG_FACADE_FIELDS = (
+    CONFIG_FIELD_NAMES - DRIVER_CONFIG_FACADE_FIELDS
+)
+
+
 EXPECTED_CONTROL_SETTING_FIELDS = (
     "run_current",
     "voltage_limit",
@@ -354,7 +367,7 @@ def test_parse_driver_config_supports_dual_mcu_binding():
     assert parsed_y.channel == 1
 
 
-def test_foci_driver_stores_config_and_runtime_settings():
+def test_foci_driver_stores_config_settings_and_explicit_facade():
     _printer, _chips, sections, config = make_foci_config(
         stepper_values={"microsteps": 16, "full_steps_per_rotation": 400},
         foci_values={"run_current": 0.9, "encoder_ppr": 1200},
@@ -367,17 +380,14 @@ def test_foci_driver_stores_config_and_runtime_settings():
     assert driver.config.run_current == 0.9
     assert driver.settings.run_current == 0.9
     assert driver.config.encoder_ppr == 1200
-    assert driver.encoder_ppr == 1200
     assert driver.config.microsteps == 16
-    assert driver.microsteps == 16
     assert driver.config.full_steps == 400
-    assert driver.full_steps == 400
-    for field_name in CONTROL_SETTING_FIELDS:
-        assert getattr(driver.settings, field_name) == getattr(
-            driver.config, field_name
-        )
+    for field_name in DRIVER_CONFIG_FACADE_FIELDS:
+        assert getattr(driver, field_name) == getattr(driver.config, field_name)
+    for field_name in DISALLOWED_DRIVER_CONFIG_FACADE_FIELDS:
         assert not hasattr(driver, field_name), (
-            f"{field_name} should live on driver.settings, not the driver facade"
+            f"{field_name} should live on driver.config or driver.settings, "
+            "not the driver facade"
         )
 
 
@@ -603,3 +613,24 @@ def test_handle_connect_reads_payloads_from_settings_not_config():
         9,
     ]
     assert driver.protocol.commands.set_velocity_limit.last_args == [10, 123456]
+
+
+def test_handle_connect_reads_mechanical_payloads_from_config_not_facade():
+    _printer, _chips, sections, config = make_foci_config(
+        foci_values={
+            "encoder_ppr": 1000,
+            "encoder_direction": "reversed",
+        }
+    )
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    setattr(driver, "encoder_ppr", 1)
+    setattr(driver, "encoder_reversed", False)
+    setattr(driver, "microsteps", 1)
+    setattr(driver, "full_steps", 0)
+
+    driver._handle_connect()
+
+    assert driver.protocol.commands.set_encoder.last_args == [10, 0, 1000]
+    assert driver.protocol.commands.set_encoder_dir.last_args == [10, 0, 1]

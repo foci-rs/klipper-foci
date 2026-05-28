@@ -5,14 +5,11 @@
 #
 # Register reference: TMC4671-LA datasheet rev 2.08
 
-from dataclasses import fields
-
 from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
 )
 from .config import (
-    CONTROL_SETTING_FIELDS,
     FociControlSettings,
     parse_driver_config,
     validate_runtime_config,
@@ -45,10 +42,10 @@ class FociDriver:
 
         self.config = parse_driver_config(config)
         self.settings = FociControlSettings.from_config(self.config)
-        for field in fields(self.config):
-            if field.name in CONTROL_SETTING_FIELDS:
-                continue
-            setattr(self, field.name, getattr(self.config, field.name))
+        self.name = self.config.name
+        self.stepper_name = self.config.stepper_name
+        self.mcu = self.config.mcu
+        self.channel = self.config.channel
 
         # Runtime FOCI commands use the Klipper stepper OID. It is resolved
         # after MCU identification, when Klipper has loaded all steppers.
@@ -161,6 +158,7 @@ class FociDriver:
         does not match the encoder's natural resolution.
         """
         settings = self.settings
+        parsed = self.config
         run_ma: int = int(settings.run_current * 1000.0)
         pid_gains = None
         if settings.pid_flux_p is not None:
@@ -182,8 +180,8 @@ class FociDriver:
             current_ma=run_ma,
             voltage_limit=settings.voltage_limit,
             channel=self.channel,
-            encoder_ppr=self.encoder_ppr,
-            encoder_reversed=self.encoder_reversed,
+            encoder_ppr=parsed.encoder_ppr,
+            encoder_reversed=parsed.encoder_reversed,
             pid_gains=pid_gains,
             filter_hz={
                 "velocity": settings.velocity_filter_hz,
@@ -198,17 +196,17 @@ class FociDriver:
             ),
             velocity_limit=settings.pid_velocity_limit,
         )
-        encoder_steps: int = self.encoder_ppr * 4
-        configured_steps: int = self.microsteps * self.full_steps
+        encoder_steps: int = parsed.encoder_ppr * 4
+        configured_steps: int = parsed.microsteps * parsed.full_steps
         if configured_steps != encoder_steps:
-            optimal: int = encoder_steps // self.full_steps
+            optimal: int = encoder_steps // parsed.full_steps
             gcode = self.printer.lookup_object("gcode")
             gcode.respond_info(
                 "[foci %s] Note: microsteps=%d gives %d steps/rev,"
                 " encoder resolves %d. Consider microsteps=%d"
                 % (
                     self.stepper_name,
-                    self.microsteps,
+                    parsed.microsteps,
                     configured_steps,
                     encoder_steps,
                     optimal,
