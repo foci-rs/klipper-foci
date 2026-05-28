@@ -346,12 +346,6 @@ class DiagnosticsWorkflow:
 
     def step_position(self, gcmd) -> None:
         """Query raw MCU step position without updating Klipper state."""
-        if (
-            self.driver.protocol.commands.stepper_get_position is None
-            or self.driver.oid is None
-        ):
-            raise gcmd.error("FOCI_STEP_POSITION is not available before MCU identify")
-
         stepper = self.driver._find_linked_stepper()
         if stepper is None:
             raise gcmd.error(
@@ -359,12 +353,7 @@ class DiagnosticsWorkflow:
                 % self.driver.stepper_name
             )
 
-        params = self.driver.protocol.commands.stepper_get_position.send(
-            [self.driver.oid]
-        )
-        if params is None or "pos" not in params:
-            raise gcmd.error("FOCI_STEP_POSITION query returned no position")
-
+        params = self.driver.protocol.get_step_position()
         raw_position = int(params["pos"])
         invert_dir = stepper_dir_inverted(stepper)
         host_position = -raw_position if invert_dir else raw_position
@@ -396,20 +385,8 @@ class DiagnosticsWorkflow:
 
     def stepper_stats(self, gcmd) -> None:
         """Query MCU step queue and execution counters."""
-        queries = (
-            ("stats", self.driver.protocol.commands.stepper_stats),
-            ("exec_stats", self.driver.protocol.commands.stepper_exec_stats),
-            ("timing_stats", self.driver.protocol.commands.stepper_timing_stats),
-            ("stop_stats", self.driver.protocol.commands.stepper_stop_stats),
-        )
-        if self.driver.oid is None or any(cmd is None for _, cmd in queries):
-            raise gcmd.error("FOCI_STEPPER_STATS is not available before MCU identify")
-
         params = {}
-        for name, cmd in queries:
-            response = cmd.send([self.driver.oid])
-            if response is None:
-                raise gcmd.error("FOCI_STEPPER_STATS %s query returned no data" % name)
+        for response in self.driver.protocol.get_stepper_stats():
             params.update(response)
 
         fields = [
@@ -455,18 +432,8 @@ class DiagnosticsWorkflow:
 
     def dispatch_stats(self, gcmd) -> None:
         """Query MCU step-dispatch cycle counters."""
-        if (
-            self.driver.oid is None
-            or self.driver.protocol.commands.stepper_perf_stats is None
-        ):
-            raise gcmd.error("FOCI_DISPATCH_STATS is not available before MCU identify")
-
         clear = gcmd.get_int("RESET", 0, minval=0, maxval=1)
-        response = self.driver.protocol.commands.stepper_perf_stats.send(
-            [self.driver.oid, clear]
-        )
-        if response is None:
-            raise gcmd.error("FOCI_DISPATCH_STATS query returned no data")
+        response = self.driver.protocol.get_stepper_perf_stats(clear=clear != 0)
 
         def cycles_to_us(field: str) -> int | str:
             value = response.get(field)

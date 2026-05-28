@@ -447,6 +447,51 @@ class FociProtocol:
             [self.driver.oid, int(enable), gain_ppm, max_counts, deadband]
         )
 
+    def get_step_position(self) -> dict:
+        if self.driver.oid is None or self.commands.stepper_get_position is None:
+            raise self.driver.printer.command_error(
+                "FOCI_STEP_POSITION is not available before MCU identify"
+            )
+        params = self.commands.stepper_get_position.send([self.driver.oid])
+        if params is None or "pos" not in params:
+            raise self.driver.printer.command_error(
+                "FOCI_STEP_POSITION query returned no position"
+            )
+        return params
+
+    def get_stepper_stats(self) -> tuple[dict, dict, dict, dict]:
+        queries = (
+            ("stats", self.commands.stepper_stats),
+            ("exec_stats", self.commands.stepper_exec_stats),
+            ("timing_stats", self.commands.stepper_timing_stats),
+            ("stop_stats", self.commands.stepper_stop_stats),
+        )
+        if self.driver.oid is None or any(cmd is None for _, cmd in queries):
+            raise self.driver.printer.command_error(
+                "FOCI_STEPPER_STATS is not available before MCU identify"
+            )
+        responses = []
+        for name, cmd in queries:
+            response = cmd.send([self.driver.oid])
+            if response is None:
+                raise self.driver.printer.command_error(
+                    "FOCI_STEPPER_STATS %s query returned no data" % name
+                )
+            responses.append(response)
+        return tuple(responses)
+
+    def get_stepper_perf_stats(self, *, clear: bool) -> dict:
+        if self.driver.oid is None or self.commands.stepper_perf_stats is None:
+            raise self.driver.printer.command_error(
+                "FOCI_DISPATCH_STATS is not available before MCU identify"
+            )
+        response = self.commands.stepper_perf_stats.send([self.driver.oid, int(clear)])
+        if response is None:
+            raise self.driver.printer.command_error(
+                "FOCI_DISPATCH_STATS query returned no data"
+            )
+        return response
+
     def configure_startup(
         self,
         *,

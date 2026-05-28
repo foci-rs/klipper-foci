@@ -314,6 +314,59 @@ def test_expert_control_protocol_methods_send_existing_payloads():
     ]
 
 
+def test_passive_diagnostic_protocol_methods_send_existing_payloads():
+    driver = make_driver()
+    driver.protocol.commands.stepper_get_position = MockCommand({"pos": -19176})
+    driver.protocol.commands.stepper_stats = MockCommand({"position": -26360})
+    driver.protocol.commands.stepper_exec_stats = MockCommand(
+        {"executed_pos_steps": 39538}
+    )
+    driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 2})
+    driver.protocol.commands.stepper_stop_stats = MockCommand({"stop_count": 1})
+    driver.protocol.commands.stepper_perf_stats = MockCommand(
+        {"crit_max_cycles": 190000}
+    )
+
+    assert driver.protocol.get_step_position() == {"pos": -19176}
+    stats = driver.protocol.get_stepper_stats()
+    perf = driver.protocol.get_stepper_perf_stats(clear=True)
+
+    assert stats == (
+        {"position": -26360},
+        {"executed_pos_steps": 39538},
+        {"activation_count": 2},
+        {"stop_count": 1},
+    )
+    assert perf == {"crit_max_cycles": 190000}
+    assert driver.protocol.commands.stepper_get_position.last_args == [driver.oid]
+    assert driver.protocol.commands.stepper_stats.last_args == [driver.oid]
+    assert driver.protocol.commands.stepper_exec_stats.last_args == [driver.oid]
+    assert driver.protocol.commands.stepper_timing_stats.last_args == [driver.oid]
+    assert driver.protocol.commands.stepper_stop_stats.last_args == [driver.oid]
+    assert driver.protocol.commands.stepper_perf_stats.last_args == [driver.oid, 1]
+
+
+def test_passive_diagnostic_protocol_methods_preserve_errors():
+    driver = make_driver()
+    driver.protocol.commands.stepper_get_position = None
+    with pytest.raises(
+        CommandError, match="FOCI_STEP_POSITION is not available before MCU identify"
+    ):
+        driver.protocol.get_step_position()
+
+    driver.protocol.commands.stepper_get_position = MockCommand({})
+    with pytest.raises(
+        CommandError, match="FOCI_STEP_POSITION query returned no position"
+    ):
+        driver.protocol.get_step_position()
+
+    driver.protocol.commands.stepper_stats = MockCommand(None)
+    with pytest.raises(
+        CommandError, match="FOCI_STEPPER_STATS stats query returned no data"
+    ):
+        driver.protocol.get_stepper_stats()
+
+
 def test_core_workflow_methods_send_existing_payloads():
     driver = make_driver()
 
