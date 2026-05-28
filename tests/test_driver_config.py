@@ -6,7 +6,12 @@ from dataclasses import fields
 
 import pytest
 
-from klipper_foci.config import FociDriverConfig, parse_driver_config
+from klipper_foci.config import (
+    FociDriverConfig,
+    RuntimeValidationResult,
+    parse_driver_config,
+    validate_runtime_config,
+)
 
 from tests.mocks import (
     CommandError,
@@ -308,3 +313,157 @@ def test_foci_driver_stores_config_and_mirrors_all_config_fields():
     assert driver.config.full_steps == 400
     for field in fields(driver.config):
         assert getattr(driver, field.name) == getattr(driver.config, field.name)
+
+
+def parsed_config_with(foci_values):
+    _printer, _chips, _sections, config = make_foci_config(foci_values=foci_values)
+    return parse_driver_config(config)
+
+
+def assert_uncommissioned(result):
+    assert isinstance(result, RuntimeValidationResult)
+    assert result.runtime_status == "uncommissioned"
+    assert result.active_gains is None
+
+
+def test_validate_runtime_config_returns_uncommissioned_for_absent_status():
+    result = validate_runtime_config(parsed_config_with({}))
+
+    assert_uncommissioned(result)
+
+
+def test_validate_runtime_config_returns_commissioned_active_gains():
+    result = validate_runtime_config(
+        parsed_config_with(
+            {
+                "autotune_status": "commissioned",
+                "pid_flux_p": 256,
+                "pid_flux_i": 26,
+                "pid_torque_p": 257,
+                "pid_torque_i": 27,
+                "identified_lambda_us": 12,
+                "identified_theta_e_us": 160,
+                "identified_ringing_count": 7,
+                "identified_bandwidth_hz": 25,
+                "commissioned_velocity_p": 1100,
+                "commissioned_velocity_i": 3,
+                "commissioned_position_p": 600,
+                "commissioned_position_i": 4,
+                "commissioned_velocity_limit": 300000,
+                "position_filter_hz": 200,
+            }
+        )
+    )
+
+    assert result.runtime_status == "commissioned"
+    assert result.active_gains == {
+        "flux_p": 256,
+        "flux_i": 26,
+        "torque_p": 257,
+        "torque_i": 27,
+        "velocity_p": 1100,
+        "velocity_i": 3,
+        "position_p": 600,
+        "position_i": 4,
+        "velocity_limit": 300000,
+        "velocity_filter_hz": 0,
+        "torque_filter_hz": 0,
+        "position_filter_hz": 200,
+        "flux_filter_hz": 0,
+    }
+
+
+def test_validate_runtime_config_returns_tuned_active_gains():
+    result = validate_runtime_config(
+        parsed_config_with(
+            {
+                "autotune_status": "tuned_conservative",
+                "pid_flux_p": 256,
+                "pid_flux_i": 26,
+                "pid_torque_p": 257,
+                "pid_torque_i": 27,
+                "identified_lambda_us": 12,
+                "identified_theta_e_us": 160,
+                "identified_ringing_count": 7,
+                "identified_bandwidth_hz": 25,
+                "pid_velocity_p": 1100,
+                "pid_velocity_i": 3,
+                "pid_position_p": 600,
+                "pid_position_i": 4,
+                "pid_velocity_limit": 300000,
+                "flux_filter_hz": 100,
+            }
+        )
+    )
+
+    assert result.runtime_status == "tuned_conservative"
+    assert result.active_gains == {
+        "flux_p": 256,
+        "flux_i": 26,
+        "torque_p": 257,
+        "torque_i": 27,
+        "velocity_p": 1100,
+        "velocity_i": 3,
+        "position_p": 600,
+        "position_i": 4,
+        "velocity_limit": 300000,
+        "velocity_filter_hz": 0,
+        "torque_filter_hz": 0,
+        "position_filter_hz": 0,
+        "flux_filter_hz": 100,
+    }
+
+
+def test_validate_runtime_config_warns_for_unknown_status(caplog):
+    result = validate_runtime_config(parsed_config_with({"autotune_status": "unsafe"}))
+
+    assert_uncommissioned(result)
+    assert "unknown autotune_status='unsafe'" in caplog.text
+
+
+def test_validate_runtime_config_warns_for_missing_required_fields(caplog):
+    result = validate_runtime_config(
+        parsed_config_with(
+            {
+                "autotune_status": "commissioned",
+                "pid_flux_p": 256,
+                "pid_flux_i": 26,
+                "pid_torque_p": 257,
+                "pid_torque_i": 27,
+            }
+        )
+    )
+
+    assert_uncommissioned(result)
+    assert "missing required fields" in caplog.text
+    assert "identified_lambda_us" in caplog.text
+    assert "commissioned_velocity_p" in caplog.text
+
+
+def test_handle_connect_installs_validation_result():
+    _printer, _chips, sections, config = make_foci_config(
+        foci_values={
+            "autotune_status": "commissioned",
+            "pid_flux_p": 256,
+            "pid_flux_i": 26,
+            "pid_torque_p": 257,
+            "pid_torque_i": 27,
+            "identified_lambda_us": 12,
+            "identified_theta_e_us": 160,
+            "identified_ringing_count": 7,
+            "identified_bandwidth_hz": 25,
+            "commissioned_velocity_p": 1100,
+            "commissioned_velocity_i": 3,
+            "commissioned_position_p": 600,
+            "commissioned_position_i": 4,
+            "commissioned_velocity_limit": 300000,
+        }
+    )
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    # make_config_printer installs MockCartesianKinematics with this stepper OID.
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert driver.state.runtime_status == "commissioned"
+    assert driver.state.active_gains["velocity_p"] == 1100

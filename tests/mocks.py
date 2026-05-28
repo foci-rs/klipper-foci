@@ -598,6 +598,10 @@ def make_driver(
     driver.position_filter_hz = 0
     driver.flux_filter_hz = 0
 
+    # make_driver bypasses FociDriver.__init__; point config at the mirrored
+    # driver fields so tests that mutate them before _handle_connect stay live.
+    driver.config = driver
+
     driver.mcu = MockMCU()
     if bind_protocol:
         driver.protocol.bind_mcu(driver.mcu, driver.oid)

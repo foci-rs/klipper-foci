@@ -5,15 +5,13 @@
 #
 # Register reference: TMC4671-LA datasheet rev 2.08
 
-import logging
-
 from dataclasses import fields
 
 from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
 )
-from .config import parse_driver_config
+from .config import parse_driver_config, validate_runtime_config
 from .controls import (
     ControlsWorkflow,
 )
@@ -147,118 +145,6 @@ class FociDriver:
         addr = REGISTERS[reg_name]
         return self.protocol.read_register(addr)
 
-    def _validate_and_load_config(self) -> None:
-        """Validate persisted config and populate active gains/runtime status.
-
-        Called from _handle_connect. Checks that all mandatory fields for the
-        claimed autotune_status are present. If any are missing, logs a warning
-        and leaves active gains unset with runtime status uncommissioned.
-        """
-        status = self.autotune_status
-        if status is None:
-            # No prior commissioning -- virgin hardware
-            self.state.runtime_status = "uncommissioned"
-            self.state.active_gains = None
-            return
-
-        valid_statuses = ("commissioned", "tuned", "tuned_conservative")
-        if status not in valid_statuses:
-            logging.warning(
-                "FOCI %s: unknown autotune_status='%s' (expected one of: %s). "
-                "Motor cannot be enabled until FOCI_COMMISSION is run.",
-                self.name,
-                status,
-                ", ".join(valid_statuses),
-            )
-            self.state.runtime_status = "uncommissioned"
-            self.state.active_gains = None
-            return
-
-        # Mandatory for all statuses: current-loop gains + inner-tuning params
-        required_base = [
-            ("pid_flux_p", self.pid_flux_p),
-            ("pid_flux_i", self.pid_flux_i),
-            ("pid_torque_p", self.pid_torque_p),
-            ("pid_torque_i", self.pid_torque_i),
-            ("identified_lambda_us", self.identified_lambda_us),
-            ("identified_theta_e_us", self.identified_theta_e_us),
-            ("identified_ringing_count", self.identified_ringing_count),
-            ("identified_bandwidth_hz", self.identified_bandwidth_hz),
-        ]
-        missing = [name for name, val in required_base if val is None]
-
-        # Status-specific outer gain requirements
-        if status == "commissioned":
-            commissioned_fields = [
-                ("commissioned_velocity_p", self.commissioned_velocity_p),
-                ("commissioned_velocity_i", self.commissioned_velocity_i),
-                ("commissioned_position_p", self.commissioned_position_p),
-                ("commissioned_position_i", self.commissioned_position_i),
-                ("commissioned_velocity_limit", self.commissioned_velocity_limit),
-            ]
-            missing.extend(name for name, val in commissioned_fields if val is None)
-        elif status in ("tuned", "tuned_conservative"):
-            tuned_fields = [
-                ("pid_velocity_p", self.pid_velocity_p),
-                ("pid_velocity_i", self.pid_velocity_i),
-                ("pid_velocity_limit", self.pid_velocity_limit),
-                ("pid_position_p", self.pid_position_p),
-                ("pid_position_i", self.pid_position_i),
-            ]
-            missing.extend(name for name, val in tuned_fields if val is None)
-
-        if missing:
-            logging.warning(
-                "FOCI %s: autotune_status='%s' but missing required fields: %s. "
-                "Motor cannot be enabled until FOCI_COMMISSION is run.",
-                self.name,
-                status,
-                ", ".join(missing),
-            )
-            self.state.runtime_status = "uncommissioned"
-            self.state.active_gains = None
-            return
-
-        # All required fields present -- build active gains.
-        if status == "commissioned":
-            self.state.active_gains = {
-                "flux_p": self.pid_flux_p,
-                "flux_i": self.pid_flux_i,
-                "torque_p": self.pid_torque_p,
-                "torque_i": self.pid_torque_i,
-                "velocity_p": self.commissioned_velocity_p,
-                "velocity_i": self.commissioned_velocity_i,
-                "position_p": self.commissioned_position_p,
-                "position_i": self.commissioned_position_i,
-                "velocity_limit": self.commissioned_velocity_limit,
-                "velocity_filter_hz": self.velocity_filter_hz,
-                "torque_filter_hz": self.torque_filter_hz,
-                "position_filter_hz": self.position_filter_hz,
-                "flux_filter_hz": self.flux_filter_hz,
-            }
-        else:  # tuned or tuned_conservative
-            self.state.active_gains = {
-                "flux_p": self.pid_flux_p,
-                "flux_i": self.pid_flux_i,
-                "torque_p": self.pid_torque_p,
-                "torque_i": self.pid_torque_i,
-                "velocity_p": self.pid_velocity_p,
-                "velocity_i": self.pid_velocity_i,
-                "position_p": self.pid_position_p,
-                "position_i": self.pid_position_i,
-                "velocity_limit": self.pid_velocity_limit,
-                "velocity_filter_hz": self.velocity_filter_hz,
-                "torque_filter_hz": self.torque_filter_hz,
-                "position_filter_hz": self.position_filter_hz,
-                "flux_filter_hz": self.flux_filter_hz,
-            }
-        self.state.runtime_status = status
-        logging.info(
-            "FOCI %s: loaded config, status=%s, active gains ready",
-            self.name,
-            status,
-        )
-
     def _handle_connect(self) -> None:
         """Send configuration to firmware and check microstep alignment.
 
@@ -319,5 +205,7 @@ class FociDriver:
                     optimal,
                 )
             )
-        self._validate_and_load_config()
+        validation = validate_runtime_config(self.config)
+        self.state.runtime_status = validation.runtime_status
+        self.state.active_gains = validation.active_gains
         self.homing.apply_initial_state()

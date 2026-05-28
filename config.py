@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from dataclasses import dataclass
 
 from .constants import (
@@ -9,6 +11,7 @@ from .constants import (
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
     MIN_RAW_VOLTAGE_LIMIT,
 )
+from .state import RuntimeStatus
 
 STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
 
@@ -87,6 +90,14 @@ class FociDriverConfig:
     autotune_profile: str | None
     autotune_mode: str | None
     autotune_status: str | None
+
+
+@dataclass
+class RuntimeValidationResult:
+    """Accepted persisted runtime state derived from driver config."""
+
+    runtime_status: RuntimeStatus
+    active_gains: dict[str, int] | None
 
 
 def _validate_complete_group(config, section_name, label, values) -> None:
@@ -301,3 +312,102 @@ def parse_driver_config(config) -> FociDriverConfig:
         autotune_mode=autotune_mode,
         autotune_status=autotune_status,
     )
+
+
+def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult:
+    """Validate persisted config and build active gains/runtime status."""
+    status = config.autotune_status
+    if status is None:
+        return RuntimeValidationResult("uncommissioned", None)
+
+    valid_statuses = ("commissioned", "tuned", "tuned_conservative")
+    if status not in valid_statuses:
+        logging.warning(
+            "FOCI %s: unknown autotune_status='%s' (expected one of: %s). "
+            "Motor cannot be enabled until FOCI_COMMISSION is run.",
+            config.name,
+            status,
+            ", ".join(valid_statuses),
+        )
+        return RuntimeValidationResult("uncommissioned", None)
+
+    required_base = [
+        ("pid_flux_p", config.pid_flux_p),
+        ("pid_flux_i", config.pid_flux_i),
+        ("pid_torque_p", config.pid_torque_p),
+        ("pid_torque_i", config.pid_torque_i),
+        ("identified_lambda_us", config.identified_lambda_us),
+        ("identified_theta_e_us", config.identified_theta_e_us),
+        ("identified_ringing_count", config.identified_ringing_count),
+        ("identified_bandwidth_hz", config.identified_bandwidth_hz),
+    ]
+    missing = [name for name, value in required_base if value is None]
+
+    if status == "commissioned":
+        commissioned_fields = [
+            ("commissioned_velocity_p", config.commissioned_velocity_p),
+            ("commissioned_velocity_i", config.commissioned_velocity_i),
+            ("commissioned_position_p", config.commissioned_position_p),
+            ("commissioned_position_i", config.commissioned_position_i),
+            ("commissioned_velocity_limit", config.commissioned_velocity_limit),
+        ]
+        missing.extend(name for name, value in commissioned_fields if value is None)
+    elif status in ("tuned", "tuned_conservative"):
+        tuned_fields = [
+            ("pid_velocity_p", config.pid_velocity_p),
+            ("pid_velocity_i", config.pid_velocity_i),
+            ("pid_velocity_limit", config.pid_velocity_limit),
+            ("pid_position_p", config.pid_position_p),
+            ("pid_position_i", config.pid_position_i),
+        ]
+        missing.extend(name for name, value in tuned_fields if value is None)
+
+    if missing:
+        logging.warning(
+            "FOCI %s: autotune_status='%s' but missing required fields: %s. "
+            "Motor cannot be enabled until FOCI_COMMISSION is run.",
+            config.name,
+            status,
+            ", ".join(missing),
+        )
+        return RuntimeValidationResult("uncommissioned", None)
+
+    if status == "commissioned":
+        active_gains = {
+            "flux_p": config.pid_flux_p,
+            "flux_i": config.pid_flux_i,
+            "torque_p": config.pid_torque_p,
+            "torque_i": config.pid_torque_i,
+            "velocity_p": config.commissioned_velocity_p,
+            "velocity_i": config.commissioned_velocity_i,
+            "position_p": config.commissioned_position_p,
+            "position_i": config.commissioned_position_i,
+            "velocity_limit": config.commissioned_velocity_limit,
+            "velocity_filter_hz": config.velocity_filter_hz,
+            "torque_filter_hz": config.torque_filter_hz,
+            "position_filter_hz": config.position_filter_hz,
+            "flux_filter_hz": config.flux_filter_hz,
+        }
+    else:
+        active_gains = {
+            "flux_p": config.pid_flux_p,
+            "flux_i": config.pid_flux_i,
+            "torque_p": config.pid_torque_p,
+            "torque_i": config.pid_torque_i,
+            "velocity_p": config.pid_velocity_p,
+            "velocity_i": config.pid_velocity_i,
+            "position_p": config.pid_position_p,
+            "position_i": config.pid_position_i,
+            "velocity_limit": config.pid_velocity_limit,
+            "velocity_filter_hz": config.velocity_filter_hz,
+            "torque_filter_hz": config.torque_filter_hz,
+            "position_filter_hz": config.position_filter_hz,
+            "flux_filter_hz": config.flux_filter_hz,
+        }
+
+    logging.info(
+        "FOCI %s: loaded config, status=%s, active gains ready",
+        config.name,
+        status,
+    )
+    return RuntimeValidationResult(status, active_gains)
