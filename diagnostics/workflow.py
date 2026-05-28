@@ -494,8 +494,10 @@ class DiagnosticsWorkflow:
             maxval=29000,
         )
 
-        self.driver.protocol.commands.current_step_test.send(
-            [self.driver.oid, target, duration_ms, voltage_limit]
+        self.driver.protocol.run_current_step_test(
+            target=target,
+            duration_ms=duration_ms,
+            voltage_limit=voltage_limit,
         )
 
         gcmd.respond_info(
@@ -516,14 +518,11 @@ class DiagnosticsWorkflow:
             maxval=29000,
         )
 
-        self.driver.protocol.commands.current_vector_step_test.send(
-            [
-                self.driver.oid,
-                torque_target,
-                flux_target,
-                duration_ms,
-                voltage_limit,
-            ]
+        self.driver.protocol.run_current_vector_step_test(
+            torque_target=torque_target,
+            flux_target=flux_target,
+            duration_ms=duration_ms,
+            voltage_limit=voltage_limit,
         )
 
         gcmd.respond_info(
@@ -558,14 +557,11 @@ class DiagnosticsWorkflow:
             None,
         )
 
-        self.driver.protocol.commands.current_torque_sample_test.send(
-            [
-                self.driver.oid,
-                target,
-                flux_target,
-                sample_delay_ms,
-                voltage_limit,
-            ]
+        self.driver.protocol.run_current_torque_sample_test(
+            target=target,
+            flux_target=flux_target,
+            sample_delay_ms=sample_delay_ms,
+            voltage_limit=voltage_limit,
         )
 
         gcmd.respond_info(
@@ -594,8 +590,10 @@ class DiagnosticsWorkflow:
         self.current_torque_sample_details.pop(detail_key, None)
         self.current_torque_sample_labels[detail_key] = "position torque offset sample"
 
-        self.driver.protocol.commands.position_torque_offset_sample_test.send(
-            [self.driver.oid, target, sample_delay_ms, voltage_limit]
+        self.driver.protocol.run_position_torque_offset_sample_test(
+            target=target,
+            sample_delay_ms=sample_delay_ms,
+            voltage_limit=voltage_limit,
         )
 
         gcmd.respond_info(
@@ -610,8 +608,10 @@ class DiagnosticsWorkflow:
         ud_ext = gcmd.get_int("UD", 0, minval=-1024, maxval=1024)
         sample_delay_ms = gcmd.get_int("SAMPLE_DELAY_MS", 2, minval=1, maxval=20)
 
-        self.driver.protocol.commands.voltage_step_test.send(
-            [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
+        self.driver.protocol.run_voltage_step_test(
+            uq_ext=uq_ext,
+            ud_ext=ud_ext,
+            sample_delay_ms=sample_delay_ms,
         )
 
         gcmd.respond_info(

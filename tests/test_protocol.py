@@ -367,6 +367,72 @@ def test_passive_diagnostic_protocol_methods_preserve_errors():
         driver.protocol.get_stepper_stats()
 
 
+def test_active_diagnostic_protocol_methods_send_existing_payloads():
+    driver = make_driver()
+
+    driver.protocol.run_current_step_test(
+        target=250,
+        duration_ms=80,
+        voltage_limit=12000,
+    )
+    driver.protocol.run_current_vector_step_test(
+        torque_target=0,
+        flux_target=300,
+        duration_ms=90,
+        voltage_limit=13000,
+    )
+    driver.protocol.run_current_torque_sample_test(
+        target=-400,
+        flux_target=25,
+        sample_delay_ms=5,
+        voltage_limit=14000,
+    )
+    driver.protocol.run_position_torque_offset_sample_test(
+        target=500,
+        sample_delay_ms=2,
+        voltage_limit=15000,
+    )
+    driver.protocol.run_voltage_step_test(
+        uq_ext=256,
+        ud_ext=-128,
+        sample_delay_ms=3,
+    )
+
+    commands = driver.protocol.commands
+    assert commands.current_step_test.last_args == [
+        driver.oid,
+        250,
+        80,
+        12000,
+    ]
+    assert commands.current_vector_step_test.last_args == [
+        driver.oid,
+        0,
+        300,
+        90,
+        13000,
+    ]
+    assert commands.current_torque_sample_test.last_args == [
+        driver.oid,
+        -400,
+        25,
+        5,
+        14000,
+    ]
+    assert commands.position_torque_offset_sample_test.last_args == [
+        driver.oid,
+        500,
+        2,
+        15000,
+    ]
+    assert commands.voltage_step_test.last_args == [
+        driver.oid,
+        256,
+        -128,
+        3,
+    ]
+
+
 def test_core_workflow_methods_send_existing_payloads():
     driver = make_driver()
 

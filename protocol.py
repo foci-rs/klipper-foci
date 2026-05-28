@@ -492,6 +492,75 @@ class FociProtocol:
             )
         return response
 
+    def run_current_step_test(
+        self,
+        *,
+        target: int,
+        duration_ms: int,
+        voltage_limit: int,
+    ) -> None:
+        self.commands.current_step_test.send(
+            [self.driver.oid, target, duration_ms, voltage_limit]
+        )
+
+    def run_current_vector_step_test(
+        self,
+        *,
+        torque_target: int,
+        flux_target: int,
+        duration_ms: int,
+        voltage_limit: int,
+    ) -> None:
+        self.commands.current_vector_step_test.send(
+            [
+                self.driver.oid,
+                torque_target,
+                flux_target,
+                duration_ms,
+                voltage_limit,
+            ]
+        )
+
+    def run_current_torque_sample_test(
+        self,
+        *,
+        target: int,
+        flux_target: int,
+        sample_delay_ms: int,
+        voltage_limit: int,
+    ) -> None:
+        self.commands.current_torque_sample_test.send(
+            [
+                self.driver.oid,
+                target,
+                flux_target,
+                sample_delay_ms,
+                voltage_limit,
+            ]
+        )
+
+    def run_position_torque_offset_sample_test(
+        self,
+        *,
+        target: int,
+        sample_delay_ms: int,
+        voltage_limit: int,
+    ) -> None:
+        self.commands.position_torque_offset_sample_test.send(
+            [self.driver.oid, target, sample_delay_ms, voltage_limit]
+        )
+
+    def run_voltage_step_test(
+        self,
+        *,
+        uq_ext: int,
+        ud_ext: int,
+        sample_delay_ms: int,
+    ) -> None:
+        self.commands.voltage_step_test.send(
+            [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
+        )
+
     def configure_startup(
         self,
         *,
