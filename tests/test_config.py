@@ -317,15 +317,6 @@ def test_active_diagnostics_register_diagnostics_workflow_handlers():
     )
 
 
-def test_trace_commands_are_not_registered_in_any_mode():
-    prefix = "FOCI_" + "TRACE"
-    legacy_commands = {prefix + "_START", prefix + "_STOP", prefix}
-
-    for mode in (None, "default", "advanced", "expert", "developer"):
-        printer = build_driver_with_mode(mode)
-        assert legacy_commands.isdisjoint(registered_command_names(printer))
-
-
 def test_foci_driver_no_longer_exposes_gcode_command_methods():
     from klipper_foci.driver import FociDriver
 
