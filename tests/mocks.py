@@ -21,6 +21,57 @@ from klipper_foci.selftest import SelftestWorkflow
 from klipper_foci.state import FociRuntimeState
 
 
+SAMPLE_ACTIVE_GAINS = {
+    "flux_p": 256,
+    "flux_i": 26,
+    "torque_p": 256,
+    "torque_i": 26,
+    "velocity_p": 1152,
+    "velocity_i": 0,
+    "position_p": 640,
+    "position_i": 0,
+    "velocity_limit": 500000,
+    "velocity_filter_hz": 0,
+    "torque_filter_hz": 0,
+    "position_filter_hz": 200,
+    "flux_filter_hz": 0,
+}
+
+SAMPLE_COMMISSION_RESULT = {
+    "status": 0,
+    "flux_p": 256,
+    "flux_i": 26,
+    "torque_p": 256,
+    "torque_i": 26,
+    "r_int": 1706,
+    "l_int": 1245,
+    "r_mohm": 1700,
+    "l_uh": 3300,
+    "lambda_us": 0,
+    "theta_e_us": 160,
+    "ringing_count": 7,
+    "bandwidth_hz": 0,
+}
+
+
+def complete_commission_result():
+    result = SAMPLE_COMMISSION_RESULT.copy()
+    result.update(
+        {
+            "fallback_velocity_p": 1152,
+            "fallback_velocity_i": 0,
+            "fallback_position_p": 640,
+            "fallback_position_i": 0,
+            "fallback_velocity_limit": 500000,
+            "tau_e_us": 730,
+            "tau_e_crosscheck_us": 730,
+            "tau_residual_permille": 0,
+            "inner_warning_flags": 0,
+        }
+    )
+    return result
+
+
 class CommandError(Exception):
     """Stand-in for Klipper's printer.command_error."""
 
