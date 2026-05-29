@@ -59,6 +59,16 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_selftest_done", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations
     assert ("foci_stepper_perf_event", None) in registrations
+    assert ("foci_commission_detail", driver.oid) in registrations
+    assert ("foci_current_step_result", driver.oid) in registrations
+    assert ("foci_current_vector_step_result", driver.oid) in registrations
+    assert ("foci_current_torque_sample_result", driver.oid) in registrations
+    assert (
+        "foci_current_torque_sample_detail_result",
+        driver.oid,
+    ) in registrations
+    assert ("foci_voltage_step_result", driver.oid) in registrations
+    assert len(registrations) == len(set(registrations))
 
 
 def test_bind_mcu_keeps_dev_register_read_optional():

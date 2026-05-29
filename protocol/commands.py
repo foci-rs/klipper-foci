@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from .bindings import (
+    register_active_diagnostic_responses,
+    register_commissioning_responses,
+    register_dump_responses,
+    register_homing_responses,
+    register_selftest_responses,
+)
+
 
 class FociMcuCommands:
     """Bound Klipper MCU commands and protocol response handlers."""
@@ -135,15 +143,8 @@ class FociMcuCommands:
             self.read_register = None
         self.calibrate = mcu.lookup_command("foci_calibrate oid=%c", cq=cmd_queue)
         self.dump_registers = mcu.lookup_command("foci_dump_registers oid=%c")
-        mcu._serial.register_response(
-            driver.dump.handle_dump_value, "foci_dump_value", oid
-        )
-        mcu._serial.register_response(
-            driver.dump.handle_dump_done, "foci_dump_done", oid
-        )
-        mcu._serial.register_response(
-            driver.homing.handle_calibrate_response, "foci_calibrate_result", oid
-        )
+        register_dump_responses(mcu._serial, driver, oid)
+        register_homing_responses(mcu._serial, driver, oid)
         self.set_pid_gains = mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
         )
@@ -154,21 +155,7 @@ class FociMcuCommands:
             " tau_e_us=%u tau_e_crosscheck_us=%u"
             " tau_residual_permille=%hu inner_warning_flags=%c"
         )
-        mcu._serial.register_response(
-            driver.commissioning.handle_commission_phase,
-            "foci_commission_phase",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.commissioning.handle_commission_result,
-            "foci_commission_result",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.autotune.handle_tune_result,
-            "foci_tune_result",
-            oid,
-        )
+        register_commissioning_responses(mcu._serial, driver, oid)
         self.set_velocity_filter = mcu.lookup_command(
             "tmc_set_velocity_filter oid=%c filter_hz=%hu"
         )
@@ -232,54 +219,8 @@ class FociMcuCommands:
         self.voltage_step_test = mcu.lookup_command(
             "tmc_voltage_step_test oid=%c uq_ext=%hi ud_ext=%hi sample_delay_ms=%hu"
         )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_current_step_result,
-            "foci_current_step_result",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_current_vector_step_result,
-            "foci_current_vector_step_result",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_current_torque_sample_result,
-            "foci_current_torque_sample_result",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_current_torque_sample_detail_result,
-            "foci_current_torque_sample_detail_result",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_voltage_step_result,
-            "foci_voltage_step_result",
-            oid,
-        )
+        register_active_diagnostic_responses(mcu._serial, driver, oid)
         self.set_auto_calibrate_on_enable = mcu.lookup_command(
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
         )
-        mcu._serial.register_response(
-            driver.selftest.handle_selftest_result,
-            "foci_selftest_result",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.selftest.handle_selftest_done,
-            "foci_selftest_done",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.commissioning.handle_commission_detail,
-            "foci_commission_detail",
-            oid,
-        )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_stepper_event,
-            "foci_stepper_event",
-        )
-        mcu._serial.register_response(
-            driver.diagnostics.handle_stepper_perf_event,
-            "foci_stepper_perf_event",
-        )
+        register_selftest_responses(mcu._serial, driver, oid)
