@@ -1,4 +1,8 @@
+import unittest
+
 from klipper_foci.state import FociRuntimeState
+
+from tests.mocks import make_driver
 
 
 def test_runtime_state_lock_starts_available():
@@ -29,3 +33,22 @@ def test_runtime_status_defaults_to_uncommissioned():
 
     assert state.runtime_status == "uncommissioned"
     assert state.active_gains is None
+
+
+class TestOperationLock(unittest.TestCase):
+    def test_acquire_when_free(self):
+        d = make_driver()
+        self.assertTrue(d.state.try_acquire())
+        self.assertTrue(d.state.operation_lock)
+
+    def test_acquire_when_held(self):
+        d = make_driver()
+        d.state.operation_lock = True
+        self.assertFalse(d.state.try_acquire())
+
+    def test_release_makes_available(self):
+        d = make_driver()
+        d.state.operation_lock = True
+        d.state.release()
+        self.assertFalse(d.state.operation_lock)
+        self.assertTrue(d.state.try_acquire())

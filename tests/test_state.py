@@ -39,30 +39,6 @@ class MockConfigFile:
 
 
 # =========================================================================
-# 1. Operation Lock
-# =========================================================================
-
-
-class TestOperationLock(unittest.TestCase):
-    def test_acquire_when_free(self):
-        d = make_driver()
-        self.assertTrue(d.state.try_acquire())
-        self.assertTrue(d.state.operation_lock)
-
-    def test_acquire_when_held(self):
-        d = make_driver()
-        d.state.operation_lock = True
-        self.assertFalse(d.state.try_acquire())
-
-    def test_release_makes_available(self):
-        d = make_driver()
-        d.state.operation_lock = True
-        d.state.release()
-        self.assertFalse(d.state.operation_lock)
-        self.assertTrue(d.state.try_acquire())
-
-
-# =========================================================================
 # 2. _ensure_calibrated gates
 # =========================================================================
 
