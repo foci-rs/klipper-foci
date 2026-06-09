@@ -14,6 +14,10 @@ from .bindings import (
 class FociMcuCommands:
     """Bound Klipper MCU commands and protocol response handlers."""
 
+    # The perf stats wire schema is shared by OpenFFBoard and Ouroboros.
+    # OpenFFBoard reports one unified TIM5 software-scheduler population.
+    # Ouroboros reports split-topology TIM5 work units in the same fields:
+    # CC2 trsync/endstop scheduler slots plus CC1 due physical step events.
     STEPPER_PERF_STATS_RESPONSE = (
         "foci_stepper_perf_stats_result oid=%c channel=%c"
         " crit_max_cycles=%u crit_max_site=%c"
