@@ -214,6 +214,19 @@ class TestHomingStateTransitions(unittest.TestCase):
         self.assertEqual(d.protocol.commands.calibrate.last_args, [0])
         self.assertTrue(d.state.is_calibrated)
 
+    def test_calibration_failure_labels_legacy_commission_error_code(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.printer.get_reactor().completion_result = {"status": 3}
+
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+
+        msg = str(ctx.exception)
+        self.assertIn("commissioning status 3", msg)
+        self.assertIn("SPI communication error", msg)
+        self.assertNotIn("UNKNOWN(3)", msg)
+
     def test_ensure_calibrated_skips_if_already_true(self):
         d = make_driver()
         d.state.is_calibrated = True

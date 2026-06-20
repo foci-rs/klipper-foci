@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from .commissioning import COMMISSION_ERROR_NAMES
+
 
 class HomingWorkflow:
     """Coordinate calibration-on-enable and homing-related reporting."""
@@ -85,6 +87,17 @@ class HomingWorkflow:
     def set_auto_calibrate_on_enable_allowed(self, allowed: bool) -> None:
         """Tell firmware whether raw enable may start auto-calibration."""
         self.driver.protocol.set_auto_calibrate_on_enable(allowed)
+
+    def format_calibration_status(self, status: int) -> str:
+        """Format a non-zero foci_calibrate_result status for operators."""
+        if status in self.CALIBRATION_ERROR_NAMES:
+            return self.CALIBRATION_ERROR_NAMES[status]
+        if status in COMMISSION_ERROR_NAMES:
+            return "legacy commissioning status %d in calibration reply: %s" % (
+                status,
+                COMMISSION_ERROR_NAMES[status],
+            )
+        return "UNKNOWN_CALIBRATION_STATUS(%d)" % status
 
     def apply_active_gains_to_firmware(self) -> None:
         """Preload saved FOCI gains into firmware state before enabling."""
@@ -185,7 +198,7 @@ class HomingWorkflow:
                 )
                 return
             if status != 0:
-                msg = self.CALIBRATION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
+                msg = self.format_calibration_status(status)
                 if status == 2:
                     self.driver.commissioning.handle_chip_reset_detected()
                 raise self.driver.printer.command_error(
