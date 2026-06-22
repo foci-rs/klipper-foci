@@ -26,11 +26,17 @@ class ActiveDiagnostics:
         # (success via pop_resistance_cache, failure/timeout via
         # clear_resistance_cache), so a failed or partial run can never
         # leak stale values into a later commission's fold.
-        # A standalone FOCI_RESISTANCE_TEST run populates this cache too,
-        # but nothing ever folds it in unless a commission completes
-        # afterward, so standalone runs leave no persisted trace; a
-        # stale entry from a diagnostic run is simply overwritten by the
-        # next run.
+        # A standalone FOCI_RESISTANCE_TEST run populates this cache too
+        # and leaves no persisted trace by itself (nothing folds it in
+        # without a commission completing afterward). But a standalone
+        # run's full entry could otherwise pre-populate a later
+        # commission's cache: if that commission then delivered only a
+        # partial set of replies, the received axis would overwrite its
+        # slot while the stale standalone axis lingered in the other,
+        # making the all-or-nothing pop_resistance_cache see a complete
+        # but mixed-origin entry. CommissioningWorkflow.commission()
+        # guards against this by clearing the per-oid cache at the start
+        # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
 
     def handle_current_step_result(self, params: dict) -> None:

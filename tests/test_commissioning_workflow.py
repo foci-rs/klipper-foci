@@ -689,3 +689,152 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             key for key in configfile.values if "identified_r_" in key[1]
         ]
         self.assertEqual(resistance_keys, [])
+
+    def test_stale_standalone_cache_does_not_leak_into_later_partial_commission(self):
+        """A standalone FOCI_RESISTANCE_TEST must not pre-populate a later
+        commission's fold with stale axis data.
+
+        Before the fix, the resistance_cache was only cleared at commission
+        exit (success via pop_resistance_cache, failure/timeout via
+        clear_resistance_cache), never at commission start. If a standalone
+        FOCI_RESISTANCE_TEST left a full run+axis0+axis1 cache entry behind,
+        and a later commission then delivered only run+axis0 (axis1 never
+        arriving in that commission attempt), handle_resistance_axis would
+        overwrite only axis0 in the cache, leaving the stale axis1 from the
+        unrelated standalone run still present. pop_resistance_cache's
+        all-or-nothing check would then see run+axis0+axis1 all "present"
+        (axis1 being stale) and fold/persist a mixed result that blends
+        data from two unrelated runs.
+
+        The fix clears the per-oid cache at the start of commission(),
+        before the firmware can emit any commission-stream resistance
+        replies, so no standalone leftovers can survive into the fold.
+        """
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+
+        # Simulate a prior standalone FOCI_RESISTANCE_TEST that completed
+        # and left a full run+axis0+axis1 cache entry for this oid.
+        driver.diagnostics.handle_resistance_run(
+            {
+                "oid": driver.oid,
+                "status": 0,
+                "profile_version": 3,
+                "selected_r_count_slope_milli": 9999,
+                "gain_path_count_slope_milli": 0,
+                "warning_flags": 0,
+                "status_flags_or": 0,
+                "pwm_maxcnt_readback": 3999,
+                "bbm_readback": 0,
+                "dsadc_mdec_readback": 0,
+                "pwm_sv_chop_readback": 0,
+            }
+        )
+        driver.diagnostics.handle_resistance_axis(
+            {
+                "oid": driver.oid,
+                "electrical_axis": 0,
+                "phi_e_ext": 0,
+                "r_count_slope_milli": 8888,
+                "intercept_count": 1,
+                "rmse_permille": 1,
+                "selected_mask": 0b11111000,
+                "excluded_point_mask": 0b00000111,
+                "selected_count": 5,
+                "signed_count_slope_milli": 8887,
+                "signed_asymmetry_permille": 1,
+                "drift_permille": 1,
+                "warning_flags": 0,
+            }
+        )
+        driver.diagnostics.handle_resistance_axis(
+            {
+                "oid": driver.oid,
+                "electrical_axis": 1,
+                "phi_e_ext": 16384,
+                "r_count_slope_milli": 7777,
+                "intercept_count": 2,
+                "rmse_permille": 2,
+                "selected_mask": 0b11110000,
+                "excluded_point_mask": 0b00001111,
+                "selected_count": 4,
+                "signed_count_slope_milli": 7778,
+                "signed_asymmetry_permille": 2,
+                "drift_permille": 2,
+                "warning_flags": 0,
+            }
+        )
+        # Confirm the standalone cache really is fully populated, as the
+        # narrative above claims.
+        self.assertIn(driver.oid, driver.diagnostics.active.resistance_cache)
+        stale_entry = driver.diagnostics.active.resistance_cache[driver.oid]
+        self.assertIn("run", stale_entry)
+        self.assertIn("axis0", stale_entry)
+        self.assertIn("axis1", stale_entry)
+
+        def drive_partial_commission(_args):
+            # The commission only delivers run + axis0; axis1 never
+            # arrives in this commission attempt. Without the start-of-
+            # commission clear, axis1 from the stale standalone run above
+            # would still be sitting in the cache under this oid.
+            driver.diagnostics.handle_resistance_run(
+                {
+                    "oid": driver.oid,
+                    "status": 0,
+                    "profile_version": 3,
+                    "selected_r_count_slope_milli": 1042,
+                    "gain_path_count_slope_milli": 66752,
+                    "warning_flags": 0,
+                    "status_flags_or": 0x00080000,
+                    "pwm_maxcnt_readback": 3999,
+                    "bbm_readback": 0x00000909,
+                    "dsadc_mdec_readback": 0x00080008,
+                    "pwm_sv_chop_readback": 0x00000007,
+                }
+            )
+            driver.diagnostics.handle_resistance_axis(
+                {
+                    "oid": driver.oid,
+                    "electrical_axis": 0,
+                    "phi_e_ext": 0,
+                    "r_count_slope_milli": 1038,
+                    "intercept_count": 24,
+                    "rmse_permille": 8,
+                    "selected_mask": 0b11111000,
+                    "excluded_point_mask": 0b00000111,
+                    "selected_count": 5,
+                    "signed_count_slope_milli": 1041,
+                    "signed_asymmetry_permille": 12,
+                    "drift_permille": 5,
+                    "warning_flags": 0,
+                }
+            )
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_partial_commission
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        # Must not raise.
+        driver.commissioning.commission(gcmd)
+
+        # Commission itself succeeded.
+        self.assertTrue(driver.state.is_calibrated)
+
+        # The stale axis1 from the standalone run must NOT leak through:
+        # since the start-of-commission clear removed it, the all-or-
+        # nothing fold correctly sees axis1 absent for this commission and
+        # folds/persists nothing, rather than blending the stale axis1
+        # with the fresh run+axis0.
+        resistance_config_keys = {
+            config_key for _, config_key in CommissioningWorkflow.RESISTANCE_RESULT_KEYS
+        }
+        persisted_resistance_keys = [
+            key for key in configfile.values if key[1] in resistance_config_keys
+        ]
+        self.assertEqual(persisted_resistance_keys, [])
+
+        # The per-oid cache must be cleared at the end too.
+        self.assertNotIn(driver.oid, driver.diagnostics.active.resistance_cache)

@@ -283,6 +283,22 @@ class CommissioningWorkflow:
             self.last_phase_id = None
             self.clear_details()
 
+            # Clear any resistance-reply cache left over from a standalone
+            # FOCI_RESISTANCE_TEST run before this commission's firmware
+            # stream can emit its own foci_resistance_run/axis replies.
+            # The cache is otherwise only cleared at commission exit
+            # (success via pop_resistance_cache, failure/timeout via
+            # clear_resistance_cache below), so without this start-of-run
+            # clear a full standalone run+axis0+axis1 entry could survive
+            # to pre-populate this commission's cache. If this commission
+            # then delivered only a partial set of replies (e.g. run+axis0,
+            # axis1 dropped), handle_resistance_axis would overwrite only
+            # the received axis, leaving the stale axis1 in place; the
+            # all-or-nothing pop_resistance_cache would see run+axis0+
+            # axis1 all "present" (axis1 stale) and fold/persist a result
+            # blending data from two unrelated runs.
+            self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+
             self.driver.protocol.run_commission(profile_code)
 
             reactor = self.driver.printer.get_reactor()
