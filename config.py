@@ -87,6 +87,25 @@ class FociDriverConfig:
     identified_inner_warning_flags: int | None
     identified_j_eff: int | None
     identified_b_eff: int | None
+    identified_r_count_slope_milli: int | None
+    identified_r_gain_path_count_slope_milli: int | None
+    identified_r_axis0_count_slope_milli: int | None
+    identified_r_axis1_count_slope_milli: int | None
+    identified_r_axis0_intercept_count: int | None
+    identified_r_axis1_intercept_count: int | None
+    identified_r_axis0_rmse_permille: int | None
+    identified_r_axis1_rmse_permille: int | None
+    identified_r_selected_mask_axis0: int | None
+    identified_r_selected_mask_axis1: int | None
+    identified_r_profile_version: int | None
+    identified_r_axis0_signed_count_slope_milli: int | None
+    identified_r_axis1_signed_count_slope_milli: int | None
+    identified_r_axis0_signed_asymmetry_permille: int | None
+    identified_r_axis1_signed_asymmetry_permille: int | None
+    identified_r_axis0_drift_permille: int | None
+    identified_r_axis1_drift_permille: int | None
+    identified_r_status_flags_or: int | None
+    identified_r_warning_flags: int | None
     autotune_profile: str | None
     autotune_mode: str | None
     autotune_status: str | None
@@ -272,6 +291,64 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_j_eff = config.getint("identified_j_eff", None, minval=0)
     identified_b_eff = config.getint("identified_b_eff", None, minval=0)
 
+    identified_r_count_slope_milli = config.getint(
+        "identified_r_count_slope_milli", None
+    )
+    identified_r_gain_path_count_slope_milli = config.getint(
+        "identified_r_gain_path_count_slope_milli", None
+    )
+    identified_r_axis0_count_slope_milli = config.getint(
+        "identified_r_axis0_count_slope_milli", None
+    )
+    identified_r_axis1_count_slope_milli = config.getint(
+        "identified_r_axis1_count_slope_milli", None
+    )
+    identified_r_axis0_intercept_count = config.getint(
+        "identified_r_axis0_intercept_count", None
+    )
+    identified_r_axis1_intercept_count = config.getint(
+        "identified_r_axis1_intercept_count", None
+    )
+    identified_r_axis0_rmse_permille = config.getint(
+        "identified_r_axis0_rmse_permille", None, minval=0, maxval=1000
+    )
+    identified_r_axis1_rmse_permille = config.getint(
+        "identified_r_axis1_rmse_permille", None, minval=0, maxval=1000
+    )
+    identified_r_selected_mask_axis0 = config.getint(
+        "identified_r_selected_mask_axis0", None, minval=0, maxval=0xFFFF
+    )
+    identified_r_selected_mask_axis1 = config.getint(
+        "identified_r_selected_mask_axis1", None, minval=0, maxval=0xFFFF
+    )
+    identified_r_profile_version = config.getint(
+        "identified_r_profile_version", None, minval=0
+    )
+    identified_r_axis0_signed_count_slope_milli = config.getint(
+        "identified_r_axis0_signed_count_slope_milli", None
+    )
+    identified_r_axis1_signed_count_slope_milli = config.getint(
+        "identified_r_axis1_signed_count_slope_milli", None
+    )
+    identified_r_axis0_signed_asymmetry_permille = config.getint(
+        "identified_r_axis0_signed_asymmetry_permille", None, minval=0, maxval=1000
+    )
+    identified_r_axis1_signed_asymmetry_permille = config.getint(
+        "identified_r_axis1_signed_asymmetry_permille", None, minval=0, maxval=1000
+    )
+    identified_r_axis0_drift_permille = config.getint(
+        "identified_r_axis0_drift_permille", None, minval=0, maxval=1000
+    )
+    identified_r_axis1_drift_permille = config.getint(
+        "identified_r_axis1_drift_permille", None, minval=0, maxval=1000
+    )
+    identified_r_status_flags_or = config.getint(
+        "identified_r_status_flags_or", None, minval=0
+    )
+    identified_r_warning_flags = config.getint(
+        "identified_r_warning_flags", None, minval=0
+    )
+
     autotune_profile = config.get("autotune_profile", None)
     autotune_mode = config.get("autotune_mode", None)
     autotune_status = config.get("autotune_status", None)
@@ -361,6 +438,35 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_inner_warning_flags=identified_inner_warning_flags,
         identified_j_eff=identified_j_eff,
         identified_b_eff=identified_b_eff,
+        identified_r_count_slope_milli=identified_r_count_slope_milli,
+        identified_r_gain_path_count_slope_milli=(
+            identified_r_gain_path_count_slope_milli
+        ),
+        identified_r_axis0_count_slope_milli=identified_r_axis0_count_slope_milli,
+        identified_r_axis1_count_slope_milli=identified_r_axis1_count_slope_milli,
+        identified_r_axis0_intercept_count=identified_r_axis0_intercept_count,
+        identified_r_axis1_intercept_count=identified_r_axis1_intercept_count,
+        identified_r_axis0_rmse_permille=identified_r_axis0_rmse_permille,
+        identified_r_axis1_rmse_permille=identified_r_axis1_rmse_permille,
+        identified_r_selected_mask_axis0=identified_r_selected_mask_axis0,
+        identified_r_selected_mask_axis1=identified_r_selected_mask_axis1,
+        identified_r_profile_version=identified_r_profile_version,
+        identified_r_axis0_signed_count_slope_milli=(
+            identified_r_axis0_signed_count_slope_milli
+        ),
+        identified_r_axis1_signed_count_slope_milli=(
+            identified_r_axis1_signed_count_slope_milli
+        ),
+        identified_r_axis0_signed_asymmetry_permille=(
+            identified_r_axis0_signed_asymmetry_permille
+        ),
+        identified_r_axis1_signed_asymmetry_permille=(
+            identified_r_axis1_signed_asymmetry_permille
+        ),
+        identified_r_axis0_drift_permille=identified_r_axis0_drift_permille,
+        identified_r_axis1_drift_permille=identified_r_axis1_drift_permille,
+        identified_r_status_flags_or=identified_r_status_flags_or,
+        identified_r_warning_flags=identified_r_warning_flags,
         autotune_profile=autotune_profile,
         autotune_mode=autotune_mode,
         autotune_status=autotune_status,

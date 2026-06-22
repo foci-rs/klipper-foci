@@ -79,6 +79,21 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.handle_resistance_profile,
+        "foci_resistance_profile",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.handle_resistance_run,
+        "foci_resistance_run",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.handle_resistance_axis,
+        "foci_resistance_axis",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.handle_stepper_event,
         "foci_stepper_event",
     )

@@ -473,5 +473,88 @@ class CommissioningWorkflow:
             "identified_inner_warning_flags",
             "%d" % result.get("inner_warning_flags", 0),
         )
+        self._persist_resistance_identification(configfile, result)
         configfile.set(self.driver.name, "autotune_profile", profile_name)
         configfile.set(self.driver.name, "autotune_status", "commissioned")
+
+    # Maps each firmware-reported resistance-identification result key to
+    # the persisted config key. All values are firmware-owned: the host
+    # neither fits, selects points, nor evaluates quality gates here, it
+    # only stores what firmware already decided. The
+    # `foci_commission_result` wire reply does not carry these fields yet
+    # (tracked separately); `persist_commission_results` skips this group
+    # entirely when firmware has not reported it, rather than persist
+    # fabricated zeros.
+    RESISTANCE_RESULT_KEYS: tuple[tuple[str, str], ...] = (
+        ("resistance_selected_count_slope_milli", "identified_r_count_slope_milli"),
+        (
+            "resistance_gain_path_count_slope_milli",
+            "identified_r_gain_path_count_slope_milli",
+        ),
+        (
+            "resistance_axis0_count_slope_milli",
+            "identified_r_axis0_count_slope_milli",
+        ),
+        (
+            "resistance_axis1_count_slope_milli",
+            "identified_r_axis1_count_slope_milli",
+        ),
+        (
+            "resistance_axis0_intercept_count",
+            "identified_r_axis0_intercept_count",
+        ),
+        (
+            "resistance_axis1_intercept_count",
+            "identified_r_axis1_intercept_count",
+        ),
+        ("resistance_axis0_rmse_permille", "identified_r_axis0_rmse_permille"),
+        ("resistance_axis1_rmse_permille", "identified_r_axis1_rmse_permille"),
+        (
+            "resistance_selected_mask_axis0",
+            "identified_r_selected_mask_axis0",
+        ),
+        (
+            "resistance_selected_mask_axis1",
+            "identified_r_selected_mask_axis1",
+        ),
+        ("resistance_profile_version", "identified_r_profile_version"),
+        (
+            "resistance_axis0_signed_count_slope_milli",
+            "identified_r_axis0_signed_count_slope_milli",
+        ),
+        (
+            "resistance_axis1_signed_count_slope_milli",
+            "identified_r_axis1_signed_count_slope_milli",
+        ),
+        (
+            "resistance_axis0_signed_asymmetry_permille",
+            "identified_r_axis0_signed_asymmetry_permille",
+        ),
+        (
+            "resistance_axis1_signed_asymmetry_permille",
+            "identified_r_axis1_signed_asymmetry_permille",
+        ),
+        ("resistance_axis0_drift_permille", "identified_r_axis0_drift_permille"),
+        ("resistance_axis1_drift_permille", "identified_r_axis1_drift_permille"),
+        ("resistance_status_flags_or", "identified_r_status_flags_or"),
+        ("resistance_warning_flags", "identified_r_warning_flags"),
+    )
+
+    def _persist_resistance_identification(self, configfile, result: dict) -> None:
+        """Persist firmware-owned resistance-identification evidence.
+
+        Every value here is reported by firmware as-is: the selected
+        count-space slope, the slope actually consumed by the gain path,
+        per-axis fit evidence, point-selection masks, signed-anchor
+        evidence, thermal-drift evidence, and warning/status flags. The
+        host performs no fitting, point selection, or quality-gate
+        evaluation; it only stores what firmware already decided.
+
+        Skips this group entirely when ``result`` does not contain these
+        keys, so commissioning against older firmware that has not yet
+        added these fields to its reply still persists cleanly.
+        """
+        if "resistance_selected_count_slope_milli" not in result:
+            return
+        for result_key, config_key in self.RESISTANCE_RESULT_KEYS:
+            configfile.set(self.driver.name, config_key, "%d" % result[result_key])

@@ -314,6 +314,95 @@ class ActiveDiagnostics:
             % (self.driver.name, target, sample_delay_ms, voltage_limit)
         )
 
+    def handle_resistance_profile(self, params: dict) -> None:
+        """Handle foci_resistance_profile from firmware.
+
+        Displays board/profile constants used by the resistance sweep
+        exactly as reported. The host performs no interpretation.
+        """
+        msg = (
+            "FOCI %s resistance profile: profile_version=%d"
+            " pwm_maxcnt=%d bbm_h=%d bbm_l=%d"
+            " dsadc_mdec_a=%d dsadc_mdec_b=%d"
+            " linear_current_threshold_count=%d encoder_move_warn_counts=%d"
+            " status_flags_warn_mask=0x%08x scale_metadata_validated=%d"
+            % (
+                self.driver.name,
+                params["profile_version"],
+                params["pwm_maxcnt"],
+                params["bbm_h"],
+                params["bbm_l"],
+                params["dsadc_mdec_a"],
+                params["dsadc_mdec_b"],
+                params["linear_current_threshold_count"],
+                params["encoder_move_warn_counts"],
+                params["status_flags_warn_mask"],
+                params["scale_metadata_validated"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_resistance_run(self, params: dict) -> None:
+        """Handle foci_resistance_run from firmware.
+
+        Displays the firmware-selected count-space resistance slope and
+        run-level warning/readback evidence as reported. The host does not
+        recompute or re-select this value.
+        """
+        msg = (
+            "FOCI %s resistance run: status=%d profile_version=%d"
+            " selected_r_count_slope_milli=%d warning_flags=%d"
+            " status_flags_or=0x%08x pwm_maxcnt_readback=%d"
+            " bbm_readback=0x%04x dsadc_mdec_readback=0x%08x"
+            " pwm_sv_chop_readback=0x%08x"
+            % (
+                self.driver.name,
+                params["status"],
+                params["profile_version"],
+                params["selected_r_count_slope_milli"],
+                params["warning_flags"],
+                params["status_flags_or"],
+                params["pwm_maxcnt_readback"],
+                params["bbm_readback"],
+                params["dsadc_mdec_readback"],
+                params["pwm_sv_chop_readback"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_resistance_axis(self, params: dict) -> None:
+        """Handle foci_resistance_axis from firmware.
+
+        Displays the firmware-fitted per-axis resistance evidence exactly
+        as reported: count-slope, intercept, fit residual, point-selection
+        masks, signed-anchor slope/asymmetry, and thermal drift. The host
+        does not fit, select points, or evaluate quality gates here.
+        """
+        msg = (
+            "FOCI %s resistance axis: electrical_axis=%d phi_e_ext=%d"
+            " count_slope=%d intercept_count=%d rmse_permille=%d"
+            " selected_mask=0x%04x excluded_point_mask=0x%04x"
+            " selected_count=%d signed_count_slope=%d"
+            " signed_asymmetry_permille=%d drift_permille=%d"
+            " warning_flags=%d"
+            % (
+                self.driver.name,
+                params["electrical_axis"],
+                params["phi_e_ext"],
+                params["r_count_slope_milli"],
+                params.get("intercept_count", 0),
+                params.get("rmse_permille", 0),
+                params.get("selected_mask", 0),
+                params.get("excluded_point_mask", 0),
+                params.get("selected_count", 0),
+                params.get("signed_count_slope_milli", 0),
+                params.get("signed_asymmetry_permille", 0),
+                params.get("drift_permille", 0),
+                params["warning_flags"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""
         uq_ext = gcmd.get_int("UQ", minval=-1024, maxval=1024)
@@ -330,4 +419,20 @@ class ActiveDiagnostics:
             "FOCI %s voltage-step requested:"
             " uq_ext=%d ud_ext=%d sample_delay_ms=%d"
             % (self.driver.name, uq_ext, ud_ext, sample_delay_ms)
+        )
+
+    def resistance_test(self, gcmd) -> None:
+        """Run the shared firmware resistance-identification diagnostic.
+
+        Triggers the same firmware engine used by FOCI_COMMISSION's
+        resistance-identification phase. Results stream back via the
+        foci_resistance_profile/run/axis replies, which are displayed
+        as reported with no host-side fitting or pass/fail evaluation.
+        """
+        detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=255)
+
+        self.driver.protocol.run_resistance_test(detail=detail)
+
+        gcmd.respond_info(
+            "FOCI %s resistance-test requested: detail=%d" % (self.driver.name, detail)
         )

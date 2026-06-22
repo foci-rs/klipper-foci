@@ -46,6 +46,7 @@ EXPERT_COMMANDS = {
     "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
     "FOCI_POSITION_TORQUE_OFFSET_TEST",
     "FOCI_VOLTAGE_STEP_TEST",
+    "FOCI_RESISTANCE_TEST",
 }
 
 
@@ -301,6 +302,7 @@ def test_active_diagnostics_register_diagnostics_workflow_handlers():
         "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
         "FOCI_POSITION_TORQUE_OFFSET_TEST",
         "FOCI_VOLTAGE_STEP_TEST",
+        "FOCI_RESISTANCE_TEST",
     }
 
     handlers = {
@@ -596,3 +598,85 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
     assert driver.config.autotune_profile == "conservative"
     assert driver.config.autotune_mode == "nominal"
     assert driver.config.autotune_status == "commissioned"
+
+
+def test_saved_resistance_identification_fields_are_accepted_on_restart():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    sections["foci stepper_x"].update(
+        {
+            "identified_r_count_slope_milli": 1042,
+            "identified_r_gain_path_count_slope_milli": 66752,
+            "identified_r_axis0_count_slope_milli": 1038,
+            "identified_r_axis1_count_slope_milli": 1046,
+            "identified_r_axis0_intercept_count": 24,
+            "identified_r_axis1_intercept_count": 27,
+            "identified_r_axis0_rmse_permille": 8,
+            "identified_r_axis1_rmse_permille": 9,
+            "identified_r_selected_mask_axis0": 0b11111000,
+            "identified_r_selected_mask_axis1": 0b11110000,
+            "identified_r_profile_version": 1,
+            "identified_r_axis0_signed_count_slope_milli": 1041,
+            "identified_r_axis1_signed_count_slope_milli": 1047,
+            "identified_r_axis0_signed_asymmetry_permille": 12,
+            "identified_r_axis1_signed_asymmetry_permille": 15,
+            "identified_r_axis0_drift_permille": 5,
+            "identified_r_axis1_drift_permille": 6,
+            "identified_r_status_flags_or": 524288,
+            "identified_r_warning_flags": 0,
+        }
+    )
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    assert driver.config.identified_r_count_slope_milli == 1042
+    assert driver.config.identified_r_gain_path_count_slope_milli == 66752
+    assert driver.config.identified_r_axis0_count_slope_milli == 1038
+    assert driver.config.identified_r_axis1_count_slope_milli == 1046
+    assert driver.config.identified_r_axis0_intercept_count == 24
+    assert driver.config.identified_r_axis1_intercept_count == 27
+    assert driver.config.identified_r_axis0_rmse_permille == 8
+    assert driver.config.identified_r_axis1_rmse_permille == 9
+    assert driver.config.identified_r_selected_mask_axis0 == 0b11111000
+    assert driver.config.identified_r_selected_mask_axis1 == 0b11110000
+    assert driver.config.identified_r_profile_version == 1
+    assert driver.config.identified_r_axis0_signed_count_slope_milli == 1041
+    assert driver.config.identified_r_axis1_signed_count_slope_milli == 1047
+    assert driver.config.identified_r_axis0_signed_asymmetry_permille == 12
+    assert driver.config.identified_r_axis1_signed_asymmetry_permille == 15
+    assert driver.config.identified_r_axis0_drift_permille == 5
+    assert driver.config.identified_r_axis1_drift_permille == 6
+    assert driver.config.identified_r_status_flags_or == 524288
+    assert driver.config.identified_r_warning_flags == 0
+
+
+def test_resistance_identification_fields_default_to_none():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    assert driver.config.identified_r_count_slope_milli is None
+    assert driver.config.identified_r_gain_path_count_slope_milli is None
+    assert driver.config.identified_r_profile_version is None
+    assert driver.config.identified_r_warning_flags is None
+
+
+def test_resistance_test_registers_in_expert_mode():
+    printer = build_driver_with_mode("expert")
+
+    assert "FOCI_RESISTANCE_TEST" in registered_command_names(printer)

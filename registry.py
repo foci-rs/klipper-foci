@@ -194,6 +194,13 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "voltage_step_test",
         "Run a bounded FOCI open-loop voltage-vector diagnostic",
     ),
+    GcodeCommandSpec(
+        "FOCI_RESISTANCE_TEST",
+        "expert",
+        "diagnostics",
+        "resistance_test",
+        "Run the shared FOCI resistance-identification diagnostic",
+    ),
 )
 
 

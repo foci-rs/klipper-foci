@@ -85,6 +85,26 @@ def _seed_tuning_state(driver):
     driver.config.identified_bandwidth_hz = 0
     driver.config.identified_inner_warning_flags = 36
 
+    driver.config.identified_r_profile_version = 1
+    driver.config.identified_r_count_slope_milli = 1042
+    driver.config.identified_r_gain_path_count_slope_milli = 66752
+    driver.config.identified_r_axis0_count_slope_milli = 1038
+    driver.config.identified_r_axis1_count_slope_milli = 1046
+    driver.config.identified_r_axis0_intercept_count = 24
+    driver.config.identified_r_axis1_intercept_count = 27
+    driver.config.identified_r_axis0_rmse_permille = 8
+    driver.config.identified_r_axis1_rmse_permille = 9
+    driver.config.identified_r_selected_mask_axis0 = 0b11111000
+    driver.config.identified_r_selected_mask_axis1 = 0b11110000
+    driver.config.identified_r_axis0_signed_count_slope_milli = 1041
+    driver.config.identified_r_axis1_signed_count_slope_milli = 1047
+    driver.config.identified_r_axis0_signed_asymmetry_permille = 12
+    driver.config.identified_r_axis1_signed_asymmetry_permille = 15
+    driver.config.identified_r_axis0_drift_permille = 5
+    driver.config.identified_r_axis1_drift_permille = 6
+    driver.config.identified_r_status_flags_or = 524288
+    driver.config.identified_r_warning_flags = 0
+
 
 def _run_dump(driver, params=None, values=None):
     protocol = _install_dump_response(driver, values)
@@ -143,6 +163,23 @@ def test_tuning_flag_appends_context_and_count_space_note():
     assert "config.identified_lambda_us" in output
     assert "config.identified_ringing_count" in output
     assert "count-space commissioning values" in output
+
+
+def test_tuning_flag_appends_resistance_identification_evidence():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Resistance identification evidence --" in output
+    assert "config.identified_r_count_slope_milli" in output
+    assert "1042" in output
+    assert "config.identified_r_gain_path_count_slope_milli" in output
+    assert "66752" in output
+    assert "config.identified_r_axis0_count_slope_milli" in output
+    assert "config.identified_r_axis1_drift_permille" in output
+    assert "config.identified_r_status_flags_or" in output
+    assert "host performs no" in output
 
 
 def test_tuning_output_preserves_default_dump_prefix():

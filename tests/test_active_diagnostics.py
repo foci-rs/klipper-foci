@@ -284,3 +284,110 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("ff_torque=-42", out)
         self.assertIn("status_flags=0x00008000", out)
         self.assertEqual(d.diagnostics.current_torque_sample_details, {})
+
+
+class TestResistanceTestDiagnosticCommand(unittest.TestCase):
+    def test_sends_resistance_test_request(self):
+        d = make_driver()
+        gcmd = MockGCmd({})
+
+        d.diagnostics.resistance_test(gcmd)
+
+        self.assertEqual(d.protocol.commands.resistance_test.last_args, [d.oid, 0])
+        self.assertIn("resistance-test", gcmd.last_info)
+
+    def test_resistance_profile_reply_prints_firmware_metadata(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_resistance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 1,
+                "pwm_maxcnt": 3999,
+                "bbm_h": 9,
+                "bbm_l": 9,
+                "dsadc_mdec_a": 8,
+                "dsadc_mdec_b": 8,
+                "linear_current_threshold_count": 256,
+                "encoder_move_warn_counts": 4,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 1,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("profile_version=1", out)
+        self.assertIn("pwm_maxcnt=3999", out)
+        self.assertIn("bbm_h=9", out)
+        self.assertIn("bbm_l=9", out)
+        self.assertIn("scale_metadata_validated=1", out)
+
+    def test_resistance_run_reply_prints_firmware_run_summary(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_resistance_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 1,
+                "selected_r_count_slope_milli": 1042,
+                "warning_flags": 0,
+                "status_flags_or": 0x00080000,
+                "pwm_maxcnt_readback": 3999,
+                "bbm_readback": 0x00000909,
+                "dsadc_mdec_readback": 0x00080008,
+                "pwm_sv_chop_readback": 0x00000007,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("status=0", out)
+        self.assertIn("selected_r_count_slope_milli=1042", out)
+        self.assertIn("warning_flags=0", out)
+        self.assertIn("status_flags_or=0x00080000", out)
+
+    def test_resistance_axis_reply_prints_firmware_fit_result(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_resistance_axis(
+            {
+                "oid": d.oid,
+                "electrical_axis": 0,
+                "phi_e_ext": 0,
+                "r_count_slope_milli": 1042,
+                "intercept_count": 24,
+                "rmse_permille": 8,
+                "selected_mask": 0b11111000,
+                "excluded_point_mask": 0b00000111,
+                "selected_count": 5,
+                "signed_count_slope_milli": 1041,
+                "signed_asymmetry_permille": 12,
+                "drift_permille": 5,
+                "warning_flags": 0,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("electrical_axis=0", out)
+        self.assertIn("count_slope=1042", out)
+        self.assertIn("intercept_count=24", out)
+        self.assertIn("rmse_permille=8", out)
+        self.assertIn("signed_count_slope=1041", out)
+        self.assertIn("drift_permille=5", out)
+
+    def test_resistance_diagnostic_does_not_compute_fit_in_host(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_resistance_axis(
+            {
+                "oid": d.oid,
+                "electrical_axis": 0,
+                "phi_e_ext": 0,
+                "r_count_slope_milli": 1042,
+                "warning_flags": 0,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("count_slope=1042", out)
+        self.assertFalse(hasattr(d.diagnostics.active, "fit_resistance_axis"))

@@ -71,6 +71,30 @@ IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
     "identified_inner_warning_flags",
 )
 
+# Firmware-owned resistance-identification evidence (count-space, no
+# host-side fitting). Displayed as persisted; not recomputed here.
+RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
+    "identified_r_profile_version",
+    "identified_r_count_slope_milli",
+    "identified_r_gain_path_count_slope_milli",
+    "identified_r_axis0_count_slope_milli",
+    "identified_r_axis1_count_slope_milli",
+    "identified_r_axis0_intercept_count",
+    "identified_r_axis1_intercept_count",
+    "identified_r_axis0_rmse_permille",
+    "identified_r_axis1_rmse_permille",
+    "identified_r_selected_mask_axis0",
+    "identified_r_selected_mask_axis1",
+    "identified_r_axis0_signed_count_slope_milli",
+    "identified_r_axis1_signed_count_slope_milli",
+    "identified_r_axis0_signed_asymmetry_permille",
+    "identified_r_axis1_signed_asymmetry_permille",
+    "identified_r_axis0_drift_permille",
+    "identified_r_axis1_drift_permille",
+    "identified_r_status_flags_or",
+    "identified_r_warning_flags",
+)
+
 COMPARE_GAIN_FIELDS: tuple[str, ...] = tuple(
     field_name for field_name, _reg_name in LIVE_GAIN_FIELDS
 )
@@ -197,6 +221,18 @@ class RegisterDumpWorkflow:
             "  Note: identified_r*/identified_l* are FOCI count-space"
             " commissioning values; validated physical R/L comparison is"
             " tracked separately."
+        )
+
+        lines.append("-- Resistance identification evidence --")
+        lines.extend(
+            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            for field_name in RESISTANCE_IDENTIFICATION_FIELDS
+        )
+        lines.append(
+            "  Note: identified_r_* resistance fields are firmware-reported"
+            " count-space evidence (selected/gain-path/per-axis slopes,"
+            " fit quality, signed-anchor, and drift); the host performs no"
+            " fitting or quality-gate evaluation."
         )
 
         lines.append("-- Comparison --")

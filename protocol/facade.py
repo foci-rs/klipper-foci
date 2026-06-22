@@ -229,6 +229,9 @@ class FociProtocol:
             [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
         )
 
+    def run_resistance_test(self, *, detail: int = 0) -> None:
+        self.commands.resistance_test.send([self.driver.oid, detail])
+
     def configure_startup(
         self,
         *,

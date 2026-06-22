@@ -37,6 +37,15 @@ class DiagnosticsWorkflow:
     def handle_voltage_step_result(self, params: dict) -> None:
         return self.active.handle_voltage_step_result(params)
 
+    def handle_resistance_profile(self, params: dict) -> None:
+        return self.active.handle_resistance_profile(params)
+
+    def handle_resistance_run(self, params: dict) -> None:
+        return self.active.handle_resistance_run(params)
+
+    def handle_resistance_axis(self, params: dict) -> None:
+        return self.active.handle_resistance_axis(params)
+
     def handle_stepper_event(self, params: dict) -> None:
         return self.passive.handle_stepper_event(params)
 
@@ -66,3 +75,6 @@ class DiagnosticsWorkflow:
 
     def voltage_step_test(self, gcmd) -> None:
         return self.active.voltage_step_test(gcmd)
+
+    def resistance_test(self, gcmd) -> None:
+        return self.active.resistance_test(gcmd)

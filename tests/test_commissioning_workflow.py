@@ -276,3 +276,61 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
         self.assertIn("r_count_milli=1700 l_count_micro=3300", gcmd.last_info)
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
+
+    def test_commission_persists_resistance_count_space_fields(self):
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+        result.update(
+            {
+                "resistance_profile_version": 1,
+                "resistance_selected_count_slope_milli": 1042,
+                "resistance_gain_path_count_slope_milli": 66752,
+                "resistance_axis0_count_slope_milli": 1038,
+                "resistance_axis1_count_slope_milli": 1046,
+                "resistance_axis0_intercept_count": 24,
+                "resistance_axis1_intercept_count": 27,
+                "resistance_axis0_rmse_permille": 8,
+                "resistance_axis1_rmse_permille": 9,
+                "resistance_selected_mask_axis0": 0b11111000,
+                "resistance_selected_mask_axis1": 0b11110000,
+                "resistance_axis0_signed_count_slope_milli": 1041,
+                "resistance_axis1_signed_count_slope_milli": 1047,
+                "resistance_axis0_signed_asymmetry_permille": 12,
+                "resistance_axis1_signed_asymmetry_permille": 15,
+                "resistance_axis0_drift_permille": 5,
+                "resistance_axis1_drift_permille": 6,
+                "resistance_status_flags_or": 0x00080000,
+                "resistance_warning_flags": 0,
+            }
+        )
+
+        driver.commissioning.persist_commission_results(result, "balanced")
+
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_count_slope_milli")],
+            "1042",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_gain_path_count_slope_milli")
+            ],
+            "66752",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis0_count_slope_milli")],
+            "1038",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis1_count_slope_milli")],
+            "1046",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis0_drift_permille")],
+            "5",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_status_flags_or")],
+            "524288",
+        )
