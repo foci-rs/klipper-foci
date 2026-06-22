@@ -276,6 +276,7 @@ class CommissioningWorkflow:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if eventtime > timeout:
                     self.on_commission_failure()
+                    self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
                     raise gcmd.error(
                         "FOCI %s: FOCI_COMMISSION timed out" % self.driver.name
                     )
@@ -288,6 +289,7 @@ class CommissioningWorkflow:
                         self.handle_chip_reset_detected()
                     else:
                         self.on_commission_failure()
+                    self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
                     phase_name = PHASE_NAMES.get(self.last_phase_id or 0, "unknown")
                     if self.details:
                         detail_lines = [
@@ -310,8 +312,16 @@ class CommissioningWorkflow:
             # before foci_commission_result. The diagnostics handlers
             # cache those reply values (keyed by oid); fold them into the
             # result dict now so persist_commission_results' presence-gated
-            # resistance block sees them below. Always pop (success or
-            # failure) so a stale cache never leaks into the next attempt.
+            # resistance block sees them below. pop_resistance_cache always
+            # clears the per-oid cache entry here, and is all-or-nothing:
+            # it only returns folded values when run + axis0 + axis1 are
+            # all cached, so a commission that completed before every
+            # resistance reply arrived folds in nothing rather than a
+            # partial set. The two early-exit failure paths above
+            # (timeout, mid-phase error) clear the cache directly via
+            # clear_resistance_cache since they return before reaching
+            # here; together these guarantee no stale or partial
+            # resistance cache entry ever survives past this method.
             result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
             status = result.get("status", 255)
             if status > 1:

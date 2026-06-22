@@ -6,6 +6,7 @@ from klipper_foci.commissioning import (
     COMMISSION_ERROR_NAMES,
     HARD_FAULT_CODES,
     PHASE_NAMES,
+    CommissioningWorkflow,
 )
 from klipper_foci.homing import HomingWorkflow
 
@@ -505,6 +506,92 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             configfile.values[(driver.name, "identified_r_axis1_drift_permille")],
             "6",
         )
+
+    def test_commission_with_partial_resistance_cache_persists_nothing(self):
+        """A commission that completes with a partial resistance cache.
+
+        W1 firmware emits foci_resistance_run + two foci_resistance_axis
+        replies, but if the commission stream completes before axis1
+        arrives (e.g. run + axis0 only), the fold must be all-or-nothing:
+        no identified_r_* keys get persisted, is_calibrated still becomes
+        True (commission itself succeeded), and no exception is raised.
+        Before the atomic fix, the presence-gate in
+        _persist_resistance_identification only checked for
+        resistance_selected_count_slope_milli (populated by the run
+        reply alone) and then unconditionally indexed
+        resistance_axis1_count_slope_milli and friends, raising KeyError
+        on this exact partial-cache shape.
+        """
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+
+        def drive_partial_success(_args):
+            # Only run + axis0 arrive before foci_commission_result;
+            # axis1 never shows up in this commission attempt.
+            driver.diagnostics.handle_resistance_run(
+                {
+                    "oid": driver.oid,
+                    "status": 0,
+                    "profile_version": 3,
+                    "selected_r_count_slope_milli": 1042,
+                    "gain_path_count_slope_milli": 66752,
+                    "warning_flags": 0,
+                    "status_flags_or": 0x00080000,
+                    "pwm_maxcnt_readback": 3999,
+                    "bbm_readback": 0x00000909,
+                    "dsadc_mdec_readback": 0x00080008,
+                    "pwm_sv_chop_readback": 0x00000007,
+                }
+            )
+            driver.diagnostics.handle_resistance_axis(
+                {
+                    "oid": driver.oid,
+                    "electrical_axis": 0,
+                    "phi_e_ext": 0,
+                    "r_count_slope_milli": 1038,
+                    "intercept_count": 24,
+                    "rmse_permille": 8,
+                    "selected_mask": 0b11111000,
+                    "excluded_point_mask": 0b00000111,
+                    "selected_count": 5,
+                    "signed_count_slope_milli": 1041,
+                    "signed_asymmetry_permille": 12,
+                    "drift_permille": 5,
+                    "warning_flags": 0,
+                }
+            )
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_partial_success
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        # Must not raise — the partial cache must not reach the
+        # unconditional result[key] lookups in
+        # _persist_resistance_identification.
+        driver.commissioning.commission(gcmd)
+
+        # Commission itself succeeded.
+        self.assertTrue(driver.state.is_calibrated)
+
+        # The entire resistance-identification block must be skipped: none
+        # of its config keys persisted, not even the ones the run/axis0
+        # replies could have supplied on their own. (Excludes the
+        # unrelated always-persisted internal electrical model keys like
+        # identified_r_count_milli/identified_r_int.)
+        resistance_config_keys = {
+            config_key for _, config_key in CommissioningWorkflow.RESISTANCE_RESULT_KEYS
+        }
+        persisted_resistance_keys = [
+            key for key in configfile.values if key[1] in resistance_config_keys
+        ]
+        self.assertEqual(persisted_resistance_keys, [])
+
+        # The per-oid cache must be cleared, not left dangling with the
+        # partial axis0-only entry for a later commission to pick up.
+        self.assertNotIn(driver.oid, driver.diagnostics.active.resistance_cache)
 
     def test_standalone_resistance_test_does_not_persist(self):
         """FOCI_RESISTANCE_TEST replies must only display, never persist.

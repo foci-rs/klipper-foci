@@ -16,8 +16,16 @@ class ActiveDiagnostics:
         # replies (foci_resistance_run + the two foci_resistance_axis
         # replies), keyed by oid. Populated by handle_resistance_run and
         # handle_resistance_axis below; folded into the commission result
-        # dict at commission completion by
-        # CommissioningWorkflow.commission() via pop_resistance_cache().
+        # dict on commission success by CommissioningWorkflow.commission()
+        # via pop_resistance_cache(), which only returns a non-empty dict
+        # when all three replies (run, axis0, axis1) are present — a
+        # partial set folds in nothing, so persist_commission_results'
+        # presence-gated resistance block either persists a complete set
+        # of identified_r_* keys or none at all. The cache entry for an
+        # oid is unconditionally cleared at every commission exit
+        # (success via pop_resistance_cache, failure/timeout via
+        # clear_resistance_cache), so a failed or partial run can never
+        # leak stale values into a later commission's fold.
         # A standalone FOCI_RESISTANCE_TEST run populates this cache too,
         # but nothing ever folds it in unless a commission completes
         # afterward, so standalone runs leave no persisted trace; a
@@ -442,40 +450,46 @@ class ActiveDiagnostics:
 
         Returns a dict of `resistance_*` keys (the keys
         CommissioningWorkflow.persist_commission_results' presence-gated
-        resistance block already expects), built from whatever
-        foci_resistance_run / foci_resistance_axis replies were cached
-        for `oid` by handle_resistance_run / handle_resistance_axis.
-        Clears the cache entry for `oid` afterward. Returns an empty dict
-        if nothing was cached (for example, a commission that completes
-        without a resistance-identification phase having reported yet,
-        or a standalone diagnostic that was never followed by a
-        commission).
+        resistance block already expects), built from the cached
+        foci_resistance_run / foci_resistance_axis replies for `oid` by
+        handle_resistance_run / handle_resistance_axis. Clears the cache
+        entry for `oid` unconditionally (see clear_resistance_cache).
+
+        All-or-nothing: returns the full folded dict only when the cache
+        holds the run reply AND both axis0 and axis1 replies. If any of
+        the three is missing — for example a commission that completed
+        before every resistance reply arrived — returns `{}` so the
+        presence-gate in persist_commission_results' resistance block
+        skips the block entirely instead of persisting a partial set of
+        identified_r_* keys (or raising a KeyError on the missing one).
 
         The host performs no fitting, point selection, unit conversion,
         or quality-gate evaluation here: every value is copied through
         from the firmware-reported reply fields as-is.
         """
-        cached = self.resistance_cache.pop(oid, None)
+        cached = self.clear_resistance_cache(oid)
         if not cached:
             return {}
 
-        folded: dict = {}
         run = cached.get("run")
-        if run is not None:
-            folded["resistance_selected_count_slope_milli"] = run[
-                "selected_r_count_slope_milli"
-            ]
-            folded["resistance_gain_path_count_slope_milli"] = run[
-                "gain_path_count_slope_milli"
-            ]
-            folded["resistance_status_flags_or"] = run["status_flags_or"]
-            folded["resistance_warning_flags"] = run["warning_flags"]
-            folded["resistance_profile_version"] = run["profile_version"]
+        axis0 = cached.get("axis0")
+        axis1 = cached.get("axis1")
+        if run is None or axis0 is None or axis1 is None:
+            return {}
 
-        for axis_index in (0, 1):
-            axis = cached.get("axis%d" % axis_index)
-            if axis is None:
-                continue
+        folded: dict = {
+            "resistance_selected_count_slope_milli": run[
+                "selected_r_count_slope_milli"
+            ],
+            "resistance_gain_path_count_slope_milli": run[
+                "gain_path_count_slope_milli"
+            ],
+            "resistance_status_flags_or": run["status_flags_or"],
+            "resistance_warning_flags": run["warning_flags"],
+            "resistance_profile_version": run["profile_version"],
+        }
+
+        for axis_index, axis in ((0, axis0), (1, axis1)):
             folded["resistance_axis%d_count_slope_milli" % axis_index] = axis[
                 "r_count_slope_milli"
             ]
@@ -499,6 +513,17 @@ class ActiveDiagnostics:
             ]
 
         return folded
+
+    def clear_resistance_cache(self, oid: int) -> dict:
+        """Discard and return the cached resistance replies for `oid`.
+
+        Called by pop_resistance_cache on the commission success path, and
+        directly by CommissioningWorkflow on every early-exit failure path
+        (timeout, mid-phase error) so a failed or aborted commission never
+        leaves a stale resistance-reply cache for a later run to fold in.
+        Returns an empty dict if nothing was cached.
+        """
+        return self.resistance_cache.pop(oid, None) or {}
 
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""
