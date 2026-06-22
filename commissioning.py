@@ -41,6 +41,13 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     16: "command queue full",
     17: "safety envelope violation",
     18: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
+    19: "resistance identification failed",
+}
+
+# Error codes for which the failure message should point at a dedicated
+# troubleshooting doc instead of just the bare error name.
+TROUBLESHOOTING_DOC_LINKS: dict[int, str] = {
+    19: "docs/troubleshooting/resistance-identification.md",
 }
 
 # Error codes that indicate a hard-disable fault: firmware has disabled the
@@ -188,6 +195,15 @@ def format_inner_warning_flags(flags: int) -> str:
     return ", ".join(names) if names else "none"
 
 
+def format_commission_error_name(code: int) -> str:
+    """Render a commission status code's name, with a doc link if one exists."""
+    error_name = COMMISSION_ERROR_NAMES.get(code, "UNKNOWN(%d)" % code)
+    doc_link = TROUBLESHOOTING_DOC_LINKS.get(code)
+    if doc_link is not None:
+        return "%s (see %s)" % (error_name, doc_link)
+    return error_name
+
+
 class CommissioningWorkflow:
     """Run Stage 1 commissioning and track commissioning responses."""
 
@@ -281,10 +297,7 @@ class CommissioningWorkflow:
                         "FOCI %s: FOCI_COMMISSION timed out" % self.driver.name
                     )
                 if self.error_code != 0:
-                    error_name = COMMISSION_ERROR_NAMES.get(
-                        self.error_code,
-                        "UNKNOWN(%d)" % self.error_code,
-                    )
+                    error_name = format_commission_error_name(self.error_code)
                     if self.error_code == 18:
                         self.handle_chip_reset_detected()
                     else:
@@ -325,7 +338,7 @@ class CommissioningWorkflow:
             result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
             status = result.get("status", 255)
             if status > 1:
-                error_name = COMMISSION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
+                error_name = format_commission_error_name(status)
                 if status == 18:
                     self.handle_chip_reset_detected()
                 else:

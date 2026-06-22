@@ -193,6 +193,35 @@ class TestChipResetDetected(unittest.TestCase):
         )
 
 
+class TestResistanceIdFailed(unittest.TestCase):
+    """Verify host reporting when firmware reports ResistanceIdFailed (19)."""
+
+    def test_commission_error_names_includes_code_19(self):
+        self.assertIn(19, COMMISSION_ERROR_NAMES)
+        self.assertNotEqual(COMMISSION_ERROR_NAMES[19], "UNKNOWN(19)")
+
+    def test_commission_resistance_id_failed_names_and_links_doc(self):
+        d = make_driver()
+        d.state.is_calibrated = True
+        d.state.inhibited = False
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        def drive_resistance_id_failed(_args):
+            d.commissioning.error_code = 19
+            d.commissioning.last_phase_id = 5
+
+        d.protocol.commands.commission.send = drive_resistance_id_failed
+
+        with self.assertRaises(CommandError) as ctx:
+            d.commissioning.commission(gcmd)
+
+        message = str(ctx.exception)
+        self.assertNotIn("UNKNOWN(19)", message)
+        self.assertIn(COMMISSION_ERROR_NAMES[19], message)
+        self.assertIn("docs/troubleshooting/resistance-identification.md", message)
+        self.assertTrue(d.state.inhibited)
+
+
 class TestCommissioningStateTransitions(unittest.TestCase):
     def test_commission_failure_sets_inhibited(self):
         d = make_driver()
