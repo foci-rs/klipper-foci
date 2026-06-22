@@ -46,6 +46,9 @@ class DiagnosticsWorkflow:
     def handle_resistance_axis(self, params: dict) -> None:
         return self.active.handle_resistance_axis(params)
 
+    def pop_resistance_cache(self, oid: int) -> dict:
+        return self.active.pop_resistance_cache(oid)
+
     def handle_stepper_event(self, params: dict) -> None:
         return self.passive.handle_stepper_event(params)
 

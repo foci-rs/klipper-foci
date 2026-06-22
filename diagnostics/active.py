@@ -12,6 +12,18 @@ class ActiveDiagnostics:
         self.driver = driver
         self.current_torque_sample_details: dict[tuple[int, int, int, int], dict] = {}
         self.current_torque_sample_labels: dict[tuple[int, int, int, int], str] = {}
+        # Transient per-driver cache of the commission-stream resistance
+        # replies (foci_resistance_run + the two foci_resistance_axis
+        # replies), keyed by oid. Populated by handle_resistance_run and
+        # handle_resistance_axis below; folded into the commission result
+        # dict at commission completion by
+        # CommissioningWorkflow.commission() via pop_resistance_cache().
+        # A standalone FOCI_RESISTANCE_TEST run populates this cache too,
+        # but nothing ever folds it in unless a commission completes
+        # afterward, so standalone runs leave no persisted trace; a
+        # stale entry from a diagnostic run is simply overwritten by the
+        # next run.
+        self.resistance_cache: dict[int, dict] = {}
 
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
@@ -347,8 +359,17 @@ class ActiveDiagnostics:
 
         Displays the firmware-selected count-space resistance slope and
         run-level warning/readback evidence as reported. The host does not
-        recompute or re-select this value.
+        recompute or re-select this value. Also caches the run fields
+        (keyed by oid) so a subsequent commission completion can fold
+        them into the persisted result; see pop_resistance_cache().
         """
+        self.resistance_cache.setdefault(params["oid"], {})["run"] = {
+            "selected_r_count_slope_milli": params["selected_r_count_slope_milli"],
+            "gain_path_count_slope_milli": params.get("gain_path_count_slope_milli", 0),
+            "status_flags_or": params["status_flags_or"],
+            "warning_flags": params["warning_flags"],
+            "profile_version": params["profile_version"],
+        }
         msg = (
             "FOCI %s resistance run: status=%d profile_version=%d"
             " selected_r_count_slope_milli=%d warning_flags=%d"
@@ -376,8 +397,21 @@ class ActiveDiagnostics:
         Displays the firmware-fitted per-axis resistance evidence exactly
         as reported: count-slope, intercept, fit residual, point-selection
         masks, signed-anchor slope/asymmetry, and thermal drift. The host
-        does not fit, select points, or evaluate quality gates here.
+        does not fit, select points, or evaluate quality gates here. Also
+        caches the axis fields (keyed by oid, routed by electrical_axis —
+        not arrival order) so a subsequent commission completion can fold
+        them into the persisted result; see pop_resistance_cache().
         """
+        axis_key = "axis%d" % params["electrical_axis"]
+        self.resistance_cache.setdefault(params["oid"], {})[axis_key] = {
+            "r_count_slope_milli": params["r_count_slope_milli"],
+            "intercept_count": params.get("intercept_count", 0),
+            "rmse_permille": params.get("rmse_permille", 0),
+            "selected_mask": params.get("selected_mask", 0),
+            "signed_count_slope_milli": params.get("signed_count_slope_milli", 0),
+            "signed_asymmetry_permille": params.get("signed_asymmetry_permille", 0),
+            "drift_permille": params.get("drift_permille", 0),
+        }
         msg = (
             "FOCI %s resistance axis: electrical_axis=%d phi_e_ext=%d"
             " count_slope=%d intercept_count=%d rmse_permille=%d"
@@ -402,6 +436,69 @@ class ActiveDiagnostics:
             )
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def pop_resistance_cache(self, oid: int) -> dict:
+        """Fold cached commission-stream resistance replies into result keys.
+
+        Returns a dict of `resistance_*` keys (the keys
+        CommissioningWorkflow.persist_commission_results' presence-gated
+        resistance block already expects), built from whatever
+        foci_resistance_run / foci_resistance_axis replies were cached
+        for `oid` by handle_resistance_run / handle_resistance_axis.
+        Clears the cache entry for `oid` afterward. Returns an empty dict
+        if nothing was cached (for example, a commission that completes
+        without a resistance-identification phase having reported yet,
+        or a standalone diagnostic that was never followed by a
+        commission).
+
+        The host performs no fitting, point selection, unit conversion,
+        or quality-gate evaluation here: every value is copied through
+        from the firmware-reported reply fields as-is.
+        """
+        cached = self.resistance_cache.pop(oid, None)
+        if not cached:
+            return {}
+
+        folded: dict = {}
+        run = cached.get("run")
+        if run is not None:
+            folded["resistance_selected_count_slope_milli"] = run[
+                "selected_r_count_slope_milli"
+            ]
+            folded["resistance_gain_path_count_slope_milli"] = run[
+                "gain_path_count_slope_milli"
+            ]
+            folded["resistance_status_flags_or"] = run["status_flags_or"]
+            folded["resistance_warning_flags"] = run["warning_flags"]
+            folded["resistance_profile_version"] = run["profile_version"]
+
+        for axis_index in (0, 1):
+            axis = cached.get("axis%d" % axis_index)
+            if axis is None:
+                continue
+            folded["resistance_axis%d_count_slope_milli" % axis_index] = axis[
+                "r_count_slope_milli"
+            ]
+            folded["resistance_axis%d_intercept_count" % axis_index] = axis[
+                "intercept_count"
+            ]
+            folded["resistance_axis%d_rmse_permille" % axis_index] = axis[
+                "rmse_permille"
+            ]
+            folded["resistance_selected_mask_axis%d" % axis_index] = axis[
+                "selected_mask"
+            ]
+            folded["resistance_axis%d_signed_count_slope_milli" % axis_index] = axis[
+                "signed_count_slope_milli"
+            ]
+            folded["resistance_axis%d_signed_asymmetry_permille" % axis_index] = axis[
+                "signed_asymmetry_permille"
+            ]
+            folded["resistance_axis%d_drift_permille" % axis_index] = axis[
+                "drift_permille"
+            ]
+
+        return folded
 
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""

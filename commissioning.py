@@ -305,6 +305,14 @@ class CommissioningWorkflow:
                     )
 
             result = self.result
+            # W1 firmware emits foci_resistance_run + two
+            # foci_resistance_axis replies during FOCI_COMMISSION, just
+            # before foci_commission_result. The diagnostics handlers
+            # cache those reply values (keyed by oid); fold them into the
+            # result dict now so persist_commission_results' presence-gated
+            # resistance block sees them below. Always pop (success or
+            # failure) so a stale cache never leaks into the next attempt.
+            result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
             status = result.get("status", 255)
             if status > 1:
                 error_name = COMMISSION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)

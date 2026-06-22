@@ -334,3 +334,242 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             configfile.values[(driver.name, "identified_r_status_flags_or")],
             "524288",
         )
+
+
+class CommissionResistanceReplyFoldingTests(unittest.TestCase):
+    """Verify commission-stream resistance replies get folded into result.
+
+    W1 made firmware emit foci_resistance_run + two foci_resistance_axis
+    replies during FOCI_COMMISSION, just before foci_commission_result.
+    These tests drive that exact reply sequence through the host's
+    response handlers and confirm the values end up persisted via
+    persist_commission_results, with axis0/axis1 correctly routed by
+    electrical_axis (not arrival order).
+    """
+
+    def test_commission_replies_are_folded_and_persisted(self):
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+
+        def drive_success(_args):
+            # Firmware emits these three replies, in order, just before
+            # foci_commission_result, as part of the same FOCI_COMMISSION
+            # run. Axis replies arrive axis1-before-axis0 here on purpose
+            # to prove routing uses electrical_axis, not arrival order.
+            driver.diagnostics.handle_resistance_run(
+                {
+                    "oid": driver.oid,
+                    "status": 0,
+                    "profile_version": 3,
+                    "selected_r_count_slope_milli": 1042,
+                    "gain_path_count_slope_milli": 66752,
+                    "warning_flags": 0,
+                    "status_flags_or": 0x00080000,
+                    "pwm_maxcnt_readback": 3999,
+                    "bbm_readback": 0x00000909,
+                    "dsadc_mdec_readback": 0x00080008,
+                    "pwm_sv_chop_readback": 0x00000007,
+                }
+            )
+            driver.diagnostics.handle_resistance_axis(
+                {
+                    "oid": driver.oid,
+                    "electrical_axis": 1,
+                    "phi_e_ext": 16384,
+                    "r_count_slope_milli": 1046,
+                    "intercept_count": 27,
+                    "rmse_permille": 9,
+                    "selected_mask": 0b11110000,
+                    "excluded_point_mask": 0b00001111,
+                    "selected_count": 4,
+                    "signed_count_slope_milli": 1047,
+                    "signed_asymmetry_permille": 15,
+                    "drift_permille": 6,
+                    "warning_flags": 0,
+                }
+            )
+            driver.diagnostics.handle_resistance_axis(
+                {
+                    "oid": driver.oid,
+                    "electrical_axis": 0,
+                    "phi_e_ext": 0,
+                    "r_count_slope_milli": 1038,
+                    "intercept_count": 24,
+                    "rmse_permille": 8,
+                    "selected_mask": 0b11111000,
+                    "excluded_point_mask": 0b00000111,
+                    "selected_count": 5,
+                    "signed_count_slope_milli": 1041,
+                    "signed_asymmetry_permille": 12,
+                    "drift_permille": 5,
+                    "warning_flags": 0,
+                }
+            )
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_success
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        driver.commissioning.commission(gcmd)
+
+        # The presence-gate key from the run reply.
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_count_slope_milli")],
+            "1042",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_gain_path_count_slope_milli")
+            ],
+            "66752",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_profile_version")],
+            "3",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_status_flags_or")],
+            "%d" % 0x00080000,
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_warning_flags")],
+            "0",
+        )
+        # Distinct axis0/axis1 values, routed by electrical_axis despite
+        # arriving axis1-before-axis0 above. A swapped-routing bug would
+        # fail these assertions.
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis0_count_slope_milli")],
+            "1038",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis1_count_slope_milli")],
+            "1046",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis0_intercept_count")],
+            "24",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis1_intercept_count")],
+            "27",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis0_rmse_permille")],
+            "8",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis1_rmse_permille")],
+            "9",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_selected_mask_axis0")],
+            "%d" % 0b11111000,
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_selected_mask_axis1")],
+            "%d" % 0b11110000,
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_axis0_signed_count_slope_milli")
+            ],
+            "1041",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_axis1_signed_count_slope_milli")
+            ],
+            "1047",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_axis0_signed_asymmetry_permille")
+            ],
+            "12",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_axis1_signed_asymmetry_permille")
+            ],
+            "15",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis0_drift_permille")],
+            "5",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_axis1_drift_permille")],
+            "6",
+        )
+
+    def test_standalone_resistance_test_does_not_persist(self):
+        """FOCI_RESISTANCE_TEST replies must only display, never persist.
+
+        Folding into the commission result dict happens at commission
+        completion only. A standalone diagnostic run (not part of a
+        commission) must leave no trace in persisted config.
+        """
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+
+        driver.diagnostics.handle_resistance_run(
+            {
+                "oid": driver.oid,
+                "status": 0,
+                "profile_version": 3,
+                "selected_r_count_slope_milli": 1042,
+                "gain_path_count_slope_milli": 0,
+                "warning_flags": 0,
+                "status_flags_or": 0,
+                "pwm_maxcnt_readback": 3999,
+                "bbm_readback": 0,
+                "dsadc_mdec_readback": 0,
+                "pwm_sv_chop_readback": 0,
+            }
+        )
+        driver.diagnostics.handle_resistance_axis(
+            {
+                "oid": driver.oid,
+                "electrical_axis": 0,
+                "phi_e_ext": 0,
+                "r_count_slope_milli": 1038,
+                "intercept_count": 24,
+                "rmse_permille": 8,
+                "selected_mask": 0b11111000,
+                "excluded_point_mask": 0b00000111,
+                "selected_count": 5,
+                "signed_count_slope_milli": 1041,
+                "signed_asymmetry_permille": 12,
+                "drift_permille": 5,
+                "warning_flags": 0,
+            }
+        )
+        driver.diagnostics.handle_resistance_axis(
+            {
+                "oid": driver.oid,
+                "electrical_axis": 1,
+                "phi_e_ext": 16384,
+                "r_count_slope_milli": 1046,
+                "intercept_count": 27,
+                "rmse_permille": 9,
+                "selected_mask": 0b11110000,
+                "excluded_point_mask": 0b00001111,
+                "selected_count": 4,
+                "signed_count_slope_milli": 1047,
+                "signed_asymmetry_permille": 15,
+                "drift_permille": 6,
+                "warning_flags": 0,
+            }
+        )
+
+        # No commission ran; persist_commission_results was never called.
+        # Confirm nothing resistance-related landed in config.
+        resistance_keys = [
+            key for key in configfile.values if "identified_r_" in key[1]
+        ]
+        self.assertEqual(resistance_keys, [])
