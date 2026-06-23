@@ -201,6 +201,13 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "resistance_test",
         "Run the shared FOCI resistance-identification diagnostic",
     ),
+    GcodeCommandSpec(
+        "FOCI_IMPEDANCE_TEST",
+        "expert",
+        "diagnostics",
+        "impedance_test",
+        "Run the shared FOCI impedance-identification diagnostic",
+    ),
 )
 
 

@@ -2,7 +2,7 @@
 
 import unittest
 
-from tests.mocks import MockGCmd, make_driver
+from tests.mocks import CommandError, MockGCmd, make_driver
 
 
 class TestCurrentStepDiagnosticCommand(unittest.TestCase):
@@ -391,3 +391,156 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         out = d.printer.lookup_object("gcode")._responses[-1]
         self.assertIn("count_slope=1042", out)
         self.assertFalse(hasattr(d.diagnostics.active, "fit_resistance_axis"))
+
+
+class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
+    def test_sends_impedance_test_request(self):
+        d = make_driver()
+        gcmd = MockGCmd({})
+
+        d.diagnostics.impedance_test(gcmd)
+
+        self.assertEqual(d.protocol.commands.impedance_test.last_args, [d.oid, 0])
+        self.assertIn("impedance-test", gcmd.last_info)
+
+    def test_accepts_bounded_impedance_detail_levels(self):
+        d = make_driver()
+
+        for detail in (0, 1, 2):
+            with self.subTest(detail=detail):
+                gcmd = MockGCmd({"DETAIL": detail})
+                d.diagnostics.impedance_test(gcmd)
+                self.assertEqual(
+                    d.protocol.commands.impedance_test.last_args,
+                    [d.oid, detail],
+                )
+
+    def test_rejects_impedance_detail_above_firmware_bounds(self):
+        d = make_driver()
+
+        with self.assertRaises(CommandError):
+            d.diagnostics.impedance_test(MockGCmd({"DETAIL": 3}))
+
+    def test_impedance_profile_reply_prints_all_firmware_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 2,
+                "point_count": 4,
+                "sample_count": 96,
+                "sample_interval_us": 250,
+                "max_ud": 1600,
+                "status_flags_fail_mask": 0x00000020,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 0,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("profile_version=2", out)
+        self.assertIn("point_count=4", out)
+        self.assertIn("sample_count=96", out)
+        self.assertIn("sample_interval_us=250", out)
+        self.assertIn("max_ud=1600", out)
+        self.assertIn("status_flags_fail_mask=0x00000020", out)
+        self.assertIn("status_flags_warn_mask=0x00080000", out)
+        self.assertIn("scale_metadata_validated=0", out)
+        self.assertIn("physical_projection=secondary/provisional/unavailable", out)
+
+    def test_impedance_fit_reply_prints_all_firmware_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_fit(
+            {
+                "oid": d.oid,
+                "point_index": 3,
+                "frequency_millihz": 250000,
+                "ud_abs": 1200,
+                "axis_max_count_per_ud_milli": 920,
+                "axis_min_count_per_ud_milli": 310,
+                "axis_angle_electrical_counts": 16384,
+                "residual_permille": 18,
+                "coverage_permille": 930,
+                "scalar_2f_mismatch_permille": 27,
+                "warning_flags": 0x00000040,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("point_index=3", out)
+        self.assertIn("frequency_millihz=250000", out)
+        self.assertIn("ud_abs=1200", out)
+        self.assertIn("axis_max_count_per_ud_milli=920", out)
+        self.assertIn("axis_min_count_per_ud_milli=310", out)
+        self.assertIn("axis_angle_electrical_counts=16384", out)
+        self.assertIn("residual_permille=18", out)
+        self.assertIn("coverage_permille=930", out)
+        self.assertIn("scalar_2f_mismatch_permille=27", out)
+        self.assertIn("warning_flags=0x00000040", out)
+
+    def test_impedance_run_reply_prints_all_firmware_fields(self):
+        d = make_driver()
+        d.diagnostics.active.handle_impedance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 2,
+                "point_count": 4,
+                "sample_count": 96,
+                "sample_interval_us": 250,
+                "max_ud": 1600,
+                "status_flags_fail_mask": 0x00000020,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 0,
+            }
+        )
+
+        d.diagnostics.active.handle_impedance_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 2,
+                "selected_axis_max_count_per_ud_milli": 931,
+                "selected_axis_min_count_per_ud_milli": 305,
+                "repeatability_permille": 22,
+                "warning_flags": 0x00020000,
+                "status_flags_or": 0x00080020,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("status=0", out)
+        self.assertIn("profile_version=2", out)
+        self.assertIn("selected_axis_max_count_per_ud_milli=931", out)
+        self.assertIn("selected_axis_min_count_per_ud_milli=305", out)
+        self.assertIn("repeatability_permille=22", out)
+        self.assertIn("warning_flags=0x00020000", out)
+        self.assertIn("status_flags_or=0x00080020", out)
+        self.assertIn("physical_projection=secondary/provisional/unavailable", out)
+
+    def test_impedance_diagnostic_does_not_compute_fitted_values_in_host(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_fit(
+            {
+                "oid": d.oid,
+                "point_index": 0,
+                "frequency_millihz": 125000,
+                "ud_abs": 800,
+                "axis_max_count_per_ud_milli": 910,
+                "axis_min_count_per_ud_milli": 300,
+                "axis_angle_electrical_counts": 0,
+                "residual_permille": 12,
+                "coverage_permille": 980,
+                "scalar_2f_mismatch_permille": 15,
+                "warning_flags": 0,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("axis_max_count_per_ud_milli=910", out)
+        self.assertIn("axis_min_count_per_ud_milli=300", out)
+        self.assertNotIn("ld=", out.lower())
+        self.assertNotIn("lq=", out.lower())
+        self.assertFalse(hasattr(d.diagnostics.active, "fit_impedance_response"))

@@ -46,6 +46,15 @@ class DiagnosticsWorkflow:
     def handle_resistance_axis(self, params: dict) -> None:
         return self.active.handle_resistance_axis(params)
 
+    def handle_impedance_profile(self, params: dict) -> None:
+        return self.active.handle_impedance_profile(params)
+
+    def handle_impedance_fit(self, params: dict) -> None:
+        return self.active.handle_impedance_fit(params)
+
+    def handle_impedance_run(self, params: dict) -> None:
+        return self.active.handle_impedance_run(params)
+
     def pop_resistance_cache(self, oid: int) -> dict:
         return self.active.pop_resistance_cache(oid)
 
@@ -84,3 +93,6 @@ class DiagnosticsWorkflow:
 
     def resistance_test(self, gcmd) -> None:
         return self.active.resistance_test(gcmd)
+
+    def impedance_test(self, gcmd) -> None:
+        return self.active.impedance_test(gcmd)

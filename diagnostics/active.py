@@ -38,6 +38,7 @@ class ActiveDiagnostics:
         # guards against this by clearing the per-oid cache at the start
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
+        self.impedance_scale_metadata_validated: dict[int, bool] = {}
 
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
@@ -451,6 +452,103 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def _impedance_projection_label(self, oid: int) -> str:
+        """Return the host display label for physical-scale projection."""
+        if self.impedance_scale_metadata_validated.get(oid, False):
+            return "secondary/provisional"
+        return "secondary/provisional/unavailable"
+
+    def handle_impedance_profile(self, params: dict) -> None:
+        """Handle foci_impedance_profile from firmware.
+
+        Displays profile constants exactly as reported. The host only
+        records whether the firmware validated physical projection
+        metadata so later impedance replies can carry the same display
+        label without reinterpreting any electrical result.
+        """
+        oid = params["oid"]
+        self.impedance_scale_metadata_validated[oid] = bool(
+            params["scale_metadata_validated"]
+        )
+        msg = (
+            "FOCI %s impedance profile: profile_version=%d"
+            " point_count=%d sample_count=%d sample_interval_us=%d max_ud=%d"
+            " status_flags_fail_mask=0x%08x status_flags_warn_mask=0x%08x"
+            " scale_metadata_validated=%d physical_projection=%s"
+            % (
+                self.driver.name,
+                params["profile_version"],
+                params["point_count"],
+                params["sample_count"],
+                params["sample_interval_us"],
+                params["max_ud"],
+                params["status_flags_fail_mask"],
+                params["status_flags_warn_mask"],
+                params["scale_metadata_validated"],
+                self._impedance_projection_label(oid),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_impedance_fit(self, params: dict) -> None:
+        """Handle foci_impedance_fit from firmware.
+
+        Displays the per-point fit evidence exactly as reported. The host
+        does not derive fitted electrical axes, physical inductances, or
+        warnings beyond the projection-availability label sourced from
+        the last profile reply for this oid.
+        """
+        msg = (
+            "FOCI %s impedance fit: point_index=%d frequency_millihz=%d"
+            " ud_abs=%d axis_max_count_per_ud_milli=%d"
+            " axis_min_count_per_ud_milli=%d"
+            " axis_angle_electrical_counts=%d residual_permille=%d"
+            " coverage_permille=%d scalar_2f_mismatch_permille=%d"
+            " warning_flags=0x%08x physical_projection=%s"
+            % (
+                self.driver.name,
+                params["point_index"],
+                params["frequency_millihz"],
+                params["ud_abs"],
+                params["axis_max_count_per_ud_milli"],
+                params["axis_min_count_per_ud_milli"],
+                params["axis_angle_electrical_counts"],
+                params["residual_permille"],
+                params["coverage_permille"],
+                params["scalar_2f_mismatch_permille"],
+                params["warning_flags"],
+                self._impedance_projection_label(params["oid"]),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_impedance_run(self, params: dict) -> None:
+        """Handle foci_impedance_run from firmware.
+
+        Displays the aggregate run summary exactly as reported. The host
+        does not select axes, compute physical units, or override the
+        firmware's warning/status evidence.
+        """
+        msg = (
+            "FOCI %s impedance run: status=%d profile_version=%d"
+            " selected_axis_max_count_per_ud_milli=%d"
+            " selected_axis_min_count_per_ud_milli=%d"
+            " repeatability_permille=%d warning_flags=0x%08x"
+            " status_flags_or=0x%08x physical_projection=%s"
+            % (
+                self.driver.name,
+                params["status"],
+                params["profile_version"],
+                params["selected_axis_max_count_per_ud_milli"],
+                params["selected_axis_min_count_per_ud_milli"],
+                params["repeatability_permille"],
+                params["warning_flags"],
+                params["status_flags_or"],
+                self._impedance_projection_label(params["oid"]),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def pop_resistance_cache(self, oid: int) -> dict:
         """Fold cached commission-stream resistance replies into result keys.
 
@@ -563,4 +661,21 @@ class ActiveDiagnostics:
 
         gcmd.respond_info(
             "FOCI %s resistance-test requested: detail=%d" % (self.driver.name, detail)
+        )
+
+    def impedance_test(self, gcmd) -> None:
+        """Run the shared firmware impedance-identification diagnostic.
+
+        Triggers the firmware-owned impedance diagnostic and only forwards
+        the bounded detail level. Results stream back via the
+        foci_impedance_profile/fit/run replies, which are displayed as
+        reported with no host-side fitting or physical projection
+        calculation.
+        """
+        detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=2)
+
+        self.driver.protocol.run_impedance_test(detail=detail)
+
+        gcmd.respond_info(
+            "FOCI %s impedance-test requested: detail=%d" % (self.driver.name, detail)
         )

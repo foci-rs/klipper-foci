@@ -47,6 +47,7 @@ EXPERT_COMMANDS = {
     "FOCI_POSITION_TORQUE_OFFSET_TEST",
     "FOCI_VOLTAGE_STEP_TEST",
     "FOCI_RESISTANCE_TEST",
+    "FOCI_IMPEDANCE_TEST",
 }
 
 
@@ -680,3 +681,9 @@ def test_resistance_test_registers_in_expert_mode():
     printer = build_driver_with_mode("expert")
 
     assert "FOCI_RESISTANCE_TEST" in registered_command_names(printer)
+
+
+def test_impedance_test_registers_in_expert_mode():
+    printer = build_driver_with_mode("expert")
+
+    assert "FOCI_IMPEDANCE_TEST" in registered_command_names(printer)
