@@ -479,6 +479,7 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("coverage_permille=930", out)
         self.assertIn("scalar_2f_mismatch_permille=27", out)
         self.assertIn("warning_flags=0x00000040", out)
+        self.assertIn("physical_projection=unknown/unavailable", out)
 
     def test_impedance_run_reply_prints_all_firmware_fields(self):
         d = make_driver()
@@ -518,6 +519,128 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("warning_flags=0x00020000", out)
         self.assertIn("status_flags_or=0x00080020", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
+
+    def test_impedance_run_without_current_profile_does_not_use_stale_validated_cache(
+        self,
+    ):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 1,
+                "point_count": 4,
+                "sample_count": 96,
+                "sample_interval_us": 250,
+                "max_ud": 1600,
+                "status_flags_fail_mask": 0x00000020,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 1,
+            }
+        )
+        d.diagnostics.active.handle_impedance_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 1,
+                "selected_axis_max_count_per_ud_milli": 900,
+                "selected_axis_min_count_per_ud_milli": 300,
+                "repeatability_permille": 20,
+                "warning_flags": 0,
+                "status_flags_or": 0,
+            }
+        )
+        d.printer.lookup_object("gcode")._responses.clear()
+
+        d.diagnostics.active.handle_impedance_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 2,
+                "selected_axis_max_count_per_ud_milli": 931,
+                "selected_axis_min_count_per_ud_milli": 305,
+                "repeatability_permille": 22,
+                "warning_flags": 0x00020000,
+                "status_flags_or": 0x00080020,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("physical_projection=unknown/unavailable", out)
+        self.assertNotIn("physical_projection=secondary/provisional", out)
+
+    def test_impedance_fit_before_profile_does_not_use_stale_cache(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 1,
+                "point_count": 4,
+                "sample_count": 96,
+                "sample_interval_us": 250,
+                "max_ud": 1600,
+                "status_flags_fail_mask": 0x00000020,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 1,
+            }
+        )
+        d.diagnostics.impedance_test(MockGCmd({"DETAIL": 1}))
+
+        d.diagnostics.active.handle_impedance_fit(
+            {
+                "oid": d.oid,
+                "point_index": 3,
+                "frequency_millihz": 250000,
+                "ud_abs": 1200,
+                "axis_max_count_per_ud_milli": 920,
+                "axis_min_count_per_ud_milli": 310,
+                "axis_angle_electrical_counts": 16384,
+                "residual_permille": 18,
+                "coverage_permille": 930,
+                "scalar_2f_mismatch_permille": 27,
+                "warning_flags": 0x00000040,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("physical_projection=unknown/unavailable", out)
+        self.assertNotIn("physical_projection=secondary/provisional", out)
+
+    def test_impedance_run_before_profile_does_not_use_stale_cache(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 1,
+                "point_count": 4,
+                "sample_count": 96,
+                "sample_interval_us": 250,
+                "max_ud": 1600,
+                "status_flags_fail_mask": 0x00000020,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 1,
+            }
+        )
+        d.diagnostics.impedance_test(MockGCmd({"DETAIL": 2}))
+
+        d.diagnostics.active.handle_impedance_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 2,
+                "selected_axis_max_count_per_ud_milli": 931,
+                "selected_axis_min_count_per_ud_milli": 305,
+                "repeatability_permille": 22,
+                "warning_flags": 0x00020000,
+                "status_flags_or": 0x00080020,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("physical_projection=unknown/unavailable", out)
+        self.assertNotIn("physical_projection=secondary/provisional", out)
 
     def test_impedance_diagnostic_does_not_compute_fitted_values_in_host(self):
         d = make_driver()

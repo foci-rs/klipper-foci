@@ -38,7 +38,7 @@ class ActiveDiagnostics:
         # guards against this by clearing the per-oid cache at the start
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
-        self.impedance_scale_metadata_validated: dict[int, bool] = {}
+        self.impedance_pending_scale_metadata_validated: dict[int, bool] = {}
 
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
@@ -454,7 +454,10 @@ class ActiveDiagnostics:
 
     def _impedance_projection_label(self, oid: int) -> str:
         """Return the host display label for physical-scale projection."""
-        if self.impedance_scale_metadata_validated.get(oid, False):
+        validated = self.impedance_pending_scale_metadata_validated.get(oid)
+        if validated is None:
+            return "unknown/unavailable"
+        if validated:
             return "secondary/provisional"
         return "secondary/provisional/unavailable"
 
@@ -467,7 +470,7 @@ class ActiveDiagnostics:
         label without reinterpreting any electrical result.
         """
         oid = params["oid"]
-        self.impedance_scale_metadata_validated[oid] = bool(
+        self.impedance_pending_scale_metadata_validated[oid] = bool(
             params["scale_metadata_validated"]
         )
         msg = (
@@ -547,6 +550,7 @@ class ActiveDiagnostics:
                 self._impedance_projection_label(params["oid"]),
             )
         )
+        self.impedance_pending_scale_metadata_validated.pop(params["oid"], None)
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
     def pop_resistance_cache(self, oid: int) -> dict:
@@ -673,6 +677,7 @@ class ActiveDiagnostics:
         calculation.
         """
         detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=2)
+        self.impedance_pending_scale_metadata_validated.pop(self.driver.oid, None)
 
         self.driver.protocol.run_impedance_test(detail=detail)
 
