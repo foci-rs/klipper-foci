@@ -147,6 +147,12 @@ class FociMcuCommands:
             )
         except Exception:
             self.read_register = None
+        try:
+            self.write_register = mcu.lookup_command(
+                "tmc_write_register oid=%c addr=%c value=%u"
+            )
+        except Exception:
+            self.write_register = None
         self.calibrate = mcu.lookup_command("foci_calibrate oid=%c", cq=cmd_queue)
         self.dump_registers = mcu.lookup_command("foci_dump_registers oid=%c")
         register_dump_responses(mcu._serial, driver, oid)

@@ -48,6 +48,20 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Dump TMC4671 register state for a FOCI stepper",
     ),
     GcodeCommandSpec(
+        "FOCI_WRITE_REGISTER",
+        "default",
+        "dump",
+        "write_register",
+        "Throwaway debug: write a raw TMC4671 register (dev firmware)",
+    ),
+    GcodeCommandSpec(
+        "FOCI_READ_REGISTER",
+        "default",
+        "dump",
+        "read_register",
+        "Throwaway debug: read a raw TMC4671 register (dev firmware)",
+    ),
+    GcodeCommandSpec(
         "FOCI_SELFTEST",
         "default",
         "selftest",

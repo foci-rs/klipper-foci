@@ -52,6 +52,12 @@ class DiagnosticsWorkflow:
     def handle_impedance_fit(self, params: dict) -> None:
         return self.active.handle_impedance_fit(params)
 
+    def handle_impedance_observation(self, params: dict) -> None:
+        return self.active.handle_impedance_observation(params)
+
+    def handle_impedance_baseline(self, params: dict) -> None:
+        return self.active.handle_impedance_baseline(params)
+
     def handle_impedance_run(self, params: dict) -> None:
         return self.active.handle_impedance_run(params)
 

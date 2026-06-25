@@ -352,3 +352,11 @@ class FociProtocol:
             )
         params = self.commands.read_register.send([self.driver.oid, addr])
         return params["value"]
+
+    def write_register(self, addr: int, value: int) -> None:
+        """Write one raw TMC4671 register address through dev firmware."""
+        if self.commands.write_register is None:
+            raise self.driver.printer.command_error(
+                "Raw register access requires dev firmware build"
+            )
+        self.commands.write_register.send([self.driver.oid, addr, value])

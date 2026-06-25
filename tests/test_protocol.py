@@ -68,6 +68,13 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         driver.oid,
     ) in registrations
     assert ("foci_voltage_step_result", driver.oid) in registrations
+    assert ("foci_resistance_profile", driver.oid) in registrations
+    assert ("foci_resistance_run", driver.oid) in registrations
+    assert ("foci_resistance_axis", driver.oid) in registrations
+    assert ("foci_impedance_profile", driver.oid) in registrations
+    assert ("foci_impedance_fit", driver.oid) in registrations
+    assert ("foci_impedance_observation", driver.oid) in registrations
+    assert ("foci_impedance_run", driver.oid) in registrations
     assert len(registrations) == len(set(registrations))
 
 

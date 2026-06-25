@@ -507,6 +507,10 @@ class ActiveDiagnostics:
             " axis_min_count_per_ud_milli=%d"
             " axis_angle_electrical_counts=%d residual_permille=%d"
             " coverage_permille=%d scalar_2f_mismatch_permille=%d"
+            " magnitude_mean_count_per_ud_milli=%d"
+            " magnitude_2f_count_per_ud_milli=%d"
+            " magnitude_2f_residual_permille=%d"
+            " magnitude_2f_coverage_permille=%d"
             " warning_flags=0x%08x physical_projection=%s"
             % (
                 self.driver.name,
@@ -519,7 +523,68 @@ class ActiveDiagnostics:
                 params["residual_permille"],
                 params["coverage_permille"],
                 params["scalar_2f_mismatch_permille"],
+                params["magnitude_mean_count_per_ud_milli"],
+                params["magnitude_2f_count_per_ud_milli"],
+                params["magnitude_2f_residual_permille"],
+                params["magnitude_2f_coverage_permille"],
                 params["warning_flags"],
+                self._impedance_projection_label(params["oid"]),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_impedance_observation(self, params: dict) -> None:
+        """Handle foci_impedance_observation from firmware."""
+        msg = (
+            "FOCI %s impedance observation: point_index=%d frequency_millihz=%d"
+            " ud_abs=%d status_flags_or=0x%08x"
+            " openloop_phi_sample=%d openloop_velocity_actual=%d"
+            " adc_iux_sample=%d adc_iwy_sample=%d"
+            " foc_iux_sample=%d foc_iwy_sample=%d"
+            " foc_uq_sample=%d foc_ud_sample=%d"
+            " foc_uq_limited_sample=%d foc_ud_limited_sample=%d"
+            " foc_iq_sample=%d foc_id_sample=%d physical_projection=%s"
+            % (
+                self.driver.name,
+                params["point_index"],
+                params["frequency_millihz"],
+                params["ud_abs"],
+                params["status_flags_or"],
+                params["openloop_phi_sample"],
+                params["openloop_velocity_actual"],
+                params["adc_iux_sample"],
+                params["adc_iwy_sample"],
+                params["foc_iux_sample"],
+                params["foc_iwy_sample"],
+                params["foc_uq_sample"],
+                params["foc_ud_sample"],
+                params["foc_uq_limited_sample"],
+                params["foc_ud_limited_sample"],
+                params["foc_iq_sample"],
+                params["foc_id_sample"],
+                self._impedance_projection_label(params["oid"]),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_impedance_baseline(self, params: dict) -> None:
+        """Handle foci_impedance_baseline from firmware."""
+        msg = (
+            "FOCI %s impedance baseline: point_index=%d frequency_millihz=%d"
+            " ud_abs=%d dc_adc_iux_sample=%d dc_adc_iwy_sample=%d"
+            " dc_foc_iux_sample=%d dc_foc_iwy_sample=%d"
+            " dc_foc_iq_sample=%d dc_foc_id_sample=%d physical_projection=%s"
+            % (
+                self.driver.name,
+                params["point_index"],
+                params["frequency_millihz"],
+                params["ud_abs"],
+                params["dc_adc_iux_sample"],
+                params["dc_adc_iwy_sample"],
+                params["dc_foc_iux_sample"],
+                params["dc_foc_iwy_sample"],
+                params["dc_foc_iq_sample"],
+                params["dc_foc_id_sample"],
                 self._impedance_projection_label(params["oid"]),
             )
         )
@@ -537,7 +602,10 @@ class ActiveDiagnostics:
             " selected_axis_max_count_per_ud_milli=%d"
             " selected_axis_min_count_per_ud_milli=%d"
             " repeatability_permille=%d warning_flags=0x%08x"
-            " status_flags_or=0x%08x physical_projection=%s"
+            " status_flags_or=0x%08x"
+            " readback_mismatch_addr=0x%02x"
+            " readback_expected=0x%08x readback_actual=0x%08x"
+            " physical_projection=%s"
             % (
                 self.driver.name,
                 params["status"],
@@ -547,6 +615,9 @@ class ActiveDiagnostics:
                 params["repeatability_permille"],
                 params["warning_flags"],
                 params["status_flags_or"],
+                params.get("readback_mismatch_addr", 0),
+                params.get("readback_expected", 0),
+                params.get("readback_actual", 0),
                 self._impedance_projection_label(params["oid"]),
             )
         )

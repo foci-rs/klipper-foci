@@ -464,6 +464,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "residual_permille": 18,
                 "coverage_permille": 930,
                 "scalar_2f_mismatch_permille": 27,
+                "magnitude_mean_count_per_ud_milli": 840,
+                "magnitude_2f_count_per_ud_milli": 125,
+                "magnitude_2f_residual_permille": 11,
+                "magnitude_2f_coverage_permille": 997,
                 "warning_flags": 0x00000040,
             }
         )
@@ -478,8 +482,86 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("residual_permille=18", out)
         self.assertIn("coverage_permille=930", out)
         self.assertIn("scalar_2f_mismatch_permille=27", out)
+        self.assertIn("magnitude_mean_count_per_ud_milli=840", out)
+        self.assertIn("magnitude_2f_count_per_ud_milli=125", out)
+        self.assertIn("magnitude_2f_residual_permille=11", out)
+        self.assertIn("magnitude_2f_coverage_permille=997", out)
         self.assertIn("warning_flags=0x00000040", out)
         self.assertIn("physical_projection=unknown/unavailable", out)
+
+    def test_impedance_observation_reply_prints_all_firmware_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_observation(
+            {
+                "oid": d.oid,
+                "point_index": 1,
+                "frequency_millihz": 50000,
+                "ud_abs": 960,
+                "status_flags_or": 0x00010020,
+                "foc_uq_sample": -12,
+                "foc_ud_sample": 960,
+                "foc_uq_limited_sample": -10,
+                "foc_ud_limited_sample": 958,
+                "foc_iq_sample": 120,
+                "foc_id_sample": 60,
+                "openloop_phi_sample": 12345,
+                "openloop_velocity_actual": 1500,
+                "adc_iux_sample": -33,
+                "adc_iwy_sample": 44,
+                "foc_iux_sample": -55,
+                "foc_iwy_sample": 66,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("point_index=1", out)
+        self.assertIn("frequency_millihz=50000", out)
+        self.assertIn("ud_abs=960", out)
+        self.assertIn("status_flags_or=0x00010020", out)
+        self.assertIn("foc_uq_sample=-12", out)
+        self.assertIn("foc_ud_sample=960", out)
+        self.assertIn("foc_uq_limited_sample=-10", out)
+        self.assertIn("foc_ud_limited_sample=958", out)
+        self.assertIn("foc_iq_sample=120", out)
+        self.assertIn("foc_id_sample=60", out)
+        self.assertIn("openloop_phi_sample=12345", out)
+        self.assertIn("openloop_velocity_actual=1500", out)
+        self.assertIn("adc_iux_sample=-33", out)
+        self.assertIn("adc_iwy_sample=44", out)
+        self.assertIn("foc_iux_sample=-55", out)
+        self.assertIn("foc_iwy_sample=66", out)
+        self.assertIn("physical_projection=unknown/unavailable", out)
+
+    def test_impedance_baseline_reply_prints_dc_current_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_baseline(
+            {
+                "oid": d.oid,
+                "point_index": 1,
+                "frequency_millihz": 50000,
+                "ud_abs": 960,
+                "dc_adc_iux_sample": -41,
+                "dc_adc_iwy_sample": 52,
+                "dc_foc_iux_sample": -63,
+                "dc_foc_iwy_sample": 74,
+                "dc_foc_iq_sample": 85,
+                "dc_foc_id_sample": 96,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("impedance baseline", out)
+        self.assertIn("point_index=1", out)
+        self.assertIn("frequency_millihz=50000", out)
+        self.assertIn("ud_abs=960", out)
+        self.assertIn("dc_adc_iux_sample=-41", out)
+        self.assertIn("dc_adc_iwy_sample=52", out)
+        self.assertIn("dc_foc_iux_sample=-63", out)
+        self.assertIn("dc_foc_iwy_sample=74", out)
+        self.assertIn("dc_foc_iq_sample=85", out)
+        self.assertIn("dc_foc_id_sample=96", out)
 
     def test_impedance_run_reply_prints_all_firmware_fields(self):
         d = make_driver()
@@ -507,6 +589,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "repeatability_permille": 22,
                 "warning_flags": 0x00020000,
                 "status_flags_or": 0x00080020,
+                "readback_mismatch_addr": 0x5D,
+                "readback_expected": 0x000003C0,
+                "readback_actual": 0x00000000,
             }
         )
 
@@ -518,6 +603,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("repeatability_permille=22", out)
         self.assertIn("warning_flags=0x00020000", out)
         self.assertIn("status_flags_or=0x00080020", out)
+        self.assertIn("readback_mismatch_addr=0x5d", out)
+        self.assertIn("readback_expected=0x000003c0", out)
+        self.assertIn("readback_actual=0x00000000", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
 
     def test_impedance_run_without_current_profile_does_not_use_stale_validated_cache(
@@ -599,6 +687,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "residual_permille": 18,
                 "coverage_permille": 930,
                 "scalar_2f_mismatch_permille": 27,
+                "magnitude_mean_count_per_ud_milli": 840,
+                "magnitude_2f_count_per_ud_milli": 125,
+                "magnitude_2f_residual_permille": 11,
+                "magnitude_2f_coverage_permille": 997,
                 "warning_flags": 0x00000040,
             }
         )
@@ -657,6 +749,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "residual_permille": 12,
                 "coverage_permille": 980,
                 "scalar_2f_mismatch_permille": 15,
+                "magnitude_mean_count_per_ud_milli": 840,
+                "magnitude_2f_count_per_ud_milli": 125,
+                "magnitude_2f_residual_permille": 11,
+                "magnitude_2f_coverage_permille": 997,
                 "warning_flags": 0,
             }
         )
