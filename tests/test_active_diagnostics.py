@@ -429,7 +429,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         d.diagnostics.active.handle_impedance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 2,
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
@@ -437,6 +436,8 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "samples_per_cycle": 20,
                 "cycles_per_angle": 8,
                 "max_ud": 1600,
+                "hold_ud": 320,
+                "carrier_ud": 320,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
                 "scale_metadata_validated": 0,
@@ -444,7 +445,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         )
 
         out = d.printer.lookup_object("gcode")._responses[-1]
-        self.assertIn("profile_version=2", out)
         self.assertIn("point_count=4", out)
         self.assertIn("sample_count=96", out)
         self.assertIn("sample_interval_us=250", out)
@@ -452,18 +452,19 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("samples_per_cycle=20", out)
         self.assertIn("cycles_per_angle=8", out)
         self.assertIn("max_ud=1600", out)
+        self.assertIn("hold_ud=320", out)
+        self.assertIn("carrier_ud=320", out)
         self.assertIn("status_flags_fail_mask=0x00000020", out)
         self.assertIn("status_flags_warn_mask=0x00080000", out)
         self.assertIn("scale_metadata_validated=0", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
 
-    def test_impedance_profile_reply_defaults_missing_v2_fields(self):
+    def test_impedance_profile_reply_defaults_missing_optional_fields(self):
         d = make_driver()
 
         d.diagnostics.active.handle_impedance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 1,
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
@@ -478,6 +479,8 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("carrier_frequency_millihz=0", out)
         self.assertIn("samples_per_cycle=0", out)
         self.assertIn("cycles_per_angle=0", out)
+        self.assertIn("hold_ud=0", out)
+        self.assertIn("carrier_ud=0", out)
 
     def test_impedance_fit_reply_prints_all_firmware_fields(self):
         d = make_driver()
@@ -519,7 +522,7 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("warning_flags=0x00000040", out)
         self.assertIn("physical_projection=unknown/unavailable", out)
 
-    def test_impedance_fit_v2_reply_prints_all_firmware_fields(self):
+    def test_impedance_supplemental_fit_reply_prints_all_firmware_fields(self):
         d = make_driver()
 
         d.diagnostics.active.handle_impedance_fit_v2(
@@ -531,18 +534,22 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "saliency_determinable": 1,
                 "angle_coverage_permille": 1000,
                 "axis_deviation_counts": 0,
+                "inductive_response_count_per_ud_milli": 1234,
+                "in_phase_response_count_per_ud_milli": 56,
                 "secondary_adc_response_count_per_ud_milli": 78,
             }
         )
 
         out = d.printer.lookup_object("gcode")._responses[-1]
-        self.assertIn("impedance fit v2", out)
+        self.assertIn("impedance supplemental fit", out)
         self.assertIn("point_index=3", out)
         self.assertIn("mean_response_count_per_ud_milli=1000", out)
         self.assertIn("saliency_permille=300", out)
         self.assertIn("saliency_determinable=1", out)
         self.assertIn("angle_coverage_permille=1000", out)
         self.assertIn("axis_deviation_counts=0", out)
+        self.assertIn("inductive_response_count_per_ud_milli=1234", out)
+        self.assertIn("in_phase_response_count_per_ud_milli=56", out)
         self.assertIn("secondary_adc_response_count_per_ud_milli=78", out)
 
     def test_impedance_observation_reply_prints_all_firmware_fields(self):
@@ -589,7 +596,7 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("foc_iwy_sample=66", out)
         self.assertIn("physical_projection=unknown/unavailable", out)
 
-    def test_impedance_observation_v2_reply_prints_all_firmware_fields(self):
+    def test_impedance_supplemental_observation_reply_prints_all_firmware_fields(self):
         d = make_driver()
 
         d.diagnostics.active.handle_impedance_observation_v2(
@@ -603,11 +610,13 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "encoder_max": 3912,
                 "encoder_peak_counts": 12,
                 "angle_valid": 1,
+                "inductive_response_count_per_ud_milli": 1234,
+                "in_phase_response_count_per_ud_milli": 56,
             }
         )
 
         out = d.printer.lookup_object("gcode")._responses[-1]
-        self.assertIn("impedance observation v2", out)
+        self.assertIn("impedance supplemental observation", out)
         self.assertIn("point_index=1", out)
         self.assertIn("angle_electrical_counts=32768", out)
         self.assertIn("encoder_before=3900", out)
@@ -616,6 +625,8 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("encoder_max=3912", out)
         self.assertIn("encoder_peak_counts=12", out)
         self.assertIn("angle_valid=1", out)
+        self.assertIn("inductive_response_count_per_ud_milli=1234", out)
+        self.assertIn("in_phase_response_count_per_ud_milli=56", out)
 
     def test_impedance_baseline_reply_prints_dc_current_fields(self):
         d = make_driver()
@@ -652,7 +663,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         d.diagnostics.active.handle_impedance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 2,
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
@@ -660,6 +670,8 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "samples_per_cycle": 20,
                 "cycles_per_angle": 8,
                 "max_ud": 1600,
+                "hold_ud": 320,
+                "carrier_ud": 320,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
                 "scale_metadata_validated": 0,
@@ -670,7 +682,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
             {
                 "oid": d.oid,
                 "status": 0,
-                "profile_version": 2,
                 "selected_axis_max_count_per_ud_milli": 931,
                 "selected_axis_min_count_per_ud_milli": 305,
                 "repeatability_permille": 22,
@@ -683,12 +694,12 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "filter_flux_enable_before": 1,
                 "filter_torque_enable_during": 0,
                 "filter_flux_enable_during": 0,
+                "duplicate_zero_encoder_drift_counts": 72,
             }
         )
 
         out = d.printer.lookup_object("gcode")._responses[-1]
         self.assertIn("status=0", out)
-        self.assertIn("profile_version=2", out)
         self.assertIn("selected_axis_max_count_per_ud_milli=931", out)
         self.assertIn("selected_axis_min_count_per_ud_milli=305", out)
         self.assertIn("repeatability_permille=22", out)
@@ -701,16 +712,16 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("filter_flux_enable_before=1", out)
         self.assertIn("filter_torque_enable_during=0", out)
         self.assertIn("filter_flux_enable_during=0", out)
+        self.assertIn("duplicate_zero_encoder_drift_counts=72", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
 
-    def test_impedance_run_reply_defaults_missing_v2_fields(self):
+    def test_impedance_run_reply_defaults_missing_optional_fields(self):
         d = make_driver()
 
         d.diagnostics.active.handle_impedance_run(
             {
                 "oid": d.oid,
                 "status": 0,
-                "profile_version": 1,
                 "selected_axis_max_count_per_ud_milli": 931,
                 "selected_axis_min_count_per_ud_milli": 305,
                 "repeatability_permille": 22,
@@ -724,6 +735,7 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("filter_flux_enable_before=0", out)
         self.assertIn("filter_torque_enable_during=0", out)
         self.assertIn("filter_flux_enable_during=0", out)
+        self.assertIn("duplicate_zero_encoder_drift_counts=0", out)
 
     def test_impedance_run_without_current_profile_does_not_use_stale_validated_cache(
         self,
@@ -733,7 +745,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         d.diagnostics.active.handle_impedance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 1,
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
@@ -750,7 +761,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
             {
                 "oid": d.oid,
                 "status": 0,
-                "profile_version": 1,
                 "selected_axis_max_count_per_ud_milli": 900,
                 "selected_axis_min_count_per_ud_milli": 300,
                 "repeatability_permille": 20,
@@ -768,7 +778,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
             {
                 "oid": d.oid,
                 "status": 0,
-                "profile_version": 2,
                 "selected_axis_max_count_per_ud_milli": 931,
                 "selected_axis_min_count_per_ud_milli": 305,
                 "repeatability_permille": 22,
@@ -791,7 +800,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         d.diagnostics.active.handle_impedance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 1,
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
@@ -836,7 +844,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         d.diagnostics.active.handle_impedance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 1,
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
@@ -855,7 +862,6 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
             {
                 "oid": d.oid,
                 "status": 0,
-                "profile_version": 2,
                 "selected_axis_max_count_per_ud_milli": 931,
                 "selected_axis_min_count_per_ud_milli": 305,
                 "repeatability_permille": 22,
@@ -902,7 +908,7 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertNotIn("lq=", out.lower())
         self.assertFalse(hasattr(d.diagnostics.active, "fit_impedance_response"))
 
-    def test_registers_supplemental_impedance_v2_replies(self):
+    def test_registers_supplemental_impedance_replies(self):
         class Serial:
             def __init__(self):
                 self.responses = []

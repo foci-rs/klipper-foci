@@ -474,19 +474,21 @@ class ActiveDiagnostics:
             params["scale_metadata_validated"]
         )
         msg = (
-            "FOCI %s impedance profile: profile_version=%d"
+            "FOCI %s impedance profile:"
             " point_count=%d sample_count=%d sample_interval_us=%d max_ud=%d"
+            " hold_ud=%d carrier_ud=%d"
             " carrier_frequency_millihz=%d samples_per_cycle=%d"
             " cycles_per_angle=%d"
             " status_flags_fail_mask=0x%08x status_flags_warn_mask=0x%08x"
             " scale_metadata_validated=%d physical_projection=%s"
             % (
                 self.driver.name,
-                params["profile_version"],
                 params["point_count"],
                 params["sample_count"],
                 params["sample_interval_us"],
                 params["max_ud"],
+                params.get("hold_ud", 0),
+                params.get("carrier_ud", 0),
                 params.get("carrier_frequency_millihz", 0),
                 params.get("samples_per_cycle", 0),
                 params.get("cycles_per_angle", 0),
@@ -541,10 +543,12 @@ class ActiveDiagnostics:
     def handle_impedance_fit_v2(self, params: dict) -> None:
         """Handle foci_impedance_fit_v2 from firmware."""
         msg = (
-            "FOCI %s impedance fit v2: point_index=%d"
+            "FOCI %s impedance supplemental fit: point_index=%d"
             " mean_response_count_per_ud_milli=%d"
             " saliency_permille=%d saliency_determinable=%d"
             " angle_coverage_permille=%d axis_deviation_counts=%d"
+            " inductive_response_count_per_ud_milli=%d"
+            " in_phase_response_count_per_ud_milli=%d"
             " secondary_adc_response_count_per_ud_milli=%d"
             % (
                 self.driver.name,
@@ -554,6 +558,8 @@ class ActiveDiagnostics:
                 params["saliency_determinable"],
                 params["angle_coverage_permille"],
                 params["axis_deviation_counts"],
+                params.get("inductive_response_count_per_ud_milli", 0),
+                params.get("in_phase_response_count_per_ud_milli", 0),
                 params["secondary_adc_response_count_per_ud_milli"],
             )
         )
@@ -596,11 +602,13 @@ class ActiveDiagnostics:
     def handle_impedance_observation_v2(self, params: dict) -> None:
         """Handle foci_impedance_observation_v2 from firmware."""
         msg = (
-            "FOCI %s impedance observation v2: point_index=%d"
+            "FOCI %s impedance supplemental observation: point_index=%d"
             " angle_electrical_counts=%d"
             " encoder_before=%d encoder_after=%d"
             " encoder_min=%d encoder_max=%d"
             " encoder_peak_counts=%d angle_valid=%d"
+            " inductive_response_count_per_ud_milli=%d"
+            " in_phase_response_count_per_ud_milli=%d"
             % (
                 self.driver.name,
                 params["point_index"],
@@ -611,6 +619,8 @@ class ActiveDiagnostics:
                 params["encoder_max"],
                 params["encoder_peak_counts"],
                 params["angle_valid"],
+                params.get("inductive_response_count_per_ud_milli", 0),
+                params.get("in_phase_response_count_per_ud_milli", 0),
             )
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
@@ -646,7 +656,7 @@ class ActiveDiagnostics:
         firmware's warning/status evidence.
         """
         msg = (
-            "FOCI %s impedance run: status=%d profile_version=%d"
+            "FOCI %s impedance run: status=%d"
             " selected_axis_max_count_per_ud_milli=%d"
             " selected_axis_min_count_per_ud_milli=%d"
             " repeatability_permille=%d warning_flags=0x%08x"
@@ -657,11 +667,11 @@ class ActiveDiagnostics:
             " filter_flux_enable_before=%d"
             " filter_torque_enable_during=%d"
             " filter_flux_enable_during=%d"
+            " duplicate_zero_encoder_drift_counts=%d"
             " physical_projection=%s"
             % (
                 self.driver.name,
                 params["status"],
-                params["profile_version"],
                 params["selected_axis_max_count_per_ud_milli"],
                 params["selected_axis_min_count_per_ud_milli"],
                 params["repeatability_permille"],
@@ -674,6 +684,7 @@ class ActiveDiagnostics:
                 params.get("filter_flux_enable_before", 0),
                 params.get("filter_torque_enable_during", 0),
                 params.get("filter_flux_enable_during", 0),
+                params.get("duplicate_zero_encoder_drift_counts", 0),
                 self._impedance_projection_label(params["oid"]),
             )
         )
