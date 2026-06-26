@@ -457,6 +457,28 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("scale_metadata_validated=0", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
 
+    def test_impedance_profile_reply_defaults_missing_v2_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 1,
+                "point_count": 4,
+                "sample_count": 96,
+                "sample_interval_us": 250,
+                "max_ud": 1600,
+                "status_flags_fail_mask": 0x00000020,
+                "status_flags_warn_mask": 0x00080000,
+                "scale_metadata_validated": 1,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("carrier_frequency_millihz=0", out)
+        self.assertIn("samples_per_cycle=0", out)
+        self.assertIn("cycles_per_angle=0", out)
+
     def test_impedance_fit_reply_prints_all_firmware_fields(self):
         d = make_driver()
 
@@ -680,6 +702,28 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("filter_torque_enable_during=0", out)
         self.assertIn("filter_flux_enable_during=0", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
+
+    def test_impedance_run_reply_defaults_missing_v2_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 1,
+                "selected_axis_max_count_per_ud_milli": 931,
+                "selected_axis_min_count_per_ud_milli": 305,
+                "repeatability_permille": 22,
+                "warning_flags": 0x00020000,
+                "status_flags_or": 0x00080020,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("filter_torque_enable_before=0", out)
+        self.assertIn("filter_flux_enable_before=0", out)
+        self.assertIn("filter_torque_enable_during=0", out)
+        self.assertIn("filter_flux_enable_during=0", out)
 
     def test_impedance_run_without_current_profile_does_not_use_stale_validated_cache(
         self,
