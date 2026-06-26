@@ -476,6 +476,8 @@ class ActiveDiagnostics:
         msg = (
             "FOCI %s impedance profile: profile_version=%d"
             " point_count=%d sample_count=%d sample_interval_us=%d max_ud=%d"
+            " carrier_frequency_millihz=%d samples_per_cycle=%d"
+            " cycles_per_angle=%d"
             " status_flags_fail_mask=0x%08x status_flags_warn_mask=0x%08x"
             " scale_metadata_validated=%d physical_projection=%s"
             % (
@@ -485,6 +487,9 @@ class ActiveDiagnostics:
                 params["sample_count"],
                 params["sample_interval_us"],
                 params["max_ud"],
+                params["carrier_frequency_millihz"],
+                params["samples_per_cycle"],
+                params["cycles_per_angle"],
                 params["status_flags_fail_mask"],
                 params["status_flags_warn_mask"],
                 params["scale_metadata_validated"],
@@ -533,6 +538,27 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_impedance_fit_v2(self, params: dict) -> None:
+        """Handle foci_impedance_fit_v2 from firmware."""
+        msg = (
+            "FOCI %s impedance fit v2: point_index=%d"
+            " mean_response_count_per_ud_milli=%d"
+            " saliency_permille=%d saliency_determinable=%d"
+            " angle_coverage_permille=%d axis_deviation_counts=%d"
+            " secondary_adc_response_count_per_ud_milli=%d"
+            % (
+                self.driver.name,
+                params["point_index"],
+                params["mean_response_count_per_ud_milli"],
+                params["saliency_permille"],
+                params["saliency_determinable"],
+                params["angle_coverage_permille"],
+                params["axis_deviation_counts"],
+                params["secondary_adc_response_count_per_ud_milli"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def handle_impedance_observation(self, params: dict) -> None:
         """Handle foci_impedance_observation from firmware."""
         msg = (
@@ -563,6 +589,28 @@ class ActiveDiagnostics:
                 params["foc_iq_sample"],
                 params["foc_id_sample"],
                 self._impedance_projection_label(params["oid"]),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_impedance_observation_v2(self, params: dict) -> None:
+        """Handle foci_impedance_observation_v2 from firmware."""
+        msg = (
+            "FOCI %s impedance observation v2: point_index=%d"
+            " angle_electrical_counts=%d"
+            " encoder_before=%d encoder_after=%d"
+            " encoder_min=%d encoder_max=%d"
+            " encoder_peak_counts=%d angle_valid=%d"
+            % (
+                self.driver.name,
+                params["point_index"],
+                params["angle_electrical_counts"],
+                params["encoder_before"],
+                params["encoder_after"],
+                params["encoder_min"],
+                params["encoder_max"],
+                params["encoder_peak_counts"],
+                params["angle_valid"],
             )
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
@@ -605,6 +653,10 @@ class ActiveDiagnostics:
             " status_flags_or=0x%08x"
             " readback_mismatch_addr=0x%02x"
             " readback_expected=0x%08x readback_actual=0x%08x"
+            " filter_torque_enable_before=%d"
+            " filter_flux_enable_before=%d"
+            " filter_torque_enable_during=%d"
+            " filter_flux_enable_during=%d"
             " physical_projection=%s"
             % (
                 self.driver.name,
@@ -618,6 +670,10 @@ class ActiveDiagnostics:
                 params.get("readback_mismatch_addr", 0),
                 params.get("readback_expected", 0),
                 params.get("readback_actual", 0),
+                params["filter_torque_enable_before"],
+                params["filter_flux_enable_before"],
+                params["filter_torque_enable_during"],
+                params["filter_flux_enable_during"],
                 self._impedance_projection_label(params["oid"]),
             )
         )

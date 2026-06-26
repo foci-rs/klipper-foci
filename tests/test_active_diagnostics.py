@@ -2,6 +2,8 @@
 
 import unittest
 
+from klipper_foci.protocol.bindings import register_active_diagnostic_responses
+
 from tests.mocks import CommandError, MockGCmd, make_driver
 
 
@@ -431,6 +433,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
+                "carrier_frequency_millihz": 100000,
+                "samples_per_cycle": 20,
+                "cycles_per_angle": 8,
                 "max_ud": 1600,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
@@ -443,6 +448,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("point_count=4", out)
         self.assertIn("sample_count=96", out)
         self.assertIn("sample_interval_us=250", out)
+        self.assertIn("carrier_frequency_millihz=100000", out)
+        self.assertIn("samples_per_cycle=20", out)
+        self.assertIn("cycles_per_angle=8", out)
         self.assertIn("max_ud=1600", out)
         self.assertIn("status_flags_fail_mask=0x00000020", out)
         self.assertIn("status_flags_warn_mask=0x00080000", out)
@@ -489,6 +497,32 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("warning_flags=0x00000040", out)
         self.assertIn("physical_projection=unknown/unavailable", out)
 
+    def test_impedance_fit_v2_reply_prints_all_firmware_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_fit_v2(
+            {
+                "oid": d.oid,
+                "point_index": 3,
+                "mean_response_count_per_ud_milli": 1000,
+                "saliency_permille": 300,
+                "saliency_determinable": 1,
+                "angle_coverage_permille": 1000,
+                "axis_deviation_counts": 0,
+                "secondary_adc_response_count_per_ud_milli": 78,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("impedance fit v2", out)
+        self.assertIn("point_index=3", out)
+        self.assertIn("mean_response_count_per_ud_milli=1000", out)
+        self.assertIn("saliency_permille=300", out)
+        self.assertIn("saliency_determinable=1", out)
+        self.assertIn("angle_coverage_permille=1000", out)
+        self.assertIn("axis_deviation_counts=0", out)
+        self.assertIn("secondary_adc_response_count_per_ud_milli=78", out)
+
     def test_impedance_observation_reply_prints_all_firmware_fields(self):
         d = make_driver()
 
@@ -533,6 +567,34 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("foc_iwy_sample=66", out)
         self.assertIn("physical_projection=unknown/unavailable", out)
 
+    def test_impedance_observation_v2_reply_prints_all_firmware_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_impedance_observation_v2(
+            {
+                "oid": d.oid,
+                "point_index": 1,
+                "angle_electrical_counts": 32768,
+                "encoder_before": 3900,
+                "encoder_after": 3904,
+                "encoder_min": 3898,
+                "encoder_max": 3912,
+                "encoder_peak_counts": 12,
+                "angle_valid": 1,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("impedance observation v2", out)
+        self.assertIn("point_index=1", out)
+        self.assertIn("angle_electrical_counts=32768", out)
+        self.assertIn("encoder_before=3900", out)
+        self.assertIn("encoder_after=3904", out)
+        self.assertIn("encoder_min=3898", out)
+        self.assertIn("encoder_max=3912", out)
+        self.assertIn("encoder_peak_counts=12", out)
+        self.assertIn("angle_valid=1", out)
+
     def test_impedance_baseline_reply_prints_dc_current_fields(self):
         d = make_driver()
 
@@ -572,6 +634,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
+                "carrier_frequency_millihz": 100000,
+                "samples_per_cycle": 20,
+                "cycles_per_angle": 8,
                 "max_ud": 1600,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
@@ -592,6 +657,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "readback_mismatch_addr": 0x5D,
                 "readback_expected": 0x000003C0,
                 "readback_actual": 0x00000000,
+                "filter_torque_enable_before": 1,
+                "filter_flux_enable_before": 1,
+                "filter_torque_enable_during": 0,
+                "filter_flux_enable_during": 0,
             }
         )
 
@@ -606,6 +675,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("readback_mismatch_addr=0x5d", out)
         self.assertIn("readback_expected=0x000003c0", out)
         self.assertIn("readback_actual=0x00000000", out)
+        self.assertIn("filter_torque_enable_before=1", out)
+        self.assertIn("filter_flux_enable_before=1", out)
+        self.assertIn("filter_torque_enable_during=0", out)
+        self.assertIn("filter_flux_enable_during=0", out)
         self.assertIn("physical_projection=secondary/provisional/unavailable", out)
 
     def test_impedance_run_without_current_profile_does_not_use_stale_validated_cache(
@@ -620,6 +693,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
+                "carrier_frequency_millihz": 100000,
+                "samples_per_cycle": 20,
+                "cycles_per_angle": 8,
                 "max_ud": 1600,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
@@ -636,6 +712,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "repeatability_permille": 20,
                 "warning_flags": 0,
                 "status_flags_or": 0,
+                "filter_torque_enable_before": 1,
+                "filter_flux_enable_before": 1,
+                "filter_torque_enable_during": 0,
+                "filter_flux_enable_during": 0,
             }
         )
         d.printer.lookup_object("gcode")._responses.clear()
@@ -650,6 +730,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "repeatability_permille": 22,
                 "warning_flags": 0x00020000,
                 "status_flags_or": 0x00080020,
+                "filter_torque_enable_before": 1,
+                "filter_flux_enable_before": 1,
+                "filter_torque_enable_during": 0,
+                "filter_flux_enable_during": 0,
             }
         )
 
@@ -667,6 +751,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
+                "carrier_frequency_millihz": 100000,
+                "samples_per_cycle": 20,
+                "cycles_per_angle": 8,
                 "max_ud": 1600,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
@@ -709,6 +796,9 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "point_count": 4,
                 "sample_count": 96,
                 "sample_interval_us": 250,
+                "carrier_frequency_millihz": 100000,
+                "samples_per_cycle": 20,
+                "cycles_per_angle": 8,
                 "max_ud": 1600,
                 "status_flags_fail_mask": 0x00000020,
                 "status_flags_warn_mask": 0x00080000,
@@ -727,6 +817,10 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
                 "repeatability_permille": 22,
                 "warning_flags": 0x00020000,
                 "status_flags_or": 0x00080020,
+                "filter_torque_enable_before": 1,
+                "filter_flux_enable_before": 1,
+                "filter_torque_enable_during": 0,
+                "filter_flux_enable_during": 0,
             }
         )
 
@@ -763,3 +857,36 @@ class TestImpedanceTestDiagnosticCommand(unittest.TestCase):
         self.assertNotIn("ld=", out.lower())
         self.assertNotIn("lq=", out.lower())
         self.assertFalse(hasattr(d.diagnostics.active, "fit_impedance_response"))
+
+    def test_registers_supplemental_impedance_v2_replies(self):
+        class Serial:
+            def __init__(self):
+                self.responses = []
+
+            def register_response(self, callback, name, oid=None):
+                self.responses.append((callback, name, oid))
+
+        d = make_driver()
+        serial = Serial()
+
+        register_active_diagnostic_responses(serial, d, d.oid)
+
+        registrations = {
+            (callback.__name__, name, oid) for callback, name, oid in serial.responses
+        }
+        self.assertIn(
+            (
+                "handle_impedance_fit_v2",
+                "foci_impedance_fit_v2",
+                d.oid,
+            ),
+            registrations,
+        )
+        self.assertIn(
+            (
+                "handle_impedance_observation_v2",
+                "foci_impedance_observation_v2",
+                d.oid,
+            ),
+            registrations,
+        )

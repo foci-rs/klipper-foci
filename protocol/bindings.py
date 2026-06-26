@@ -104,8 +104,18 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.active.handle_impedance_fit_v2,
+        "foci_impedance_fit_v2",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.handle_impedance_observation,
         "foci_impedance_observation",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_impedance_observation_v2,
+        "foci_impedance_observation_v2",
         oid,
     )
     serial.register_response(
