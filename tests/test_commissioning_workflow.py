@@ -838,3 +838,156 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
 
         # The per-oid cache must be cleared at the end too.
         self.assertNotIn(driver.oid, driver.diagnostics.active.resistance_cache)
+
+
+class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
+    """Verify commission-stream current-loop replies get folded into result."""
+
+    CURRENT_VALIDATION_SAMPLES = (
+        # axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder
+        (0, 0, 1, 720, 710, 28, 390, 0),
+        (0, 1, 2, 960, 940, 35, 420, 0),
+        (0, 2, 5, 1010, 1000, 40, 430, 0),
+        (1, 0, 1, 610, 590, 42, 510, 2),
+        (1, 1, 2, 780, 770, 38, 530, 4),
+    )
+    CURRENT_LOOP_RUN = {
+        "status": 0,
+        "gains_source": 1,
+        "axis_split_source": 1,
+        "gains_tier": 2,
+        "measured_axis_split_permille": 1840,
+        "applied_axis_split_permille": 1500,
+        "axis_split_clamped": 1,
+        "current_validation_axes": 3,
+        "flux_validation_sample_count": 3,
+        "torque_validation_sample_count": 2,
+        "retry_budget_exhausted": 0,
+        "failure_reason": 0,
+    }
+    EXPECTED_CURRENT_CONFIG = {
+        "identified_current_gains_source": "1",
+        "identified_axis_split_source": "1",
+        "identified_current_gains_tier": "2",
+        "identified_current_measured_axis_split_permille": "1840",
+        "identified_current_applied_axis_split_permille": "1500",
+        "identified_current_axis_split_clamped": "1",
+        "identified_current_validation_axes": "3",
+        "identified_current_flux_validation_sample_count": "3",
+        "identified_current_torque_validation_sample_count": "2",
+        "identified_current_retry_budget_exhausted": "0",
+        "identified_current_failure_reason": "0",
+        "identified_current_flux_response_min_permille": "710",
+        "identified_current_torque_response_min_permille": "590",
+        "identified_current_flux_encoder_delta_counts": "0",
+        "identified_current_torque_encoder_delta_counts": "4",
+    }
+
+    def _emit_current_validation_sample(self, driver, sample) -> None:
+        axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder = (
+            sample
+        )
+        driver.diagnostics.active.handle_current_validation_axis(
+            {
+                "oid": driver.oid,
+                "axis": axis,
+                "sample_index": sample_index,
+                "status": 0,
+                "attempt": 0,
+                "target": 250,
+                "sample_delay_ms": delay_ms,
+                "positive_response_permille": positive,
+                "negative_response_permille": negative,
+                "cross_axis_permille": cross,
+                "voltage_output_permille": voltage,
+                "encoder_delta_counts": encoder,
+                "status_flags_or": 0,
+            }
+        )
+
+    def _emit_current_loop_run(self, driver) -> None:
+        driver.diagnostics.active.handle_current_loop_run(
+            {"oid": driver.oid, **self.CURRENT_LOOP_RUN}
+        )
+
+    def test_commission_replies_are_folded_and_persisted(self):
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+
+        def drive_success(_args):
+            for sample in self.CURRENT_VALIDATION_SAMPLES:
+                self._emit_current_validation_sample(driver, sample)
+            self._emit_current_loop_run(driver)
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_success
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        driver.commissioning.commission(gcmd)
+
+        for config_key, expected in self.EXPECTED_CURRENT_CONFIG.items():
+            self.assertEqual(configfile.values[(driver.name, config_key)], expected)
+        self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
+
+    def test_partial_current_loop_cache_folds_nothing_and_clears(self):
+        driver = make_driver()
+
+        self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[0])
+        self._emit_current_loop_run(driver)
+
+        self.assertEqual(
+            driver.diagnostics.active.pop_current_loop_cache(driver.oid), {}
+        )
+        self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
+
+    def test_unknown_current_validation_axis_does_not_complete_torque_evidence(self):
+        driver = make_driver()
+        self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[0])
+        self._emit_current_validation_sample(driver, (2, 0, 2, 650, 640, 44, 500, 9))
+        self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[3])
+        run = {
+            **self.CURRENT_LOOP_RUN,
+            "flux_validation_sample_count": 1,
+            "torque_validation_sample_count": 2,
+        }
+        driver.diagnostics.active.handle_current_loop_run({"oid": driver.oid, **run})
+
+        self.assertEqual(
+            driver.diagnostics.active.pop_current_loop_cache(driver.oid), {}
+        )
+        self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
+
+    def test_zero_current_validation_sample_counts_fold_nothing_and_clear(self):
+        for axis_key in ("flux", "torque"):
+            with self.subTest(axis_key=axis_key):
+                driver = make_driver()
+                if axis_key == "flux":
+                    self._emit_current_validation_sample(
+                        driver, self.CURRENT_VALIDATION_SAMPLES[3]
+                    )
+                    sample_counts = {
+                        "flux_validation_sample_count": 0,
+                        "torque_validation_sample_count": 1,
+                    }
+                else:
+                    self._emit_current_validation_sample(
+                        driver, self.CURRENT_VALIDATION_SAMPLES[0]
+                    )
+                    sample_counts = {
+                        "flux_validation_sample_count": 1,
+                        "torque_validation_sample_count": 0,
+                    }
+                run = {**self.CURRENT_LOOP_RUN, **sample_counts}
+                driver.diagnostics.active.handle_current_loop_run(
+                    {"oid": driver.oid, **run}
+                )
+
+                self.assertEqual(
+                    driver.diagnostics.active.pop_current_loop_cache(driver.oid), {}
+                )
+                self.assertNotIn(
+                    driver.oid, driver.diagnostics.active.current_loop_cache
+                )

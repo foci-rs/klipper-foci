@@ -92,6 +92,21 @@ CONFIG_FIELD_NAMES = {
     "identified_inner_warning_flags",
     "identified_j_eff",
     "identified_b_eff",
+    "identified_current_gains_source",
+    "identified_axis_split_source",
+    "identified_current_gains_tier",
+    "identified_current_measured_axis_split_permille",
+    "identified_current_applied_axis_split_permille",
+    "identified_current_axis_split_clamped",
+    "identified_current_validation_axes",
+    "identified_current_flux_validation_sample_count",
+    "identified_current_torque_validation_sample_count",
+    "identified_current_retry_budget_exhausted",
+    "identified_current_failure_reason",
+    "identified_current_flux_response_min_permille",
+    "identified_current_torque_response_min_permille",
+    "identified_current_flux_encoder_delta_counts",
+    "identified_current_torque_encoder_delta_counts",
     "identified_r_count_slope_milli",
     "identified_r_gain_path_count_slope_milli",
     "identified_r_axis0_count_slope_milli",
@@ -171,6 +186,25 @@ EXPECTED_CONTROL_SETTING_FIELDS = (
     "phase_advance_deadband",
     "pid_velocity_limit",
 )
+
+
+CURRENT_LOOP_FIELD_MAX_VALUES = {
+    "identified_current_gains_source": 255,
+    "identified_axis_split_source": 255,
+    "identified_current_gains_tier": 255,
+    "identified_current_measured_axis_split_permille": 65535,
+    "identified_current_applied_axis_split_permille": 65535,
+    "identified_current_axis_split_clamped": 255,
+    "identified_current_validation_axes": 255,
+    "identified_current_flux_validation_sample_count": 255,
+    "identified_current_torque_validation_sample_count": 255,
+    "identified_current_retry_budget_exhausted": 255,
+    "identified_current_failure_reason": 255,
+    "identified_current_flux_response_min_permille": 65535,
+    "identified_current_torque_response_min_permille": 65535,
+    "identified_current_flux_encoder_delta_counts": 65535,
+    "identified_current_torque_encoder_delta_counts": 65535,
+}
 
 
 def make_foci_config(stepper_values=None, foci_values=None, chips=None):
@@ -270,6 +304,21 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_inner_warning_flags": 2,
             "identified_j_eff": 9,
             "identified_b_eff": 10,
+            "identified_current_gains_source": 1,
+            "identified_axis_split_source": 1,
+            "identified_current_gains_tier": 2,
+            "identified_current_measured_axis_split_permille": 1840,
+            "identified_current_applied_axis_split_permille": 1500,
+            "identified_current_axis_split_clamped": 1,
+            "identified_current_validation_axes": 3,
+            "identified_current_flux_validation_sample_count": 3,
+            "identified_current_torque_validation_sample_count": 2,
+            "identified_current_retry_budget_exhausted": 0,
+            "identified_current_failure_reason": 0,
+            "identified_current_flux_response_min_permille": 710,
+            "identified_current_torque_response_min_permille": 590,
+            "identified_current_flux_encoder_delta_counts": 0,
+            "identified_current_torque_encoder_delta_counts": 4,
             "autotune_profile": "balanced",
             "autotune_mode": "nominal",
             "autotune_status": "commissioned",
@@ -317,9 +366,32 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_inner_warning_flags == 2
     assert parsed.identified_j_eff == 9
     assert parsed.identified_b_eff == 10
+    assert parsed.identified_current_gains_source == 1
+    assert parsed.identified_axis_split_source == 1
+    assert parsed.identified_current_gains_tier == 2
+    assert parsed.identified_current_measured_axis_split_permille == 1840
+    assert parsed.identified_current_applied_axis_split_permille == 1500
+    assert parsed.identified_current_axis_split_clamped == 1
+    assert parsed.identified_current_validation_axes == 3
+    assert parsed.identified_current_flux_validation_sample_count == 3
+    assert parsed.identified_current_torque_validation_sample_count == 2
+    assert parsed.identified_current_retry_budget_exhausted == 0
+    assert parsed.identified_current_failure_reason == 0
+    assert parsed.identified_current_flux_response_min_permille == 710
+    assert parsed.identified_current_torque_response_min_permille == 590
+    assert parsed.identified_current_flux_encoder_delta_counts == 0
+    assert parsed.identified_current_torque_encoder_delta_counts == 4
     assert parsed.autotune_profile == "balanced"
     assert parsed.autotune_mode == "nominal"
     assert parsed.autotune_status == "commissioned"
+
+
+def test_parse_driver_config_bounds_current_loop_evidence_fields():
+    for field_name, max_value in CURRENT_LOOP_FIELD_MAX_VALUES.items():
+        with pytest.raises(CommandError, match="below minimum"):
+            parsed_config_with({field_name: -1})
+        with pytest.raises(CommandError, match="above maximum"):
+            parsed_config_with({field_name: max_value + 1})
 
 
 def test_parse_driver_config_rejects_low_filter_hz():

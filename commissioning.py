@@ -298,6 +298,7 @@ class CommissioningWorkflow:
             # axis1 all "present" (axis1 stale) and fold/persist a result
             # blending data from two unrelated runs.
             self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+            self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
 
             self.driver.protocol.run_commission(profile_code)
 
@@ -309,6 +310,9 @@ class CommissioningWorkflow:
                 if eventtime > timeout:
                     self.on_commission_failure()
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+                    self.driver.diagnostics.active.clear_current_loop_cache(
+                        self.driver.oid
+                    )
                     raise gcmd.error(
                         "FOCI %s: FOCI_COMMISSION timed out" % self.driver.name
                     )
@@ -319,6 +323,9 @@ class CommissioningWorkflow:
                     else:
                         self.on_commission_failure()
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+                    self.driver.diagnostics.active.clear_current_loop_cache(
+                        self.driver.oid
+                    )
                     phase_name = PHASE_NAMES.get(self.last_phase_id or 0, "unknown")
                     if self.details:
                         detail_lines = [
@@ -352,6 +359,9 @@ class CommissioningWorkflow:
             # here; together these guarantee no stale or partial
             # resistance cache entry ever survives past this method.
             result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
+            result.update(
+                self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid)
+            )
             status = result.get("status", 255)
             if status > 1:
                 error_name = format_commission_error_name(status)
@@ -521,6 +531,7 @@ class CommissioningWorkflow:
             "%d" % result.get("inner_warning_flags", 0),
         )
         self._persist_resistance_identification(configfile, result)
+        self._persist_current_loop_identification(configfile, result)
         configfile.set(self.driver.name, "autotune_profile", profile_name)
         configfile.set(self.driver.name, "autotune_status", "commissioned")
 
@@ -604,4 +615,56 @@ class CommissioningWorkflow:
         if "resistance_selected_count_slope_milli" not in result:
             return
         for result_key, config_key in self.RESISTANCE_RESULT_KEYS:
+            configfile.set(self.driver.name, config_key, "%d" % result[result_key])
+
+    CURRENT_LOOP_RESULT_KEYS: tuple[tuple[str, str], ...] = (
+        ("current_gains_source", "identified_current_gains_source"),
+        ("current_axis_split_source", "identified_axis_split_source"),
+        ("current_gains_tier", "identified_current_gains_tier"),
+        (
+            "current_measured_axis_split_permille",
+            "identified_current_measured_axis_split_permille",
+        ),
+        (
+            "current_applied_axis_split_permille",
+            "identified_current_applied_axis_split_permille",
+        ),
+        ("current_axis_split_clamped", "identified_current_axis_split_clamped"),
+        ("current_validation_axes", "identified_current_validation_axes"),
+        (
+            "current_flux_validation_sample_count",
+            "identified_current_flux_validation_sample_count",
+        ),
+        (
+            "current_torque_validation_sample_count",
+            "identified_current_torque_validation_sample_count",
+        ),
+        (
+            "current_retry_budget_exhausted",
+            "identified_current_retry_budget_exhausted",
+        ),
+        ("current_failure_reason", "identified_current_failure_reason"),
+        (
+            "current_flux_response_min_permille",
+            "identified_current_flux_response_min_permille",
+        ),
+        (
+            "current_torque_response_min_permille",
+            "identified_current_torque_response_min_permille",
+        ),
+        (
+            "current_flux_encoder_delta_counts",
+            "identified_current_flux_encoder_delta_counts",
+        ),
+        (
+            "current_torque_encoder_delta_counts",
+            "identified_current_torque_encoder_delta_counts",
+        ),
+    )
+
+    def _persist_current_loop_identification(self, configfile, result: dict) -> None:
+        """Persist firmware-owned current-loop commissioning evidence."""
+        if "current_gains_source" not in result:
+            return
+        for result_key, config_key in self.CURRENT_LOOP_RESULT_KEYS:
             configfile.set(self.driver.name, config_key, "%d" % result[result_key])

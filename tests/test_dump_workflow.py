@@ -85,6 +85,22 @@ def _seed_tuning_state(driver):
     driver.config.identified_bandwidth_hz = 0
     driver.config.identified_inner_warning_flags = 36
 
+    driver.config.identified_current_gains_source = 1
+    driver.config.identified_axis_split_source = 1
+    driver.config.identified_current_gains_tier = 2
+    driver.config.identified_current_measured_axis_split_permille = 1840
+    driver.config.identified_current_applied_axis_split_permille = 1500
+    driver.config.identified_current_axis_split_clamped = 1
+    driver.config.identified_current_validation_axes = 3
+    driver.config.identified_current_flux_validation_sample_count = 3
+    driver.config.identified_current_torque_validation_sample_count = 2
+    driver.config.identified_current_retry_budget_exhausted = 0
+    driver.config.identified_current_failure_reason = 0
+    driver.config.identified_current_flux_response_min_permille = 710
+    driver.config.identified_current_torque_response_min_permille = 590
+    driver.config.identified_current_flux_encoder_delta_counts = 0
+    driver.config.identified_current_torque_encoder_delta_counts = 4
+
     driver.config.identified_r_profile_version = 1
     driver.config.identified_r_count_slope_milli = 1042
     driver.config.identified_r_gain_path_count_slope_milli = 66752
@@ -180,6 +196,24 @@ def test_tuning_flag_appends_resistance_identification_evidence():
     assert "config.identified_r_axis1_drift_permille" in output
     assert "config.identified_r_status_flags_or" in output
     assert "host performs no" in output
+
+
+def test_tuning_flag_appends_current_loop_evidence():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Current-loop commissioning evidence --" in output
+    assert "config.identified_current_gains_source" in output
+    assert "config.identified_axis_split_source" in output
+    assert "config.identified_current_measured_axis_split_permille" in output
+    assert "1840" in output
+    assert "config.identified_current_torque_response_min_permille" in output
+    assert "590" in output
+    assert "config.identified_current_torque_encoder_delta_counts" in output
+    assert "firmware-reported current-loop" in output
+    assert "identified_current_* and identified_axis_split_source" in output
 
 
 def test_tuning_output_preserves_default_dump_prefix():

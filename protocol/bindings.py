@@ -94,6 +94,16 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.active.handle_current_loop_run,
+        "foci_current_loop_run",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_current_validation_axis,
+        "foci_current_validation_axis",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.handle_impedance_profile,
         "foci_impedance_profile",
         oid,

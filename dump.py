@@ -71,6 +71,24 @@ IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
     "identified_inner_warning_flags",
 )
 
+CURRENT_LOOP_IDENTIFICATION_FIELDS: tuple[str, ...] = (
+    "identified_current_gains_source",
+    "identified_axis_split_source",
+    "identified_current_gains_tier",
+    "identified_current_measured_axis_split_permille",
+    "identified_current_applied_axis_split_permille",
+    "identified_current_axis_split_clamped",
+    "identified_current_validation_axes",
+    "identified_current_flux_validation_sample_count",
+    "identified_current_torque_validation_sample_count",
+    "identified_current_retry_budget_exhausted",
+    "identified_current_failure_reason",
+    "identified_current_flux_response_min_permille",
+    "identified_current_torque_response_min_permille",
+    "identified_current_flux_encoder_delta_counts",
+    "identified_current_torque_encoder_delta_counts",
+)
+
 # Firmware-owned resistance-identification evidence (count-space, no
 # host-side fitting). Displayed as persisted; not recomputed here.
 RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
@@ -234,6 +252,19 @@ class RegisterDumpWorkflow:
             "  Note: identified_r*/identified_l* are FOCI count-space"
             " commissioning values; validated physical R/L comparison is"
             " tracked separately."
+        )
+
+        lines.append("-- Current-loop commissioning evidence --")
+        lines.extend(
+            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            for field_name in CURRENT_LOOP_IDENTIFICATION_FIELDS
+        )
+        lines.append(
+            "  Note: identified_current_* and identified_axis_split_source"
+            " fields are firmware-reported current-loop evidence (accepted"
+            " gains source, split source, validation sample counts,"
+            " response minima, and encoder-delta maxima); the host performs"
+            " no gain selection or quality-gate evaluation."
         )
 
         lines.append("-- Resistance identification evidence --")

@@ -43,6 +43,7 @@ class ActiveDiagnostics:
         # guards against this by clearing the per-oid cache at the start
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
+        self.current_loop_cache: dict[int, dict] = {}
         self.impedance_pending_scale_metadata_validated: dict[int, bool] = {}
         self.current_step_pending_axis: str | None = None
 
@@ -467,6 +468,60 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_current_loop_run(self, params: dict) -> None:
+        """Handle foci_current_loop_run from firmware."""
+        self.current_loop_cache.setdefault(params["oid"], {})["run"] = dict(params)
+        msg = (
+            "FOCI %s current-loop run: status=%d source=%d tier=%d split_source=%d"
+            " measured_split=%d applied_split=%d clamped=%d axes=%d"
+            " retry_exhausted=%d failure_reason=%d"
+            % (
+                self.driver.name,
+                params["status"],
+                params["gains_source"],
+                params["gains_tier"],
+                params["axis_split_source"],
+                params["measured_axis_split_permille"],
+                params["applied_axis_split_permille"],
+                params["axis_split_clamped"],
+                params["current_validation_axes"],
+                params["retry_budget_exhausted"],
+                params["failure_reason"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_current_validation_axis(self, params: dict) -> None:
+        """Handle foci_current_validation_axis from firmware."""
+        axis_key = {0: "flux", 1: "torque"}.get(params["axis"])
+        cached = self.current_loop_cache.setdefault(params["oid"], {})
+        if axis_key is None:
+            cached["invalid_axis"] = True
+        else:
+            axis_samples = cached.setdefault(axis_key, [])
+            axis_samples.append(dict(params))
+        msg = (
+            "FOCI %s current validation: axis=%d sample_index=%d status=%d"
+            " attempt=%d target=%d delay_ms=%d response=%d/%d cross=%d"
+            " voltage=%d encoder_delta=%d status_flags_or=0x%08x"
+            % (
+                self.driver.name,
+                params["axis"],
+                params["sample_index"],
+                params["status"],
+                params["attempt"],
+                params["target"],
+                params["sample_delay_ms"],
+                params["positive_response_permille"],
+                params["negative_response_permille"],
+                params["cross_axis_permille"],
+                params["voltage_output_permille"],
+                params["encoder_delta_counts"],
+                params["status_flags_or"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def _impedance_projection_label(self, oid: int) -> str:
         """Return the host display label for physical-scale projection."""
         validated = self.impedance_pending_scale_metadata_validated.get(oid)
@@ -785,6 +840,70 @@ class ActiveDiagnostics:
         Returns an empty dict if nothing was cached.
         """
         return self.resistance_cache.pop(oid, None) or {}
+
+    def pop_current_loop_cache(self, oid: int) -> dict:
+        """Fold cached commission-stream current-loop replies into result keys."""
+        cached = self.clear_current_loop_cache(oid)
+        if not cached:
+            return {}
+
+        run = cached.get("run")
+        flux_samples = cached.get("flux", [])
+        torque_samples = cached.get("torque", [])
+        if run is None:
+            return {}
+        if cached.get("invalid_axis"):
+            return {}
+        expected_flux_samples = run["flux_validation_sample_count"]
+        expected_torque_samples = run["torque_validation_sample_count"]
+        if expected_flux_samples == 0 or expected_torque_samples == 0:
+            return {}
+        if len(flux_samples) != expected_flux_samples:
+            return {}
+        if len(torque_samples) != expected_torque_samples:
+            return {}
+
+        return {
+            "current_gains_source": run["gains_source"],
+            "current_axis_split_source": run["axis_split_source"],
+            "current_gains_tier": run["gains_tier"],
+            "current_measured_axis_split_permille": run["measured_axis_split_permille"],
+            "current_applied_axis_split_permille": run["applied_axis_split_permille"],
+            "current_axis_split_clamped": run["axis_split_clamped"],
+            "current_validation_axes": run["current_validation_axes"],
+            "current_flux_validation_sample_count": run["flux_validation_sample_count"],
+            "current_torque_validation_sample_count": run[
+                "torque_validation_sample_count"
+            ],
+            "current_retry_budget_exhausted": run["retry_budget_exhausted"],
+            "current_failure_reason": run["failure_reason"],
+            "current_flux_response_min_permille": self._axis_response_min(flux_samples),
+            "current_torque_response_min_permille": self._axis_response_min(
+                torque_samples
+            ),
+            "current_flux_encoder_delta_counts": self._axis_encoder_delta_max(
+                flux_samples
+            ),
+            "current_torque_encoder_delta_counts": self._axis_encoder_delta_max(
+                torque_samples
+            ),
+        }
+
+    def clear_current_loop_cache(self, oid: int) -> dict:
+        """Discard and return the cached current-loop replies for `oid`."""
+        return self.current_loop_cache.pop(oid, None) or {}
+
+    def _axis_response_min(self, samples: list[dict]) -> int:
+        return min(
+            min(
+                sample["positive_response_permille"],
+                sample["negative_response_permille"],
+            )
+            for sample in samples
+        )
+
+    def _axis_encoder_delta_max(self, samples: list[dict]) -> int:
+        return max(sample["encoder_delta_counts"] for sample in samples)
 
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""
