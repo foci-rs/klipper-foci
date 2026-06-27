@@ -214,7 +214,8 @@ class FociMcuCommands:
             "tmc_set_voltage_limit oid=%c voltage_limit=%u"
         )
         self.current_step_test = mcu.lookup_command(
-            "tmc_current_step_test oid=%c target=%hi duration_ms=%hu voltage_limit=%hu"
+            "tmc_current_step_test oid=%c axis=%c target=%hi"
+            " duration_ms=%hu voltage_limit=%hu"
         )
         self.current_vector_step_test = mcu.lookup_command(
             "tmc_current_vector_step_test oid=%c torque_target=%hi flux_target=%hi"

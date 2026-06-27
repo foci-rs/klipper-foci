@@ -386,6 +386,7 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
     driver = make_driver()
 
     driver.protocol.run_current_step_test(
+        axis=1,
         target=250,
         duration_ms=80,
         voltage_limit=12000,
@@ -416,6 +417,7 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
     commands = driver.protocol.commands
     assert commands.current_step_test.last_args == [
         driver.oid,
+        1,
         250,
         80,
         12000,

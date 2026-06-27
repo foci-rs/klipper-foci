@@ -163,12 +163,13 @@ class FociProtocol:
     def run_current_step_test(
         self,
         *,
+        axis: int,
         target: int,
         duration_ms: int,
         voltage_limit: int,
     ) -> None:
         self.commands.current_step_test.send(
-            [self.driver.oid, target, duration_ms, voltage_limit]
+            [self.driver.oid, axis, target, duration_ms, voltage_limit]
         )
 
     def run_current_vector_step_test(

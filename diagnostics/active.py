@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 
+CURRENT_STEP_AXIS_CODES = {
+    "torque": 0,
+    "flux": 1,
+}
+
 
 class ActiveDiagnostics:
     """Own FOCI diagnostics that deliberately excite hardware."""
@@ -39,16 +44,20 @@ class ActiveDiagnostics:
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
         self.impedance_pending_scale_metadata_validated: dict[int, bool] = {}
+        self.current_step_pending_axis: str | None = None
 
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
+        axis = self.current_step_pending_axis or "torque"
+        self.current_step_pending_axis = None
         msg = (
-            "FOCI %s current step: status=%d target=%d actual=%d"
+            "FOCI %s current step: axis=%s status=%d target=%d actual=%d"
             " before=%d after=%d flux=%d iq=%d id=%d"
             " uq_limited=%d ud_limited=%d"
             " enc_before=%d enc_after=%d enc_delta=%d adc_vm_raw=%d"
             % (
                 self.driver.name,
+                axis,
                 params["status"],
                 params["target"],
                 params["torque_during"],
@@ -224,6 +233,10 @@ class ActiveDiagnostics:
 
     def current_step_test(self, gcmd) -> None:
         """Run a bounded current-loop step diagnostic."""
+        axis_name = gcmd.get("AXIS", "torque").lower()
+        if axis_name not in CURRENT_STEP_AXIS_CODES:
+            raise gcmd.error("AXIS must be torque or flux")
+        axis = CURRENT_STEP_AXIS_CODES[axis_name]
         target = gcmd.get_int("TARGET", minval=-1000, maxval=1000)
         duration_ms = gcmd.get_int("DURATION_MS", 80, minval=20, maxval=200)
         voltage_limit = gcmd.get_int(
@@ -234,15 +247,17 @@ class ActiveDiagnostics:
         )
 
         self.driver.protocol.run_current_step_test(
+            axis=axis,
             target=target,
             duration_ms=duration_ms,
             voltage_limit=voltage_limit,
         )
+        self.current_step_pending_axis = axis_name
 
         gcmd.respond_info(
-            "FOCI %s current-step requested: target=%d"
+            "FOCI %s current-step requested: axis=%s target=%d"
             " duration_ms=%d voltage_limit=%d"
-            % (self.driver.name, target, duration_ms, voltage_limit)
+            % (self.driver.name, axis_name, target, duration_ms, voltage_limit)
         )
 
     def current_vector_step_test(self, gcmd) -> None:

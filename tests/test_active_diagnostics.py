@@ -15,20 +15,37 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.current_step_test(gcmd)
 
         self.assertEqual(
-            d.protocol.commands.current_step_test.last_args, [d.oid, 250, 80, 12000]
+            d.protocol.commands.current_step_test.last_args, [d.oid, 0, 250, 80, 12000]
         )
+        self.assertIn("axis=torque", gcmd.last_info)
         self.assertIn("target=250", gcmd.last_info)
 
     def test_sends_explicit_current_step_parameters(self):
         d = make_driver()
 
         d.diagnostics.current_step_test(
-            MockGCmd({"TARGET": -500, "DURATION_MS": 120, "VOLTAGE_LIMIT": 20000})
+            MockGCmd(
+                {
+                    "AXIS": "flux",
+                    "TARGET": -500,
+                    "DURATION_MS": 120,
+                    "VOLTAGE_LIMIT": 20000,
+                }
+            )
         )
 
         self.assertEqual(
-            d.protocol.commands.current_step_test.last_args, [d.oid, -500, 120, 20000]
+            d.protocol.commands.current_step_test.last_args,
+            [d.oid, 1, -500, 120, 20000],
         )
+
+    def test_current_step_rejects_unknown_axis(self):
+        d = make_driver()
+
+        with self.assertRaises(CommandError):
+            d.diagnostics.current_step_test(
+                MockGCmd({"AXIS": "position", "TARGET": 250})
+            )
 
     def test_current_step_result_formats_motion_and_supply_fields(self):
         d = make_driver()
