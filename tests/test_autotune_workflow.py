@@ -207,3 +207,6 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
 
     def test_format_inner_warning_flags_empty_when_clean(self):
         self.assertEqual(format_inner_warning_flags(0), "none")
+
+    def test_format_inner_warning_flags_ignores_tau_residual_telemetry(self):
+        self.assertEqual(format_inner_warning_flags(1 << 2), "none")

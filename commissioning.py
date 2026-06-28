@@ -59,7 +59,6 @@ HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
 INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 0, "coil R mismatch"),
     (1 << 1, "coil tau mismatch"),
-    (1 << 2, "tau residual"),
     (1 << 3, "theta/tau ratio"),
     (1 << 5, "current gains fell back to defaults"),
     (1 << 6, "host-default confidence (no fresh measurement)"),

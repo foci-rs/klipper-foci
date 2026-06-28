@@ -32,7 +32,7 @@ as a bitfield:
 | --- | --- |
 | 0 | Per-coil resistance mismatch warning |
 | 1 | Per-coil electrical time-constant mismatch warning |
-| 2 | Electrical tau cross-check residual warning |
+| 2 | Reserved; tau residual is reported as telemetry, not a warning |
 | 3 | Electrical delay/theta-to-tau ratio warning |
 | 4 | Current validation accepted after retry |
 | 5 | Current gains fell back to defaults |

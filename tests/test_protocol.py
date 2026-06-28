@@ -451,7 +451,7 @@ def test_run_tune_sends_existing_payload():
         tau_e_us=730,
         tau_e_crosscheck_us=731,
         tau_residual_permille=3,
-        inner_warning_flags=4,
+        inner_warning_flags=8,
     )
 
     assert driver.protocol.commands.tune.last_args == [
@@ -465,7 +465,7 @@ def test_run_tune_sends_existing_payload():
         730,
         731,
         3,
-        4,
+        8,
     ]
 
 
