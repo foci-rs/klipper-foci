@@ -89,6 +89,41 @@ CURRENT_LOOP_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_current_torque_encoder_delta_counts",
 )
 
+CURRENT_GAINS_SOURCE_LABELS: dict[int, str] = {
+    0: "failed",
+    1: "measured",
+    2: "default",
+}
+
+AXIS_SPLIT_SOURCE_LABELS: dict[int, str] = {
+    0: "none",
+    1: "impedance",
+}
+
+CURRENT_GAINS_TIER_LABELS: dict[int, str] = {
+    0: "none",
+    1: "measured_symmetric",
+    2: "measured_split",
+    3: "default",
+}
+
+CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
+    0: "none",
+    1: "resistance_invalid",
+    2: "impedance_invalid",
+    3: "gain_synthesis",
+    4: "flux_validation",
+    5: "torque_validation",
+    6: "saturation",
+    7: "motion",
+    8: "status_flags",
+    9: "retry_exhausted",
+    10: "spi",
+}
+
+CURRENT_VALIDATION_AXIS_FLUX = 0x01
+CURRENT_VALIDATION_AXIS_TORQUE = 0x02
+
 # Firmware-owned resistance-identification evidence (count-space, no
 # host-side fitting). Displayed as persisted; not recomputed here.
 RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
@@ -242,6 +277,7 @@ class RegisterDumpWorkflow:
         )
 
         lines.append("-- Current-loop commissioning evidence --")
+        lines.extend(self._format_current_loop_summary())
         lines.extend(
             self._format_pair("config.%s" % field_name, getattr(config, field_name))
             for field_name in CURRENT_LOOP_IDENTIFICATION_FIELDS
@@ -319,6 +355,58 @@ class RegisterDumpWorkflow:
         if warnings:
             return warnings
         return ["  live register gains match host active_gains"]
+
+    def _format_current_loop_summary(self) -> list[str]:
+        config = self.driver.config
+        validation_axes = config.identified_current_validation_axes
+        return [
+            "  current_gains_source: %s"
+            % self._label_code(
+                config.identified_current_gains_source,
+                CURRENT_GAINS_SOURCE_LABELS,
+            ),
+            "  axis_split_source: %s"
+            % self._label_code(
+                config.identified_axis_split_source,
+                AXIS_SPLIT_SOURCE_LABELS,
+            ),
+            "  current_gains_tier: %s"
+            % self._label_code(
+                config.identified_current_gains_tier,
+                CURRENT_GAINS_TIER_LABELS,
+            ),
+            "  current_validation: flux=%s torque=%s"
+            % (
+                self._axis_validation_label(
+                    validation_axes, CURRENT_VALIDATION_AXIS_FLUX
+                ),
+                self._axis_validation_label(
+                    validation_axes, CURRENT_VALIDATION_AXIS_TORQUE
+                ),
+            ),
+            "  retry_budget_exhausted: %s"
+            % self._bool_code(config.identified_current_retry_budget_exhausted),
+            "  failure_reason: %s"
+            % self._label_code(
+                config.identified_current_failure_reason,
+                CURRENT_LOOP_FAILURE_LABELS,
+            ),
+        ]
+
+    def _label_code(self, value: int | None, labels: dict[int, str]) -> str:
+        if value is None:
+            return "unknown"
+        return labels.get(value, "unknown(%d)" % value)
+
+    def _axis_validation_label(self, axes: int | None, mask: int) -> str:
+        if axes is None:
+            return "unknown"
+        return "pass" if axes & mask else "fail"
+
+    def _bool_code(self, value: int | None) -> str:
+        if value is None:
+            return "unknown"
+        return "yes" if value else "no"
 
     def _format_pair(self, name: str, value: object | None) -> str:
         return "  %-34s = %s" % (name, self._display_value(value))

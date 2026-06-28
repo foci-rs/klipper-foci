@@ -205,6 +205,10 @@ def test_tuning_flag_appends_current_loop_evidence():
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
     assert "-- Current-loop commissioning evidence --" in output
+    assert "current_gains_source: measured" in output
+    assert "axis_split_source: impedance" in output
+    assert "current_gains_tier: measured_split" in output
+    assert "current_validation: flux=pass torque=pass" in output
     assert "config.identified_current_gains_source" in output
     assert "config.identified_axis_split_source" in output
     assert "config.identified_current_measured_axis_split_permille" in output
@@ -214,6 +218,46 @@ def test_tuning_flag_appends_current_loop_evidence():
     assert "config.identified_current_torque_encoder_delta_counts" in output
     assert "firmware-reported current-loop" in output
     assert "identified_current_* and identified_axis_split_source" in output
+
+
+def test_tuning_flag_names_failed_current_loop_evidence():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.identified_current_gains_source = 0
+    driver.config.identified_axis_split_source = 0
+    driver.config.identified_current_gains_tier = 0
+    driver.config.identified_current_validation_axes = 0
+    driver.config.identified_current_retry_budget_exhausted = 1
+    driver.config.identified_current_failure_reason = 6
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "current_gains_source: failed" in output
+    assert "axis_split_source: none" in output
+    assert "current_gains_tier: none" in output
+    assert "current_validation: flux=fail torque=fail" in output
+    assert "retry_budget_exhausted: yes" in output
+    assert "failure_reason: saturation" in output
+
+
+def test_tuning_flag_names_default_current_loop_evidence():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.identified_current_gains_source = 2
+    driver.config.identified_axis_split_source = 0
+    driver.config.identified_current_gains_tier = 3
+    driver.config.identified_current_validation_axes = 1
+    driver.config.identified_current_retry_budget_exhausted = 0
+    driver.config.identified_current_failure_reason = 0
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "current_gains_source: default" in output
+    assert "axis_split_source: none" in output
+    assert "current_gains_tier: default" in output
+    assert "current_validation: flux=pass torque=fail" in output
+    assert "retry_budget_exhausted: no" in output
+    assert "failure_reason: none" in output
 
 
 def test_tuning_output_preserves_default_dump_prefix():
