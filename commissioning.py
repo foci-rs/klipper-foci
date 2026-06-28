@@ -61,7 +61,6 @@ INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 1, "coil tau mismatch"),
     (1 << 2, "tau residual"),
     (1 << 3, "theta/tau ratio"),
-    (1 << 4, "current validation retry"),
     (1 << 5, "current gains fell back to defaults"),
     (1 << 6, "host-default confidence (no fresh measurement)"),
 ]

@@ -201,10 +201,9 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
         self.assertEqual((tau, cross, perm, flags), (800, 750, 60, 0x01))
 
     def test_format_inner_warning_flags_lists_active_bits(self):
-        # Bits 0 (R mismatch) + 4 (retry).
-        text = format_inner_warning_flags((1 << 0) | (1 << 4))
+        text = format_inner_warning_flags((1 << 0) | (1 << 5))
         self.assertIn("coil R mismatch", text)
-        self.assertIn("current validation retry", text)
+        self.assertIn("current gains fell back to defaults", text)
 
     def test_format_inner_warning_flags_empty_when_clean(self):
         self.assertEqual(format_inner_warning_flags(0), "none")
