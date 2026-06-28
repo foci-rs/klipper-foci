@@ -21,7 +21,6 @@ from .diagnostics import DiagnosticsWorkflow
 from .dump import RegisterDumpWorkflow
 from .homing import HomingWorkflow
 from .protocol import FociProtocol
-from .registers import REGISTERS
 from .registry import register_gcode_commands
 from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
@@ -131,22 +130,6 @@ class FociDriver:
         self.stepper_oid = self._resolve_stepper_oid()
         self.oid = self.stepper_oid
         self.protocol.bind_mcu(self.mcu, self.oid)
-
-    def _read_register(self, reg_name: str) -> int:
-        """Read a single TMC4671 register via the firmware.
-
-        Args:
-            reg_name: Name of the register to read (must be in REGISTERS).
-
-        Returns:
-            The 32-bit register value returned by the firmware.
-
-        Raises:
-            command_error: If raw register access is not available in this
-                firmware build.
-        """
-        addr = REGISTERS[reg_name]
-        return self.protocol.read_register(addr)
 
     def _handle_connect(self) -> None:
         """Send configuration to firmware and check microstep alignment.

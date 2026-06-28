@@ -80,37 +80,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert len(registrations) == len(set(registrations))
 
 
-def test_bind_mcu_keeps_dev_register_read_optional():
-    class NoRegisterReadMCU(MockMCU):
-        def lookup_query_command(self, send_fmt, recv_fmt, oid=None):
-            if send_fmt == "tmc_read_register oid=%c addr=%c":
-                raise CommandError("missing tmc_read_register")
-            return super().lookup_query_command(send_fmt, recv_fmt, oid=oid)
-
-    driver = make_driver()
-    mcu = NoRegisterReadMCU()
-    driver.protocol = FociProtocol(driver)
-
-    driver.protocol.bind_mcu(mcu, driver.oid)
-
-    assert driver.protocol.commands.read_register is None
-    assert driver.protocol.commands.set_current is not None
-    with pytest.raises(
-        CommandError, match="Raw register access requires dev firmware build"
-    ):
-        driver.protocol.read_register(0x6C)
-
-
-def test_read_register_returns_value_from_optional_query():
-    driver = make_driver()
-    driver.protocol = FociProtocol(driver)
-    driver.protocol.bind_mcu(MockMCU(), driver.oid)
-    driver.protocol.commands.read_register = MockCommand({"value": 0x12345678})
-
-    assert driver.protocol.read_register(0x6C) == 0x12345678
-    assert driver.protocol.commands.read_register.last_args == [driver.oid, 0x6C]
-
-
 def test_driver_mcu_identify_binds_protocol_without_driver_aliases():
     driver = make_driver(
         stepper_name="stepper_x",

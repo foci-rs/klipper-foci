@@ -135,19 +135,6 @@ class RegisterDumpWorkflow:
         """Handle dump completion signal from firmware."""
         self._dump_complete = True
 
-    def write_register(self, gcmd) -> None:
-        """Throwaway debug: write one raw TMC4671 register (dev firmware)."""
-        addr = int(gcmd.get("ADDR"), 0) & 0xFF
-        value = int(gcmd.get("VALUE"), 0) & 0xFFFFFFFF
-        self.driver.protocol.write_register(addr, value)
-        gcmd.respond_info(f"FOCI write reg {addr:#04x} = {value:#010x}")
-
-    def read_register(self, gcmd) -> None:
-        """Throwaway debug: read one raw TMC4671 register (dev firmware)."""
-        addr = int(gcmd.get("ADDR"), 0) & 0xFF
-        value = self.driver.protocol.read_register(addr)
-        gcmd.respond_info(f"FOCI read reg {addr:#04x} = {value:#010x}")
-
     def dump_registers(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
 

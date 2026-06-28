@@ -54,7 +54,6 @@ class FociMcuCommands:
         self.set_encoder = None
         self.set_encoder_dir = None
         self.selftest = None
-        self.read_register = None
         self.calibrate = None
         self.dump_registers = None
         self.set_pid_gains = None
@@ -138,21 +137,6 @@ class FociMcuCommands:
             "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
         )
         self.selftest = mcu.lookup_command("foci_selftest oid=%c")
-        # Preserve release firmware behavior where the dev-only command is absent.
-        try:
-            self.read_register = mcu.lookup_query_command(
-                "tmc_read_register oid=%c addr=%c",
-                "tmc_register_value oid=%c addr=%c value=%u",
-                oid=oid,
-            )
-        except Exception:
-            self.read_register = None
-        try:
-            self.write_register = mcu.lookup_command(
-                "tmc_write_register oid=%c addr=%c value=%u"
-            )
-        except Exception:
-            self.write_register = None
         self.calibrate = mcu.lookup_command("foci_calibrate oid=%c", cq=cmd_queue)
         self.dump_registers = mcu.lookup_command("foci_dump_registers oid=%c")
         register_dump_responses(mcu._serial, driver, oid)
