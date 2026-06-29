@@ -315,6 +315,15 @@ class RegisterDumpWorkflow:
                 )
             )
 
+        last_encoder_alignment = (
+            self.driver.diagnostics.active.last_encoder_alignment_evidence(
+                self.driver.oid
+            )
+        )
+        if last_encoder_alignment:
+            lines.append("-- Last encoder alignment (not persisted) --")
+            lines.extend(self._format_last_encoder_alignment(last_encoder_alignment))
+
         lines.append("-- Resistance identification evidence --")
         lines.extend(
             self._format_pair("config.%s" % field_name, getattr(config, field_name))
@@ -513,6 +522,30 @@ class RegisterDumpWorkflow:
                 )
                 lines.append(self._format_pair(label, value))
         return lines
+
+    def _format_last_encoder_alignment(self, evidence: dict) -> list[str]:
+        residual = "%s/%s counts" % (
+            evidence.get("electrical_residual_counts"),
+            evidence.get("counts_per_electrical_rev"),
+        )
+        return [
+            self._format_pair(
+                "last.encoder_alignment_count", evidence.get("encoder_count")
+            ),
+            self._format_pair("last.encoder_alignment_residual", residual),
+            self._format_pair(
+                "last.encoder_alignment_stability",
+                "%s counts" % evidence.get("stability_counts"),
+            ),
+            self._format_pair(
+                "last.encoder_alignment_movement",
+                "%s counts" % evidence.get("movement_counts"),
+            ),
+            self._format_pair(
+                "last.encoder_alignment_min_movement",
+                "%s counts" % evidence.get("min_movement_counts"),
+            ),
+        ]
 
     def _label_code(self, value: int | None, labels: dict[int, str]) -> str:
         if value is None:

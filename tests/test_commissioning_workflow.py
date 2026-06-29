@@ -1036,3 +1036,36 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
                 self.assertNotIn(
                     driver.oid, driver.diagnostics.active.current_loop_cache
                 )
+
+
+class CommissionEncoderAlignmentEvidenceTests(unittest.TestCase):
+    """Verify transient encoder-alignment evidence follows commission runs."""
+
+    def test_commission_start_clears_stale_encoder_alignment_evidence(self):
+        driver = make_driver()
+        driver.printer._objects["configfile"] = MockConfigFile()
+        driver.diagnostics.active.handle_encoder_alignment(
+            {
+                "oid": driver.oid,
+                "encoder_count": 163,
+                "electrical_residual_counts": 3,
+                "stability_counts": 1,
+                "movement_counts": 37,
+                "min_movement_counts": 2,
+                "counts_per_electrical_rev": 80,
+            }
+        )
+        result = complete_commission_result()
+
+        def drive_success(_args):
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_success
+
+        driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+        self.assertEqual(
+            driver.diagnostics.active.last_encoder_alignment_evidence(driver.oid),
+            {},
+        )

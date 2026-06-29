@@ -47,6 +47,7 @@ class ActiveDiagnostics:
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
+        self.last_encoder_alignment: dict[int, dict] = {}
         self.impedance_pending_scale_metadata_validated: dict[int, bool] = {}
         self.current_step_pending_axis: str | None = None
 
@@ -517,6 +518,27 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_encoder_alignment(self, params: dict) -> None:
+        """Handle foci_encoder_alignment from firmware."""
+        evidence = dict(params)
+        self.last_encoder_alignment[params["oid"]] = evidence
+        msg = (
+            "FOCI %s encoder alignment: encoder_count=%d"
+            " electrical_residual_counts=%d"
+            " stability_counts=%d movement_counts=%d min_movement_counts=%d"
+            " counts_per_electrical_rev=%d"
+            % (
+                self.driver.name,
+                params["encoder_count"],
+                params["electrical_residual_counts"],
+                params["stability_counts"],
+                params["movement_counts"],
+                params["min_movement_counts"],
+                params["counts_per_electrical_rev"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def handle_current_validation_axis(self, params: dict) -> None:
         """Handle foci_current_validation_axis from firmware."""
         axis_key = {0: "flux", 1: "torque"}.get(params["axis"])
@@ -958,6 +980,14 @@ class ActiveDiagnostics:
     def last_current_loop_samples(self, oid: int) -> dict[str, list[dict]]:
         """Return current-validation sample replies from the most recent run."""
         return self._last_current_loop_samples.get(oid, {})
+
+    def last_encoder_alignment_evidence(self, oid: int) -> dict:
+        """Return the most recent transient encoder-alignment reply for `oid`."""
+        return self.last_encoder_alignment.get(oid, {})
+
+    def clear_last_encoder_alignment_evidence(self, oid: int) -> dict:
+        """Discard and return the last encoder-alignment reply for `oid`."""
+        return self.last_encoder_alignment.pop(oid, None) or {}
 
     def _axis_response_min(self, samples: list[dict]) -> int:
         return min(
