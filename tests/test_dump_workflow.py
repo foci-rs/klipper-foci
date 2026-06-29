@@ -300,15 +300,25 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
 def test_tuning_flag_labels_last_current_validation_gate_samples():
     driver = make_driver()
     for sample in (
-        # axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder
-        (0, 0, 2, 910, 900, 140, 420, 0),
-        (0, 3, 100, 1010, 1005, 44, 410, 0),
-        (1, 0, 0, 620, 610, 52, 500, 0),
-        (1, 2, 2, 780, 760, 180, 530, 6),
+        # axis, sample_index, delay_ms, positive, negative, cross, voltage,
+        # encoder_abs, encoder_positive, encoder_negative
+        (0, 0, 2, 910, 900, 140, 420, 0, 0, 0),
+        (0, 3, 100, 1010, 1005, 44, 410, 0, 0, 0),
+        (1, 0, 0, 620, 610, 52, 500, 0, 0, 0),
+        (1, 2, 2, 780, 760, 180, 530, 6, 6, -4),
     ):
-        axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder = (
-            sample
-        )
+        (
+            axis,
+            sample_index,
+            delay_ms,
+            positive,
+            negative,
+            cross,
+            voltage,
+            encoder,
+            positive_encoder,
+            negative_encoder,
+        ) = sample
         driver.diagnostics.active.handle_current_validation_axis(
             {
                 "oid": driver.oid,
@@ -323,6 +333,8 @@ def test_tuning_flag_labels_last_current_validation_gate_samples():
                 "cross_axis_permille": cross,
                 "voltage_output_permille": voltage,
                 "encoder_delta_counts": encoder,
+                "positive_encoder_delta_counts": positive_encoder,
+                "negative_encoder_delta_counts": negative_encoder,
                 "status_flags_or": 0,
             }
         )
@@ -361,6 +373,7 @@ def test_tuning_flag_labels_last_current_validation_gate_samples():
     assert "last.current_validation_sample[flux:3] = role=gate" in output
     assert "last.current_validation_sample[torque:0] = role=gate" in output
     assert "last.current_validation_sample[torque:2] = role=telemetry" in output
+    assert "signed_encoder_delta=6/-4" in output
 
 
 def test_tuning_flag_names_default_current_loop_evidence():

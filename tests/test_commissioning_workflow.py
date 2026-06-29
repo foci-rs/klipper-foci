@@ -844,14 +844,15 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
     """Verify commission-stream current-loop replies get folded into result."""
 
     CURRENT_VALIDATION_SAMPLES = (
-        # axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder
-        (0, 0, 1, 720, 710, 28, 390, 0),
-        (0, 1, 2, 960, 940, 35, 420, 0),
-        (0, 2, 5, 1010, 1000, 40, 430, 0),
-        (0, 3, 100, 1015, 1008, 38, 410, 0),
-        (1, 0, 0, 640, 630, 44, 500, 0),
-        (1, 1, 1, 610, 590, 42, 510, 2),
-        (1, 2, 2, 780, 770, 38, 530, 4),
+        # axis, sample_index, delay_ms, positive, negative, cross, voltage,
+        # encoder_abs, encoder_positive, encoder_negative
+        (0, 0, 1, 720, 710, 28, 390, 0, 0, 0),
+        (0, 1, 2, 960, 940, 35, 420, 0, 0, 0),
+        (0, 2, 5, 1010, 1000, 40, 430, 0, 0, 0),
+        (0, 3, 100, 1015, 1008, 38, 410, 0, 0, 0),
+        (1, 0, 0, 640, 630, 44, 500, 0, 0, 0),
+        (1, 1, 1, 610, 590, 42, 510, 2, 2, -1),
+        (1, 2, 2, 780, 770, 38, 530, 4, 4, -2),
     )
     CURRENT_LOOP_RUN = {
         "status": 0,
@@ -908,9 +909,18 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
     }
 
     def _emit_current_validation_sample(self, driver, sample) -> None:
-        axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder = (
-            sample
-        )
+        (
+            axis,
+            sample_index,
+            delay_ms,
+            positive,
+            negative,
+            cross,
+            voltage,
+            encoder,
+            positive_encoder,
+            negative_encoder,
+        ) = sample
         driver.diagnostics.active.handle_current_validation_axis(
             {
                 "oid": driver.oid,
@@ -925,6 +935,8 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
                 "cross_axis_permille": cross,
                 "voltage_output_permille": voltage,
                 "encoder_delta_counts": encoder,
+                "positive_encoder_delta_counts": positive_encoder,
+                "negative_encoder_delta_counts": negative_encoder,
                 "status_flags_or": 0,
             }
         )
@@ -959,6 +971,8 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         self.assertEqual(last_samples["flux"][3]["gate_role"], "gate")
         self.assertEqual(last_samples["torque"][0]["gate_role"], "gate")
         self.assertEqual(last_samples["torque"][2]["gate_role"], "telemetry")
+        self.assertEqual(last_samples["torque"][2]["positive_encoder_delta_counts"], 4)
+        self.assertEqual(last_samples["torque"][2]["negative_encoder_delta_counts"], -2)
         self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
 
     def test_partial_current_loop_cache_folds_nothing_and_clears(self):
@@ -975,7 +989,9 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
     def test_unknown_current_validation_axis_does_not_complete_torque_evidence(self):
         driver = make_driver()
         self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[0])
-        self._emit_current_validation_sample(driver, (2, 0, 2, 650, 640, 44, 500, 9))
+        self._emit_current_validation_sample(
+            driver, (2, 0, 2, 650, 640, 44, 500, 9, 9, -3)
+        )
         self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[3])
         run = {
             **self.CURRENT_LOOP_RUN,

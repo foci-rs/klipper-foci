@@ -497,6 +497,7 @@ class RegisterDumpWorkflow:
                 value = (
                     "role=%s delay_ms=%s status=%s response=%s/%s"
                     " cross=%s voltage=%s encoder_delta=%s"
+                    " signed_encoder_delta=%s/%s"
                     % (
                         sample.get("gate_role", "unknown"),
                         sample.get("sample_delay_ms"),
@@ -506,6 +507,8 @@ class RegisterDumpWorkflow:
                         sample.get("cross_axis_permille"),
                         sample.get("voltage_output_permille"),
                         sample.get("encoder_delta_counts"),
+                        sample.get("positive_encoder_delta_counts", 0),
+                        sample.get("negative_encoder_delta_counts", 0),
                     )
                 )
                 lines.append(self._format_pair(label, value))

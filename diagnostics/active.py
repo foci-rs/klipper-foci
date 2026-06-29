@@ -533,7 +533,8 @@ class ActiveDiagnostics:
         msg = (
             "FOCI %s current validation: axis=%d sample_index=%d status=%d"
             " attempt=%d target=%d delay_ms=%d role=%s response=%d/%d cross=%d"
-            " voltage=%d encoder_delta=%d status_flags_or=0x%08x"
+            " voltage=%d encoder_delta=%d signed_encoder_delta=%d/%d"
+            " status_flags_or=0x%08x"
             % (
                 self.driver.name,
                 params["axis"],
@@ -548,6 +549,8 @@ class ActiveDiagnostics:
                 params["cross_axis_permille"],
                 params["voltage_output_permille"],
                 params["encoder_delta_counts"],
+                params.get("positive_encoder_delta_counts", 0),
+                params.get("negative_encoder_delta_counts", 0),
                 params["status_flags_or"],
             )
         )
