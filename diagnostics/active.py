@@ -8,6 +8,7 @@ CURRENT_STEP_AXIS_CODES = {
     "torque": 0,
     "flux": 1,
 }
+MAX_CURRENT_SAMPLE_DELAY_MS = 200
 
 
 class ActiveDiagnostics:
@@ -296,7 +297,9 @@ class ActiveDiagnostics:
         """Run a bounded torque pulse and sample it before the dwell floor."""
         target = gcmd.get_int("TARGET", minval=-1000, maxval=1000)
         flux_target = gcmd.get_int("FLUX_TARGET", 0, minval=-1000, maxval=1000)
-        sample_delay_ms = gcmd.get_int("SAMPLE_DELAY_MS", 5, minval=1, maxval=20)
+        sample_delay_ms = gcmd.get_int(
+            "SAMPLE_DELAY_MS", 5, minval=1, maxval=MAX_CURRENT_SAMPLE_DELAY_MS
+        )
         voltage_limit = gcmd.get_int(
             "VOLTAGE_LIMIT",
             12000,
@@ -334,7 +337,9 @@ class ActiveDiagnostics:
     def position_torque_offset_test(self, gcmd) -> None:
         """Run a bounded torque-offset sample while staying in position mode."""
         target = gcmd.get_int("TARGET", minval=-1000, maxval=1000)
-        sample_delay_ms = gcmd.get_int("SAMPLE_DELAY_MS", 2, minval=1, maxval=20)
+        sample_delay_ms = gcmd.get_int(
+            "SAMPLE_DELAY_MS", 2, minval=1, maxval=MAX_CURRENT_SAMPLE_DELAY_MS
+        )
         voltage_limit = gcmd.get_int(
             "VOLTAGE_LIMIT",
             12000,
@@ -909,7 +914,9 @@ class ActiveDiagnostics:
         """Run a bounded open-loop voltage-vector pulse and sample it."""
         uq_ext = gcmd.get_int("UQ", minval=-1024, maxval=1024)
         ud_ext = gcmd.get_int("UD", 0, minval=-1024, maxval=1024)
-        sample_delay_ms = gcmd.get_int("SAMPLE_DELAY_MS", 2, minval=1, maxval=20)
+        sample_delay_ms = gcmd.get_int(
+            "SAMPLE_DELAY_MS", 2, minval=1, maxval=MAX_CURRENT_SAMPLE_DELAY_MS
+        )
 
         self.driver.protocol.run_voltage_step_test(
             uq_ext=uq_ext,

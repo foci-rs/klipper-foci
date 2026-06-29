@@ -125,9 +125,9 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("actual_flux=240", out)
         self.assertIn("enc_delta=12", out)
 
-    def test_sends_torque_sample_step_with_short_delay(self):
+    def test_sends_torque_sample_step_with_long_diagnostic_delay(self):
         d = make_driver()
-        d.diagnostics.current_torque_sample_details[(500, -125, 5, 29000)] = {
+        d.diagnostics.current_torque_sample_details[(500, -125, 100, 29000)] = {
             "torque_error": 1
         }
 
@@ -136,7 +136,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 {
                     "TARGET": 500,
                     "FLUX_TARGET": -125,
-                    "SAMPLE_DELAY_MS": 5,
+                    "SAMPLE_DELAY_MS": 100,
                     "VOLTAGE_LIMIT": 29000,
                 }
             )
@@ -144,7 +144,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
         self.assertEqual(
             d.protocol.commands.current_torque_sample_test.last_args,
-            [d.oid, 500, -125, 5, 29000],
+            [d.oid, 500, -125, 100, 29000],
         )
         self.assertEqual(d.diagnostics.current_torque_sample_details, {})
 
