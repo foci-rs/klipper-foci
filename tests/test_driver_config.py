@@ -344,7 +344,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_current_candidate_torque_i": 21,
             "identified_current_candidate_attempt": 1,
             "identified_current_validation_axes": 3,
-            "identified_current_flux_validation_sample_count": 3,
+            "identified_current_flux_validation_sample_count": 4,
             "identified_current_torque_validation_sample_count": 2,
             "identified_current_retry_budget_exhausted": 0,
             "identified_current_failure_reason": 0,
@@ -417,7 +417,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_current_candidate_torque_i == 21
     assert parsed.identified_current_candidate_attempt == 1
     assert parsed.identified_current_validation_axes == 3
-    assert parsed.identified_current_flux_validation_sample_count == 3
+    assert parsed.identified_current_flux_validation_sample_count == 4
     assert parsed.identified_current_torque_validation_sample_count == 2
     assert parsed.identified_current_retry_budget_exhausted == 0
     assert parsed.identified_current_failure_reason == 0

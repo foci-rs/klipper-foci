@@ -103,7 +103,7 @@ def _seed_tuning_state(driver):
     driver.config.identified_current_candidate_torque_i = 21
     driver.config.identified_current_candidate_attempt = 1
     driver.config.identified_current_validation_axes = 3
-    driver.config.identified_current_flux_validation_sample_count = 3
+    driver.config.identified_current_flux_validation_sample_count = 4
     driver.config.identified_current_torque_validation_sample_count = 2
     driver.config.identified_current_retry_budget_exhausted = 0
     driver.config.identified_current_failure_reason = 0
@@ -275,7 +275,7 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
             "candidate_torque_i": 26,
             "candidate_attempt": 1,
             "current_validation_axes": 0,
-            "flux_validation_sample_count": 3,
+            "flux_validation_sample_count": 4,
             "torque_validation_sample_count": 0,
             "retry_budget_exhausted": 1,
             "failure_reason": 9,
