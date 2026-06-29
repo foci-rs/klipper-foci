@@ -88,11 +88,22 @@ class FociDriverConfig:
     identified_j_eff: int | None
     identified_b_eff: int | None
     identified_current_gains_source: int | None
+    identified_current_candidate_gains_source: int | None
     identified_axis_split_source: int | None
+    identified_current_candidate_axis_split_source: int | None
     identified_current_gains_tier: int | None
+    identified_current_candidate_gains_tier: int | None
     identified_current_measured_axis_split_permille: int | None
+    identified_current_candidate_measured_axis_split_permille: int | None
     identified_current_applied_axis_split_permille: int | None
+    identified_current_candidate_applied_axis_split_permille: int | None
     identified_current_axis_split_clamped: int | None
+    identified_current_candidate_axis_split_clamped: int | None
+    identified_current_candidate_flux_p: int | None
+    identified_current_candidate_flux_i: int | None
+    identified_current_candidate_torque_p: int | None
+    identified_current_candidate_torque_i: int | None
+    identified_current_candidate_attempt: int | None
     identified_current_validation_axes: int | None
     identified_current_flux_validation_sample_count: int | None
     identified_current_torque_validation_sample_count: int | None
@@ -308,20 +319,59 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_current_gains_source = config.getint(
         "identified_current_gains_source", None, minval=0, maxval=255
     )
+    identified_current_candidate_gains_source = config.getint(
+        "identified_current_candidate_gains_source", None, minval=0, maxval=255
+    )
     identified_axis_split_source = config.getint(
         "identified_axis_split_source", None, minval=0, maxval=255
+    )
+    identified_current_candidate_axis_split_source = config.getint(
+        "identified_current_candidate_axis_split_source", None, minval=0, maxval=255
     )
     identified_current_gains_tier = config.getint(
         "identified_current_gains_tier", None, minval=0, maxval=255
     )
+    identified_current_candidate_gains_tier = config.getint(
+        "identified_current_candidate_gains_tier", None, minval=0, maxval=255
+    )
     identified_current_measured_axis_split_permille = config.getint(
         "identified_current_measured_axis_split_permille", None, minval=0, maxval=65535
+    )
+    identified_current_candidate_measured_axis_split_permille = config.getint(
+        "identified_current_candidate_measured_axis_split_permille",
+        None,
+        minval=0,
+        maxval=65535,
     )
     identified_current_applied_axis_split_permille = config.getint(
         "identified_current_applied_axis_split_permille", None, minval=0, maxval=65535
     )
+    identified_current_candidate_applied_axis_split_permille = config.getint(
+        "identified_current_candidate_applied_axis_split_permille",
+        None,
+        minval=0,
+        maxval=65535,
+    )
     identified_current_axis_split_clamped = config.getint(
         "identified_current_axis_split_clamped", None, minval=0, maxval=255
+    )
+    identified_current_candidate_axis_split_clamped = config.getint(
+        "identified_current_candidate_axis_split_clamped", None, minval=0, maxval=255
+    )
+    identified_current_candidate_flux_p = config.getint(
+        "identified_current_candidate_flux_p", None, minval=0, maxval=65535
+    )
+    identified_current_candidate_flux_i = config.getint(
+        "identified_current_candidate_flux_i", None, minval=0, maxval=65535
+    )
+    identified_current_candidate_torque_p = config.getint(
+        "identified_current_candidate_torque_p", None, minval=0, maxval=65535
+    )
+    identified_current_candidate_torque_i = config.getint(
+        "identified_current_candidate_torque_i", None, minval=0, maxval=65535
+    )
+    identified_current_candidate_attempt = config.getint(
+        "identified_current_candidate_attempt", None, minval=0, maxval=255
     )
     identified_current_validation_axes = config.getint(
         "identified_current_validation_axes", None, minval=0, maxval=255
@@ -499,15 +549,38 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_j_eff=identified_j_eff,
         identified_b_eff=identified_b_eff,
         identified_current_gains_source=identified_current_gains_source,
+        identified_current_candidate_gains_source=(
+            identified_current_candidate_gains_source
+        ),
         identified_axis_split_source=identified_axis_split_source,
+        identified_current_candidate_axis_split_source=(
+            identified_current_candidate_axis_split_source
+        ),
         identified_current_gains_tier=identified_current_gains_tier,
+        identified_current_candidate_gains_tier=(
+            identified_current_candidate_gains_tier
+        ),
         identified_current_measured_axis_split_permille=(
             identified_current_measured_axis_split_permille
+        ),
+        identified_current_candidate_measured_axis_split_permille=(
+            identified_current_candidate_measured_axis_split_permille
         ),
         identified_current_applied_axis_split_permille=(
             identified_current_applied_axis_split_permille
         ),
+        identified_current_candidate_applied_axis_split_permille=(
+            identified_current_candidate_applied_axis_split_permille
+        ),
         identified_current_axis_split_clamped=identified_current_axis_split_clamped,
+        identified_current_candidate_axis_split_clamped=(
+            identified_current_candidate_axis_split_clamped
+        ),
+        identified_current_candidate_flux_p=identified_current_candidate_flux_p,
+        identified_current_candidate_flux_i=identified_current_candidate_flux_i,
+        identified_current_candidate_torque_p=identified_current_candidate_torque_p,
+        identified_current_candidate_torque_i=identified_current_candidate_torque_i,
+        identified_current_candidate_attempt=identified_current_candidate_attempt,
         identified_current_validation_axes=identified_current_validation_axes,
         identified_current_flux_validation_sample_count=(
             identified_current_flux_validation_sample_count

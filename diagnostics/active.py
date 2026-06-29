@@ -45,6 +45,7 @@ class ActiveDiagnostics:
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
         self.current_loop_cache: dict[int, dict] = {}
+        self.last_current_loop_run: dict[int, dict] = {}
         self.impedance_pending_scale_metadata_validated: dict[int, bool] = {}
         self.current_step_pending_axis: str | None = None
 
@@ -475,11 +476,15 @@ class ActiveDiagnostics:
 
     def handle_current_loop_run(self, params: dict) -> None:
         """Handle foci_current_loop_run from firmware."""
-        self.current_loop_cache.setdefault(params["oid"], {})["run"] = dict(params)
+        run = dict(params)
+        self.current_loop_cache.setdefault(params["oid"], {})["run"] = run
+        self.last_current_loop_run[params["oid"]] = run
         msg = (
             "FOCI %s current-loop run: status=%d source=%d tier=%d split_source=%d"
             " measured_split=%d applied_split=%d clamped=%d axes=%d"
             " retry_exhausted=%d failure_reason=%d"
+            " candidate_source=%d candidate_tier=%d candidate_attempt=%d"
+            " candidate_flux=%d/%d candidate_torque=%d/%d"
             % (
                 self.driver.name,
                 params["status"],
@@ -492,6 +497,13 @@ class ActiveDiagnostics:
                 params["current_validation_axes"],
                 params["retry_budget_exhausted"],
                 params["failure_reason"],
+                params["candidate_gains_source"],
+                params["candidate_gains_tier"],
+                params["candidate_attempt"],
+                params["candidate_flux_p"],
+                params["candidate_flux_i"],
+                params["candidate_torque_p"],
+                params["candidate_torque_i"],
             )
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
@@ -870,11 +882,26 @@ class ActiveDiagnostics:
 
         return {
             "current_gains_source": run["gains_source"],
+            "current_candidate_gains_source": run["candidate_gains_source"],
             "current_axis_split_source": run["axis_split_source"],
+            "current_candidate_axis_split_source": run["candidate_axis_split_source"],
             "current_gains_tier": run["gains_tier"],
+            "current_candidate_gains_tier": run["candidate_gains_tier"],
             "current_measured_axis_split_permille": run["measured_axis_split_permille"],
+            "current_candidate_measured_axis_split_permille": run[
+                "candidate_measured_axis_split_permille"
+            ],
             "current_applied_axis_split_permille": run["applied_axis_split_permille"],
+            "current_candidate_applied_axis_split_permille": run[
+                "candidate_applied_axis_split_permille"
+            ],
             "current_axis_split_clamped": run["axis_split_clamped"],
+            "current_candidate_axis_split_clamped": run["candidate_axis_split_clamped"],
+            "current_candidate_flux_p": run["candidate_flux_p"],
+            "current_candidate_flux_i": run["candidate_flux_i"],
+            "current_candidate_torque_p": run["candidate_torque_p"],
+            "current_candidate_torque_i": run["candidate_torque_i"],
+            "current_candidate_attempt": run["candidate_attempt"],
             "current_validation_axes": run["current_validation_axes"],
             "current_flux_validation_sample_count": run["flux_validation_sample_count"],
             "current_torque_validation_sample_count": run[
@@ -897,6 +924,10 @@ class ActiveDiagnostics:
     def clear_current_loop_cache(self, oid: int) -> dict:
         """Discard and return the cached current-loop replies for `oid`."""
         return self.current_loop_cache.pop(oid, None) or {}
+
+    def last_current_loop_evidence(self, oid: int) -> dict:
+        """Return the most recent transient current-loop run reply for `oid`."""
+        return self.last_current_loop_run.get(oid, {})
 
     def _axis_response_min(self, samples: list[dict]) -> int:
         return min(

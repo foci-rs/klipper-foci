@@ -86,11 +86,22 @@ def _seed_tuning_state(driver):
     driver.config.identified_inner_warning_flags = 36
 
     driver.config.identified_current_gains_source = 1
+    driver.config.identified_current_candidate_gains_source = 1
     driver.config.identified_axis_split_source = 1
+    driver.config.identified_current_candidate_axis_split_source = 1
     driver.config.identified_current_gains_tier = 2
+    driver.config.identified_current_candidate_gains_tier = 2
     driver.config.identified_current_measured_axis_split_permille = 1840
+    driver.config.identified_current_candidate_measured_axis_split_permille = 1840
     driver.config.identified_current_applied_axis_split_permille = 1500
+    driver.config.identified_current_candidate_applied_axis_split_permille = 1500
     driver.config.identified_current_axis_split_clamped = 1
+    driver.config.identified_current_candidate_axis_split_clamped = 1
+    driver.config.identified_current_candidate_flux_p = 711
+    driver.config.identified_current_candidate_flux_i = 26
+    driver.config.identified_current_candidate_torque_p = 650
+    driver.config.identified_current_candidate_torque_i = 21
+    driver.config.identified_current_candidate_attempt = 1
     driver.config.identified_current_validation_axes = 3
     driver.config.identified_current_flux_validation_sample_count = 3
     driver.config.identified_current_torque_validation_sample_count = 2
@@ -238,6 +249,52 @@ def test_tuning_flag_names_failed_current_loop_evidence():
     assert "current_validation: flux=fail torque=fail" in output
     assert "retry_budget_exhausted: yes" in output
     assert "failure_reason: saturation" in output
+
+
+def test_tuning_flag_appends_last_current_loop_run_evidence():
+    driver = make_driver()
+    driver.diagnostics.active.handle_current_loop_run(
+        {
+            "oid": driver.oid,
+            "status": 9,
+            "gains_source": 0,
+            "candidate_gains_source": 1,
+            "axis_split_source": 0,
+            "candidate_axis_split_source": 0,
+            "gains_tier": 0,
+            "candidate_gains_tier": 1,
+            "measured_axis_split_permille": 1000,
+            "candidate_measured_axis_split_permille": 1000,
+            "applied_axis_split_permille": 1000,
+            "candidate_applied_axis_split_permille": 1000,
+            "axis_split_clamped": 0,
+            "candidate_axis_split_clamped": 0,
+            "candidate_flux_p": 711,
+            "candidate_flux_i": 26,
+            "candidate_torque_p": 711,
+            "candidate_torque_i": 26,
+            "candidate_attempt": 1,
+            "current_validation_axes": 0,
+            "flux_validation_sample_count": 3,
+            "torque_validation_sample_count": 0,
+            "retry_budget_exhausted": 1,
+            "failure_reason": 9,
+        }
+    )
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Last current-loop run (not persisted) --" in output
+    assert "last.current_gains_source          = failed" in output
+    assert "last.candidate_gains_source        = measured" in output
+    assert "last.candidate_gains_tier          = measured_symmetric" in output
+    assert "last.candidate_flux_p              = 711" in output
+    assert "last.candidate_flux_i              = 26" in output
+    assert "last.candidate_torque_p            = 711" in output
+    assert "last.candidate_torque_i            = 26" in output
+    assert "last.candidate_attempt             = 1" in output
+    assert "last.current_validation            = flux=fail torque=not_run" in output
+    assert "last.failure_reason                = retry_exhausted" in output
 
 
 def test_tuning_flag_names_default_current_loop_evidence():

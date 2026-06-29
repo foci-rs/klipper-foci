@@ -73,11 +73,22 @@ IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
 
 CURRENT_LOOP_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_current_gains_source",
+    "identified_current_candidate_gains_source",
     "identified_axis_split_source",
+    "identified_current_candidate_axis_split_source",
     "identified_current_gains_tier",
+    "identified_current_candidate_gains_tier",
     "identified_current_measured_axis_split_permille",
+    "identified_current_candidate_measured_axis_split_permille",
     "identified_current_applied_axis_split_permille",
+    "identified_current_candidate_applied_axis_split_permille",
     "identified_current_axis_split_clamped",
+    "identified_current_candidate_axis_split_clamped",
+    "identified_current_candidate_flux_p",
+    "identified_current_candidate_flux_i",
+    "identified_current_candidate_torque_p",
+    "identified_current_candidate_torque_i",
+    "identified_current_candidate_attempt",
     "identified_current_validation_axes",
     "identified_current_flux_validation_sample_count",
     "identified_current_torque_validation_sample_count",
@@ -290,6 +301,13 @@ class RegisterDumpWorkflow:
             " no gain selection or quality-gate evaluation."
         )
 
+        last_current_loop = self.driver.diagnostics.active.last_current_loop_evidence(
+            self.driver.oid
+        )
+        if last_current_loop:
+            lines.append("-- Last current-loop run (not persisted) --")
+            lines.extend(self._format_last_current_loop_summary(last_current_loop))
+
         lines.append("-- Resistance identification evidence --")
         lines.extend(
             self._format_pair("config.%s" % field_name, getattr(config, field_name))
@@ -393,6 +411,74 @@ class RegisterDumpWorkflow:
             ),
         ]
 
+    def _format_last_current_loop_summary(self, run: dict) -> list[str]:
+        validation_axes = run.get("current_validation_axes")
+        flux_sample_count = run.get("flux_validation_sample_count")
+        torque_sample_count = run.get("torque_validation_sample_count")
+        return [
+            self._format_pair(
+                "last.current_gains_source",
+                self._label_code(run.get("gains_source"), CURRENT_GAINS_SOURCE_LABELS),
+            ),
+            self._format_pair(
+                "last.candidate_gains_source",
+                self._label_code(
+                    run.get("candidate_gains_source"), CURRENT_GAINS_SOURCE_LABELS
+                ),
+            ),
+            self._format_pair(
+                "last.axis_split_source",
+                self._label_code(
+                    run.get("axis_split_source"), AXIS_SPLIT_SOURCE_LABELS
+                ),
+            ),
+            self._format_pair(
+                "last.candidate_axis_split_source",
+                self._label_code(
+                    run.get("candidate_axis_split_source"), AXIS_SPLIT_SOURCE_LABELS
+                ),
+            ),
+            self._format_pair(
+                "last.current_gains_tier",
+                self._label_code(run.get("gains_tier"), CURRENT_GAINS_TIER_LABELS),
+            ),
+            self._format_pair(
+                "last.candidate_gains_tier",
+                self._label_code(
+                    run.get("candidate_gains_tier"), CURRENT_GAINS_TIER_LABELS
+                ),
+            ),
+            self._format_pair("last.candidate_flux_p", run.get("candidate_flux_p")),
+            self._format_pair("last.candidate_flux_i", run.get("candidate_flux_i")),
+            self._format_pair("last.candidate_torque_p", run.get("candidate_torque_p")),
+            self._format_pair("last.candidate_torque_i", run.get("candidate_torque_i")),
+            self._format_pair("last.candidate_attempt", run.get("candidate_attempt")),
+            self._format_pair(
+                "last.current_validation",
+                "flux=%s torque=%s"
+                % (
+                    self._axis_validation_label_for_count(
+                        validation_axes, CURRENT_VALIDATION_AXIS_FLUX, flux_sample_count
+                    ),
+                    self._axis_validation_label_for_count(
+                        validation_axes,
+                        CURRENT_VALIDATION_AXIS_TORQUE,
+                        torque_sample_count,
+                    ),
+                ),
+            ),
+            self._format_pair(
+                "last.retry_budget_exhausted",
+                self._bool_code(run.get("retry_budget_exhausted")),
+            ),
+            self._format_pair(
+                "last.failure_reason",
+                self._label_code(
+                    run.get("failure_reason"), CURRENT_LOOP_FAILURE_LABELS
+                ),
+            ),
+        ]
+
     def _label_code(self, value: int | None, labels: dict[int, str]) -> str:
         if value is None:
             return "unknown"
@@ -402,6 +488,15 @@ class RegisterDumpWorkflow:
         if axes is None:
             return "unknown"
         return "pass" if axes & mask else "fail"
+
+    def _axis_validation_label_for_count(
+        self, axes: int | None, mask: int, sample_count: int | None
+    ) -> str:
+        if axes is None or sample_count is None:
+            return "unknown"
+        if sample_count <= 0:
+            return "not_run"
+        return self._axis_validation_label(axes, mask)
 
     def _bool_code(self, value: int | None) -> str:
         if value is None:

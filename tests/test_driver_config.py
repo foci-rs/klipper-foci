@@ -93,11 +93,22 @@ CONFIG_FIELD_NAMES = {
     "identified_j_eff",
     "identified_b_eff",
     "identified_current_gains_source",
+    "identified_current_candidate_gains_source",
     "identified_axis_split_source",
+    "identified_current_candidate_axis_split_source",
     "identified_current_gains_tier",
+    "identified_current_candidate_gains_tier",
     "identified_current_measured_axis_split_permille",
+    "identified_current_candidate_measured_axis_split_permille",
     "identified_current_applied_axis_split_permille",
+    "identified_current_candidate_applied_axis_split_permille",
     "identified_current_axis_split_clamped",
+    "identified_current_candidate_axis_split_clamped",
+    "identified_current_candidate_flux_p",
+    "identified_current_candidate_flux_i",
+    "identified_current_candidate_torque_p",
+    "identified_current_candidate_torque_i",
+    "identified_current_candidate_attempt",
     "identified_current_validation_axes",
     "identified_current_flux_validation_sample_count",
     "identified_current_torque_validation_sample_count",
@@ -190,11 +201,22 @@ EXPECTED_CONTROL_SETTING_FIELDS = (
 
 CURRENT_LOOP_FIELD_MAX_VALUES = {
     "identified_current_gains_source": 255,
+    "identified_current_candidate_gains_source": 255,
     "identified_axis_split_source": 255,
+    "identified_current_candidate_axis_split_source": 255,
     "identified_current_gains_tier": 255,
+    "identified_current_candidate_gains_tier": 255,
     "identified_current_measured_axis_split_permille": 65535,
+    "identified_current_candidate_measured_axis_split_permille": 65535,
     "identified_current_applied_axis_split_permille": 65535,
+    "identified_current_candidate_applied_axis_split_permille": 65535,
     "identified_current_axis_split_clamped": 255,
+    "identified_current_candidate_axis_split_clamped": 255,
+    "identified_current_candidate_flux_p": 65535,
+    "identified_current_candidate_flux_i": 65535,
+    "identified_current_candidate_torque_p": 65535,
+    "identified_current_candidate_torque_i": 65535,
+    "identified_current_candidate_attempt": 255,
     "identified_current_validation_axes": 255,
     "identified_current_flux_validation_sample_count": 255,
     "identified_current_torque_validation_sample_count": 255,
@@ -305,11 +327,22 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_j_eff": 9,
             "identified_b_eff": 10,
             "identified_current_gains_source": 1,
+            "identified_current_candidate_gains_source": 1,
             "identified_axis_split_source": 1,
+            "identified_current_candidate_axis_split_source": 1,
             "identified_current_gains_tier": 2,
+            "identified_current_candidate_gains_tier": 2,
             "identified_current_measured_axis_split_permille": 1840,
+            "identified_current_candidate_measured_axis_split_permille": 1840,
             "identified_current_applied_axis_split_permille": 1500,
+            "identified_current_candidate_applied_axis_split_permille": 1500,
             "identified_current_axis_split_clamped": 1,
+            "identified_current_candidate_axis_split_clamped": 1,
+            "identified_current_candidate_flux_p": 711,
+            "identified_current_candidate_flux_i": 26,
+            "identified_current_candidate_torque_p": 650,
+            "identified_current_candidate_torque_i": 21,
+            "identified_current_candidate_attempt": 1,
             "identified_current_validation_axes": 3,
             "identified_current_flux_validation_sample_count": 3,
             "identified_current_torque_validation_sample_count": 2,
@@ -367,11 +400,22 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_j_eff == 9
     assert parsed.identified_b_eff == 10
     assert parsed.identified_current_gains_source == 1
+    assert parsed.identified_current_candidate_gains_source == 1
     assert parsed.identified_axis_split_source == 1
+    assert parsed.identified_current_candidate_axis_split_source == 1
     assert parsed.identified_current_gains_tier == 2
+    assert parsed.identified_current_candidate_gains_tier == 2
     assert parsed.identified_current_measured_axis_split_permille == 1840
+    assert parsed.identified_current_candidate_measured_axis_split_permille == 1840
     assert parsed.identified_current_applied_axis_split_permille == 1500
+    assert parsed.identified_current_candidate_applied_axis_split_permille == 1500
     assert parsed.identified_current_axis_split_clamped == 1
+    assert parsed.identified_current_candidate_axis_split_clamped == 1
+    assert parsed.identified_current_candidate_flux_p == 711
+    assert parsed.identified_current_candidate_flux_i == 26
+    assert parsed.identified_current_candidate_torque_p == 650
+    assert parsed.identified_current_candidate_torque_i == 21
+    assert parsed.identified_current_candidate_attempt == 1
     assert parsed.identified_current_validation_axes == 3
     assert parsed.identified_current_flux_validation_sample_count == 3
     assert parsed.identified_current_torque_validation_sample_count == 2
