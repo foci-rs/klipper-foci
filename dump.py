@@ -307,6 +307,13 @@ class RegisterDumpWorkflow:
         if last_current_loop:
             lines.append("-- Last current-loop run (not persisted) --")
             lines.extend(self._format_last_current_loop_summary(last_current_loop))
+            lines.extend(
+                self._format_last_current_validation_samples(
+                    self.driver.diagnostics.active.last_current_loop_samples(
+                        self.driver.oid
+                    )
+                )
+            )
 
         lines.append("-- Resistance identification evidence --")
         lines.extend(
@@ -478,6 +485,31 @@ class RegisterDumpWorkflow:
                 ),
             ),
         ]
+
+    def _format_last_current_validation_samples(self, samples: dict) -> list[str]:
+        lines = []
+        for axis_key in ("flux", "torque"):
+            for sample in samples.get(axis_key, []):
+                label = "last.current_validation_sample[%s:%s]" % (
+                    axis_key,
+                    sample.get("sample_index"),
+                )
+                value = (
+                    "role=%s delay_ms=%s status=%s response=%s/%s"
+                    " cross=%s voltage=%s encoder_delta=%s"
+                    % (
+                        sample.get("gate_role", "unknown"),
+                        sample.get("sample_delay_ms"),
+                        sample.get("status"),
+                        sample.get("positive_response_permille"),
+                        sample.get("negative_response_permille"),
+                        sample.get("cross_axis_permille"),
+                        sample.get("voltage_output_permille"),
+                        sample.get("encoder_delta_counts"),
+                    )
+                )
+                lines.append(self._format_pair(label, value))
+        return lines
 
     def _label_code(self, value: int | None, labels: dict[int, str]) -> str:
         if value is None:

@@ -46,6 +46,7 @@ class ActiveDiagnostics:
         self.resistance_cache: dict[int, dict] = {}
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
+        self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
         self.impedance_pending_scale_metadata_validated: dict[int, bool] = {}
         self.current_step_pending_axis: str | None = None
 
@@ -477,8 +478,16 @@ class ActiveDiagnostics:
     def handle_current_loop_run(self, params: dict) -> None:
         """Handle foci_current_loop_run from firmware."""
         run = dict(params)
-        self.current_loop_cache.setdefault(params["oid"], {})["run"] = run
-        self.last_current_loop_run[params["oid"]] = run
+        oid = params["oid"]
+        cached = self.current_loop_cache.setdefault(oid, {})
+        cached["run"] = run
+        self.last_current_loop_run[oid] = run
+        samples = {
+            "flux": [dict(sample) for sample in cached.get("flux", [])],
+            "torque": [dict(sample) for sample in cached.get("torque", [])],
+        }
+        if samples["flux"] or samples["torque"]:
+            self._last_current_loop_samples[oid] = samples
         msg = (
             "FOCI %s current-loop run: status=%d source=%d tier=%d split_source=%d"
             " measured_split=%d applied_split=%d clamped=%d axes=%d"
@@ -516,10 +525,14 @@ class ActiveDiagnostics:
             cached["invalid_axis"] = True
         else:
             axis_samples = cached.setdefault(axis_key, [])
-            axis_samples.append(dict(params))
+            sample = dict(params)
+            sample["gate_role"] = self._current_validation_gate_role(
+                axis_key, params["sample_delay_ms"]
+            )
+            axis_samples.append(sample)
         msg = (
             "FOCI %s current validation: axis=%d sample_index=%d status=%d"
-            " attempt=%d target=%d delay_ms=%d response=%d/%d cross=%d"
+            " attempt=%d target=%d delay_ms=%d role=%s response=%d/%d cross=%d"
             " voltage=%d encoder_delta=%d status_flags_or=0x%08x"
             % (
                 self.driver.name,
@@ -529,6 +542,7 @@ class ActiveDiagnostics:
                 params["attempt"],
                 params["target"],
                 params["sample_delay_ms"],
+                self._current_validation_gate_role(axis_key, params["sample_delay_ms"]),
                 params["positive_response_permille"],
                 params["negative_response_permille"],
                 params["cross_axis_permille"],
@@ -538,6 +552,15 @@ class ActiveDiagnostics:
             )
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def _current_validation_gate_role(
+        self, axis_key: str | None, sample_delay_ms: int
+    ) -> str:
+        if axis_key == "flux" and sample_delay_ms == 100:
+            return "gate"
+        if axis_key == "torque" and sample_delay_ms == 0:
+            return "gate"
+        return "telemetry"
 
     def _impedance_projection_label(self, oid: int) -> str:
         """Return the host display label for physical-scale projection."""
@@ -928,6 +951,10 @@ class ActiveDiagnostics:
     def last_current_loop_evidence(self, oid: int) -> dict:
         """Return the most recent transient current-loop run reply for `oid`."""
         return self.last_current_loop_run.get(oid, {})
+
+    def last_current_loop_samples(self, oid: int) -> dict[str, list[dict]]:
+        """Return current-validation sample replies from the most recent run."""
+        return self._last_current_loop_samples.get(oid, {})
 
     def _axis_response_min(self, samples: list[dict]) -> int:
         return min(

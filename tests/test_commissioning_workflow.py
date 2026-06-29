@@ -849,8 +849,9 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         (0, 1, 2, 960, 940, 35, 420, 0),
         (0, 2, 5, 1010, 1000, 40, 430, 0),
         (0, 3, 100, 1015, 1008, 38, 410, 0),
-        (1, 0, 1, 610, 590, 42, 510, 2),
-        (1, 1, 2, 780, 770, 38, 530, 4),
+        (1, 0, 0, 640, 630, 44, 500, 0),
+        (1, 1, 1, 610, 590, 42, 510, 2),
+        (1, 2, 2, 780, 770, 38, 530, 4),
     )
     CURRENT_LOOP_RUN = {
         "status": 0,
@@ -873,7 +874,7 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         "candidate_attempt": 1,
         "current_validation_axes": 3,
         "flux_validation_sample_count": 4,
-        "torque_validation_sample_count": 2,
+        "torque_validation_sample_count": 3,
         "retry_budget_exhausted": 0,
         "failure_reason": 0,
     }
@@ -897,7 +898,7 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         "identified_current_candidate_attempt": "1",
         "identified_current_validation_axes": "3",
         "identified_current_flux_validation_sample_count": "4",
-        "identified_current_torque_validation_sample_count": "2",
+        "identified_current_torque_validation_sample_count": "3",
         "identified_current_retry_budget_exhausted": "0",
         "identified_current_failure_reason": "0",
         "identified_current_flux_response_min_permille": "710",
@@ -953,6 +954,11 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
 
         for config_key, expected in self.EXPECTED_CURRENT_CONFIG.items():
             self.assertEqual(configfile.values[(driver.name, config_key)], expected)
+        last_samples = driver.diagnostics.active.last_current_loop_samples(driver.oid)
+        self.assertEqual(last_samples["flux"][0]["gate_role"], "telemetry")
+        self.assertEqual(last_samples["flux"][3]["gate_role"], "gate")
+        self.assertEqual(last_samples["torque"][0]["gate_role"], "gate")
+        self.assertEqual(last_samples["torque"][2]["gate_role"], "telemetry")
         self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
 
     def test_partial_current_loop_cache_folds_nothing_and_clears(self):
@@ -974,7 +980,7 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         run = {
             **self.CURRENT_LOOP_RUN,
             "flux_validation_sample_count": 1,
-            "torque_validation_sample_count": 2,
+            "torque_validation_sample_count": 3,
         }
         driver.diagnostics.active.handle_current_loop_run({"oid": driver.oid, **run})
 

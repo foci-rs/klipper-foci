@@ -297,6 +297,72 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.failure_reason                = retry_exhausted" in output
 
 
+def test_tuning_flag_labels_last_current_validation_gate_samples():
+    driver = make_driver()
+    for sample in (
+        # axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder
+        (0, 0, 2, 910, 900, 140, 420, 0),
+        (0, 3, 100, 1010, 1005, 44, 410, 0),
+        (1, 0, 0, 620, 610, 52, 500, 0),
+        (1, 2, 2, 780, 760, 180, 530, 6),
+    ):
+        axis, sample_index, delay_ms, positive, negative, cross, voltage, encoder = (
+            sample
+        )
+        driver.diagnostics.active.handle_current_validation_axis(
+            {
+                "oid": driver.oid,
+                "axis": axis,
+                "sample_index": sample_index,
+                "status": 0,
+                "attempt": 0,
+                "target": 250,
+                "sample_delay_ms": delay_ms,
+                "positive_response_permille": positive,
+                "negative_response_permille": negative,
+                "cross_axis_permille": cross,
+                "voltage_output_permille": voltage,
+                "encoder_delta_counts": encoder,
+                "status_flags_or": 0,
+            }
+        )
+    driver.diagnostics.active.handle_current_loop_run(
+        {
+            "oid": driver.oid,
+            "status": 0,
+            "gains_source": 1,
+            "candidate_gains_source": 1,
+            "axis_split_source": 0,
+            "candidate_axis_split_source": 0,
+            "gains_tier": 1,
+            "candidate_gains_tier": 1,
+            "measured_axis_split_permille": 1000,
+            "candidate_measured_axis_split_permille": 1000,
+            "applied_axis_split_permille": 1000,
+            "candidate_applied_axis_split_permille": 1000,
+            "axis_split_clamped": 0,
+            "candidate_axis_split_clamped": 0,
+            "candidate_flux_p": 711,
+            "candidate_flux_i": 153,
+            "candidate_torque_p": 711,
+            "candidate_torque_i": 153,
+            "candidate_attempt": 0,
+            "current_validation_axes": 3,
+            "flux_validation_sample_count": 4,
+            "torque_validation_sample_count": 3,
+            "retry_budget_exhausted": 0,
+            "failure_reason": 0,
+        }
+    )
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "last.current_validation_sample[flux:0] = role=telemetry" in output
+    assert "last.current_validation_sample[flux:3] = role=gate" in output
+    assert "last.current_validation_sample[torque:0] = role=gate" in output
+    assert "last.current_validation_sample[torque:2] = role=telemetry" in output
+
+
 def test_tuning_flag_names_default_current_loop_evidence():
     driver = make_driver()
     _seed_tuning_state(driver)
