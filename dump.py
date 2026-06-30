@@ -505,7 +505,7 @@ class RegisterDumpWorkflow:
                 )
                 value = (
                     "role=%s delay_ms=%s status=%s response=%s/%s"
-                    " cross=%s voltage=%s encoder_delta=%s"
+                    " cross=%s cross_peak=%s voltage=%s encoder_delta=%s"
                     " signed_encoder_delta=%s/%s"
                     % (
                         sample.get("gate_role", "unknown"),
@@ -514,6 +514,10 @@ class RegisterDumpWorkflow:
                         sample.get("positive_response_permille"),
                         sample.get("negative_response_permille"),
                         sample.get("cross_axis_permille"),
+                        sample.get(
+                            "cross_axis_peak_permille",
+                            sample.get("cross_axis_permille"),
+                        ),
                         sample.get("voltage_output_permille"),
                         sample.get("encoder_delta_counts"),
                         sample.get("positive_encoder_delta_counts", 0),

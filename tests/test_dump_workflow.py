@@ -353,6 +353,7 @@ def test_tuning_flag_labels_last_current_validation_gate_samples():
                 "positive_response_permille": positive,
                 "negative_response_permille": negative,
                 "cross_axis_permille": cross,
+                "cross_axis_peak_permille": cross + 1,
                 "voltage_output_permille": voltage,
                 "encoder_delta_counts": encoder,
                 "positive_encoder_delta_counts": positive_encoder,
@@ -393,6 +394,7 @@ def test_tuning_flag_labels_last_current_validation_gate_samples():
 
     assert "last.current_validation_sample[flux:0] = role=telemetry" in output
     assert "last.current_validation_sample[flux:3] = role=gate" in output
+    assert "cross=44 cross_peak=45" in output
     assert "last.current_validation_sample[torque:0] = role=gate" in output
     assert "last.current_validation_sample[torque:2] = role=telemetry" in output
     assert "signed_encoder_delta=6/-4" in output
