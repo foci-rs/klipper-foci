@@ -44,6 +44,8 @@ class ActiveDiagnostics:
         # guards against this by clearing the per-oid cache at the start
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
+        self.inductance_cache: dict[int, dict] = {}
+        self.last_inductance_fit: dict[int, dict] = {}
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
@@ -518,6 +520,34 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_inductance_fit(self, params: dict) -> None:
+        """Handle foci_inductance_fit from firmware."""
+        oid = params["oid"]
+        cached = self.inductance_cache.setdefault(oid, {"fits": {}, "points": {}})
+        cached["fits"][params["coil"]] = dict(params)
+        self.last_inductance_fit[oid] = self._copy_inductance_cache(cached)
+        self.driver.printer.lookup_object("gcode").respond_info(
+            "FOCI %s inductance fit: coil=%d tau=%dus old_tau=%dus"
+            " deadtime_ud=%d residual=%d points=%d mask=0x%x"
+            % (
+                self.driver.name,
+                params["coil"],
+                params["tau_us"],
+                params["old_tau_us"],
+                params["deadtime_ud"],
+                params["residual_permille"],
+                params["usable_points"],
+                params["selected_mask"],
+            )
+        )
+
+    def handle_inductance_point(self, params: dict) -> None:
+        """Handle foci_inductance_point from firmware."""
+        oid = params["oid"]
+        cached = self.inductance_cache.setdefault(oid, {"fits": {}, "points": {}})
+        cached["points"][(params["coil"], params["point"])] = dict(params)
+        self.last_inductance_fit[oid] = self._copy_inductance_cache(cached)
+
     def handle_encoder_alignment(self, params: dict) -> None:
         """Handle foci_encoder_alignment from firmware."""
         evidence = dict(params)
@@ -908,6 +938,31 @@ class ActiveDiagnostics:
         """
         return self.resistance_cache.pop(oid, None) or {}
 
+    def clear_inductance_cache(self, oid: int) -> dict:
+        """Discard and return the cached inductance replies for `oid`."""
+        return self.inductance_cache.pop(oid, None) or {}
+
+    def pop_inductance_cache(self, oid: int) -> dict:
+        """Fold cached commission-stream inductance replies into result keys."""
+        cached = self.clear_inductance_cache(oid)
+        fits = cached.get("fits", {})
+        if 0 not in fits or 1 not in fits:
+            return {}
+
+        axis0 = fits[0]
+        axis1 = fits[1]
+        return {
+            "inductance_old_tau_e_us": (axis0["old_tau_us"] + axis1["old_tau_us"]) // 2,
+            "inductance_axis0_tau_us": axis0["tau_us"],
+            "inductance_axis1_tau_us": axis1["tau_us"],
+            "inductance_axis0_deadtime_ud": axis0["deadtime_ud"],
+            "inductance_axis1_deadtime_ud": axis1["deadtime_ud"],
+            "inductance_axis0_residual_permille": axis0["residual_permille"],
+            "inductance_axis1_residual_permille": axis1["residual_permille"],
+            "inductance_axis0_selected_mask": axis0["selected_mask"],
+            "inductance_axis1_selected_mask": axis1["selected_mask"],
+        }
+
     def pop_current_loop_cache(self, oid: int) -> dict:
         """Fold cached commission-stream current-loop replies into result keys."""
         cached = self.clear_current_loop_cache(oid)
@@ -979,6 +1034,10 @@ class ActiveDiagnostics:
         """Return the most recent transient current-loop run reply for `oid`."""
         return self.last_current_loop_run.get(oid, {})
 
+    def last_inductance_evidence(self, oid: int) -> dict:
+        """Return the most recent transient inductance-fit evidence for `oid`."""
+        return self.last_inductance_fit.get(oid, {})
+
     def last_current_loop_samples(self, oid: int) -> dict[str, list[dict]]:
         """Return current-validation sample replies from the most recent run."""
         return self._last_current_loop_samples.get(oid, {})
@@ -1002,6 +1061,16 @@ class ActiveDiagnostics:
 
     def _axis_encoder_delta_max(self, samples: list[dict]) -> int:
         return max(sample["encoder_delta_counts"] for sample in samples)
+
+    def _copy_inductance_cache(self, cached: dict) -> dict:
+        return {
+            "fits": {
+                coil: dict(params) for coil, params in cached.get("fits", {}).items()
+            },
+            "points": {
+                key: dict(params) for key, params in cached.get("points", {}).items()
+            },
+        }
 
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""

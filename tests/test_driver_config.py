@@ -90,6 +90,15 @@ CONFIG_FIELD_NAMES = {
     "identified_tau_e_crosscheck_us",
     "identified_tau_residual_permille",
     "identified_inner_warning_flags",
+    "identified_l_old_tau_e_us",
+    "identified_l_axis0_tau_us",
+    "identified_l_axis1_tau_us",
+    "identified_l_axis0_deadtime_ud",
+    "identified_l_axis1_deadtime_ud",
+    "identified_l_axis0_residual_permille",
+    "identified_l_axis1_residual_permille",
+    "identified_l_axis0_selected_mask",
+    "identified_l_axis1_selected_mask",
     "identified_j_eff",
     "identified_b_eff",
     "identified_current_gains_source",
@@ -229,6 +238,19 @@ CURRENT_LOOP_FIELD_MAX_VALUES = {
 }
 
 
+INDUCTANCE_FIELD_MAX_VALUES = {
+    "identified_l_old_tau_e_us": None,
+    "identified_l_axis0_tau_us": None,
+    "identified_l_axis1_tau_us": None,
+    "identified_l_axis0_deadtime_ud": None,
+    "identified_l_axis1_deadtime_ud": None,
+    "identified_l_axis0_residual_permille": 1000,
+    "identified_l_axis1_residual_permille": 1000,
+    "identified_l_axis0_selected_mask": 0xFFFF,
+    "identified_l_axis1_selected_mask": 0xFFFF,
+}
+
+
 def make_foci_config(stepper_values=None, foci_values=None, chips=None):
     stepper_values = dict(stepper_values or {})
     stepper_values.setdefault("step_pin", "foci:STEP0")
@@ -324,6 +346,15 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_tau_e_crosscheck_us": 731,
             "identified_tau_residual_permille": 8,
             "identified_inner_warning_flags": 2,
+            "identified_l_old_tau_e_us": 730,
+            "identified_l_axis0_tau_us": 450,
+            "identified_l_axis1_tau_us": 460,
+            "identified_l_axis0_deadtime_ud": 200,
+            "identified_l_axis1_deadtime_ud": 201,
+            "identified_l_axis0_residual_permille": 12,
+            "identified_l_axis1_residual_permille": 14,
+            "identified_l_axis0_selected_mask": 0x000F,
+            "identified_l_axis1_selected_mask": 0x000F,
             "identified_j_eff": 9,
             "identified_b_eff": 10,
             "identified_current_gains_source": 1,
@@ -397,6 +428,15 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_l_count_micro == 3300
     assert parsed.identified_tau_e_us == 730
     assert parsed.identified_inner_warning_flags == 2
+    assert parsed.identified_l_old_tau_e_us == 730
+    assert parsed.identified_l_axis0_tau_us == 450
+    assert parsed.identified_l_axis1_tau_us == 460
+    assert parsed.identified_l_axis0_deadtime_ud == 200
+    assert parsed.identified_l_axis1_deadtime_ud == 201
+    assert parsed.identified_l_axis0_residual_permille == 12
+    assert parsed.identified_l_axis1_residual_permille == 14
+    assert parsed.identified_l_axis0_selected_mask == 0x000F
+    assert parsed.identified_l_axis1_selected_mask == 0x000F
     assert parsed.identified_j_eff == 9
     assert parsed.identified_b_eff == 10
     assert parsed.identified_current_gains_source == 1
@@ -436,6 +476,15 @@ def test_parse_driver_config_bounds_current_loop_evidence_fields():
             parsed_config_with({field_name: -1})
         with pytest.raises(CommandError, match="above maximum"):
             parsed_config_with({field_name: max_value + 1})
+
+
+def test_parse_driver_config_bounds_inductance_evidence_fields():
+    for field_name, max_value in INDUCTANCE_FIELD_MAX_VALUES.items():
+        with pytest.raises(CommandError, match="below minimum"):
+            parsed_config_with({field_name: -1})
+        if max_value is not None:
+            with pytest.raises(CommandError, match="above maximum"):
+                parsed_config_with({field_name: max_value + 1})
 
 
 def test_parse_driver_config_rejects_low_filter_hz():

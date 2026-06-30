@@ -85,6 +85,16 @@ def _seed_tuning_state(driver):
     driver.config.identified_bandwidth_hz = 0
     driver.config.identified_inner_warning_flags = 36
 
+    driver.config.identified_l_old_tau_e_us = 730
+    driver.config.identified_l_axis0_tau_us = 450
+    driver.config.identified_l_axis1_tau_us = 460
+    driver.config.identified_l_axis0_deadtime_ud = 200
+    driver.config.identified_l_axis1_deadtime_ud = 201
+    driver.config.identified_l_axis0_residual_permille = 12
+    driver.config.identified_l_axis1_residual_permille = 14
+    driver.config.identified_l_axis0_selected_mask = 0x000F
+    driver.config.identified_l_axis1_selected_mask = 0x000F
+
     driver.config.identified_current_gains_source = 1
     driver.config.identified_current_candidate_gains_source = 1
     driver.config.identified_axis_split_source = 1
@@ -240,6 +250,56 @@ def test_tuning_flag_appends_resistance_identification_evidence():
     assert "config.identified_r_axis1_drift_permille" in output
     assert "config.identified_r_status_flags_or" in output
     assert "host performs no" in output
+
+
+def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.diagnostics.active.handle_inductance_fit(
+        {
+            "oid": driver.oid,
+            "coil": 0,
+            "tau_us": 550,
+            "old_tau_us": 740,
+            "deadtime_ud": 210,
+            "residual_permille": 22,
+            "usable_points": 4,
+            "selected_mask": 0x000B,
+        }
+    )
+    driver.diagnostics.active.handle_inductance_fit(
+        {
+            "oid": driver.oid,
+            "coil": 1,
+            "tau_us": 560,
+            "old_tau_us": 742,
+            "deadtime_ud": 211,
+            "residual_permille": 24,
+            "usable_points": 4,
+            "selected_mask": 0x000D,
+        }
+    )
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Persisted inductance fit evidence --" in output
+    assert "inductance_fit:" in output
+    assert (
+        "axis0_tau_us: 450 deadtime_ud: 200 residual_permille: 12 selected_mask=0x000f"
+    ) in output
+    assert "persisted identified_l_* inductance fit fields" in output
+    assert "-- Last inductance fit (not persisted) --" in output
+    assert "last.inductance_fit:" in output
+    assert (
+        "last.axis0_tau_us: 550 deadtime_ud: 210 residual_permille: 22"
+        " selected_mask=0x000b"
+    ) in output
+    assert (
+        "last.axis1_tau_us: 560 deadtime_ud: 211 residual_permille: 24"
+        " selected_mask=0x000d"
+    ) in output
+    assert "old_tau_e_us: 730" in output
+    assert "last.old_tau_e_us: 741" in output
 
 
 def test_tuning_flag_appends_current_loop_evidence():

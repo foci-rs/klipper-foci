@@ -85,6 +85,15 @@ class FociDriverConfig:
     identified_tau_e_crosscheck_us: int | None
     identified_tau_residual_permille: int | None
     identified_inner_warning_flags: int | None
+    identified_l_old_tau_e_us: int | None
+    identified_l_axis0_tau_us: int | None
+    identified_l_axis1_tau_us: int | None
+    identified_l_axis0_deadtime_ud: int | None
+    identified_l_axis1_deadtime_ud: int | None
+    identified_l_axis0_residual_permille: int | None
+    identified_l_axis1_residual_permille: int | None
+    identified_l_axis0_selected_mask: int | None
+    identified_l_axis1_selected_mask: int | None
     identified_j_eff: int | None
     identified_b_eff: int | None
     identified_current_gains_source: int | None
@@ -313,6 +322,33 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
     identified_inner_warning_flags = config.getint(
         "identified_inner_warning_flags", None, minval=0, maxval=255
+    )
+    identified_l_old_tau_e_us = config.getint(
+        "identified_l_old_tau_e_us", None, minval=0
+    )
+    identified_l_axis0_tau_us = config.getint(
+        "identified_l_axis0_tau_us", None, minval=0
+    )
+    identified_l_axis1_tau_us = config.getint(
+        "identified_l_axis1_tau_us", None, minval=0
+    )
+    identified_l_axis0_deadtime_ud = config.getint(
+        "identified_l_axis0_deadtime_ud", None, minval=0
+    )
+    identified_l_axis1_deadtime_ud = config.getint(
+        "identified_l_axis1_deadtime_ud", None, minval=0
+    )
+    identified_l_axis0_residual_permille = config.getint(
+        "identified_l_axis0_residual_permille", None, minval=0, maxval=1000
+    )
+    identified_l_axis1_residual_permille = config.getint(
+        "identified_l_axis1_residual_permille", None, minval=0, maxval=1000
+    )
+    identified_l_axis0_selected_mask = config.getint(
+        "identified_l_axis0_selected_mask", None, minval=0, maxval=0xFFFF
+    )
+    identified_l_axis1_selected_mask = config.getint(
+        "identified_l_axis1_selected_mask", None, minval=0, maxval=0xFFFF
     )
     identified_j_eff = config.getint("identified_j_eff", None, minval=0)
     identified_b_eff = config.getint("identified_b_eff", None, minval=0)
@@ -546,6 +582,15 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_tau_e_crosscheck_us=identified_tau_e_crosscheck_us,
         identified_tau_residual_permille=identified_tau_residual_permille,
         identified_inner_warning_flags=identified_inner_warning_flags,
+        identified_l_old_tau_e_us=identified_l_old_tau_e_us,
+        identified_l_axis0_tau_us=identified_l_axis0_tau_us,
+        identified_l_axis1_tau_us=identified_l_axis1_tau_us,
+        identified_l_axis0_deadtime_ud=identified_l_axis0_deadtime_ud,
+        identified_l_axis1_deadtime_ud=identified_l_axis1_deadtime_ud,
+        identified_l_axis0_residual_permille=(identified_l_axis0_residual_permille),
+        identified_l_axis1_residual_permille=(identified_l_axis1_residual_permille),
+        identified_l_axis0_selected_mask=identified_l_axis0_selected_mask,
+        identified_l_axis1_selected_mask=identified_l_axis1_selected_mask,
         identified_j_eff=identified_j_eff,
         identified_b_eff=identified_b_eff,
         identified_current_gains_source=identified_current_gains_source,

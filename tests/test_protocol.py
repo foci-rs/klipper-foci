@@ -5,18 +5,24 @@ from __future__ import annotations
 import pytest
 
 from klipper_foci.protocol import FociProtocol
+from klipper_foci.protocol.bindings import (
+    register_active_diagnostic_responses,
+    register_commissioning_responses,
+)
 
 from tests.mocks import (
     CommandError,
     MockCartesianKinematics,
     MockCommand,
     MockMCU,
+    MockSerial,
     make_driver,
 )
 
 
 def response_names(mcu):
-    return [(name, oid) for _callback, name, oid in mcu._serial.responses]
+    serial = getattr(mcu, "_serial", mcu)
+    return [(name, oid) for _callback, name, oid in serial.responses]
 
 
 def test_bind_mcu_looks_up_commands_and_registers_responses():
@@ -79,6 +85,28 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_impedance_observation", driver.oid) in registrations
     assert ("foci_impedance_run", driver.oid) in registrations
     assert len(registrations) == len(set(registrations))
+
+
+def test_inductance_replies_are_registered_as_commissioning_responses():
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_commissioning_responses(serial, driver, driver.oid)
+
+    registrations = response_names(serial)
+    assert ("foci_inductance_fit", driver.oid) in registrations
+    assert ("foci_inductance_point", driver.oid) in registrations
+
+
+def test_inductance_replies_are_not_active_diagnostic_responses():
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_active_diagnostic_responses(serial, driver, driver.oid)
+
+    registrations = response_names(serial)
+    assert ("foci_inductance_fit", driver.oid) not in registrations
+    assert ("foci_inductance_point", driver.oid) not in registrations
 
 
 def test_driver_mcu_identify_binds_protocol_without_driver_aliases():

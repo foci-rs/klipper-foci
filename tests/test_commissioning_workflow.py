@@ -1038,6 +1038,116 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
                 )
 
 
+class CommissionInductanceReplyFoldingTests(unittest.TestCase):
+    """Verify commission-stream inductance fit replies get folded into result."""
+
+    AXIS0_FIT = {
+        "coil": 0,
+        "tau_us": 450,
+        "old_tau_us": 720,
+        "deadtime_ud": 200,
+        "residual_permille": 12,
+        "usable_points": 4,
+        "selected_mask": 0x000F,
+    }
+    AXIS1_FIT = {
+        "coil": 1,
+        "tau_us": 460,
+        "old_tau_us": 740,
+        "deadtime_ud": 201,
+        "residual_permille": 14,
+        "usable_points": 4,
+        "selected_mask": 0x000F,
+    }
+    EXPECTED_CONFIG = {
+        "identified_l_old_tau_e_us": "730",
+        "identified_l_axis0_tau_us": "450",
+        "identified_l_axis1_tau_us": "460",
+        "identified_l_axis0_deadtime_ud": "200",
+        "identified_l_axis1_deadtime_ud": "201",
+        "identified_l_axis0_residual_permille": "12",
+        "identified_l_axis1_residual_permille": "14",
+        "identified_l_axis0_selected_mask": "%d" % 0x000F,
+        "identified_l_axis1_selected_mask": "%d" % 0x000F,
+    }
+
+    def _emit_fit(self, driver, params) -> None:
+        driver.diagnostics.active.handle_inductance_fit({"oid": driver.oid, **params})
+
+    def test_complete_fit_replies_are_folded_and_persisted(self):
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+
+        def drive_success(_args):
+            self._emit_fit(driver, self.AXIS1_FIT)
+            self._emit_fit(driver, self.AXIS0_FIT)
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_success
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        driver.commissioning.commission(gcmd)
+
+        for config_key, expected in self.EXPECTED_CONFIG.items():
+            self.assertEqual(configfile.values[(driver.name, config_key)], expected)
+        last_evidence = driver.diagnostics.active.last_inductance_evidence(driver.oid)
+        self.assertEqual(last_evidence["fits"][0]["tau_us"], 450)
+        self.assertEqual(last_evidence["fits"][1]["tau_us"], 460)
+        self.assertNotIn(driver.oid, driver.diagnostics.active.inductance_cache)
+
+    def test_partial_fit_cache_folds_nothing_and_clears(self):
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+
+        def drive_partial_success(_args):
+            self._emit_fit(driver, self.AXIS0_FIT)
+            driver.commissioning.result = result
+            driver.commissioning.done = True
+
+        driver.protocol.commands.commission.send = drive_partial_success
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        driver.commissioning.commission(gcmd)
+
+        inductance_keys = {
+            config_key for _, config_key in CommissioningWorkflow.INDUCTANCE_RESULT_KEYS
+        }
+        persisted_inductance_keys = [
+            key for key in configfile.values if key[1] in inductance_keys
+        ]
+        self.assertEqual(persisted_inductance_keys, [])
+        self.assertNotIn(driver.oid, driver.diagnostics.active.inductance_cache)
+
+    def test_failed_and_timeout_commission_clear_inductance_cache(self):
+        def drive_failure(driver):
+            driver.diagnostics.active.handle_inductance_fit(
+                {"oid": driver.oid, **self.AXIS0_FIT}
+            )
+            driver.commissioning.error_code = 19
+
+        for label, sender in (("failure", drive_failure), ("timeout", None)):
+            with self.subTest(label=label):
+                driver = make_driver()
+                driver.diagnostics.active.inductance_cache[driver.oid] = {
+                    "fits": {0: dict(self.AXIS0_FIT), 1: dict(self.AXIS1_FIT)},
+                    "points": {},
+                }
+                if sender is not None:
+                    driver.protocol.commands.commission.send = lambda _args: sender(
+                        driver
+                    )
+
+                with self.assertRaises(CommandError):
+                    driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+                self.assertNotIn(driver.oid, driver.diagnostics.active.inductance_cache)
+
+
 class CommissionEncoderAlignmentEvidenceTests(unittest.TestCase):
     """Verify transient encoder-alignment evidence follows commission runs."""
 

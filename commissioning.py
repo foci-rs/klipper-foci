@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 PHASE_NAMES: dict[int, str] = {
     1: "ADC calibration",
     2: "Coil check",
@@ -296,6 +298,7 @@ class CommissioningWorkflow:
             # axis1 all "present" (axis1 stale) and fold/persist a result
             # blending data from two unrelated runs.
             self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+            self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
             self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
             self.driver.diagnostics.active.clear_last_encoder_alignment_evidence(
                 self.driver.oid
@@ -311,6 +314,9 @@ class CommissioningWorkflow:
                 if eventtime > timeout:
                     self.on_commission_failure()
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+                    self.driver.diagnostics.active.clear_inductance_cache(
+                        self.driver.oid
+                    )
                     self.driver.diagnostics.active.clear_current_loop_cache(
                         self.driver.oid
                     )
@@ -324,6 +330,9 @@ class CommissioningWorkflow:
                     else:
                         self.on_commission_failure()
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+                    self.driver.diagnostics.active.clear_inductance_cache(
+                        self.driver.oid
+                    )
                     self.driver.diagnostics.active.clear_current_loop_cache(
                         self.driver.oid
                     )
@@ -360,6 +369,9 @@ class CommissioningWorkflow:
             # here; together these guarantee no stale or partial
             # resistance cache entry ever survives past this method.
             result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
+            result.update(
+                self.driver.diagnostics.active.pop_inductance_cache(self.driver.oid)
+            )
             result.update(
                 self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid)
             )
@@ -532,6 +544,7 @@ class CommissioningWorkflow:
             "%d" % result.get("inner_warning_flags", 0),
         )
         self._persist_resistance_identification(configfile, result)
+        self._persist_inductance_identification(configfile, result)
         self._persist_current_loop_identification(configfile, result)
         configfile.set(self.driver.name, "autotune_profile", profile_name)
         configfile.set(self.driver.name, "autotune_status", "commissioned")
@@ -616,6 +629,31 @@ class CommissioningWorkflow:
         if "resistance_selected_count_slope_milli" not in result:
             return
         for result_key, config_key in self.RESISTANCE_RESULT_KEYS:
+            configfile.set(self.driver.name, config_key, "%d" % result[result_key])
+
+    INDUCTANCE_RESULT_KEYS: Sequence[tuple[str, str]] = (
+        ("inductance_old_tau_e_us", "identified_l_old_tau_e_us"),
+        ("inductance_axis0_tau_us", "identified_l_axis0_tau_us"),
+        ("inductance_axis1_tau_us", "identified_l_axis1_tau_us"),
+        ("inductance_axis0_deadtime_ud", "identified_l_axis0_deadtime_ud"),
+        ("inductance_axis1_deadtime_ud", "identified_l_axis1_deadtime_ud"),
+        (
+            "inductance_axis0_residual_permille",
+            "identified_l_axis0_residual_permille",
+        ),
+        (
+            "inductance_axis1_residual_permille",
+            "identified_l_axis1_residual_permille",
+        ),
+        ("inductance_axis0_selected_mask", "identified_l_axis0_selected_mask"),
+        ("inductance_axis1_selected_mask", "identified_l_axis1_selected_mask"),
+    )
+
+    def _persist_inductance_identification(self, configfile, result: dict) -> None:
+        """Persist firmware-owned inductance-fit evidence."""
+        if "inductance_axis0_tau_us" not in result:
+            return
+        for result_key, config_key in self.INDUCTANCE_RESULT_KEYS:
             configfile.set(self.driver.name, config_key, "%d" % result[result_key])
 
     CURRENT_LOOP_RESULT_KEYS: tuple[tuple[str, str], ...] = (

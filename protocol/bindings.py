@@ -37,6 +37,16 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         "foci_commission_detail",
         oid,
     )
+    serial.register_response(
+        driver.diagnostics.active.handle_inductance_fit,
+        "foci_inductance_fit",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_inductance_point,
+        "foci_inductance_point",
+        oid,
+    )
 
 
 def register_selftest_responses(serial, driver, oid: int) -> None:

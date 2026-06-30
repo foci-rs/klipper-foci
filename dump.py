@@ -288,6 +288,14 @@ class RegisterDumpWorkflow:
             " tracked separately."
         )
 
+        lines.append("-- Persisted inductance fit evidence --")
+        lines.extend(self._format_persisted_inductance_fit())
+        lines.append(
+            "  Note: persisted identified_l_* inductance fit fields are"
+            " firmware-reported tau/deadtime evidence; the host performs"
+            " no fitting or quality-gate evaluation."
+        )
+
         lines.append("-- Current-loop commissioning evidence --")
         lines.extend(self._format_current_loop_summary())
         lines.extend(
@@ -324,6 +332,13 @@ class RegisterDumpWorkflow:
         if last_encoder_alignment:
             lines.append("-- Last encoder alignment (not persisted) --")
             lines.extend(self._format_last_encoder_alignment(last_encoder_alignment))
+
+        last_inductance = self.driver.diagnostics.active.last_inductance_evidence(
+            self.driver.oid
+        )
+        if last_inductance:
+            lines.append("-- Last inductance fit (not persisted) --")
+            lines.extend(self._format_last_inductance_fit(last_inductance))
 
         lines.append("-- Resistance identification evidence --")
         lines.extend(
@@ -405,6 +420,77 @@ class RegisterDumpWorkflow:
         if warnings:
             return warnings
         return ["  live register gains match host active_gains"]
+
+    def _format_persisted_inductance_fit(self) -> list[str]:
+        config = self.driver.config
+        return [
+            "  inductance_fit:",
+            "    old_tau_e_us: %s"
+            % self._display_value(config.identified_l_old_tau_e_us),
+            self._format_inductance_axis(
+                "axis0",
+                config.identified_l_axis0_tau_us,
+                config.identified_l_axis0_deadtime_ud,
+                config.identified_l_axis0_residual_permille,
+                config.identified_l_axis0_selected_mask,
+            ),
+            self._format_inductance_axis(
+                "axis1",
+                config.identified_l_axis1_tau_us,
+                config.identified_l_axis1_deadtime_ud,
+                config.identified_l_axis1_residual_permille,
+                config.identified_l_axis1_selected_mask,
+            ),
+        ]
+
+    def _format_last_inductance_fit(self, evidence: dict) -> list[str]:
+        fits = evidence.get("fits", {})
+        axis0 = fits.get(0, {})
+        axis1 = fits.get(1, {})
+        old_tau = None
+        if axis0 and axis1:
+            old_tau = (axis0.get("old_tau_us", 0) + axis1.get("old_tau_us", 0)) // 2
+        return [
+            "  last.inductance_fit:",
+            "    last.old_tau_e_us: %s" % self._display_value(old_tau),
+            self._format_inductance_axis(
+                "last.axis0",
+                axis0.get("tau_us"),
+                axis0.get("deadtime_ud"),
+                axis0.get("residual_permille"),
+                axis0.get("selected_mask"),
+            ),
+            self._format_inductance_axis(
+                "last.axis1",
+                axis1.get("tau_us"),
+                axis1.get("deadtime_ud"),
+                axis1.get("residual_permille"),
+                axis1.get("selected_mask"),
+            ),
+        ]
+
+    def _format_inductance_axis(
+        self,
+        label: str,
+        tau_us: int | None,
+        deadtime_ud: int | None,
+        residual_permille: int | None,
+        selected_mask: int | None,
+    ) -> str:
+        mask = "(unset)"
+        if selected_mask is not None:
+            mask = "0x%04x" % selected_mask
+        return (
+            "    %s_tau_us: %s deadtime_ud: %s residual_permille: %s"
+            " selected_mask=%s"
+            % (
+                label,
+                self._display_value(tau_us),
+                self._display_value(deadtime_ud),
+                self._display_value(residual_permille),
+                mask,
+            )
+        )
 
     def _format_current_loop_summary(self) -> list[str]:
         config = self.driver.config
