@@ -9,6 +9,7 @@ from .registers import (
     SIGNED_FIELDS,
     Fields,
     FieldHelper,
+    fmt_adc_vm_raw,
 )
 
 LIVE_GAIN_FIELDS: tuple[tuple[str, str], ...] = (
@@ -217,7 +218,7 @@ class RegisterDumpWorkflow:
                 addr = REGISTERS[reg_name]
                 if addr in self._dump_buffer:
                     val = self._dump_buffer[addr]
-                    lines.append(self.fields.pretty_format(reg_name, val))
+                    lines.append(self._pretty_format_register(reg_name, val))
                 else:
                     lines.append("  %-30s = (not in dump)" % reg_name)
 
@@ -339,6 +340,21 @@ class RegisterDumpWorkflow:
         lines.append("-- Comparison --")
         lines.extend(self._format_gain_comparison(live_gains, active_gains))
         return lines
+
+    def _pretty_format_register(self, reg_name: str, reg_value: int) -> str:
+        if reg_name != "ADC_VM_RAW":
+            return self.fields.pretty_format(reg_name, reg_value)
+
+        constants = {}
+        get_constants = getattr(self.driver.mcu, "get_constants", None)
+        if get_constants is not None:
+            constants = get_constants()
+        raw = self.fields.get_field("adc_vm_raw", reg_name, reg_value)
+        return "%-30s %08x adc_vm_raw=%s" % (
+            reg_name + ":",
+            reg_value,
+            fmt_adc_vm_raw(raw, constants),
+        )
 
     def _live_gain_values(self) -> dict[str, int | None]:
         values: dict[str, int | None] = {}

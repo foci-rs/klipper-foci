@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from collections.abc import Mapping
 
 MOTOR_TYPES: dict[int, str] = {0: "none", 1: "dc", 2: "stepper", 3: "bldc"}
 PHI_E_SOURCES: dict[int, str] = {
@@ -77,6 +78,44 @@ def _fmt_advanced_pi_current_i(val: int) -> str:
     return "%d(q8.8=%.3f,zero=%d/65536)" % (val, val * 2**-8, val)
 
 
+VM_MODEL_CONSTANTS: tuple[str, ...] = (
+    "FOCI_VM_ADC_OFFSET_RAW",
+    "FOCI_VM_DIVIDER_HIGH_OHMS",
+    "FOCI_VM_DIVIDER_LOW_OHMS",
+    "FOCI_VM_ADC_REFERENCE_MILLIVOLTS",
+    "FOCI_VM_ADC_CENTER_COUNTS",
+)
+
+
+def adc_vm_raw_to_volts(raw: int, constants: Mapping[str, object]) -> float | None:
+    """Convert raw ADC_VM to volts using MCU-exported board constants."""
+    try:
+        offset = int(constants["FOCI_VM_ADC_OFFSET_RAW"])
+        high_ohms = int(constants["FOCI_VM_DIVIDER_HIGH_OHMS"])
+        low_ohms = int(constants["FOCI_VM_DIVIDER_LOW_OHMS"])
+        reference_mv = int(constants["FOCI_VM_ADC_REFERENCE_MILLIVOLTS"])
+        center_counts = int(constants["FOCI_VM_ADC_CENTER_COUNTS"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if low_ohms <= 0 or reference_mv <= 0 or center_counts <= 0:
+        return None
+
+    divider_ratio = low_ohms / (high_ohms + low_ohms)
+    counts_per_volt = center_counts / (reference_mv / 1000.0) * divider_ratio
+    if counts_per_volt <= 0:
+        return None
+    return (raw - offset) / counts_per_volt
+
+
+def fmt_adc_vm_raw(raw: int, constants: Mapping[str, object]) -> str:
+    """Format ADC_VM raw plus approximate decoded voltage when available."""
+    voltage = adc_vm_raw_to_volts(raw, constants)
+    if voltage is None:
+        return str(raw)
+    return "%d(~%.2fV)" % (raw, voltage)
+
+
 def _fmt_direction(val: int) -> str:
     return "reversed" if val else ""
 
@@ -125,6 +164,7 @@ REGISTERS: dict[str, int] = {
     "PID_FLUX_ERROR_SUM": 0x84,
     "PID_VELOCITY_ERROR_SUM": 0x85,
     "CONFIG_ADVANCED_PI_REPRESENT": 0x86,
+    "ADC_VM_RAW": 0x87,
 }
 
 
@@ -239,6 +279,10 @@ Fields["ABN_DECODER_PHI_E_PHI_M"] = {
 Fields["ADC_VM_LIMITS"] = {
     "adc_vm_limit_low": 0xFFFF,
     "adc_vm_limit_high": 0xFFFF << 16,
+}
+
+Fields["ADC_VM_RAW"] = {
+    "adc_vm_raw": 0xFFFF,
 }
 
 Fields["STATUS_FLAGS"] = {
@@ -444,6 +488,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         "Voltage / Brake",
         [
             "ADC_VM_LIMITS",
+            "ADC_VM_RAW",
         ],
     ),
     (

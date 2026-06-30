@@ -387,9 +387,10 @@ class MockSerial:
 class MockMCU:
     """Mock Klipper MCU object with config-build callbacks."""
 
-    def __init__(self, name="foci", allowed_pins=None):
+    def __init__(self, name="foci", allowed_pins=None, constants=None):
         self.name = name
         self.allowed_pins = set(allowed_pins) if allowed_pins is not None else None
+        self.constants = dict(constants or {})
         self._next_oid = 1
         self._config_callbacks = []
         self.config_commands = []
@@ -420,6 +421,9 @@ class MockMCU:
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
         self.query_commands.append((_send_fmt, _recv_fmt, oid))
         return MockCommand()
+
+    def get_constants(self):
+        return self.constants.copy()
 
 
 class MockPins:
