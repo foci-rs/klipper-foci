@@ -279,6 +279,20 @@ def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
             "selected_mask": 0x000D,
         }
     )
+    driver.diagnostics.active.handle_inductance_point(
+        {
+            "oid": driver.oid,
+            "coil": 0,
+            "point": 2,
+            "ud": 768,
+            "avg_delta": 39,
+            "avg_current_count": 300,
+            "r_drop_ud": 1126,
+            "effective_ud": -358,
+            "sample_count": 4750,
+            "elapsed_us": 760000,
+        }
+    )
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
@@ -297,6 +311,11 @@ def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
     assert (
         "last.axis1_tau_us: 560 deadtime_ud: 211 residual_permille: 24"
         " selected_mask=0x000d"
+    ) in output
+    assert (
+        "last.inductance_point[coil=0 point=2]: ud=768 effective_ud=-358"
+        " avg_delta=39 avg_current_count=300 r_drop_ud=1126"
+        " samples=4750 elapsed_us=760000"
     ) in output
     assert "old_tau_e_us: 730" in output
     assert "last.old_tau_e_us: 741" in output

@@ -450,7 +450,7 @@ class RegisterDumpWorkflow:
         old_tau = None
         if axis0 and axis1:
             old_tau = (axis0.get("old_tau_us", 0) + axis1.get("old_tau_us", 0)) // 2
-        return [
+        lines = [
             "  last.inductance_fit:",
             "    last.old_tau_e_us: %s" % self._display_value(old_tau),
             self._format_inductance_axis(
@@ -468,6 +468,30 @@ class RegisterDumpWorkflow:
                 axis1.get("selected_mask"),
             ),
         ]
+        lines.extend(self._format_last_inductance_points(evidence.get("points", {})))
+        return lines
+
+    def _format_last_inductance_points(self, points: dict) -> list[str]:
+        lines = []
+        for key in sorted(points):
+            point = points[key]
+            lines.append(
+                "  last.inductance_point[coil=%d point=%d]:"
+                " ud=%s effective_ud=%s avg_delta=%s avg_current_count=%s"
+                " r_drop_ud=%s samples=%s elapsed_us=%s"
+                % (
+                    point.get("coil", key[0]),
+                    point.get("point", key[1]),
+                    self._display_value(point.get("ud")),
+                    self._display_value(point.get("effective_ud")),
+                    self._display_value(point.get("avg_delta")),
+                    self._display_value(point.get("avg_current_count")),
+                    self._display_value(point.get("r_drop_ud")),
+                    self._display_value(point.get("sample_count")),
+                    self._display_value(point.get("elapsed_us")),
+                )
+            )
+        return lines
 
     def _format_inductance_axis(
         self,
