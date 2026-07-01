@@ -233,9 +233,6 @@ class FociProtocol:
     def run_resistance_test(self, *, detail: int = 0) -> None:
         self.commands.resistance_test.send([self.driver.oid, detail])
 
-    def run_impedance_test(self, *, detail: int = 0) -> None:
-        self.commands.impedance_test.send([self.driver.oid, detail])
-
     def configure_startup(
         self,
         *,

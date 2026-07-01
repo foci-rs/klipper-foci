@@ -47,7 +47,6 @@ EXPERT_COMMANDS = {
     "FOCI_POSITION_TORQUE_OFFSET_TEST",
     "FOCI_VOLTAGE_STEP_TEST",
     "FOCI_RESISTANCE_TEST",
-    "FOCI_IMPEDANCE_TEST",
 }
 
 
@@ -681,22 +680,3 @@ def test_resistance_test_registers_in_expert_mode():
     printer = build_driver_with_mode("expert")
 
     assert "FOCI_RESISTANCE_TEST" in registered_command_names(printer)
-
-
-def test_impedance_test_registers_in_expert_mode():
-    printer = build_driver_with_mode("expert")
-
-    assert "FOCI_IMPEDANCE_TEST" in registered_command_names(printer)
-
-
-def test_impedance_test_registers_diagnostics_workflow_handler():
-    printer = build_driver_with_mode("expert")
-    gcode = printer.lookup_object("gcode")
-
-    handler = next(
-        args[3]
-        for args, _kwargs in gcode._mux_commands
-        if args[0] == "FOCI_IMPEDANCE_TEST"
-    )
-
-    assert handler.__self__.__class__.__name__ == "DiagnosticsWorkflow"

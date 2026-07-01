@@ -80,10 +80,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_encoder_alignment", driver.oid) in registrations
     assert ("foci_current_loop_run", driver.oid) in registrations
     assert ("foci_current_validation_axis", driver.oid) in registrations
-    assert ("foci_impedance_profile", driver.oid) in registrations
-    assert ("foci_impedance_fit", driver.oid) in registrations
-    assert ("foci_impedance_observation", driver.oid) in registrations
-    assert ("foci_impedance_run", driver.oid) in registrations
     assert len(registrations) == len(set(registrations))
 
 
