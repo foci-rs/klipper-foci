@@ -90,7 +90,6 @@ CONFIG_FIELD_NAMES = {
     "identified_tau_e_crosscheck_us",
     "identified_tau_residual_permille",
     "identified_inner_warning_flags",
-    "identified_l_old_tau_e_us",
     "identified_l_axis0_tau_us",
     "identified_l_axis1_tau_us",
     "identified_l_axis0_deadtime_ud",
@@ -239,7 +238,6 @@ CURRENT_LOOP_FIELD_MAX_VALUES = {
 
 
 INDUCTANCE_FIELD_MAX_VALUES = {
-    "identified_l_old_tau_e_us": None,
     "identified_l_axis0_tau_us": None,
     "identified_l_axis1_tau_us": None,
     "identified_l_axis0_deadtime_ud": None,
@@ -346,7 +344,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_tau_e_crosscheck_us": 731,
             "identified_tau_residual_permille": 8,
             "identified_inner_warning_flags": 2,
-            "identified_l_old_tau_e_us": 730,
             "identified_l_axis0_tau_us": 450,
             "identified_l_axis1_tau_us": 460,
             "identified_l_axis0_deadtime_ud": 200,
@@ -428,7 +425,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_l_count_micro == 3300
     assert parsed.identified_tau_e_us == 730
     assert parsed.identified_inner_warning_flags == 2
-    assert parsed.identified_l_old_tau_e_us == 730
     assert parsed.identified_l_axis0_tau_us == 450
     assert parsed.identified_l_axis1_tau_us == 460
     assert parsed.identified_l_axis0_deadtime_ud == 200

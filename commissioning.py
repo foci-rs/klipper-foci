@@ -76,8 +76,6 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     1: "excitation",
     2: "coil A resistance",
     3: "coil B resistance",
-    4: "coil A inductance",
-    5: "coil B inductance",
     6: "transient",
     20: "no usable per-coil samples",
     21: "only one coil produced non-zero tau",
@@ -132,14 +130,6 @@ def format_commission_detail(detail: dict) -> str:
         )
     if code in (2, 3):
         return "%s: %s (avg_current=%d counts, r=%d mOhm, samples=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-            value2,
-        )
-    if code in (4, 5):
-        return "%s: %s (avg_delta=%d counts, tau=%dus, samples=%d)" % (
             phase_name,
             name,
             value0,
@@ -665,7 +655,6 @@ class CommissioningWorkflow:
             configfile.set(self.driver.name, config_key, "%d" % result[result_key])
 
     INDUCTANCE_RESULT_KEYS: Sequence[tuple[str, str]] = (
-        ("inductance_old_tau_e_us", "identified_l_old_tau_e_us"),
         ("inductance_axis0_tau_us", "identified_l_axis0_tau_us"),
         ("inductance_axis1_tau_us", "identified_l_axis1_tau_us"),
         ("inductance_axis0_deadtime_ud", "identified_l_axis0_deadtime_ud"),

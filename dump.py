@@ -425,8 +425,6 @@ class RegisterDumpWorkflow:
         config = self.driver.config
         return [
             "  inductance_fit:",
-            "    old_tau_e_us: %s"
-            % self._display_value(config.identified_l_old_tau_e_us),
             self._format_inductance_axis(
                 "axis0",
                 config.identified_l_axis0_tau_us,
@@ -447,12 +445,8 @@ class RegisterDumpWorkflow:
         fits = evidence.get("fits", {})
         axis0 = fits.get(0, {})
         axis1 = fits.get(1, {})
-        old_tau = None
-        if axis0 and axis1:
-            old_tau = (axis0.get("old_tau_us", 0) + axis1.get("old_tau_us", 0)) // 2
         lines = [
             "  last.inductance_fit:",
-            "    last.old_tau_e_us: %s" % self._display_value(old_tau),
             self._format_inductance_axis(
                 "last.axis0",
                 axis0.get("tau_us"),

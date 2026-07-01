@@ -117,16 +117,6 @@ def test_format_commission_detail_measurements():
             "value2": 1000,
         }
     )
-    inductance = format_commission_detail(
-        {
-            "phase": 5,
-            "code": 4,
-            "status": 0,
-            "value0": 40,
-            "value1": 730,
-            "value2": 5000,
-        }
-    )
     transient = format_commission_detail(
         {
             "phase": 5,
@@ -143,9 +133,6 @@ def test_format_commission_detail_measurements():
     assert "coil A resistance" in resistance
     assert "avg_current=300 counts" in resistance
     assert "r=1706 mOhm" in resistance
-    assert "coil A inductance" in inductance
-    assert "avg_delta=40 counts" in inductance
-    assert "tau=730us" in inductance
     assert "transient" in transient
     assert "steady_state=1000 counts" in transient
     assert "crosscheck=1328us" in transient

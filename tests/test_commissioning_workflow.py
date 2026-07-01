@@ -1044,7 +1044,6 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
     AXIS0_FIT = {
         "coil": 0,
         "tau_us": 450,
-        "old_tau_us": 720,
         "deadtime_ud": 200,
         "residual_permille": 12,
         "usable_points": 4,
@@ -1053,14 +1052,12 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
     AXIS1_FIT = {
         "coil": 1,
         "tau_us": 460,
-        "old_tau_us": 740,
         "deadtime_ud": 201,
         "residual_permille": 14,
         "usable_points": 4,
         "selected_mask": 0x000F,
     }
     EXPECTED_CONFIG = {
-        "identified_l_old_tau_e_us": "730",
         "identified_l_axis0_tau_us": "450",
         "identified_l_axis1_tau_us": "460",
         "identified_l_axis0_deadtime_ud": "200",

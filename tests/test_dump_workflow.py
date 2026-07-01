@@ -85,7 +85,6 @@ def _seed_tuning_state(driver):
     driver.config.identified_bandwidth_hz = 0
     driver.config.identified_inner_warning_flags = 36
 
-    driver.config.identified_l_old_tau_e_us = 730
     driver.config.identified_l_axis0_tau_us = 450
     driver.config.identified_l_axis1_tau_us = 460
     driver.config.identified_l_axis0_deadtime_ud = 200
@@ -260,7 +259,6 @@ def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
             "oid": driver.oid,
             "coil": 0,
             "tau_us": 550,
-            "old_tau_us": 740,
             "deadtime_ud": 210,
             "residual_permille": 22,
             "usable_points": 4,
@@ -272,7 +270,6 @@ def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
             "oid": driver.oid,
             "coil": 1,
             "tau_us": 560,
-            "old_tau_us": 742,
             "deadtime_ud": 211,
             "residual_permille": 24,
             "usable_points": 4,
@@ -317,8 +314,6 @@ def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
         " avg_delta=39 avg_current_count=300 r_drop_ud=1126"
         " samples=4750 elapsed_us=760000"
     ) in output
-    assert "old_tau_e_us: 730" in output
-    assert "last.old_tau_e_us: 741" in output
 
 
 def test_tuning_flag_appends_current_loop_evidence():

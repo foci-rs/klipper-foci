@@ -527,13 +527,12 @@ class ActiveDiagnostics:
         cached["fits"][params["coil"]] = dict(params)
         self.last_inductance_fit[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance fit: coil=%d tau=%dus old_tau=%dus"
+            "FOCI %s inductance fit: coil=%d tau=%dus"
             " deadtime_ud=%d residual=%d points=%d mask=0x%x"
             % (
                 self.driver.name,
                 params["coil"],
                 params["tau_us"],
-                params["old_tau_us"],
                 params["deadtime_ud"],
                 params["residual_permille"],
                 params["usable_points"],
@@ -952,7 +951,6 @@ class ActiveDiagnostics:
         axis0 = fits[0]
         axis1 = fits[1]
         return {
-            "inductance_old_tau_e_us": (axis0["old_tau_us"] + axis1["old_tau_us"]) // 2,
             "inductance_axis0_tau_us": axis0["tau_us"],
             "inductance_axis1_tau_us": axis1["tau_us"],
             "inductance_axis0_deadtime_ud": axis0["deadtime_ud"],
