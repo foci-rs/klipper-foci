@@ -64,8 +64,6 @@ IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
     "identified_l_int",
     "identified_lambda_us",
     "identified_tau_e_us",
-    "identified_tau_e_crosscheck_us",
-    "identified_tau_residual_permille",
     "identified_theta_e_us",
     "identified_ringing_count",
     "identified_bandwidth_hz",

@@ -29,14 +29,12 @@ class AutotuneWorkflow:
         self.result = params
         self.done = True
 
-    def resolve_inner_confidence(self) -> tuple[int, int, int, int]:
-        """Resolve the four Phase 1 inner-confidence fields for Stage 2."""
+    def resolve_inner_confidence(self) -> tuple[int, int]:
+        """Resolve the Phase 1 inner-confidence fields for Stage 2."""
         if self.driver.state.commissioned_result is not None:
             r = self.driver.state.commissioned_result
             return (
                 r.get("tau_e_us", 0),
-                r.get("tau_e_crosscheck_us", 0),
-                r.get("tau_residual_permille", 1000),
                 r.get("inner_warning_flags", 0),
             )
 
@@ -49,14 +47,6 @@ class AutotuneWorkflow:
             else:
                 tau_e_us = max(config.identified_lambda_us, 1000)
 
-        tau_e_crosscheck_us = config.identified_tau_e_crosscheck_us
-        if tau_e_crosscheck_us is None:
-            tau_e_crosscheck_us = 0
-
-        tau_residual_permille = config.identified_tau_residual_permille
-        if tau_residual_permille is None:
-            tau_residual_permille = 1000
-
         inner_warning_flags = config.identified_inner_warning_flags
         if inner_warning_flags is None:
             # Bit 6: host-defaulted confidence data (no fresh measurement).
@@ -64,8 +54,6 @@ class AutotuneWorkflow:
 
         return (
             tau_e_us,
-            tau_e_crosscheck_us,
-            tau_residual_permille,
             inner_warning_flags,
         )
 
@@ -147,8 +135,6 @@ class AutotuneWorkflow:
 
             (
                 tau_e_us,
-                tau_e_crosscheck_us,
-                tau_residual_permille,
                 inner_warning_flags,
             ) = self.resolve_inner_confidence()
 
@@ -164,8 +150,6 @@ class AutotuneWorkflow:
                 current_ringing=ringing,
                 current_bw=bandwidth,
                 tau_e_us=tau_e_us,
-                tau_e_crosscheck_us=tau_e_crosscheck_us,
-                tau_residual_permille=tau_residual_permille,
                 inner_warning_flags=inner_warning_flags,
             )
 

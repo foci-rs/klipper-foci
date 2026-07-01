@@ -64,8 +64,6 @@ def complete_commission_result():
             "fallback_position_i": 0,
             "fallback_velocity_limit": 500000,
             "tau_e_us": 730,
-            "tau_e_crosscheck_us": 730,
-            "tau_residual_permille": 0,
             "inner_warning_flags": 0,
         }
     )

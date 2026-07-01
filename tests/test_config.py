@@ -577,8 +577,6 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
             "identified_ringing_count": 7,
             "identified_bandwidth_hz": 0,
             "identified_tau_e_us": 1154,
-            "identified_tau_e_crosscheck_us": 3821,
-            "identified_tau_residual_permille": 1000,
             "identified_inner_warning_flags": 36,
             "identified_j_eff": 12345,
             "identified_b_eff": 678,

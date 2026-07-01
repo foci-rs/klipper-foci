@@ -76,7 +76,6 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     1: "excitation",
     2: "coil A resistance",
     3: "coil B resistance",
-    6: "transient",
     20: "no usable per-coil samples",
     21: "only one coil produced non-zero tau",
     22: "model scale rounded to zero",
@@ -84,7 +83,6 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     24: "resistance above open threshold",
     25: "coil resistance mismatch",
     26: "coil tau mismatch",
-    27: "tau crosscheck unmeasurable",
     28: "corrected inductance fit rejected",
     29: "transport delay too large",
     30: "corrected inductance fit point",
@@ -130,14 +128,6 @@ def format_commission_detail(detail: dict) -> str:
         )
     if code in (2, 3):
         return "%s: %s (avg_current=%d counts, r=%d mOhm, samples=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-            value2,
-        )
-    if code == 6:
-        return "%s: %s (steady_state=%d counts, theta=%dus, crosscheck=%dus)" % (
             phase_name,
             name,
             value0,
@@ -550,16 +540,6 @@ class CommissioningWorkflow:
             self.driver.name,
             "identified_tau_e_us",
             "%d" % result.get("tau_e_us", 0),
-        )
-        configfile.set(
-            self.driver.name,
-            "identified_tau_e_crosscheck_us",
-            "%d" % result.get("tau_e_crosscheck_us", 0),
-        )
-        configfile.set(
-            self.driver.name,
-            "identified_tau_residual_permille",
-            "%d" % result.get("tau_residual_permille", 1000),
         )
         configfile.set(
             self.driver.name,

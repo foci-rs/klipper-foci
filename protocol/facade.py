@@ -316,8 +316,6 @@ class FociProtocol:
         current_ringing: int,
         current_bw: int,
         tau_e_us: int,
-        tau_e_crosscheck_us: int,
-        tau_residual_permille: int,
         inner_warning_flags: int,
     ) -> None:
         self.commands.tune.send(
@@ -330,8 +328,6 @@ class FociProtocol:
                 current_ringing,
                 current_bw,
                 tau_e_us,
-                tau_e_crosscheck_us,
-                tau_residual_permille,
                 inner_warning_flags,
             ]
         )

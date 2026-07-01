@@ -82,8 +82,6 @@ class FociDriverConfig:
     identified_ringing_count: int | None
     identified_bandwidth_hz: int | None
     identified_tau_e_us: int | None
-    identified_tau_e_crosscheck_us: int | None
-    identified_tau_residual_permille: int | None
     identified_inner_warning_flags: int | None
     identified_l_axis0_tau_us: int | None
     identified_l_axis1_tau_us: int | None
@@ -313,12 +311,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
     identified_bandwidth_hz = config.getint("identified_bandwidth_hz", None, minval=0)
     identified_tau_e_us = config.getint("identified_tau_e_us", None, minval=0)
-    identified_tau_e_crosscheck_us = config.getint(
-        "identified_tau_e_crosscheck_us", None, minval=0
-    )
-    identified_tau_residual_permille = config.getint(
-        "identified_tau_residual_permille", None, minval=0, maxval=1000
-    )
     identified_inner_warning_flags = config.getint(
         "identified_inner_warning_flags", None, minval=0, maxval=255
     )
@@ -575,8 +567,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_ringing_count=identified_ringing_count,
         identified_bandwidth_hz=identified_bandwidth_hz,
         identified_tau_e_us=identified_tau_e_us,
-        identified_tau_e_crosscheck_us=identified_tau_e_crosscheck_us,
-        identified_tau_residual_permille=identified_tau_residual_permille,
         identified_inner_warning_flags=identified_inner_warning_flags,
         identified_l_axis0_tau_us=identified_l_axis0_tau_us,
         identified_l_axis1_tau_us=identified_l_axis1_tau_us,

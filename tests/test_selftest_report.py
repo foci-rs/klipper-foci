@@ -117,25 +117,11 @@ def test_format_commission_detail_measurements():
             "value2": 1000,
         }
     )
-    transient = format_commission_detail(
-        {
-            "phase": 5,
-            "code": 6,
-            "status": 0,
-            "value0": 1000,
-            "value1": 160,
-            "value2": 1328,
-        }
-    )
-
     assert "voltage_count=512" in excitation
     assert "didt_cycles=5000" in excitation
     assert "coil A resistance" in resistance
     assert "avg_current=300 counts" in resistance
     assert "r=1706 mOhm" in resistance
-    assert "transient" in transient
-    assert "steady_state=1000 counts" in transient
-    assert "crosscheck=1328us" in transient
 
 
 def test_format_commission_detail_coil_check_sample():

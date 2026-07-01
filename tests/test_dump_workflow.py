@@ -78,8 +78,6 @@ def _seed_tuning_state(driver):
     driver.config.identified_l_int = 4046
     driver.config.identified_lambda_us = 0
     driver.config.identified_tau_e_us = 1348
-    driver.config.identified_tau_e_crosscheck_us = 3739
-    driver.config.identified_tau_residual_permille = 1000
     driver.config.identified_theta_e_us = 160
     driver.config.identified_ringing_count = 7
     driver.config.identified_bandwidth_hz = 0
