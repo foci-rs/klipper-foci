@@ -49,22 +49,51 @@ def test_commission_detail_handler_appends_to_details():
     ]
 
 
-def test_format_commission_detail_tau_residual():
+def test_format_commission_detail_rejected_inductance_fit():
     line = format_commission_detail(
         {
             "phase": 5,
             "code": 28,
             "status": 1,
-            "value0": 820,
-            "value1": 730,
-            "value2": 1328,
+            "value0": 1,
+            "value1": 2,
+            "value2": 0b0101,
         }
     )
     assert "Electrical ID" in line
-    assert "tau residual" in line
-    assert "820" in line
-    assert "tau=730us" in line
-    assert "crosscheck=1328us" in line
+    assert "corrected inductance fit rejected" in line
+    assert "coil=B" in line
+    assert "usable_points=2" in line
+    assert "selected_mask=0x0005" in line
+
+
+def test_format_commission_detail_inductance_fit_points():
+    point = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 30,
+            "status": 0,
+            "value0": 0x12,
+            "value1": 768,
+            "value2": 39,
+        }
+    )
+    correction = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 31,
+            "status": 0,
+            "value0": 0x12,
+            "value1": 4750,
+            "value2": 0xFFFFFE9A,
+        }
+    )
+
+    assert "coil=B point=2" in point
+    assert "ud=768" in point
+    assert "avg_delta=39 counts" in point
+    assert "samples=4750" in correction
+    assert "effective_ud=-358" in correction
 
 
 def test_format_commission_detail_measurements():
@@ -281,9 +310,9 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
                 "phase": 5,
                 "code": 28,
                 "status": 1,
-                "value0": 820,
-                "value1": 730,
-                "value2": 1328,
+                "value0": 0,
+                "value1": 0,
+                "value2": 0,
             }
         )
         d.selftest.handle_selftest_result({"stage": 1, "status": 1, "value": 0})
@@ -299,7 +328,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
     out = gcmd.last_info
     assert "FAIL" in out
     assert "ADC calibration fault" in out
-    assert "tau residual" in out
+    assert "corrected inductance fit rejected" in out
     assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
     assert "0/1 stages" in out
 

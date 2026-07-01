@@ -87,9 +87,21 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     25: "coil resistance mismatch",
     26: "coil tau mismatch",
     27: "tau crosscheck unmeasurable",
-    28: "tau residual too high",
+    28: "corrected inductance fit rejected",
     29: "transport delay too large",
+    30: "corrected inductance fit point",
+    31: "corrected inductance fit correction",
 }
+
+
+def _decode_coil_point(packed: int) -> tuple[str, int]:
+    coil = "A" if ((packed >> 4) & 0xF) == 0 else "B"
+    point = packed & 0xF
+    return coil, point
+
+
+def _signed_u32(value: int) -> int:
+    return value if value < 0x8000_0000 else value - 0x1_0000_0000
 
 
 def format_commission_detail(detail: dict) -> str:
@@ -150,12 +162,33 @@ def format_commission_detail(detail: dict) -> str:
             value1,
         )
     if code == 28:
-        return "%s: %s (%d permille, tau=%dus, crosscheck=%dus)" % (
+        coil = "A" if value0 == 0 else "B"
+        return "%s: %s (coil=%s, usable_points=%d, selected_mask=0x%04x)" % (
             phase_name,
             name,
-            value0,
+            coil,
             value1,
             value2,
+        )
+    if code == 30:
+        coil, point = _decode_coil_point(value0)
+        return "%s: %s (coil=%s point=%d, ud=%d, avg_delta=%d counts)" % (
+            phase_name,
+            name,
+            coil,
+            point,
+            value1,
+            value2,
+        )
+    if code == 31:
+        coil, point = _decode_coil_point(value0)
+        return "%s: %s (coil=%s point=%d, samples=%d, effective_ud=%d)" % (
+            phase_name,
+            name,
+            coil,
+            point,
+            value1,
+            _signed_u32(value2),
         )
     if code in (23, 24):
         return "%s: %s (r_count_milli=%d, limit=%d)" % (

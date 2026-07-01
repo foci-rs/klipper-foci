@@ -89,9 +89,9 @@ class TestCommissionGates(unittest.TestCase):
                     "phase": 5,
                     "code": 28,
                     "status": 1,
-                    "value0": 820,
-                    "value1": 730,
-                    "value2": 1328,
+                    "value0": 0,
+                    "value1": 0,
+                    "value2": 0,
                 }
             )
             d.commissioning.handle_commission_phase({"phase": 0, "status": 8})
@@ -102,9 +102,9 @@ class TestCommissionGates(unittest.TestCase):
             d.commissioning.commission(gcmd)
 
         self.assertIn("commissioning diagnostics", gcmd.last_info)
-        self.assertIn("tau residual", gcmd.last_info)
-        self.assertIn("820", gcmd.last_info)
-        self.assertIn("tau=730us", gcmd.last_info)
+        self.assertIn("corrected inductance fit rejected", gcmd.last_info)
+        self.assertIn("usable_points=0", gcmd.last_info)
+        self.assertIn("selected_mask=0x0000", gcmd.last_info)
 
 
 class TestChipResetDetected(unittest.TestCase):
