@@ -272,6 +272,9 @@ class MockStepperEnable:
         return self._lines[stepper_name]
 
 
+_MISSING = object()
+
+
 class MockGCmd:
     """Mock GCode command object for command handlers."""
 
@@ -280,8 +283,12 @@ class MockGCmd:
         self._responses = []
         self.last_info = None
 
-    def get(self, key, default=None):
-        return self._params.get(key, default)
+    def get(self, key, default=_MISSING):
+        if key not in self._params:
+            if default is _MISSING:
+                raise CommandError("Missing parameter '%s'" % key)
+            return default
+        return self._params[key]
 
     def get_int(self, key, default=None, minval=None, maxval=None):
         if key not in self._params:

@@ -929,7 +929,7 @@ class ActiveDiagnostics:
         """Run the high-rate electrical capture validation diagnostic."""
         profile = gcmd.get_int("PROFILE", 0, minval=0, maxval=0)
         detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=2)
-        if gcmd.get("R_COUNT_SLOPE_MILLI") is None:
+        if gcmd.get("R_COUNT_SLOPE_MILLI", None) is None:
             r_count_slope_milli = self.driver.config.identified_r_count_slope_milli
             if r_count_slope_milli is None or r_count_slope_milli <= 0:
                 raise gcmd.error(
