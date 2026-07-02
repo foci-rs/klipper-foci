@@ -54,6 +54,9 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         commands.STEPPER_PERF_STATS_RESPONSE,
         driver.oid,
     ) in mcu.query_commands
+    assert (
+        "tmc_high_rate_capture_test oid=%c profile=%c detail=%c r_count_slope_milli=%i"
+    ) in mcu.command_formats
 
     registrations = response_names(mcu)
     assert ("foci_dump_value", driver.oid) in registrations

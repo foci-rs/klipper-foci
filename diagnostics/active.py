@@ -612,16 +612,18 @@ class ActiveDiagnostics:
 
     def handle_high_rate_capture_profile(self, params: dict) -> None:
         """Cache foci_high_rate_capture_profile until the run reply arrives."""
-        self.high_rate_capture_profile[self.driver.oid] = dict(params)
+        oid = params.get("oid", self.driver.oid)
+        self.high_rate_capture_profile[oid] = dict(params)
 
     def handle_high_rate_capture_sample(self, params: dict) -> None:
         """Cache one foci_high_rate_capture_sample row until the run reply."""
-        samples = self.high_rate_capture_samples.setdefault(self.driver.oid, [])
+        oid = params.get("oid", self.driver.oid)
+        samples = self.high_rate_capture_samples.setdefault(oid, [])
         samples.append(dict(params))
 
     def handle_high_rate_capture_run(self, params: dict) -> None:
         """Handle the terminal foci_high_rate_capture_run reply."""
-        oid = self.driver.oid
+        oid = params.get("oid", self.driver.oid)
         profile = self.high_rate_capture_profile.pop(oid, {})
         samples = self.high_rate_capture_samples.pop(oid, [])
         profile_version = profile.get("profile_version", params["profile_version"])
@@ -929,11 +931,11 @@ class ActiveDiagnostics:
         detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=2)
         if gcmd.get("R_COUNT_SLOPE_MILLI") is None:
             r_count_slope_milli = self.driver.config.identified_r_count_slope_milli
-            if r_count_slope_milli is None:
+            if r_count_slope_milli is None or r_count_slope_milli <= 0:
                 raise gcmd.error(
                     "FOCI_HIGH_RATE_CAPTURE_TEST requires"
-                    " identified_r_count_slope_milli or explicit"
-                    " R_COUNT_SLOPE_MILLI"
+                    " positive identified_r_count_slope_milli"
+                    " or explicit R_COUNT_SLOPE_MILLI"
                 )
         else:
             r_count_slope_milli = gcmd.get_int("R_COUNT_SLOPE_MILLI", minval=1)

@@ -2,7 +2,13 @@
 
 import pytest
 
-from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
+from tests.mocks import (
+    CommandError,
+    MockGCmd,
+    MockMCU,
+    make_config_driver,
+    make_config_printer,
+)
 
 
 def test_package_entry_points_import_driver_and_global_config():
@@ -54,6 +60,14 @@ EXPERT_COMMANDS = {
 def registered_command_names(printer):
     gcode = printer.lookup_object("gcode")
     return {args[0] for args, _kwargs in gcode._mux_commands}
+
+
+def registered_mux_command(printer, name):
+    gcode = printer.lookup_object("gcode")
+    for args, kwargs in gcode._mux_commands:
+        if args[0] == name:
+            return args, kwargs
+    raise AssertionError("Command %s was not registered" % name)
 
 
 def build_driver_with_mode(mode=None):
@@ -304,6 +318,7 @@ def test_active_diagnostics_register_diagnostics_workflow_handlers():
         "FOCI_POSITION_TORQUE_OFFSET_TEST",
         "FOCI_VOLTAGE_STEP_TEST",
         "FOCI_RESISTANCE_TEST",
+        "FOCI_HIGH_RATE_CAPTURE_TEST",
     }
 
     handlers = {
@@ -317,6 +332,42 @@ def test_active_diagnostics_register_diagnostics_workflow_handlers():
         handler.__self__.__class__.__name__ == "DiagnosticsWorkflow"
         for handler in handlers.values()
     )
+
+
+def test_high_rate_capture_mux_handler_routes_through_diagnostics_workflow():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        },
+        foci_mode="expert",
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver.config.identified_r_count_slope_milli = 1706
+    calls = []
+
+    def run_high_rate_capture_test(**kwargs):
+        calls.append(kwargs)
+
+    driver.protocol.run_high_rate_capture_test = run_high_rate_capture_test
+
+    args, _kwargs = registered_mux_command(printer, "FOCI_HIGH_RATE_CAPTURE_TEST")
+    handler = args[3]
+
+    assert handler.__self__ is driver.diagnostics
+
+    handler(MockGCmd({"DETAIL": 2}))
+
+    assert calls == [
+        {
+            "profile": 0,
+            "detail": 2,
+            "r_count_slope_milli": 1706,
+        }
+    ]
 
 
 def test_foci_driver_no_longer_exposes_gcode_command_methods():
