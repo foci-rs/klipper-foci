@@ -233,6 +233,17 @@ class FociProtocol:
     def run_resistance_test(self, *, detail: int = 0) -> None:
         self.commands.resistance_test.send([self.driver.oid, detail])
 
+    def run_high_rate_capture_test(
+        self,
+        *,
+        profile: int = 0,
+        detail: int = 0,
+        r_count_slope_milli: int,
+    ) -> None:
+        self.commands.high_rate_capture_test.send(
+            [self.driver.oid, profile, detail, r_count_slope_milli]
+        )
+
     def configure_startup(
         self,
         *,

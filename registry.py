@@ -201,6 +201,13 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "resistance_test",
         "Run the shared FOCI resistance-identification diagnostic",
     ),
+    GcodeCommandSpec(
+        "FOCI_HIGH_RATE_CAPTURE_TEST",
+        "expert",
+        "diagnostics",
+        "high_rate_capture_test",
+        "Run the high-rate electrical capture validation diagnostic",
+    ),
 )
 
 

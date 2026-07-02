@@ -49,6 +49,8 @@ class ActiveDiagnostics:
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
+        self.high_rate_capture_profile: dict[int, dict] = {}
+        self.high_rate_capture_samples: dict[int, list[dict]] = {}
         self.last_encoder_alignment: dict[int, dict] = {}
         self.current_step_pending_axis: str | None = None
 
@@ -608,6 +610,61 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_high_rate_capture_profile(self, params: dict) -> None:
+        """Cache foci_high_rate_capture_profile until the run reply arrives."""
+        self.high_rate_capture_profile[self.driver.oid] = dict(params)
+
+    def handle_high_rate_capture_sample(self, params: dict) -> None:
+        """Cache one foci_high_rate_capture_sample row until the run reply."""
+        samples = self.high_rate_capture_samples.setdefault(self.driver.oid, [])
+        samples.append(dict(params))
+
+    def handle_high_rate_capture_run(self, params: dict) -> None:
+        """Handle the terminal foci_high_rate_capture_run reply."""
+        oid = self.driver.oid
+        profile = self.high_rate_capture_profile.pop(oid, {})
+        samples = self.high_rate_capture_samples.pop(oid, [])
+        profile_version = profile.get("profile_version", params["profile_version"])
+        msg = (
+            "FOCI %s high-rate capture run: status=%d profile_version=%d"
+            " samples=%d sample_count=%d elapsed_us=%d effective_frequency_hz=%d"
+            " l_nominal_us=%d l_shift_minus_permille=%d"
+            " l_shift_plus_permille=%d theta_onset_us=%d"
+            " residual_rms_count=%d max_sample_interval_us=%d encoder_delta=%d"
+            " status_flags_or=0x%08x warning_flags=0x%08x"
+            " sample_capacity=%d requested_samples=%d max_capture_us=%d"
+            " uq_ext=%d ud_ext=%d phi_e_ext=%d voltage_limit=%d"
+            " r_count_slope_milli=%d profile_flags=0x%08x"
+            % (
+                self.driver.name,
+                params["status"],
+                profile_version,
+                len(samples),
+                params["sample_count"],
+                params["elapsed_us"],
+                params["effective_frequency_hz"],
+                params["l_nominal_us"],
+                params["l_shift_minus_permille"],
+                params["l_shift_plus_permille"],
+                params["theta_onset_us"],
+                params["residual_rms_count"],
+                params["max_sample_interval_us"],
+                params["encoder_delta"],
+                params["status_flags_or"],
+                params["warning_flags"],
+                profile.get("sample_capacity", 0),
+                profile.get("requested_samples", 0),
+                profile.get("max_capture_us", 0),
+                profile.get("uq_ext", 0),
+                profile.get("ud_ext", 0),
+                profile.get("phi_e_ext", 0),
+                profile.get("voltage_limit", 0),
+                profile.get("r_count_slope_milli", 0),
+                profile.get("flags", 0),
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def _current_validation_gate_role(
         self, axis_key: str | None, sample_delay_ms: int
     ) -> str:
@@ -864,4 +921,33 @@ class ActiveDiagnostics:
 
         gcmd.respond_info(
             "FOCI %s resistance-test requested: detail=%d" % (self.driver.name, detail)
+        )
+
+    def high_rate_capture_test(self, gcmd) -> None:
+        """Run the high-rate electrical capture validation diagnostic."""
+        profile = gcmd.get_int("PROFILE", 0, minval=0, maxval=0)
+        detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=2)
+        if gcmd.get("R_COUNT_SLOPE_MILLI") is None:
+            r_count_slope_milli = self.driver.config.identified_r_count_slope_milli
+            if r_count_slope_milli is None:
+                raise gcmd.error(
+                    "FOCI_HIGH_RATE_CAPTURE_TEST requires"
+                    " identified_r_count_slope_milli or explicit"
+                    " R_COUNT_SLOPE_MILLI"
+                )
+        else:
+            r_count_slope_milli = gcmd.get_int("R_COUNT_SLOPE_MILLI", minval=1)
+
+        self.high_rate_capture_profile.pop(self.driver.oid, None)
+        self.high_rate_capture_samples.pop(self.driver.oid, None)
+        self.driver.protocol.run_high_rate_capture_test(
+            profile=profile,
+            detail=detail,
+            r_count_slope_milli=r_count_slope_milli,
+        )
+
+        gcmd.respond_info(
+            "FOCI %s high-rate capture requested:"
+            " profile=%d detail=%d r_count_slope_milli=%d"
+            % (self.driver.name, profile, detail, r_count_slope_milli)
         )

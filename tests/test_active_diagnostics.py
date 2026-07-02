@@ -409,3 +409,158 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         out = d.printer.lookup_object("gcode")._responses[-1]
         self.assertIn("count_slope=1042", out)
         self.assertFalse(hasattr(d.diagnostics.active, "fit_resistance_axis"))
+
+
+class TestHighRateCaptureDiagnosticCommand(unittest.TestCase):
+    def test_sends_high_rate_capture_defaults_from_identified_resistance(self):
+        d = make_driver()
+        d.config.identified_r_count_slope_milli = 1706
+        gcmd = MockGCmd({})
+
+        d.diagnostics.active.high_rate_capture_test(gcmd)
+
+        self.assertEqual(
+            d.protocol.commands.high_rate_capture_test.last_args,
+            [d.oid, 0, 0, 1706],
+        )
+        self.assertIn("high-rate capture", gcmd.last_info)
+        self.assertIn("profile=0", gcmd.last_info)
+        self.assertIn("detail=0", gcmd.last_info)
+        self.assertIn("r_count_slope_milli=1706", gcmd.last_info)
+
+    def test_sends_explicit_high_rate_capture_detail(self):
+        d = make_driver()
+        d.config.identified_r_count_slope_milli = 1706
+
+        d.diagnostics.active.high_rate_capture_test(MockGCmd({"DETAIL": 2}))
+
+        self.assertEqual(
+            d.protocol.commands.high_rate_capture_test.last_args,
+            [d.oid, 0, 2, 1706],
+        )
+
+    def test_sends_explicit_high_rate_capture_resistance_override(self):
+        d = make_driver()
+        gcmd = MockGCmd({"R_COUNT_SLOPE_MILLI": 2048})
+
+        d.diagnostics.active.high_rate_capture_test(gcmd)
+
+        self.assertEqual(
+            d.protocol.commands.high_rate_capture_test.last_args,
+            [d.oid, 0, 0, 2048],
+        )
+
+    def test_high_rate_capture_requires_resistance_evidence(self):
+        d = make_driver()
+
+        with self.assertRaises(CommandError) as cm:
+            d.diagnostics.active.high_rate_capture_test(MockGCmd({}))
+
+        self.assertEqual(
+            str(cm.exception),
+            "FOCI_HIGH_RATE_CAPTURE_TEST requires identified_r_count_slope_milli"
+            " or explicit R_COUNT_SLOPE_MILLI",
+        )
+
+    def test_high_rate_capture_rejects_unknown_profile(self):
+        d = make_driver()
+        d.config.identified_r_count_slope_milli = 1706
+
+        with self.assertRaises(CommandError):
+            d.diagnostics.active.high_rate_capture_test(MockGCmd({"PROFILE": 7}))
+
+    def test_high_rate_capture_run_reply_formats_key_fields(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_high_rate_capture_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 1,
+                "sample_count": 32,
+                "elapsed_us": 640,
+                "effective_frequency_hz": 50000,
+                "l_nominal_us": 1245,
+                "l_shift_minus_permille": -14,
+                "l_shift_plus_permille": 27,
+                "theta_onset_us": 18,
+                "residual_rms_count": 4,
+                "max_sample_interval_us": 21,
+                "encoder_delta": 3,
+                "status_flags_or": 0x00080000,
+                "warning_flags": 0x00000002,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("status=0", out)
+        self.assertIn("effective_frequency_hz=50000", out)
+        self.assertIn("l_shift_plus_permille=27", out)
+        self.assertIn("theta_onset_us=18", out)
+        self.assertIn("status_flags_or=0x00080000", out)
+        self.assertIn("warning_flags=0x00000002", out)
+
+    def test_high_rate_capture_caches_profile_and_samples_until_run(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_high_rate_capture_profile(
+            {
+                "oid": d.oid,
+                "profile_version": 1,
+                "sample_capacity": 64,
+                "requested_samples": 32,
+                "max_capture_us": 800,
+                "uq_ext": 512,
+                "ud_ext": -128,
+                "phi_e_ext": 16384,
+                "voltage_limit": 12000,
+                "r_count_slope_milli": 1706,
+                "flags": 0,
+            }
+        )
+        d.diagnostics.active.handle_high_rate_capture_sample(
+            {
+                "oid": d.oid,
+                "sample_index": 0,
+                "timestamp_us": 10,
+                "uq_ext": 512,
+                "ud_ext": -128,
+                "current_primary": 110,
+                "current_secondary": -12,
+                "encoder_count": 4096,
+                "status_flags": 0x00080000,
+            }
+        )
+        d.diagnostics.active.handle_high_rate_capture_run(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "profile_version": 1,
+                "sample_count": 32,
+                "elapsed_us": 640,
+                "effective_frequency_hz": 50000,
+                "l_nominal_us": 1245,
+                "l_shift_minus_permille": -14,
+                "l_shift_plus_permille": 27,
+                "theta_onset_us": 18,
+                "residual_rms_count": 4,
+                "max_sample_interval_us": 21,
+                "encoder_delta": 3,
+                "status_flags_or": 0x00080000,
+                "warning_flags": 0,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("samples=1", out)
+        self.assertIn("profile_version=1", out)
+        self.assertIn("sample_capacity=64", out)
+        self.assertIn("requested_samples=32", out)
+        self.assertIn("max_capture_us=800", out)
+        self.assertIn("uq_ext=512", out)
+        self.assertIn("ud_ext=-128", out)
+        self.assertIn("phi_e_ext=16384", out)
+        self.assertIn("voltage_limit=12000", out)
+        self.assertIn("r_count_slope_milli=1706", out)
+        self.assertNotIn(d.oid, d.diagnostics.active.high_rate_capture_profile)
+        self.assertNotIn(d.oid, d.diagnostics.active.high_rate_capture_samples)

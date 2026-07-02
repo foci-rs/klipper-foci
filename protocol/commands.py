@@ -78,6 +78,7 @@ class FociMcuCommands:
         self.position_torque_offset_sample_test = None
         self.voltage_step_test = None
         self.resistance_test = None
+        self.high_rate_capture_test = None
         self.set_auto_calibrate_on_enable = None
 
     def bind(self, driver, mcu, oid: int) -> None:
@@ -216,6 +217,10 @@ class FociMcuCommands:
         )
         self.resistance_test = mcu.lookup_command(
             "tmc_resistance_test oid=%c detail=%c"
+        )
+        self.high_rate_capture_test = mcu.lookup_command(
+            "tmc_high_rate_capture_test oid=%c profile=%c detail=%c"
+            " r_count_slope_milli=%i"
         )
         register_active_diagnostic_responses(mcu._serial, driver, oid)
         self.set_auto_calibrate_on_enable = mcu.lookup_command(
