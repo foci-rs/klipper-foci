@@ -272,9 +272,6 @@ class MockStepperEnable:
         return self._lines[stepper_name]
 
 
-_MISSING = object()
-
-
 class MockGCmd:
     """Mock GCode command object for command handlers."""
 
@@ -283,12 +280,8 @@ class MockGCmd:
         self._responses = []
         self.last_info = None
 
-    def get(self, key, default=_MISSING):
-        if key not in self._params:
-            if default is _MISSING:
-                raise CommandError("Missing parameter '%s'" % key)
-            return default
-        return self._params[key]
+    def get(self, key, default=None):
+        return self._params.get(key, default)
 
     def get_int(self, key, default=None, minval=None, maxval=None):
         if key not in self._params:
@@ -399,7 +392,6 @@ class MockMCU:
         self._next_oid = 1
         self._config_callbacks = []
         self.config_commands = []
-        self.command_formats = []
         self.query_commands = []
         self._serial = MockSerial()
 
@@ -422,7 +414,6 @@ class MockMCU:
         return object()
 
     def lookup_command(self, _fmt, cq=None):
-        self.command_formats.append(_fmt)
         return MockCommand()
 
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):

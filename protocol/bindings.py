@@ -119,21 +119,6 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
-        driver.diagnostics.active.handle_high_rate_capture_profile,
-        "foci_high_rate_capture_profile",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_high_rate_capture_sample,
-        "foci_high_rate_capture_sample",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_high_rate_capture_run,
-        "foci_high_rate_capture_run",
-        oid,
-    )
-    serial.register_response(
         driver.diagnostics.handle_stepper_event,
         "foci_stepper_event",
     )

@@ -42,7 +42,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.dump_registers is not None
     assert commands.stepper_perf_stats is not None
     assert commands.current_step_test is not None
-    assert commands.high_rate_capture_test is not None
 
     assert (
         "stepper_get_position oid=%c",
@@ -54,9 +53,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         commands.STEPPER_PERF_STATS_RESPONSE,
         driver.oid,
     ) in mcu.query_commands
-    assert (
-        "tmc_high_rate_capture_test oid=%c profile=%c detail=%c r_count_slope_milli=%i"
-    ) in mcu.command_formats
 
     registrations = response_names(mcu)
     assert ("foci_dump_value", driver.oid) in registrations
@@ -84,9 +80,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_encoder_alignment", driver.oid) in registrations
     assert ("foci_current_loop_run", driver.oid) in registrations
     assert ("foci_current_validation_axis", driver.oid) in registrations
-    assert ("foci_high_rate_capture_profile", driver.oid) in registrations
-    assert ("foci_high_rate_capture_sample", driver.oid) in registrations
-    assert ("foci_high_rate_capture_run", driver.oid) in registrations
     assert len(registrations) == len(set(registrations))
 
 
@@ -416,11 +409,6 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
         ud_ext=-128,
         sample_delay_ms=3,
     )
-    driver.protocol.run_high_rate_capture_test(
-        profile=0,
-        detail=2,
-        r_count_slope_milli=1706,
-    )
 
     commands = driver.protocol.commands
     assert commands.current_step_test.last_args == [
@@ -455,12 +443,6 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
         256,
         -128,
         3,
-    ]
-    assert commands.high_rate_capture_test.last_args == [
-        driver.oid,
-        0,
-        2,
-        1706,
     ]
 
 

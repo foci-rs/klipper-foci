@@ -84,6 +84,3 @@ class DiagnosticsWorkflow:
 
     def resistance_test(self, gcmd) -> None:
         return self.active.resistance_test(gcmd)
-
-    def high_rate_capture_test(self, gcmd) -> None:
-        return self.active.high_rate_capture_test(gcmd)
