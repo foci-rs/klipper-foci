@@ -127,7 +127,7 @@ def format_commission_detail(detail: dict) -> str:
             value2,
         )
     if code in (2, 3):
-        return "%s: %s (avg_current=%d counts, r=%d mOhm, samples=%d)" % (
+        return "%s: %s (avg_current=%d counts, r_count_milli=%d, samples=%d)" % (
             phase_name,
             name,
             value0,

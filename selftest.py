@@ -11,8 +11,8 @@ SELFTEST_STAGES: dict[int, str] = {
     4: "Phase wiring",
     5: "Encoder",
     6: "Encoder direction",
-    7: "Resistance",
-    8: "Inductance",
+    7: "R-model evidence",
+    8: "L-model evidence",
 }
 
 
@@ -35,9 +35,9 @@ def format_selftest_value(stage: int, status: int, value: int) -> str:
     if stage == 6:
         return " (reversed)" if value == 1 else " (increasing)"
     if stage == 7:
-        return " (%.1f ohm)" % (value / 1000.0)
+        return " (r_count_milli=%d)" % value
     if stage == 8:
-        return " (%.1f mH)" % (value / 1000.0)
+        return " (l_count_micro=%d)" % value
     return ""
 
 

@@ -121,7 +121,8 @@ def test_format_commission_detail_measurements():
     assert "didt_cycles=5000" in excitation
     assert "coil A resistance" in resistance
     assert "avg_current=300 counts" in resistance
-    assert "r=1706 mOhm" in resistance
+    assert "r_count_milli=1706" in resistance
+    assert "mOhm" not in resistance
 
 
 def test_format_commission_detail_coil_check_sample():
@@ -151,8 +152,8 @@ def test_stage_names_map_contains_all_eight():
     assert SELFTEST_STAGES[4] == "Phase wiring"
     assert SELFTEST_STAGES[5] == "Encoder"
     assert SELFTEST_STAGES[6] == "Encoder direction"
-    assert SELFTEST_STAGES[7] == "Resistance"
-    assert SELFTEST_STAGES[8] == "Inductance"
+    assert SELFTEST_STAGES[7] == "R-model evidence"
+    assert SELFTEST_STAGES[8] == "L-model evidence"
 
 
 def test_format_adc_calibration_unpacks_offsets():
@@ -187,16 +188,16 @@ def test_format_encoder_direction_labels_value():
     assert "reversed" in format_selftest_value(6, 0, 1).lower()
 
 
-def test_format_resistance_uses_ohm_units():
-    # 1714 milliohm -> "1.7 ohm"
+def test_format_resistance_uses_diagnostic_count_units():
     out = format_selftest_value(7, 0, 1714)
-    assert "1.7" in out and "ohm" in out
+    assert "r_count_milli=1714" in out
+    assert "ohm" not in out
 
 
-def test_format_inductance_uses_mh_units():
-    # 3256 microhenry -> "3.3 mH"
+def test_format_inductance_uses_diagnostic_count_units():
     out = format_selftest_value(8, 0, 3256)
-    assert "3.3" in out and "mH" in out
+    assert "l_count_micro=3256" in out
+    assert "mH" not in out
 
 
 def test_format_fail_status_returns_error_marker():
@@ -236,8 +237,8 @@ def test_cmd_selftest_builds_multiline_report():
     assert "Phase wiring" in out
     assert "Encoder " in out  # trailing space distinguishes from "Encoder direction"
     assert "Encoder direction" in out
-    assert "Resistance" in out
-    assert "Inductance" in out
+    assert "R-model evidence" in out
+    assert "L-model evidence" in out
     assert "8/8 stages" in out
     assert "PASS" in out
 
