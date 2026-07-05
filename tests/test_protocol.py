@@ -41,6 +41,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.selftest is not None
     assert commands.dump_registers is not None
     assert commands.stepper_perf_stats is not None
+    assert commands.query_adc_vm_offset is not None
     assert commands.current_step_test is not None
 
     assert (
@@ -51,6 +52,11 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert (
         "foci_stepper_perf_stats oid=%c clear=%c",
         commands.STEPPER_PERF_STATS_RESPONSE,
+        driver.oid,
+    ) in mcu.query_commands
+    assert (
+        "foci_adc_vm_offset oid=%c",
+        "foci_adc_vm_offset_result oid=%c offset_raw=%hu sample_count=%c status=%c",
         driver.oid,
     ) in mcu.query_commands
 
@@ -123,21 +129,23 @@ def test_driver_mcu_identify_binds_protocol_without_driver_aliases():
 
 
 class RecordingCommand:
-    def __init__(self, name, calls):
+    def __init__(self, name, calls, response=None):
         self.name = name
         self.calls = calls
         self.last_args = None
+        self.response = response
 
     def send(self, args=None):
         self.last_args = args
         self.calls.append((self.name, args))
-        return None
+        return self.response
 
 
-def install_recording_commands(commands, names):
+def install_recording_commands(commands, names, responses=None):
     calls = []
+    responses = responses or {}
     for name in names:
-        setattr(commands, name, RecordingCommand(name, calls))
+        setattr(commands, name, RecordingCommand(name, calls, responses.get(name)))
     return calls
 
 
@@ -149,6 +157,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
         [
             "set_current",
             "set_voltage_limit",
+            "query_adc_vm_offset",
             "set_encoder",
             "set_encoder_dir",
             "set_pid_gains",
@@ -160,6 +169,13 @@ def test_configure_startup_sends_existing_connect_payload_order():
             "set_velocity_feedforward",
             "set_velocity_limit",
         ],
+        responses={
+            "query_adc_vm_offset": {
+                "offset_raw": 33662,
+                "sample_count": 8,
+                "status": 0,
+            },
+        },
     )
 
     driver.protocol.configure_startup(
@@ -183,6 +199,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
     assert calls == [
         ("set_current", [driver.oid, 800]),
         ("set_voltage_limit", [driver.oid, 16000]),
+        ("query_adc_vm_offset", [driver.oid]),
         ("set_encoder", [driver.oid, 0, 1000]),
         ("set_encoder_dir", [driver.oid, 0, 1]),
         ("set_pid_gains", [driver.oid, 100, 200, 300, 400]),
@@ -194,6 +211,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
         ("set_velocity_feedforward", [driver.oid, 1, 8]),
         ("set_velocity_limit", [driver.oid, 50000]),
     ]
+    assert driver.state.adc_vm_offset_raw == 33662
 
 
 def test_configure_startup_skips_unset_optional_payloads():
@@ -204,6 +222,7 @@ def test_configure_startup_skips_unset_optional_payloads():
         [
             "set_current",
             "set_voltage_limit",
+            "query_adc_vm_offset",
             "set_encoder",
             "set_encoder_dir",
             "set_pid_gains",
@@ -212,6 +231,13 @@ def test_configure_startup_skips_unset_optional_payloads():
             "set_velocity_feedforward",
             "set_velocity_limit",
         ],
+        responses={
+            "query_adc_vm_offset": {
+                "offset_raw": 33662,
+                "sample_count": 8,
+                "status": 0,
+            },
+        },
     )
 
     driver.protocol.configure_startup(
@@ -230,9 +256,43 @@ def test_configure_startup_skips_unset_optional_payloads():
     assert calls == [
         ("set_current", [driver.oid, 800]),
         ("set_voltage_limit", [driver.oid, 16000]),
+        ("query_adc_vm_offset", [driver.oid]),
         ("set_encoder", [driver.oid, 0, 1000]),
         ("set_encoder_dir", [driver.oid, 0, 0]),
     ]
+    assert driver.state.adc_vm_offset_raw == 33662
+
+
+def test_configure_startup_requires_runtime_adc_vm_offset():
+    driver = make_driver()
+    commands = driver.protocol.commands
+    install_recording_commands(
+        commands,
+        [
+            "set_current",
+            "set_voltage_limit",
+            "query_adc_vm_offset",
+        ],
+        responses={"query_adc_vm_offset": None},
+    )
+
+    with pytest.raises(
+        CommandError, match="cached ADC_VM offset query returned no data"
+    ):
+        driver.protocol.configure_startup(
+            current_ma=800,
+            voltage_limit=16000,
+            channel=0,
+            encoder_ppr=1000,
+            encoder_reversed=False,
+            pid_gains=None,
+            filter_hz={"velocity": 0, "torque": 0, "position": 0, "flux": 0},
+            position_gains=None,
+            velocity_feedforward=(False, 1),
+            velocity_limit=None,
+        )
+
+    assert driver.state.adc_vm_offset_raw is None
 
 
 def test_fine_grained_control_methods_send_existing_payloads():

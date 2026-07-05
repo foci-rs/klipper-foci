@@ -418,6 +418,14 @@ class MockMCU:
 
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
         self.query_commands.append((_send_fmt, _recv_fmt, oid))
+        if _send_fmt == "foci_adc_vm_offset oid=%c":
+            return MockCommand(
+                {
+                    "offset_raw": 33662,
+                    "sample_count": 8,
+                    "status": 0,
+                }
+            )
         return MockCommand()
 
     def get_constants(self):

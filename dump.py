@@ -366,7 +366,7 @@ class RegisterDumpWorkflow:
         return "%-30s %08x adc_vm_raw=%s" % (
             reg_name + ":",
             reg_value,
-            fmt_adc_vm_raw(raw, constants),
+            fmt_adc_vm_raw(raw, constants, self.driver.state.adc_vm_offset_raw),
         )
 
     def _live_gain_values(self) -> dict[str, int | None]:

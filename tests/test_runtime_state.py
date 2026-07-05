@@ -33,6 +33,7 @@ def test_runtime_status_defaults_to_uncommissioned():
 
     assert state.runtime_status == "uncommissioned"
     assert state.active_gains is None
+    assert state.adc_vm_offset_raw is None
 
 
 class TestOperationLock(unittest.TestCase):

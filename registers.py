@@ -79,7 +79,6 @@ def _fmt_advanced_pi_current_i(val: int) -> str:
 
 
 VM_MODEL_CONSTANTS: tuple[str, ...] = (
-    "FOCI_VM_ADC_OFFSET_RAW",
     "FOCI_VM_DIVIDER_HIGH_OHMS",
     "FOCI_VM_DIVIDER_LOW_OHMS",
     "FOCI_VM_ADC_REFERENCE_MILLIVOLTS",
@@ -87,10 +86,16 @@ VM_MODEL_CONSTANTS: tuple[str, ...] = (
 )
 
 
-def adc_vm_raw_to_volts(raw: int, constants: Mapping[str, object]) -> float | None:
-    """Convert raw ADC_VM to volts using MCU-exported board constants."""
+def adc_vm_raw_to_volts(
+    raw: int,
+    constants: Mapping[str, object],
+    offset_raw: int | None,
+) -> float | None:
+    """Convert raw ADC_VM to volts using board constants and runtime offset."""
+    if offset_raw is None:
+        return None
     try:
-        offset = int(constants["FOCI_VM_ADC_OFFSET_RAW"])
+        offset = int(offset_raw)
         high_ohms = int(constants["FOCI_VM_DIVIDER_HIGH_OHMS"])
         low_ohms = int(constants["FOCI_VM_DIVIDER_LOW_OHMS"])
         reference_mv = int(constants["FOCI_VM_ADC_REFERENCE_MILLIVOLTS"])
@@ -108,9 +113,13 @@ def adc_vm_raw_to_volts(raw: int, constants: Mapping[str, object]) -> float | No
     return (raw - offset) / counts_per_volt
 
 
-def fmt_adc_vm_raw(raw: int, constants: Mapping[str, object]) -> str:
+def fmt_adc_vm_raw(
+    raw: int,
+    constants: Mapping[str, object],
+    offset_raw: int | None,
+) -> str:
     """Format ADC_VM raw plus approximate decoded voltage when available."""
-    voltage = adc_vm_raw_to_volts(raw, constants)
+    voltage = adc_vm_raw_to_volts(raw, constants, offset_raw)
     if voltage is None:
         return str(raw)
     return "%d(~%.2fV)" % (raw, voltage)

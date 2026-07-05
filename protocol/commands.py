@@ -50,6 +50,7 @@ class FociMcuCommands:
         self.stepper_timing_stats = None
         self.stepper_stop_stats = None
         self.stepper_perf_stats = None
+        self.query_adc_vm_offset = None
         self.set_current = None
         self.set_encoder = None
         self.set_encoder_dir = None
@@ -128,6 +129,11 @@ class FociMcuCommands:
         self.stepper_perf_stats = mcu.lookup_query_command(
             "foci_stepper_perf_stats oid=%c clear=%c",
             self.STEPPER_PERF_STATS_RESPONSE,
+            oid=oid,
+        )
+        self.query_adc_vm_offset = mcu.lookup_query_command(
+            "foci_adc_vm_offset oid=%c",
+            "foci_adc_vm_offset_result oid=%c offset_raw=%hu sample_count=%c status=%c",
             oid=oid,
         )
         self.set_current = mcu.lookup_command("tmc_set_current oid=%c run_ma=%u")

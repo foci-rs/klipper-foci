@@ -183,9 +183,9 @@ def test_default_dump_omits_tuning_section_and_sends_one_dump_request():
 def test_dump_reports_live_adc_vm_raw():
     driver = make_driver()
     _seed_tuning_state(driver)
+    driver.state.adc_vm_offset_raw = 33662
     driver.mcu.constants.update(
         {
-            "FOCI_VM_ADC_OFFSET_RAW": 33619,
             "FOCI_VM_DIVIDER_HIGH_OHMS": 71500,
             "FOCI_VM_DIVIDER_LOW_OHMS": 1500,
             "FOCI_VM_ADC_REFERENCE_MILLIVOLTS": 2500,
@@ -199,18 +199,38 @@ def test_dump_reports_live_adc_vm_raw():
     assert calls == ["dump_registers"]
     assert "========== Voltage / Brake ==========" in output
     assert "ADC_VM_RAW" in output
-    assert "adc_vm_raw=43389(~36.28V)" in output
+    assert "adc_vm_raw=43389(~36.12V)" in output
 
 
 def test_dump_keeps_adc_vm_raw_when_model_constants_are_absent():
     driver = make_driver()
     _seed_tuning_state(driver)
+    driver.state.adc_vm_offset_raw = 33662
 
     output, calls = _run_dump(driver, values={REGISTERS["ADC_VM_RAW"]: 43389})
 
     assert calls == ["dump_registers"]
     assert "adc_vm_raw=43389" in output
-    assert "~36.28V" not in output
+    assert "~36" not in output
+
+
+def test_dump_requires_runtime_adc_vm_offset_for_voltage_decode():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.mcu.constants.update(
+        {
+            "FOCI_VM_DIVIDER_HIGH_OHMS": 71500,
+            "FOCI_VM_DIVIDER_LOW_OHMS": 1500,
+            "FOCI_VM_ADC_REFERENCE_MILLIVOLTS": 2500,
+            "FOCI_VM_ADC_CENTER_COUNTS": 32767,
+        }
+    )
+
+    output, calls = _run_dump(driver, values={REGISTERS["ADC_VM_RAW"]: 43389})
+
+    assert calls == ["dump_registers"]
+    assert "adc_vm_raw=43389" in output
+    assert "~36" not in output
 
 
 def test_tuning_flag_appends_context_and_count_space_note():

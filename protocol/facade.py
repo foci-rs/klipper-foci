@@ -23,6 +23,31 @@ class FociProtocol:
     def set_voltage_limit(self, voltage_limit: int) -> None:
         self.commands.set_voltage_limit.send([self.driver.oid, voltage_limit])
 
+    def query_adc_vm_offset(self) -> int:
+        response = self.commands.query_adc_vm_offset.send([self.driver.oid])
+        if response is None:
+            raise self.driver.printer.command_error(
+                "FOCI cached ADC_VM offset query returned no data"
+            )
+        try:
+            status = int(response["status"])
+            sample_count = int(response["sample_count"])
+            offset_raw = int(response["offset_raw"])
+        except (KeyError, TypeError, ValueError):
+            raise self.driver.printer.command_error(
+                "FOCI cached ADC_VM offset query returned incomplete data"
+            )
+        if status != 0:
+            raise self.driver.printer.command_error(
+                "FOCI cached ADC_VM offset query failed with status=%d" % status
+            )
+        if sample_count <= 0:
+            raise self.driver.printer.command_error(
+                "FOCI cached ADC_VM offset query returned no samples"
+            )
+        self.driver.state.adc_vm_offset_raw = offset_raw
+        return offset_raw
+
     def set_encoder(self, channel: int, encoder_ppr: int) -> None:
         self.commands.set_encoder.send([self.driver.oid, channel, encoder_ppr])
 
@@ -269,6 +294,7 @@ class FociProtocol:
         """Apply connect-time firmware configuration in the existing order."""
         self.set_current(current_ma)
         self.set_voltage_limit(voltage_limit)
+        self.query_adc_vm_offset()
         self.set_encoder(channel, encoder_ppr)
         self.set_encoder_direction(channel, encoder_reversed)
         if pid_gains is not None:
