@@ -45,7 +45,7 @@ class ActiveDiagnostics:
         # of every commission run, before its own replies can arrive.
         self.resistance_cache: dict[int, dict] = {}
         self.inductance_cache: dict[int, dict] = {}
-        self.last_inductance_fit: dict[int, dict] = {}
+        self._last_inductance_evidence: dict[int, dict] = {}
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
@@ -519,32 +519,55 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
-    def handle_inductance_fit(self, params: dict) -> None:
-        """Handle foci_inductance_fit from firmware."""
+    def handle_inductance_run(self, params: dict) -> None:
+        """Handle foci_inductance_run from firmware."""
         oid = params["oid"]
-        cached = self.inductance_cache.setdefault(oid, {"fits": {}, "points": {}})
-        cached["fits"][params["coil"]] = dict(params)
-        self.last_inductance_fit[oid] = self._copy_inductance_cache(cached)
+        cached = self._ensure_inductance_cache(oid)
+        cached["run"] = dict(params)
+        self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance fit: coil=%d tau=%dus"
-            " deadtime_ud=%d residual=%d points=%d mask=0x%x"
+            "FOCI %s inductance run: source=%d status=%d warnings=0x%x"
+            " ud=%d f=%dmHz samples=%d encoder_delta=%d status_flags=0x%08x"
             % (
                 self.driver.name,
-                params["coil"],
-                params["tau_us"],
-                params["deadtime_ud"],
-                params["residual_permille"],
-                params["usable_points"],
-                params["selected_mask"],
+                params["source"],
+                params["status"],
+                params["warning_flags"],
+                params["ud_count"],
+                params["realized_frequency_millihz"],
+                params["sample_count"],
+                params["encoder_delta_counts"],
+                params["status_flags_or"],
             )
         )
 
-    def handle_inductance_point(self, params: dict) -> None:
-        """Handle foci_inductance_point from firmware."""
+    def handle_inductance_frame(self, params: dict) -> None:
+        """Handle foci_inductance_frame from firmware."""
         oid = params["oid"]
-        cached = self.inductance_cache.setdefault(oid, {"fits": {}, "points": {}})
-        cached["points"][(params["coil"], params["point"])] = dict(params)
-        self.last_inductance_fit[oid] = self._copy_inductance_cache(cached)
+        cached = self._ensure_inductance_cache(oid)
+        cached["frame"] = dict(params)
+        self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
+
+    def handle_inductance_estimate(self, params: dict) -> None:
+        """Handle foci_inductance_estimate from firmware."""
+        oid = params["oid"]
+        cached = self._ensure_inductance_cache(oid)
+        cached["estimate"] = dict(params)
+        self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
+        self.driver.printer.lookup_object("gcode").respond_info(
+            "FOCI %s inductance estimate: x_avg=%d x_d=%d x_q=%d"
+            " saliency_status=%d r_shift=%d/%d x_mag_delta=%d"
+            % (
+                self.driver.name,
+                params["x_average_count_ratio_milli"],
+                params["x_d_count_ratio_milli"],
+                params["x_q_count_ratio_milli"],
+                params["saliency_status"],
+                params["x_mag_shift_minus_permille"],
+                params["x_mag_shift_plus_permille"],
+                params["x_mag_vs_quad_permille"],
+            )
+        )
 
     def handle_encoder_alignment(self, params: dict) -> None:
         """Handle foci_encoder_alignment from firmware."""
@@ -704,21 +727,35 @@ class ActiveDiagnostics:
     def pop_inductance_cache(self, oid: int) -> dict:
         """Fold cached commission-stream inductance replies into result keys."""
         cached = self.clear_inductance_cache(oid)
-        fits = cached.get("fits", {})
-        if 0 not in fits or 1 not in fits:
+        if not cached:
             return {}
 
-        axis0 = fits[0]
-        axis1 = fits[1]
+        run = cached.get("run")
+        frame = cached.get("frame")
+        estimate = cached.get("estimate")
+        if run is None or frame is None or estimate is None:
+            return {}
+
         return {
-            "inductance_axis0_tau_us": axis0["tau_us"],
-            "inductance_axis1_tau_us": axis1["tau_us"],
-            "inductance_axis0_deadtime_ud": axis0["deadtime_ud"],
-            "inductance_axis1_deadtime_ud": axis1["deadtime_ud"],
-            "inductance_axis0_residual_permille": axis0["residual_permille"],
-            "inductance_axis1_residual_permille": axis1["residual_permille"],
-            "inductance_axis0_selected_mask": axis0["selected_mask"],
-            "inductance_axis1_selected_mask": axis1["selected_mask"],
+            "inductance_source": run["source"],
+            "inductance_warning_flags": run["warning_flags"],
+            "inductance_frequency_millihz": run["realized_frequency_millihz"],
+            "inductance_reactance_count_ratio_milli": estimate[
+                "x_average_count_ratio_milli"
+            ],
+            "inductance_d_reactance_count_ratio_milli": estimate[
+                "x_d_count_ratio_milli"
+            ],
+            "inductance_q_reactance_count_ratio_milli": estimate[
+                "x_q_count_ratio_milli"
+            ],
+            "inductance_saliency_status": estimate["saliency_status"],
+            "inductance_saliency_permille": estimate["saliency_permille"],
+            "inductance_iq_mean_milli_count": frame["iq_mean_milli_count"],
+            "inductance_drift_permille": frame["drift_permille"],
+            "inductance_r_shift_minus_permille": estimate["x_mag_shift_minus_permille"],
+            "inductance_r_shift_plus_permille": estimate["x_mag_shift_plus_permille"],
+            "inductance_x_mag_vs_quad_permille": estimate["x_mag_vs_quad_permille"],
         }
 
     def pop_current_loop_cache(self, oid: int) -> dict:
@@ -793,8 +830,8 @@ class ActiveDiagnostics:
         return self.last_current_loop_run.get(oid, {})
 
     def last_inductance_evidence(self, oid: int) -> dict:
-        """Return the most recent transient inductance-fit evidence for `oid`."""
-        return self.last_inductance_fit.get(oid, {})
+        """Return the most recent transient inductance evidence for `oid`."""
+        return self._last_inductance_evidence.get(oid, {})
 
     def last_current_loop_samples(self, oid: int) -> dict[str, list[dict]]:
         """Return current-validation sample replies from the most recent run."""
@@ -821,14 +858,17 @@ class ActiveDiagnostics:
         return max(sample["encoder_delta_counts"] for sample in samples)
 
     def _copy_inductance_cache(self, cached: dict) -> dict:
-        return {
-            "fits": {
-                coil: dict(params) for coil, params in cached.get("fits", {}).items()
-            },
-            "points": {
-                key: dict(params) for key, params in cached.get("points", {}).items()
-            },
-        }
+        copied = {}
+        for key in ("run", "frame", "estimate"):
+            value = cached.get(key)
+            copied[key] = dict(value) if value is not None else None
+        return copied
+
+    def _ensure_inductance_cache(self, oid: int) -> dict:
+        return self.inductance_cache.setdefault(
+            oid,
+            {"run": None, "frame": None, "estimate": None},
+        )
 
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""

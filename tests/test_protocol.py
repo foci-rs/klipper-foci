@@ -96,8 +96,9 @@ def test_inductance_replies_are_registered_as_commissioning_responses():
     register_commissioning_responses(serial, driver, driver.oid)
 
     registrations = response_names(serial)
-    assert ("foci_inductance_fit", driver.oid) in registrations
-    assert ("foci_inductance_point", driver.oid) in registrations
+    assert ("foci_inductance_run", driver.oid) in registrations
+    assert ("foci_inductance_frame", driver.oid) in registrations
+    assert ("foci_inductance_estimate", driver.oid) in registrations
 
 
 def test_inductance_replies_are_not_active_diagnostic_responses():
@@ -107,8 +108,9 @@ def test_inductance_replies_are_not_active_diagnostic_responses():
     register_active_diagnostic_responses(serial, driver, driver.oid)
 
     registrations = response_names(serial)
-    assert ("foci_inductance_fit", driver.oid) not in registrations
-    assert ("foci_inductance_point", driver.oid) not in registrations
+    assert ("foci_inductance_run", driver.oid) not in registrations
+    assert ("foci_inductance_frame", driver.oid) not in registrations
+    assert ("foci_inductance_estimate", driver.oid) not in registrations
 
 
 def test_driver_mcu_identify_binds_protocol_without_driver_aliases():

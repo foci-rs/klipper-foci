@@ -158,6 +158,22 @@ RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_r_warning_flags",
 )
 
+INDUCTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
+    "identified_l_source",
+    "identified_l_warning_flags",
+    "identified_l_frequency_millihz",
+    "identified_l_reactance_count_ratio_milli",
+    "identified_l_d_reactance_count_ratio_milli",
+    "identified_l_q_reactance_count_ratio_milli",
+    "identified_l_saliency_status",
+    "identified_l_saliency_permille",
+    "identified_l_iq_mean_milli_count",
+    "identified_l_drift_permille",
+    "identified_l_r_shift_minus_permille",
+    "identified_l_r_shift_plus_permille",
+    "identified_l_x_mag_vs_quad_permille",
+)
+
 COMPARE_GAIN_FIELDS: tuple[str, ...] = tuple(
     field_name for field_name, _reg_name in LIVE_GAIN_FIELDS
 )
@@ -286,12 +302,12 @@ class RegisterDumpWorkflow:
             " tracked separately."
         )
 
-        lines.append("-- Persisted inductance fit evidence --")
-        lines.extend(self._format_persisted_inductance_fit())
+        lines.append("-- Persisted inductance evidence --")
+        lines.extend(self._format_persisted_inductance_evidence())
         lines.append(
-            "  Note: persisted identified_l_* inductance fit fields are"
-            " firmware-reported tau/deadtime evidence; the host performs"
-            " no fitting or quality-gate evaluation."
+            "  Note: persisted identified_l_* inductance fields are"
+            " firmware-reported count-space reactance evidence; the host"
+            " performs no fitting or quality-gate evaluation."
         )
 
         lines.append("-- Current-loop commissioning evidence --")
@@ -335,8 +351,8 @@ class RegisterDumpWorkflow:
             self.driver.oid
         )
         if last_inductance:
-            lines.append("-- Last inductance fit (not persisted) --")
-            lines.extend(self._format_last_inductance_fit(last_inductance))
+            lines.append("-- Last inductance evidence (not persisted) --")
+            lines.extend(self._format_last_inductance_evidence(last_inductance))
 
         lines.append("-- Resistance identification evidence --")
         lines.extend(
@@ -419,94 +435,83 @@ class RegisterDumpWorkflow:
             return warnings
         return ["  live register gains match host active_gains"]
 
-    def _format_persisted_inductance_fit(self) -> list[str]:
+    def _format_persisted_inductance_evidence(self) -> list[str]:
         config = self.driver.config
         return [
-            "  inductance_fit:",
-            self._format_inductance_axis(
-                "axis0",
-                config.identified_l_axis0_tau_us,
-                config.identified_l_axis0_deadtime_ud,
-                config.identified_l_axis0_residual_permille,
-                config.identified_l_axis0_selected_mask,
-            ),
-            self._format_inductance_axis(
-                "axis1",
-                config.identified_l_axis1_tau_us,
-                config.identified_l_axis1_deadtime_ud,
-                config.identified_l_axis1_residual_permille,
-                config.identified_l_axis1_selected_mask,
-            ),
+            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            for field_name in INDUCTANCE_IDENTIFICATION_FIELDS
         ]
 
-    def _format_last_inductance_fit(self, evidence: dict) -> list[str]:
-        fits = evidence.get("fits", {})
-        axis0 = fits.get(0, {})
-        axis1 = fits.get(1, {})
-        lines = [
-            "  last.inductance_fit:",
-            self._format_inductance_axis(
-                "last.axis0",
-                axis0.get("tau_us"),
-                axis0.get("deadtime_ud"),
-                axis0.get("residual_permille"),
-                axis0.get("selected_mask"),
-            ),
-            self._format_inductance_axis(
-                "last.axis1",
-                axis1.get("tau_us"),
-                axis1.get("deadtime_ud"),
-                axis1.get("residual_permille"),
-                axis1.get("selected_mask"),
-            ),
-        ]
-        lines.extend(self._format_last_inductance_points(evidence.get("points", {})))
-        return lines
-
-    def _format_last_inductance_points(self, points: dict) -> list[str]:
+    def _format_last_inductance_evidence(self, evidence: dict) -> list[str]:
         lines = []
-        for key in sorted(points):
-            point = points[key]
-            lines.append(
-                "  last.inductance_point[coil=%d point=%d]:"
-                " ud=%s effective_ud=%s avg_delta=%s avg_current_count=%s"
-                " r_drop_ud=%s samples=%s elapsed_us=%s"
-                % (
-                    point.get("coil", key[0]),
-                    point.get("point", key[1]),
-                    self._display_value(point.get("ud")),
-                    self._display_value(point.get("effective_ud")),
-                    self._display_value(point.get("avg_delta")),
-                    self._display_value(point.get("avg_current_count")),
-                    self._display_value(point.get("r_drop_ud")),
-                    self._display_value(point.get("sample_count")),
-                    self._display_value(point.get("elapsed_us")),
+        run = evidence.get("run")
+        if run is not None:
+            lines.extend(
+                self._format_last_inductance_group(
+                    "last.inductance_run",
+                    run,
+                    (
+                        "source",
+                        "status",
+                        "warning_flags",
+                        "ud_count",
+                        "realized_frequency_millihz",
+                        "elapsed_us",
+                        "openloop_phi_delta_counts",
+                        "sample_count",
+                        "encoder_delta_counts",
+                        "status_flags_or",
+                    ),
+                )
+            )
+        frame = evidence.get("frame")
+        if frame is not None:
+            lines.extend(
+                self._format_last_inductance_group(
+                    "last.inductance_frame",
+                    frame,
+                    (
+                        "id_mean_milli_count",
+                        "iq_mean_milli_count",
+                        "id_rms_milli_count",
+                        "iq_rms_milli_count",
+                        "drift_permille",
+                        "zero_id_mean_milli_count",
+                        "zero_iq_mean_milli_count",
+                    ),
+                )
+            )
+        estimate = evidence.get("estimate")
+        if estimate is not None:
+            lines.extend(
+                self._format_last_inductance_group(
+                    "last.inductance_estimate",
+                    estimate,
+                    (
+                        "x_average_count_ratio_milli",
+                        "x_d_count_ratio_milli",
+                        "x_q_count_ratio_milli",
+                        "saliency_status",
+                        "saliency_permille",
+                        "x_mag_nominal_count_ratio_milli",
+                        "x_mag_shift_minus_permille",
+                        "x_mag_shift_plus_permille",
+                        "x_mag_vs_quad_permille",
+                    ),
                 )
             )
         return lines
 
-    def _format_inductance_axis(
+    def _format_last_inductance_group(
         self,
-        label: str,
-        tau_us: int | None,
-        deadtime_ud: int | None,
-        residual_permille: int | None,
-        selected_mask: int | None,
-    ) -> str:
-        mask = "(unset)"
-        if selected_mask is not None:
-            mask = "0x%04x" % selected_mask
-        return (
-            "    %s_tau_us: %s deadtime_ud: %s residual_permille: %s"
-            " selected_mask=%s"
-            % (
-                label,
-                self._display_value(tau_us),
-                self._display_value(deadtime_ud),
-                self._display_value(residual_permille),
-                mask,
-            )
-        )
+        prefix: str,
+        values: dict,
+        field_names: tuple[str, ...],
+    ) -> list[str]:
+        return [
+            self._format_pair("%s.%s" % (prefix, field_name), values.get(field_name))
+            for field_name in field_names
+        ]
 
     def _format_current_loop_summary(self) -> list[str]:
         config = self.driver.config

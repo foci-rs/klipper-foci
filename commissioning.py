@@ -635,25 +635,42 @@ class CommissioningWorkflow:
             configfile.set(self.driver.name, config_key, "%d" % result[result_key])
 
     INDUCTANCE_RESULT_KEYS: Sequence[tuple[str, str]] = (
-        ("inductance_axis0_tau_us", "identified_l_axis0_tau_us"),
-        ("inductance_axis1_tau_us", "identified_l_axis1_tau_us"),
-        ("inductance_axis0_deadtime_ud", "identified_l_axis0_deadtime_ud"),
-        ("inductance_axis1_deadtime_ud", "identified_l_axis1_deadtime_ud"),
+        ("inductance_source", "identified_l_source"),
+        ("inductance_warning_flags", "identified_l_warning_flags"),
+        ("inductance_frequency_millihz", "identified_l_frequency_millihz"),
         (
-            "inductance_axis0_residual_permille",
-            "identified_l_axis0_residual_permille",
+            "inductance_reactance_count_ratio_milli",
+            "identified_l_reactance_count_ratio_milli",
         ),
         (
-            "inductance_axis1_residual_permille",
-            "identified_l_axis1_residual_permille",
+            "inductance_d_reactance_count_ratio_milli",
+            "identified_l_d_reactance_count_ratio_milli",
         ),
-        ("inductance_axis0_selected_mask", "identified_l_axis0_selected_mask"),
-        ("inductance_axis1_selected_mask", "identified_l_axis1_selected_mask"),
+        (
+            "inductance_q_reactance_count_ratio_milli",
+            "identified_l_q_reactance_count_ratio_milli",
+        ),
+        ("inductance_saliency_status", "identified_l_saliency_status"),
+        ("inductance_saliency_permille", "identified_l_saliency_permille"),
+        ("inductance_iq_mean_milli_count", "identified_l_iq_mean_milli_count"),
+        ("inductance_drift_permille", "identified_l_drift_permille"),
+        (
+            "inductance_r_shift_minus_permille",
+            "identified_l_r_shift_minus_permille",
+        ),
+        (
+            "inductance_r_shift_plus_permille",
+            "identified_l_r_shift_plus_permille",
+        ),
+        (
+            "inductance_x_mag_vs_quad_permille",
+            "identified_l_x_mag_vs_quad_permille",
+        ),
     )
 
     def _persist_inductance_identification(self, configfile, result: dict) -> None:
-        """Persist firmware-owned inductance-fit evidence."""
-        if "inductance_axis0_tau_us" not in result:
+        """Persist firmware-owned production inductance evidence."""
+        if "inductance_reactance_count_ratio_milli" not in result:
             return
         for result_key, config_key in self.INDUCTANCE_RESULT_KEYS:
             configfile.set(self.driver.name, config_key, "%d" % result[result_key])

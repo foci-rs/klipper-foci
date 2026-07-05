@@ -88,14 +88,19 @@ CONFIG_FIELD_NAMES = {
     "identified_bandwidth_hz",
     "identified_tau_e_us",
     "identified_inner_warning_flags",
-    "identified_l_axis0_tau_us",
-    "identified_l_axis1_tau_us",
-    "identified_l_axis0_deadtime_ud",
-    "identified_l_axis1_deadtime_ud",
-    "identified_l_axis0_residual_permille",
-    "identified_l_axis1_residual_permille",
-    "identified_l_axis0_selected_mask",
-    "identified_l_axis1_selected_mask",
+    "identified_l_source",
+    "identified_l_warning_flags",
+    "identified_l_frequency_millihz",
+    "identified_l_reactance_count_ratio_milli",
+    "identified_l_d_reactance_count_ratio_milli",
+    "identified_l_q_reactance_count_ratio_milli",
+    "identified_l_saliency_status",
+    "identified_l_saliency_permille",
+    "identified_l_iq_mean_milli_count",
+    "identified_l_drift_permille",
+    "identified_l_r_shift_minus_permille",
+    "identified_l_r_shift_plus_permille",
+    "identified_l_x_mag_vs_quad_permille",
     "identified_j_eff",
     "identified_b_eff",
     "identified_current_gains_source",
@@ -236,14 +241,18 @@ CURRENT_LOOP_FIELD_MAX_VALUES = {
 
 
 INDUCTANCE_FIELD_MAX_VALUES = {
-    "identified_l_axis0_tau_us": None,
-    "identified_l_axis1_tau_us": None,
-    "identified_l_axis0_deadtime_ud": None,
-    "identified_l_axis1_deadtime_ud": None,
-    "identified_l_axis0_residual_permille": 1000,
-    "identified_l_axis1_residual_permille": 1000,
-    "identified_l_axis0_selected_mask": 0xFFFF,
-    "identified_l_axis1_selected_mask": 0xFFFF,
+    "identified_l_source": 255,
+    "identified_l_warning_flags": 0xFFFF,
+    "identified_l_frequency_millihz": None,
+    "identified_l_reactance_count_ratio_milli": None,
+    "identified_l_d_reactance_count_ratio_milli": None,
+    "identified_l_q_reactance_count_ratio_milli": None,
+    "identified_l_saliency_status": 255,
+    "identified_l_saliency_permille": 1000,
+    "identified_l_drift_permille": 1000,
+    "identified_l_r_shift_minus_permille": 1000,
+    "identified_l_r_shift_plus_permille": 1000,
+    "identified_l_x_mag_vs_quad_permille": 1000,
 }
 
 
@@ -340,14 +349,19 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_bandwidth_hz": 25,
             "identified_tau_e_us": 730,
             "identified_inner_warning_flags": 2,
-            "identified_l_axis0_tau_us": 450,
-            "identified_l_axis1_tau_us": 460,
-            "identified_l_axis0_deadtime_ud": 200,
-            "identified_l_axis1_deadtime_ud": 201,
-            "identified_l_axis0_residual_permille": 12,
-            "identified_l_axis1_residual_permille": 14,
-            "identified_l_axis0_selected_mask": 0x000F,
-            "identified_l_axis1_selected_mask": 0x000F,
+            "identified_l_source": 1,
+            "identified_l_warning_flags": 0,
+            "identified_l_frequency_millihz": 1_000_000,
+            "identified_l_reactance_count_ratio_milli": 8600,
+            "identified_l_d_reactance_count_ratio_milli": 9200,
+            "identified_l_q_reactance_count_ratio_milli": 8000,
+            "identified_l_saliency_status": 1,
+            "identified_l_saliency_permille": 140,
+            "identified_l_iq_mean_milli_count": -84000,
+            "identified_l_drift_permille": 40,
+            "identified_l_r_shift_minus_permille": 4,
+            "identified_l_r_shift_plus_permille": 4,
+            "identified_l_x_mag_vs_quad_permille": 20,
             "identified_j_eff": 9,
             "identified_b_eff": 10,
             "identified_current_gains_source": 1,
@@ -421,14 +435,19 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_l_count_micro == 3300
     assert parsed.identified_tau_e_us == 730
     assert parsed.identified_inner_warning_flags == 2
-    assert parsed.identified_l_axis0_tau_us == 450
-    assert parsed.identified_l_axis1_tau_us == 460
-    assert parsed.identified_l_axis0_deadtime_ud == 200
-    assert parsed.identified_l_axis1_deadtime_ud == 201
-    assert parsed.identified_l_axis0_residual_permille == 12
-    assert parsed.identified_l_axis1_residual_permille == 14
-    assert parsed.identified_l_axis0_selected_mask == 0x000F
-    assert parsed.identified_l_axis1_selected_mask == 0x000F
+    assert parsed.identified_l_source == 1
+    assert parsed.identified_l_warning_flags == 0
+    assert parsed.identified_l_frequency_millihz == 1_000_000
+    assert parsed.identified_l_reactance_count_ratio_milli == 8600
+    assert parsed.identified_l_d_reactance_count_ratio_milli == 9200
+    assert parsed.identified_l_q_reactance_count_ratio_milli == 8000
+    assert parsed.identified_l_saliency_status == 1
+    assert parsed.identified_l_saliency_permille == 140
+    assert parsed.identified_l_iq_mean_milli_count == -84000
+    assert parsed.identified_l_drift_permille == 40
+    assert parsed.identified_l_r_shift_minus_permille == 4
+    assert parsed.identified_l_r_shift_plus_permille == 4
+    assert parsed.identified_l_x_mag_vs_quad_permille == 20
     assert parsed.identified_j_eff == 9
     assert parsed.identified_b_eff == 10
     assert parsed.identified_current_gains_source == 1

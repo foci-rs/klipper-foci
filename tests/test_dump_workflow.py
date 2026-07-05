@@ -83,14 +83,19 @@ def _seed_tuning_state(driver):
     driver.config.identified_bandwidth_hz = 0
     driver.config.identified_inner_warning_flags = 36
 
-    driver.config.identified_l_axis0_tau_us = 450
-    driver.config.identified_l_axis1_tau_us = 460
-    driver.config.identified_l_axis0_deadtime_ud = 200
-    driver.config.identified_l_axis1_deadtime_ud = 201
-    driver.config.identified_l_axis0_residual_permille = 12
-    driver.config.identified_l_axis1_residual_permille = 14
-    driver.config.identified_l_axis0_selected_mask = 0x000F
-    driver.config.identified_l_axis1_selected_mask = 0x000F
+    driver.config.identified_l_source = 1
+    driver.config.identified_l_warning_flags = 0
+    driver.config.identified_l_frequency_millihz = 1_000_000
+    driver.config.identified_l_reactance_count_ratio_milli = 8600
+    driver.config.identified_l_d_reactance_count_ratio_milli = 9200
+    driver.config.identified_l_q_reactance_count_ratio_milli = 8000
+    driver.config.identified_l_saliency_status = 1
+    driver.config.identified_l_saliency_permille = 140
+    driver.config.identified_l_iq_mean_milli_count = -84000
+    driver.config.identified_l_drift_permille = 40
+    driver.config.identified_l_r_shift_minus_permille = 4
+    driver.config.identified_l_r_shift_plus_permille = 4
+    driver.config.identified_l_x_mag_vs_quad_permille = 20
 
     driver.config.identified_current_gains_source = 1
     driver.config.identified_current_candidate_gains_source = 1
@@ -269,69 +274,66 @@ def test_tuning_flag_appends_resistance_identification_evidence():
     assert "host performs no" in output
 
 
-def test_tuning_flag_separates_persisted_and_last_inductance_fit_evidence():
+def test_tuning_flag_separates_persisted_and_last_inductance_evidence():
     driver = make_driver()
     _seed_tuning_state(driver)
-    driver.diagnostics.active.handle_inductance_fit(
+    driver.diagnostics.active.handle_inductance_run(
         {
             "oid": driver.oid,
-            "coil": 0,
-            "tau_us": 550,
-            "deadtime_ud": 210,
-            "residual_permille": 22,
-            "usable_points": 4,
-            "selected_mask": 0x000B,
+            "source": 1,
+            "status": 0,
+            "warning_flags": 2,
+            "ud_count": 768,
+            "realized_frequency_millihz": 1_000_000,
+            "elapsed_us": 8000,
+            "openloop_phi_delta_counts": 524_288,
+            "sample_count": 104,
+            "encoder_delta_counts": 0,
+            "status_flags_or": 0,
         }
     )
-    driver.diagnostics.active.handle_inductance_fit(
+    driver.diagnostics.active.handle_inductance_frame(
         {
             "oid": driver.oid,
-            "coil": 1,
-            "tau_us": 560,
-            "deadtime_ud": 211,
-            "residual_permille": 24,
-            "usable_points": 4,
-            "selected_mask": 0x000D,
+            "id_mean_milli_count": 20000,
+            "iq_mean_milli_count": -85000,
+            "id_rms_milli_count": 5000,
+            "iq_rms_milli_count": 21000,
+            "drift_permille": 55,
+            "zero_id_mean_milli_count": 100,
+            "zero_iq_mean_milli_count": -200,
         }
     )
-    driver.diagnostics.active.handle_inductance_point(
+    driver.diagnostics.active.handle_inductance_estimate(
         {
             "oid": driver.oid,
-            "coil": 0,
-            "point": 2,
-            "ud": 768,
-            "avg_delta": 39,
-            "avg_current_count": 300,
-            "r_drop_ud": 1126,
-            "effective_ud": -358,
-            "sample_count": 4750,
-            "elapsed_us": 760000,
+            "x_average_count_ratio_milli": 8700,
+            "x_d_count_ratio_milli": 9300,
+            "x_q_count_ratio_milli": 8100,
+            "saliency_status": 1,
+            "saliency_permille": 138,
+            "x_mag_nominal_count_ratio_milli": 8870,
+            "x_mag_shift_minus_permille": 5,
+            "x_mag_shift_plus_permille": 5,
+            "x_mag_vs_quad_permille": 21,
         }
     )
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Persisted inductance fit evidence --" in output
-    assert "inductance_fit:" in output
-    assert (
-        "axis0_tau_us: 450 deadtime_ud: 200 residual_permille: 12 selected_mask=0x000f"
-    ) in output
-    assert "persisted identified_l_* inductance fit fields" in output
-    assert "-- Last inductance fit (not persisted) --" in output
-    assert "last.inductance_fit:" in output
-    assert (
-        "last.axis0_tau_us: 550 deadtime_ud: 210 residual_permille: 22"
-        " selected_mask=0x000b"
-    ) in output
-    assert (
-        "last.axis1_tau_us: 560 deadtime_ud: 211 residual_permille: 24"
-        " selected_mask=0x000d"
-    ) in output
-    assert (
-        "last.inductance_point[coil=0 point=2]: ud=768 effective_ud=-358"
-        " avg_delta=39 avg_current_count=300 r_drop_ud=1126"
-        " samples=4750 elapsed_us=760000"
-    ) in output
+    assert "-- Persisted inductance evidence --" in output
+    assert "config.identified_l_reactance_count_ratio_milli" in output
+    assert "8600" in output
+    assert "config.identified_l_d_reactance_count_ratio_milli" in output
+    assert "config.identified_l_q_reactance_count_ratio_milli" in output
+    assert "persisted identified_l_* inductance fields" in output
+    assert "-- Last inductance evidence (not persisted) --" in output
+    assert "last.inductance_run.source" in output
+    assert "last.inductance_run.warning_flags" in output
+    assert "last.inductance_frame.iq_mean_milli_count" in output
+    assert "-85000" in output
+    assert "last.inductance_estimate.x_average_count_ratio_milli" in output
+    assert "8700" in output
 
 
 def test_tuning_flag_appends_current_loop_evidence():

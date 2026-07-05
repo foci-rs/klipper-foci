@@ -83,14 +83,19 @@ class FociDriverConfig:
     identified_bandwidth_hz: int | None
     identified_tau_e_us: int | None
     identified_inner_warning_flags: int | None
-    identified_l_axis0_tau_us: int | None
-    identified_l_axis1_tau_us: int | None
-    identified_l_axis0_deadtime_ud: int | None
-    identified_l_axis1_deadtime_ud: int | None
-    identified_l_axis0_residual_permille: int | None
-    identified_l_axis1_residual_permille: int | None
-    identified_l_axis0_selected_mask: int | None
-    identified_l_axis1_selected_mask: int | None
+    identified_l_source: int | None
+    identified_l_warning_flags: int | None
+    identified_l_frequency_millihz: int | None
+    identified_l_reactance_count_ratio_milli: int | None
+    identified_l_d_reactance_count_ratio_milli: int | None
+    identified_l_q_reactance_count_ratio_milli: int | None
+    identified_l_saliency_status: int | None
+    identified_l_saliency_permille: int | None
+    identified_l_iq_mean_milli_count: int | None
+    identified_l_drift_permille: int | None
+    identified_l_r_shift_minus_permille: int | None
+    identified_l_r_shift_plus_permille: int | None
+    identified_l_x_mag_vs_quad_permille: int | None
     identified_j_eff: int | None
     identified_b_eff: int | None
     identified_current_gains_source: int | None
@@ -314,29 +319,44 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_inner_warning_flags = config.getint(
         "identified_inner_warning_flags", None, minval=0, maxval=255
     )
-    identified_l_axis0_tau_us = config.getint(
-        "identified_l_axis0_tau_us", None, minval=0
+    identified_l_source = config.getint(
+        "identified_l_source", None, minval=0, maxval=255
     )
-    identified_l_axis1_tau_us = config.getint(
-        "identified_l_axis1_tau_us", None, minval=0
+    identified_l_warning_flags = config.getint(
+        "identified_l_warning_flags", None, minval=0, maxval=0xFFFF
     )
-    identified_l_axis0_deadtime_ud = config.getint(
-        "identified_l_axis0_deadtime_ud", None, minval=0
+    identified_l_frequency_millihz = config.getint(
+        "identified_l_frequency_millihz", None, minval=0
     )
-    identified_l_axis1_deadtime_ud = config.getint(
-        "identified_l_axis1_deadtime_ud", None, minval=0
+    identified_l_reactance_count_ratio_milli = config.getint(
+        "identified_l_reactance_count_ratio_milli", None, minval=0
     )
-    identified_l_axis0_residual_permille = config.getint(
-        "identified_l_axis0_residual_permille", None, minval=0, maxval=1000
+    identified_l_d_reactance_count_ratio_milli = config.getint(
+        "identified_l_d_reactance_count_ratio_milli", None, minval=0
     )
-    identified_l_axis1_residual_permille = config.getint(
-        "identified_l_axis1_residual_permille", None, minval=0, maxval=1000
+    identified_l_q_reactance_count_ratio_milli = config.getint(
+        "identified_l_q_reactance_count_ratio_milli", None, minval=0
     )
-    identified_l_axis0_selected_mask = config.getint(
-        "identified_l_axis0_selected_mask", None, minval=0, maxval=0xFFFF
+    identified_l_saliency_status = config.getint(
+        "identified_l_saliency_status", None, minval=0, maxval=255
     )
-    identified_l_axis1_selected_mask = config.getint(
-        "identified_l_axis1_selected_mask", None, minval=0, maxval=0xFFFF
+    identified_l_saliency_permille = config.getint(
+        "identified_l_saliency_permille", None, minval=0, maxval=1000
+    )
+    identified_l_iq_mean_milli_count = config.getint(
+        "identified_l_iq_mean_milli_count", None
+    )
+    identified_l_drift_permille = config.getint(
+        "identified_l_drift_permille", None, minval=0, maxval=1000
+    )
+    identified_l_r_shift_minus_permille = config.getint(
+        "identified_l_r_shift_minus_permille", None, minval=0, maxval=1000
+    )
+    identified_l_r_shift_plus_permille = config.getint(
+        "identified_l_r_shift_plus_permille", None, minval=0, maxval=1000
+    )
+    identified_l_x_mag_vs_quad_permille = config.getint(
+        "identified_l_x_mag_vs_quad_permille", None, minval=0, maxval=1000
     )
     identified_j_eff = config.getint("identified_j_eff", None, minval=0)
     identified_b_eff = config.getint("identified_b_eff", None, minval=0)
@@ -568,14 +588,25 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_bandwidth_hz=identified_bandwidth_hz,
         identified_tau_e_us=identified_tau_e_us,
         identified_inner_warning_flags=identified_inner_warning_flags,
-        identified_l_axis0_tau_us=identified_l_axis0_tau_us,
-        identified_l_axis1_tau_us=identified_l_axis1_tau_us,
-        identified_l_axis0_deadtime_ud=identified_l_axis0_deadtime_ud,
-        identified_l_axis1_deadtime_ud=identified_l_axis1_deadtime_ud,
-        identified_l_axis0_residual_permille=(identified_l_axis0_residual_permille),
-        identified_l_axis1_residual_permille=(identified_l_axis1_residual_permille),
-        identified_l_axis0_selected_mask=identified_l_axis0_selected_mask,
-        identified_l_axis1_selected_mask=identified_l_axis1_selected_mask,
+        identified_l_source=identified_l_source,
+        identified_l_warning_flags=identified_l_warning_flags,
+        identified_l_frequency_millihz=identified_l_frequency_millihz,
+        identified_l_reactance_count_ratio_milli=(
+            identified_l_reactance_count_ratio_milli
+        ),
+        identified_l_d_reactance_count_ratio_milli=(
+            identified_l_d_reactance_count_ratio_milli
+        ),
+        identified_l_q_reactance_count_ratio_milli=(
+            identified_l_q_reactance_count_ratio_milli
+        ),
+        identified_l_saliency_status=identified_l_saliency_status,
+        identified_l_saliency_permille=identified_l_saliency_permille,
+        identified_l_iq_mean_milli_count=identified_l_iq_mean_milli_count,
+        identified_l_drift_permille=identified_l_drift_permille,
+        identified_l_r_shift_minus_permille=identified_l_r_shift_minus_permille,
+        identified_l_r_shift_plus_permille=identified_l_r_shift_plus_permille,
+        identified_l_x_mag_vs_quad_permille=identified_l_x_mag_vs_quad_permille,
         identified_j_eff=identified_j_eff,
         identified_b_eff=identified_b_eff,
         identified_current_gains_source=identified_current_gains_source,

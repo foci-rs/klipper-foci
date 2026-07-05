@@ -1039,47 +1039,82 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
 
 
 class CommissionInductanceReplyFoldingTests(unittest.TestCase):
-    """Verify commission-stream inductance fit replies get folded into result."""
+    """Verify commission-stream inductance evidence gets folded into result."""
 
-    AXIS0_FIT = {
-        "coil": 0,
-        "tau_us": 450,
-        "deadtime_ud": 200,
-        "residual_permille": 12,
-        "usable_points": 4,
-        "selected_mask": 0x000F,
+    RUN = {
+        "source": 1,
+        "status": 0,
+        "warning_flags": 0,
+        "ud_count": 768,
+        "realized_frequency_millihz": 1_000_000,
+        "elapsed_us": 8000,
+        "openloop_phi_delta_counts": 524_288,
+        "sample_count": 104,
+        "encoder_delta_counts": 0,
+        "status_flags_or": 0,
     }
-    AXIS1_FIT = {
-        "coil": 1,
-        "tau_us": 460,
-        "deadtime_ud": 201,
-        "residual_permille": 14,
-        "usable_points": 4,
-        "selected_mask": 0x000F,
+    FRAME = {
+        "id_mean_milli_count": 20_000,
+        "iq_mean_milli_count": -84_000,
+        "id_rms_milli_count": 5000,
+        "iq_rms_milli_count": 21_000,
+        "drift_permille": 40,
+        "zero_id_mean_milli_count": 100,
+        "zero_iq_mean_milli_count": -200,
+    }
+    ESTIMATE = {
+        "x_average_count_ratio_milli": 8600,
+        "x_d_count_ratio_milli": 9200,
+        "x_q_count_ratio_milli": 8000,
+        "saliency_status": 1,
+        "saliency_permille": 140,
+        "x_mag_nominal_count_ratio_milli": 8770,
+        "x_mag_shift_minus_permille": 4,
+        "x_mag_shift_plus_permille": 4,
+        "x_mag_vs_quad_permille": 20,
     }
     EXPECTED_CONFIG = {
-        "identified_l_axis0_tau_us": "450",
-        "identified_l_axis1_tau_us": "460",
-        "identified_l_axis0_deadtime_ud": "200",
-        "identified_l_axis1_deadtime_ud": "201",
-        "identified_l_axis0_residual_permille": "12",
-        "identified_l_axis1_residual_permille": "14",
-        "identified_l_axis0_selected_mask": "%d" % 0x000F,
-        "identified_l_axis1_selected_mask": "%d" % 0x000F,
+        "identified_l_source": "1",
+        "identified_l_warning_flags": "0",
+        "identified_l_frequency_millihz": "1000000",
+        "identified_l_reactance_count_ratio_milli": "8600",
+        "identified_l_d_reactance_count_ratio_milli": "9200",
+        "identified_l_q_reactance_count_ratio_milli": "8000",
+        "identified_l_saliency_status": "1",
+        "identified_l_saliency_permille": "140",
+        "identified_l_iq_mean_milli_count": "-84000",
+        "identified_l_drift_permille": "40",
+        "identified_l_r_shift_minus_permille": "4",
+        "identified_l_r_shift_plus_permille": "4",
+        "identified_l_x_mag_vs_quad_permille": "20",
     }
 
-    def _emit_fit(self, driver, params) -> None:
-        driver.diagnostics.active.handle_inductance_fit({"oid": driver.oid, **params})
+    def _emit_run(self, driver, params=None) -> None:
+        payload = self.RUN if params is None else params
+        driver.diagnostics.active.handle_inductance_run({"oid": driver.oid, **payload})
 
-    def test_complete_fit_replies_are_folded_and_persisted(self):
+    def _emit_frame(self, driver, params=None) -> None:
+        payload = self.FRAME if params is None else params
+        driver.diagnostics.active.handle_inductance_frame(
+            {"oid": driver.oid, **payload}
+        )
+
+    def _emit_estimate(self, driver, params=None) -> None:
+        payload = self.ESTIMATE if params is None else params
+        driver.diagnostics.active.handle_inductance_estimate(
+            {"oid": driver.oid, **payload}
+        )
+
+    def test_complete_replies_are_folded_and_persisted(self):
         driver = make_driver()
         configfile = MockConfigFile()
         driver.printer._objects["configfile"] = configfile
         result = complete_commission_result()
 
         def drive_success(_args):
-            self._emit_fit(driver, self.AXIS1_FIT)
-            self._emit_fit(driver, self.AXIS0_FIT)
+            self._emit_frame(driver)
+            self._emit_run(driver)
+            self._emit_estimate(driver)
             driver.commissioning.result = result
             driver.commissioning.done = True
 
@@ -1091,18 +1126,20 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
         for config_key, expected in self.EXPECTED_CONFIG.items():
             self.assertEqual(configfile.values[(driver.name, config_key)], expected)
         last_evidence = driver.diagnostics.active.last_inductance_evidence(driver.oid)
-        self.assertEqual(last_evidence["fits"][0]["tau_us"], 450)
-        self.assertEqual(last_evidence["fits"][1]["tau_us"], 460)
+        self.assertEqual(last_evidence["run"]["realized_frequency_millihz"], 1_000_000)
+        self.assertEqual(last_evidence["frame"]["iq_mean_milli_count"], -84_000)
+        self.assertEqual(last_evidence["estimate"]["x_average_count_ratio_milli"], 8600)
         self.assertNotIn(driver.oid, driver.diagnostics.active.inductance_cache)
 
-    def test_partial_fit_cache_folds_nothing_and_clears(self):
+    def test_partial_cache_folds_nothing_and_clears(self):
         driver = make_driver()
         configfile = MockConfigFile()
         driver.printer._objects["configfile"] = configfile
         result = complete_commission_result()
 
         def drive_partial_success(_args):
-            self._emit_fit(driver, self.AXIS0_FIT)
+            self._emit_run(driver)
+            self._emit_frame(driver)
             driver.commissioning.result = result
             driver.commissioning.done = True
 
@@ -1122,17 +1159,16 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
 
     def test_failed_and_timeout_commission_clear_inductance_cache(self):
         def drive_failure(driver):
-            driver.diagnostics.active.handle_inductance_fit(
-                {"oid": driver.oid, **self.AXIS0_FIT}
-            )
+            self._emit_run(driver)
             driver.commissioning.error_code = 19
 
         for label, sender in (("failure", drive_failure), ("timeout", None)):
             with self.subTest(label=label):
                 driver = make_driver()
                 driver.diagnostics.active.inductance_cache[driver.oid] = {
-                    "fits": {0: dict(self.AXIS0_FIT), 1: dict(self.AXIS1_FIT)},
-                    "points": {},
+                    "run": dict(self.RUN),
+                    "frame": dict(self.FRAME),
+                    "estimate": dict(self.ESTIMATE),
                 }
                 if sender is not None:
                     driver.protocol.commands.commission.send = lambda _args: sender(
