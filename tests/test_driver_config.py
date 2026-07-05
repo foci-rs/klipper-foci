@@ -517,6 +517,35 @@ def test_parse_driver_config_allows_current_filters_up_to_six_khz():
     assert parsed.flux_filter_hz == 6000
 
 
+def test_parse_driver_config_leaves_omitted_filters_unset_for_firmware_auto():
+    _printer, _chips, _sections, config = make_foci_config()
+
+    parsed = parse_driver_config(config)
+
+    assert parsed.velocity_filter_hz is None
+    assert parsed.torque_filter_hz is None
+    assert parsed.position_filter_hz is None
+    assert parsed.flux_filter_hz is None
+
+
+def test_parse_driver_config_preserves_explicit_zero_filter_disable():
+    _printer, _chips, _sections, config = make_foci_config(
+        foci_values={
+            "velocity_filter_hz": 0,
+            "torque_filter_hz": 0,
+            "position_filter_hz": 0,
+            "flux_filter_hz": 0,
+        }
+    )
+
+    parsed = parse_driver_config(config)
+
+    assert parsed.velocity_filter_hz == 0
+    assert parsed.torque_filter_hz == 0
+    assert parsed.position_filter_hz == 0
+    assert parsed.flux_filter_hz == 0
+
+
 def test_parse_driver_config_keeps_motion_filters_capped_at_one_khz():
     for option in ("velocity_filter_hz", "position_filter_hz"):
         _printer, _chips, _sections, config = make_foci_config(
@@ -635,7 +664,7 @@ def test_validate_runtime_config_returns_commissioned_active_gains():
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
                 "identified_ringing_count": 7,
-                "identified_bandwidth_hz": 25,
+                "identified_bandwidth_hz": 1600,
                 "commissioned_velocity_p": 1100,
                 "commissioned_velocity_i": 3,
                 "commissioned_position_p": 600,
@@ -657,11 +686,40 @@ def test_validate_runtime_config_returns_commissioned_active_gains():
         "position_p": 600,
         "position_i": 4,
         "velocity_limit": 300000,
-        "velocity_filter_hz": 0,
-        "torque_filter_hz": 0,
+        "velocity_filter_hz": None,
+        "torque_filter_hz": None,
         "position_filter_hz": 200,
-        "flux_filter_hz": 0,
+        "flux_filter_hz": None,
     }
+
+
+def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable():
+    result = validate_runtime_config(
+        parsed_config_with(
+            {
+                "autotune_status": "commissioned",
+                "pid_flux_p": 256,
+                "pid_flux_i": 26,
+                "pid_torque_p": 257,
+                "pid_torque_i": 27,
+                "identified_lambda_us": 12,
+                "identified_theta_e_us": 160,
+                "identified_ringing_count": 7,
+                "identified_bandwidth_hz": 1600,
+                "commissioned_velocity_p": 1100,
+                "commissioned_velocity_i": 3,
+                "commissioned_position_p": 600,
+                "commissioned_position_i": 4,
+                "commissioned_velocity_limit": 300000,
+                "torque_filter_hz": 0,
+                "flux_filter_hz": 0,
+            }
+        )
+    )
+
+    assert result.runtime_status == "commissioned"
+    assert result.active_gains["torque_filter_hz"] == 0
+    assert result.active_gains["flux_filter_hz"] == 0
 
 
 def test_validate_runtime_config_returns_tuned_active_gains():
@@ -676,7 +734,7 @@ def test_validate_runtime_config_returns_tuned_active_gains():
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
                 "identified_ringing_count": 7,
-                "identified_bandwidth_hz": 25,
+                "identified_bandwidth_hz": 1600,
                 "pid_velocity_p": 1100,
                 "pid_velocity_i": 3,
                 "pid_position_p": 600,
@@ -698,9 +756,9 @@ def test_validate_runtime_config_returns_tuned_active_gains():
         "position_p": 600,
         "position_i": 4,
         "velocity_limit": 300000,
-        "velocity_filter_hz": 0,
-        "torque_filter_hz": 0,
-        "position_filter_hz": 0,
+        "velocity_filter_hz": None,
+        "torque_filter_hz": None,
+        "position_filter_hz": None,
         "flux_filter_hz": 100,
     }
 

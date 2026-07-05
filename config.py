@@ -38,10 +38,10 @@ class FociDriverConfig:
     pid_flux_i: int | None
     pid_torque_p: int | None
     pid_torque_i: int | None
-    velocity_filter_hz: int
-    torque_filter_hz: int
-    position_filter_hz: int
-    flux_filter_hz: int
+    velocity_filter_hz: int | None
+    torque_filter_hz: int | None
+    position_filter_hz: int | None
+    flux_filter_hz: int | None
     pid_position_p: int | None
     pid_position_i: int | None
     pid_velocity_p: int | None
@@ -160,10 +160,10 @@ class FociControlSettings:
     pid_flux_i: int | None
     pid_torque_p: int | None
     pid_torque_i: int | None
-    velocity_filter_hz: int
-    torque_filter_hz: int
-    position_filter_hz: int
-    flux_filter_hz: int
+    velocity_filter_hz: int | None
+    torque_filter_hz: int | None
+    position_filter_hz: int | None
+    flux_filter_hz: int | None
     pid_position_p: int | None
     pid_position_i: int | None
     pid_velocity_p: int | None
@@ -208,7 +208,7 @@ class RuntimeValidationResult:
     """Accepted persisted runtime state derived from driver config."""
 
     runtime_status: RuntimeStatus
-    active_gains: dict[str, int] | None
+    active_gains: dict[str, int | None] | None
 
 
 def _validate_complete_group(config, section_name, label, values) -> None:
@@ -228,7 +228,9 @@ def _validate_complete_group(config, section_name, label, values) -> None:
 
 
 def _filter_hz(config, section_name, option, max_hz):
-    value = config.getint(option, 0, minval=0, maxval=max_hz)
+    value = config.getint(option, None, minval=0, maxval=max_hz)
+    if value is None:
+        return None
     if value != 0 and value < FILTER_MIN_HZ:
         raise config.error(
             "%s must be 0 (disabled) or %d..%d in [%s]"

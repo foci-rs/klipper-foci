@@ -249,7 +249,7 @@ def test_configure_startup_skips_unset_optional_payloads():
         encoder_ppr=1000,
         encoder_reversed=False,
         pid_gains=None,
-        filter_hz={"velocity": 0, "torque": 0, "position": 0, "flux": 0},
+        filter_hz={"velocity": None, "torque": None, "position": None, "flux": None},
         position_gains=None,
         velocity_feedforward=(False, 1),
         velocity_limit=None,
@@ -263,6 +263,57 @@ def test_configure_startup_skips_unset_optional_payloads():
         ("set_encoder_dir", [driver.oid, 0, 0]),
     ]
     assert driver.state.adc_vm_offset_raw == 33662
+
+
+def test_configure_startup_sends_explicit_zero_filter_disables():
+    driver = make_driver()
+    commands = driver.protocol.commands
+    calls = install_recording_commands(
+        commands,
+        [
+            "set_current",
+            "set_voltage_limit",
+            "query_adc_vm_offset",
+            "set_encoder",
+            "set_encoder_dir",
+            "set_velocity_filter",
+            "set_torque_filter",
+            "set_position_filter",
+            "set_flux_filter",
+        ],
+        responses={
+            "query_adc_vm_offset": {
+                "offset_raw": 33662,
+                "sample_count": 8,
+                "status": 0,
+            },
+        },
+    )
+
+    driver.protocol.configure_startup(
+        current_ma=800,
+        voltage_limit=16000,
+        channel=0,
+        encoder_ppr=1000,
+        encoder_reversed=False,
+        pid_gains=None,
+        filter_hz={"velocity": 0, "torque": 0, "position": 0, "flux": 0},
+        position_gains=None,
+        velocity_feedforward=(False, 1),
+        velocity_limit=None,
+    )
+
+    assert calls == [
+        ("set_current", [driver.oid, 800]),
+        ("set_voltage_limit", [driver.oid, 16000]),
+        ("query_adc_vm_offset", [driver.oid]),
+        ("set_encoder", [driver.oid, 0, 1000]),
+        ("set_encoder_dir", [driver.oid, 0, 0]),
+        ("set_velocity_filter", [driver.oid, 0]),
+        ("set_torque_filter", [driver.oid, 0]),
+        ("set_position_filter", [driver.oid, 0]),
+        ("set_flux_filter", [driver.oid, 0]),
+    ]
 
 
 def test_configure_startup_requires_runtime_adc_vm_offset():

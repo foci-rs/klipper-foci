@@ -337,6 +337,28 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         self.assertIn("r_count_milli=1700 l_count_micro=3300", gcmd.last_info)
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
 
+    def test_commission_success_active_gains_leave_omitted_current_filters_unset(
+        self,
+    ):
+        driver = make_driver()
+        result = complete_commission_result()
+        result["bandwidth_hz"] = 1600
+        driver.printer._objects["configfile"] = MockConfigFile()
+
+        class CompleteCommissionCommand:
+            def send(self, _args):
+                driver.commissioning.result = result
+                driver.commissioning.done = True
+
+        driver.protocol.commands.commission = CompleteCommissionCommand()
+
+        driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+        self.assertIsNone(driver.state.active_gains["velocity_filter_hz"])
+        self.assertIsNone(driver.state.active_gains["torque_filter_hz"])
+        self.assertIsNone(driver.state.active_gains["position_filter_hz"])
+        self.assertIsNone(driver.state.active_gains["flux_filter_hz"])
+
     def test_commission_persists_resistance_count_space_fields(self):
         driver = make_driver()
         configfile = MockConfigFile()

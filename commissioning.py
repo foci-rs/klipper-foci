@@ -543,10 +543,10 @@ class CommissioningWorkflow:
                 "position_p": result["fallback_position_p"],
                 "position_i": result["fallback_position_i"],
                 "velocity_limit": result["fallback_velocity_limit"],
-                "velocity_filter_hz": 0,
-                "torque_filter_hz": 0,
-                "position_filter_hz": 0,
-                "flux_filter_hz": 0,
+                "velocity_filter_hz": self.driver.settings.velocity_filter_hz,
+                "torque_filter_hz": self.driver.settings.torque_filter_hz,
+                "position_filter_hz": self.driver.settings.position_filter_hz,
+                "flux_filter_hz": self.driver.settings.flux_filter_hz,
             }
             self.driver.state.runtime_status = "commissioned"
             enable_line.motor_enable(toolhead.get_last_move_time())

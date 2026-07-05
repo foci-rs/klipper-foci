@@ -116,8 +116,8 @@ class TestRuntimeFiltersCommand(unittest.TestCase):
         self.assertEqual(d.protocol.commands.set_flux_filter.last_args, [d.oid, 1600])
         self.assertEqual(d.settings.torque_filter_hz, 3000)
         self.assertEqual(d.settings.flux_filter_hz, 1600)
-        self.assertEqual(d.config.torque_filter_hz, 0)
-        self.assertEqual(d.config.flux_filter_hz, 0)
+        self.assertIsNone(d.config.torque_filter_hz)
+        self.assertIsNone(d.config.flux_filter_hz)
         self.assertIn("torque=3000Hz", gcmd.last_info)
         self.assertIn("flux=1600Hz", gcmd.last_info)
 

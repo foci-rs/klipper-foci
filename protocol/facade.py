@@ -286,7 +286,7 @@ class FociProtocol:
         encoder_ppr: int,
         encoder_reversed: bool,
         pid_gains: tuple[int, int, int, int] | None,
-        filter_hz: dict[str, int],
+        filter_hz: dict[str, int | None],
         position_gains: tuple[int, int, int, int] | None,
         velocity_feedforward: tuple[bool, int],
         velocity_limit: int | None,
@@ -299,13 +299,13 @@ class FociProtocol:
         self.set_encoder_direction(channel, encoder_reversed)
         if pid_gains is not None:
             self.set_pid_gains(*pid_gains)
-        if filter_hz.get("velocity", 0) > 0:
+        if filter_hz.get("velocity") is not None:
             self.set_velocity_filter(filter_hz["velocity"])
-        if filter_hz.get("torque", 0) > 0:
+        if filter_hz.get("torque") is not None:
             self.set_torque_filter(filter_hz["torque"])
-        if filter_hz.get("position", 0) > 0:
+        if filter_hz.get("position") is not None:
             self.set_position_filter(filter_hz["position"])
-        if filter_hz.get("flux", 0) > 0:
+        if filter_hz.get("flux") is not None:
             self.set_flux_filter(filter_hz["flux"])
         if position_gains is not None:
             self.set_position_gains(*position_gains)
@@ -318,7 +318,9 @@ class FociProtocol:
     def set_auto_calibrate_on_enable(self, allowed: bool) -> None:
         self.commands.set_auto_calibrate_on_enable.send([self.driver.oid, int(allowed)])
 
-    def preload_active_gains(self, gains: dict[str, int], voltage_limit: int) -> None:
+    def preload_active_gains(
+        self, gains: dict[str, int | None], voltage_limit: int
+    ) -> None:
         self.set_voltage_limit(voltage_limit)
         self.set_pid_gains(
             gains["flux_p"],
@@ -341,8 +343,8 @@ class FociProtocol:
             ("position", self.set_position_filter),
             ("flux", self.set_flux_filter),
         ):
-            hz = gains.get("%s_filter_hz" % filter_name, 0)
-            if hz > 0:
+            hz = gains.get("%s_filter_hz" % filter_name)
+            if hz is not None:
                 setter(hz)
 
     def run_calibration(self) -> None:

@@ -402,7 +402,7 @@ class RegisterDumpWorkflow:
     def _format_gain_comparison(
         self,
         live_gains: dict[str, int | None],
-        active_gains: dict[str, int] | None,
+        active_gains: dict[str, int | None] | None,
     ) -> list[str]:
         if active_gains is None:
             return ["  active_gains unavailable; live/host comparison skipped"]
