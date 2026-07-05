@@ -3,6 +3,7 @@
 import unittest
 
 from tests.mocks import (
+    CommandError,
     MockGCmd,
     SAMPLE_ACTIVE_GAINS,
     make_driver,
@@ -102,6 +103,50 @@ class TestDebugGainsCommand(unittest.TestCase):
         self.assertEqual(d.state.active_gains["flux_i"], 162)
         self.assertEqual(d.state.active_gains["torque_p"], 706)
         self.assertEqual(d.state.active_gains["torque_i"], 162)
+
+
+class TestRuntimeFiltersCommand(unittest.TestCase):
+    def test_sets_current_filters_without_persisting(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"TORQUE_HZ": 3000, "FLUX_HZ": 1600})
+        d.controls.set_filters(gcmd)
+
+        self.assertEqual(d.protocol.commands.set_torque_filter.last_args, [d.oid, 3000])
+        self.assertEqual(d.protocol.commands.set_flux_filter.last_args, [d.oid, 1600])
+        self.assertEqual(d.settings.torque_filter_hz, 3000)
+        self.assertEqual(d.settings.flux_filter_hz, 1600)
+        self.assertEqual(d.config.torque_filter_hz, 0)
+        self.assertEqual(d.config.flux_filter_hz, 0)
+        self.assertIn("torque=3000Hz", gcmd.last_info)
+        self.assertIn("flux=1600Hz", gcmd.last_info)
+
+    def test_allows_disabling_current_filters(self):
+        d = make_driver()
+        d.settings.torque_filter_hz = 1200
+        d.settings.flux_filter_hz = 800
+
+        d.controls.set_filters(MockGCmd({"TORQUE_HZ": 0, "FLUX_HZ": 0}))
+
+        self.assertEqual(d.protocol.commands.set_torque_filter.last_args, [d.oid, 0])
+        self.assertEqual(d.protocol.commands.set_flux_filter.last_args, [d.oid, 0])
+        self.assertEqual(d.settings.torque_filter_hz, 0)
+        self.assertEqual(d.settings.flux_filter_hz, 0)
+
+    def test_keeps_motion_filter_cap_at_one_khz(self):
+        d = make_driver()
+
+        with self.assertRaisesRegex(CommandError, "VELOCITY_HZ"):
+            d.controls.set_filters(MockGCmd({"VELOCITY_HZ": 1001}))
+
+        with self.assertRaisesRegex(CommandError, "POSITION_HZ"):
+            d.controls.set_filters(MockGCmd({"POSITION_HZ": 1001}))
+
+    def test_rejects_missing_filter_parameter(self):
+        d = make_driver()
+
+        with self.assertRaisesRegex(CommandError, "at least one"):
+            d.controls.set_filters(MockGCmd({}))
 
 
 class TestVelocityFeedforwardCommand(unittest.TestCase):

@@ -83,6 +83,13 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Set FOCI inner current gains for bringup debugging",
     ),
     GcodeCommandSpec(
+        "FOCI_SET_FILTERS",
+        "default",
+        "controls",
+        "set_filters",
+        "Set FOCI runtime biquad low-pass filters for bringup debugging",
+    ),
+    GcodeCommandSpec(
         "FOCI_SET_CURRENT",
         "default",
         "controls",

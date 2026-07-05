@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .config import CURRENT_FILTER_MAX_HZ, FILTER_MIN_HZ, MOTION_FILTER_MAX_HZ
 from .constants import MAX_DIAGNOSTIC_VOLTAGE_LIMIT, MIN_RAW_VOLTAGE_LIMIT
 
 
@@ -89,6 +90,65 @@ class ControlsWorkflow:
                 torque_i * 2**-8,
                 torque_i,
             )
+        )
+
+    def set_filters(self, gcmd) -> None:
+        """Set runtime biquad low-pass filters for live bringup debugging.
+
+        Values are cutoff frequencies in Hz. `0` disables the corresponding
+        filter. Values are applied immediately and kept in memory for the
+        current Klipper session, but are not persisted to printer.cfg.
+        """
+        filters = (
+            (
+                "VELOCITY_HZ",
+                "velocity",
+                "velocity_filter_hz",
+                MOTION_FILTER_MAX_HZ,
+                self.driver.protocol.set_velocity_filter,
+            ),
+            (
+                "TORQUE_HZ",
+                "torque",
+                "torque_filter_hz",
+                CURRENT_FILTER_MAX_HZ,
+                self.driver.protocol.set_torque_filter,
+            ),
+            (
+                "POSITION_HZ",
+                "position",
+                "position_filter_hz",
+                MOTION_FILTER_MAX_HZ,
+                self.driver.protocol.set_position_filter,
+            ),
+            (
+                "FLUX_HZ",
+                "flux",
+                "flux_filter_hz",
+                CURRENT_FILTER_MAX_HZ,
+                self.driver.protocol.set_flux_filter,
+            ),
+        )
+        applied = []
+
+        for param, label, attr, max_hz, setter in filters:
+            value = self._get_filter_hz(gcmd, param, max_hz)
+            if value is None:
+                continue
+            setter(value)
+            setattr(self.driver.settings, attr, value)
+            if self.driver.state.active_gains is not None:
+                self.driver.state.active_gains[attr] = value
+            applied.append("%s=%dHz" % (label, value))
+
+        if not applied:
+            raise gcmd.error(
+                "FOCI %s filters: specify at least one of "
+                "VELOCITY_HZ, TORQUE_HZ, POSITION_HZ, FLUX_HZ" % self.driver.name
+            )
+
+        gcmd.respond_info(
+            "FOCI %s filters set: %s" % (self.driver.name, " ".join(applied))
         )
 
     def set_current(self, gcmd) -> None:
@@ -410,3 +470,14 @@ class ControlsWorkflow:
         """Read a floating-point gain parameter and convert it to raw Q8.8."""
         value = gcmd.get_float(key, minval=0.0, maxval=32767.0 / 256.0)
         return min(32767, int(value * 256.0 + 0.5))
+
+    def _get_filter_hz(self, gcmd, key: str, max_hz: int) -> int | None:
+        """Read an optional filter cutoff parameter in Hz."""
+        if gcmd.get(key, None) is None:
+            return None
+        value = gcmd.get_int(key, minval=0, maxval=max_hz)
+        if value != 0 and value < FILTER_MIN_HZ:
+            raise gcmd.error(
+                "%s must be 0 (disabled) or %d..%d" % (key, FILTER_MIN_HZ, max_hz)
+            )
+        return value

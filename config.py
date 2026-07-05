@@ -14,6 +14,9 @@ from .constants import (
 from .state import RuntimeStatus
 
 STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
+FILTER_MIN_HZ = 10
+MOTION_FILTER_MAX_HZ = 1000
+CURRENT_FILTER_MAX_HZ = 6000
 
 
 @dataclass
@@ -224,11 +227,12 @@ def _validate_complete_group(config, section_name, label, values) -> None:
         )
 
 
-def _filter_hz(config, section_name, option):
-    value = config.getint(option, 0, minval=0, maxval=1000)
-    if value != 0 and value < 10:
+def _filter_hz(config, section_name, option, max_hz):
+    value = config.getint(option, 0, minval=0, maxval=max_hz)
+    if value != 0 and value < FILTER_MIN_HZ:
         raise config.error(
-            "%s must be 0 (disabled) or 10..1000 in [%s]" % (option, section_name)
+            "%s must be 0 (disabled) or %d..%d in [%s]"
+            % (option, FILTER_MIN_HZ, max_hz, section_name)
         )
     return value
 
@@ -264,10 +268,16 @@ def parse_driver_config(config) -> FociDriverConfig:
         [pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i],
     )
 
-    velocity_filter_hz = _filter_hz(config, name, "velocity_filter_hz")
-    torque_filter_hz = _filter_hz(config, name, "torque_filter_hz")
-    position_filter_hz = _filter_hz(config, name, "position_filter_hz")
-    flux_filter_hz = _filter_hz(config, name, "flux_filter_hz")
+    velocity_filter_hz = _filter_hz(
+        config, name, "velocity_filter_hz", MOTION_FILTER_MAX_HZ
+    )
+    torque_filter_hz = _filter_hz(
+        config, name, "torque_filter_hz", CURRENT_FILTER_MAX_HZ
+    )
+    position_filter_hz = _filter_hz(
+        config, name, "position_filter_hz", MOTION_FILTER_MAX_HZ
+    )
+    flux_filter_hz = _filter_hz(config, name, "flux_filter_hz", CURRENT_FILTER_MAX_HZ)
 
     pid_position_p = config.getint("pid_position_p", None, minval=0, maxval=32767)
     pid_position_i = config.getint("pid_position_i", None, minval=0, maxval=32767)

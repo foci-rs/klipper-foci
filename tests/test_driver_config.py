@@ -506,6 +506,27 @@ def test_parse_driver_config_rejects_low_filter_hz():
         parse_driver_config(config)
 
 
+def test_parse_driver_config_allows_current_filters_up_to_six_khz():
+    _printer, _chips, _sections, config = make_foci_config(
+        foci_values={"torque_filter_hz": 6000, "flux_filter_hz": 6000}
+    )
+
+    parsed = parse_driver_config(config)
+
+    assert parsed.torque_filter_hz == 6000
+    assert parsed.flux_filter_hz == 6000
+
+
+def test_parse_driver_config_keeps_motion_filters_capped_at_one_khz():
+    for option in ("velocity_filter_hz", "position_filter_hz"):
+        _printer, _chips, _sections, config = make_foci_config(
+            foci_values={option: 1001}
+        )
+
+        with pytest.raises(CommandError, match="%s above maximum" % option):
+            parse_driver_config(config)
+
+
 def test_parse_driver_config_rejects_incomplete_inner_pid_group():
     _printer, _chips, _sections, config = make_foci_config(
         foci_values={"pid_flux_p": 256}
