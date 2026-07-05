@@ -56,6 +56,16 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     29: "resistance unsupported profile",
     30: "resistance parameter out of bounds",
     31: "resistance measurement envelope unsupported",
+    32: "inductance open-loop velocity timeout",
+    33: "inductance AC capture rejected",
+    34: "inductance encoder motion during AC capture",
+    35: "inductance capture window incomplete",
+    36: "inductance realized frequency out of range",
+    37: "inductance quadrature current too low",
+    38: "inductance missing resistance evidence",
+    39: "inductance reactance calculation invalid",
+    40: "inductance drift calculation invalid",
+    41: "inductance saliency calculation invalid",
 }
 
 # Error codes for which the failure message should point at a dedicated
@@ -104,6 +114,7 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     29: "transport delay too large",
     30: "corrected inductance fit point",
     31: "corrected inductance fit correction",
+    32: "inductance frequency out of range",
 }
 
 
@@ -186,6 +197,14 @@ def format_commission_detail(detail: dict) -> str:
             point,
             value1,
             _signed_u32(value2),
+        )
+    if code == 32:
+        return "%s: %s (realized_frequency_millihz=%d, elapsed_us=%d, samples=%d)" % (
+            phase_name,
+            name,
+            value0,
+            value1,
+            value2,
         )
     if code in (23, 24):
         return "%s: %s (r_count_milli=%d, limit=%d)" % (
