@@ -114,6 +114,10 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn(2, HomingWorkflow.CALIBRATION_ERROR_NAMES)
         self.assertIn("CHIP_RESET_DETECTED", HomingWorkflow.CALIBRATION_ERROR_NAMES[2])
 
+    def test_calibration_error_names_includes_encoder_fault(self):
+        self.assertIn(8, HomingWorkflow.CALIBRATION_ERROR_NAMES)
+        self.assertIn("ENCODER_FAULT", HomingWorkflow.CALIBRATION_ERROR_NAMES[8])
+
     def test_commission_error_names_includes_code_18(self):
         self.assertIn(18, COMMISSION_ERROR_NAMES)
         self.assertIn("CHIP_RESET_DETECTED", COMMISSION_ERROR_NAMES[18])
