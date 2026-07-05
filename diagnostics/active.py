@@ -526,8 +526,10 @@ class ActiveDiagnostics:
         cached["run"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance run: source=%d status=%d warnings=0x%x"
-            " ud=%d f=%dmHz samples=%d encoder_delta=%d status_flags=0x%08x"
+            "FOCI %s inductance run: source=%d status=%d warning_flags=%d"
+            " ud_count=%d realized_frequency_millihz=%d elapsed_us=%d"
+            " openloop_phi_delta_counts=%d sample_count=%d"
+            " encoder_delta_counts=%d status_flags_or=0x%08x"
             % (
                 self.driver.name,
                 params["source"],
@@ -535,6 +537,8 @@ class ActiveDiagnostics:
                 params["warning_flags"],
                 params["ud_count"],
                 params["realized_frequency_millihz"],
+                params["elapsed_us"],
+                params["openloop_phi_delta_counts"],
                 params["sample_count"],
                 params["encoder_delta_counts"],
                 params["status_flags_or"],
@@ -547,6 +551,22 @@ class ActiveDiagnostics:
         cached = self._ensure_inductance_cache(oid)
         cached["frame"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
+        self.driver.printer.lookup_object("gcode").respond_info(
+            "FOCI %s inductance frame: id_mean_milli_count=%d"
+            " iq_mean_milli_count=%d id_rms_milli_count=%d"
+            " iq_rms_milli_count=%d drift_permille=%d"
+            " zero_id_mean_milli_count=%d zero_iq_mean_milli_count=%d"
+            % (
+                self.driver.name,
+                params["id_mean_milli_count"],
+                params["iq_mean_milli_count"],
+                params["id_rms_milli_count"],
+                params["iq_rms_milli_count"],
+                params["drift_permille"],
+                params["zero_id_mean_milli_count"],
+                params["zero_iq_mean_milli_count"],
+            )
+        )
 
     def handle_inductance_estimate(self, params: dict) -> None:
         """Handle foci_inductance_estimate from firmware."""
@@ -555,14 +575,20 @@ class ActiveDiagnostics:
         cached["estimate"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance estimate: x_avg=%d x_d=%d x_q=%d"
-            " saliency_status=%d r_shift=%d/%d x_mag_delta=%d"
+            "FOCI %s inductance estimate: x_average_count_ratio_milli=%d"
+            " x_d_count_ratio_milli=%d x_q_count_ratio_milli=%d"
+            " saliency_status=%d saliency_permille=%d"
+            " x_mag_nominal_count_ratio_milli=%d"
+            " x_mag_shift_minus_permille=%d x_mag_shift_plus_permille=%d"
+            " x_mag_vs_quad_permille=%d"
             % (
                 self.driver.name,
                 params["x_average_count_ratio_milli"],
                 params["x_d_count_ratio_milli"],
                 params["x_q_count_ratio_milli"],
                 params["saliency_status"],
+                params["saliency_permille"],
+                params["x_mag_nominal_count_ratio_milli"],
                 params["x_mag_shift_minus_permille"],
                 params["x_mag_shift_plus_permille"],
                 params["x_mag_vs_quad_permille"],

@@ -7,6 +7,60 @@ from tests.mocks import CommandError, MockGCmd, make_driver
 
 
 class TestCurrentStepDiagnosticCommand(unittest.TestCase):
+    def test_inductance_evidence_replies_format_gcode_lines(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_inductance_run(
+            {
+                "oid": d.oid,
+                "source": 1,
+                "status": 0,
+                "warning_flags": 2,
+                "ud_count": 768,
+                "realized_frequency_millihz": 1_000_000,
+                "elapsed_us": 8000,
+                "openloop_phi_delta_counts": 524_288,
+                "sample_count": 104,
+                "encoder_delta_counts": 0,
+                "status_flags_or": 0,
+            }
+        )
+        d.diagnostics.active.handle_inductance_frame(
+            {
+                "oid": d.oid,
+                "id_mean_milli_count": 20_000,
+                "iq_mean_milli_count": -84_000,
+                "id_rms_milli_count": 5000,
+                "iq_rms_milli_count": 21_000,
+                "drift_permille": 40,
+                "zero_id_mean_milli_count": 100,
+                "zero_iq_mean_milli_count": -200,
+            }
+        )
+        d.diagnostics.active.handle_inductance_estimate(
+            {
+                "oid": d.oid,
+                "x_average_count_ratio_milli": 8600,
+                "x_d_count_ratio_milli": 9200,
+                "x_q_count_ratio_milli": 8000,
+                "saliency_status": 1,
+                "saliency_permille": 140,
+                "x_mag_nominal_count_ratio_milli": 8770,
+                "x_mag_shift_minus_permille": 4,
+                "x_mag_shift_plus_permille": 4,
+                "x_mag_vs_quad_permille": 20,
+            }
+        )
+
+        responses = d.printer.lookup_object("gcode")._responses[-3:]
+        self.assertIn("inductance run:", responses[0])
+        self.assertIn("realized_frequency_millihz=1000000", responses[0])
+        self.assertIn("inductance frame:", responses[1])
+        self.assertIn("iq_mean_milli_count=-84000", responses[1])
+        self.assertIn("drift_permille=40", responses[1])
+        self.assertIn("inductance estimate:", responses[2])
+        self.assertIn("x_average_count_ratio_milli=8600", responses[2])
+
     def test_sends_bounded_current_step_defaults(self):
         d = make_driver()
 
