@@ -44,12 +44,23 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     17: "safety envelope violation",
     18: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
     19: "resistance identification failed",
+    20: "resistance ADC not ready",
+    21: "resistance diagnostic not armed",
+    22: "resistance wrong power stage",
+    23: "resistance insufficient linear points",
+    24: "resistance thermal drift",
+    25: "resistance electrical axis mismatch",
+    26: "resistance high fit residual",
+    27: "resistance invalid motor type",
+    28: "resistance peak current exceeded",
+    29: "resistance unsupported profile",
+    30: "resistance parameter out of bounds",
 }
 
 # Error codes for which the failure message should point at a dedicated
 # troubleshooting doc instead of just the bare error name.
 TROUBLESHOOTING_DOC_LINKS: dict[int, str] = {
-    19: "docs/troubleshooting/resistance-identification.md",
+    code: "docs/troubleshooting/resistance-identification.md" for code in range(19, 31)
 }
 
 # Error codes that indicate a hard-disable fault: firmware has disabled the

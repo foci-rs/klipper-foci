@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..commissioning import format_commission_error_name
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 
 CURRENT_STEP_AXIS_CODES = {
@@ -411,7 +412,7 @@ class ActiveDiagnostics:
             "profile_version": params["profile_version"],
         }
         msg = (
-            "FOCI %s resistance run: status=%d profile_version=%d"
+            "FOCI %s resistance run: status=%d status_name=%s profile_version=%d"
             " selected_r_count_slope_milli=%d warning_flags=%d"
             " status_flags_or=0x%08x pwm_maxcnt_readback=%d"
             " bbm_readback=0x%04x dsadc_mdec_readback=0x%08x"
@@ -419,6 +420,9 @@ class ActiveDiagnostics:
             % (
                 self.driver.name,
                 params["status"],
+                format_commission_error_name(params["status"])
+                if params["status"]
+                else "ok",
                 params["profile_version"],
                 params["selected_r_count_slope_milli"],
                 params["warning_flags"],

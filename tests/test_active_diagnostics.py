@@ -418,6 +418,28 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("warning_flags=0", out)
         self.assertIn("status_flags_or=0x00080000", out)
 
+    def test_resistance_run_reply_prints_specific_failure_name(self):
+        d = make_driver()
+
+        d.diagnostics.active.handle_resistance_run(
+            {
+                "oid": d.oid,
+                "status": 23,
+                "profile_version": 2,
+                "selected_r_count_slope_milli": 0,
+                "warning_flags": 0,
+                "status_flags_or": 0,
+                "pwm_maxcnt_readback": 3999,
+                "bbm_readback": 0x00000909,
+                "dsadc_mdec_readback": 0x00080008,
+                "pwm_sv_chop_readback": 0,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("status=23", out)
+        self.assertIn("status_name=resistance insufficient linear points", out)
+
     def test_resistance_axis_reply_prints_firmware_fit_result(self):
         d = make_driver()
 

@@ -221,6 +221,27 @@ class TestResistanceIdFailed(unittest.TestCase):
         self.assertIn("docs/troubleshooting/resistance-identification.md", message)
         self.assertTrue(d.state.inhibited)
 
+    def test_commission_specific_resistance_failure_names_and_links_doc(self):
+        d = make_driver()
+        d.state.is_calibrated = True
+        d.state.inhibited = False
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        def drive_insufficient_linear_points(_args):
+            d.commissioning.error_code = 23
+            d.commissioning.last_phase_id = 5
+
+        d.protocol.commands.commission.send = drive_insufficient_linear_points
+
+        with self.assertRaises(CommandError) as ctx:
+            d.commissioning.commission(gcmd)
+
+        message = str(ctx.exception)
+        self.assertNotIn("UNKNOWN(23)", message)
+        self.assertIn("resistance insufficient linear points", message)
+        self.assertIn("docs/troubleshooting/resistance-identification.md", message)
+        self.assertTrue(d.state.inhibited)
+
 
 class TestCommissioningStateTransitions(unittest.TestCase):
     def test_commission_failure_sets_inhibited(self):
