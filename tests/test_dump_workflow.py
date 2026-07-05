@@ -377,6 +377,26 @@ def test_tuning_flag_names_failed_current_loop_evidence():
     assert "failure_reason: saturation" in output
 
 
+def test_tuning_flag_names_physical_current_gain_tier():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.identified_current_gains_source = 1
+    driver.config.identified_axis_split_source = 0
+    driver.config.identified_current_gains_tier = 4
+    driver.config.identified_current_validation_axes = 3
+    driver.config.identified_current_retry_budget_exhausted = 0
+    driver.config.identified_current_failure_reason = 0
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "current_gains_source: measured" in output
+    assert "axis_split_source: none" in output
+    assert "current_gains_tier: physical_symmetric" in output
+    assert "current_validation: flux=pass torque=pass" in output
+    assert "retry_budget_exhausted: no" in output
+    assert "failure_reason: none" in output
+
+
 def test_tuning_flag_appends_last_current_loop_run_evidence():
     driver = make_driver()
     driver.diagnostics.active.handle_current_loop_run(

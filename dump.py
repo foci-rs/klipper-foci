@@ -115,6 +115,7 @@ CURRENT_GAINS_TIER_LABELS: dict[int, str] = {
     1: "measured_symmetric",
     2: "measured_split",
     3: "default",
+    4: "physical_symmetric",
 }
 
 CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
