@@ -204,6 +204,10 @@ class TestResistanceIdFailed(unittest.TestCase):
         self.assertIn(19, COMMISSION_ERROR_NAMES)
         self.assertNotEqual(COMMISSION_ERROR_NAMES[19], "UNKNOWN(19)")
 
+    def test_commission_error_names_includes_resistance_envelope_code(self):
+        self.assertIn(31, COMMISSION_ERROR_NAMES)
+        self.assertNotEqual(COMMISSION_ERROR_NAMES[31], "UNKNOWN(31)")
+
     def test_commission_resistance_id_failed_names_and_links_doc(self):
         d = make_driver()
         d.state.is_calibrated = True
@@ -242,7 +246,8 @@ class TestResistanceIdFailed(unittest.TestCase):
 
         message = str(ctx.exception)
         self.assertNotIn("UNKNOWN(23)", message)
-        self.assertIn("resistance insufficient linear points", message)
+        self.assertIn("resistance measurement unsupported by current firmware", message)
+        self.assertIn("detail: resistance insufficient linear points", message)
         self.assertIn("docs/troubleshooting/resistance-identification.md", message)
         self.assertTrue(d.state.inhibited)
 

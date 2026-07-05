@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..commissioning import format_commission_error_name
+from ..commissioning import format_commission_error_detail_name
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 
 CURRENT_STEP_AXIS_CODES = {
@@ -420,7 +420,7 @@ class ActiveDiagnostics:
             % (
                 self.driver.name,
                 params["status"],
-                format_commission_error_name(params["status"])
+                format_commission_error_detail_name(params["status"])
                 if params["status"]
                 else "ok",
                 params["profile_version"],

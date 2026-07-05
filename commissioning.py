@@ -55,13 +55,19 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     28: "resistance peak current exceeded",
     29: "resistance unsupported profile",
     30: "resistance parameter out of bounds",
+    31: "resistance measurement envelope unsupported",
 }
 
 # Error codes for which the failure message should point at a dedicated
 # troubleshooting doc instead of just the bare error name.
 TROUBLESHOOTING_DOC_LINKS: dict[int, str] = {
-    code: "docs/troubleshooting/resistance-identification.md" for code in range(19, 31)
+    code: "docs/troubleshooting/resistance-identification.md" for code in range(19, 32)
 }
+
+# Resistance-identification failures that are not operator-remediable by
+# changing a printer setting. The firmware could not find a safe resistance
+# measurement envelope, or a safety backstop rejected the envelope it tried.
+RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31})
 
 # Error codes that indicate a hard-disable fault: firmware has disabled the
 # motor and cleared its state. The host must sync its enable line and clear
@@ -221,11 +227,23 @@ def format_inner_warning_flags(flags: int) -> str:
 
 def format_commission_error_name(code: int) -> str:
     """Render a commission status code's name, with a doc link if one exists."""
-    error_name = COMMISSION_ERROR_NAMES.get(code, "UNKNOWN(%d)" % code)
+    detail_name = format_commission_error_detail_name(code)
+    if code in RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES:
+        error_name = (
+            "resistance measurement unsupported by current firmware"
+            " (detail: %s)" % detail_name
+        )
+    else:
+        error_name = detail_name
     doc_link = TROUBLESHOOTING_DOC_LINKS.get(code)
     if doc_link is not None:
         return "%s (see %s)" % (error_name, doc_link)
     return error_name
+
+
+def format_commission_error_detail_name(code: int) -> str:
+    """Render the precise firmware status code name without operator grouping."""
+    return COMMISSION_ERROR_NAMES.get(code, "UNKNOWN(%d)" % code)
 
 
 class CommissioningWorkflow:
