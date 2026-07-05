@@ -115,6 +115,18 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     30: "corrected inductance fit point",
     31: "corrected inductance fit correction",
     32: "inductance frequency out of range",
+    33: "inductance AC capture rejected",
+}
+
+INDUCTANCE_CAPTURE_REJECT_REASON_NAMES: dict[int, str] = {
+    1: "phi interval invalid",
+    2: "zero phi delta",
+    3: "frame accumulator",
+    4: "saliency accumulator",
+    5: "first-half accumulator",
+    6: "second-half accumulator",
+    7: "elapsed interpolation",
+    8: "saliency bracket invariant",
 }
 
 
@@ -126,6 +138,20 @@ def _decode_coil_point(packed: int) -> tuple[str, int]:
 
 def _signed_u32(value: int) -> int:
     return value if value < 0x8000_0000 else value - 0x1_0000_0000
+
+
+def _signed_u16(value: int) -> int:
+    value &= 0xFFFF
+    return value if value < 0x8000 else value - 0x1_0000
+
+
+def _decode_u16_pair(packed: int) -> tuple[int, int]:
+    return (packed >> 16) & 0xFFFF, packed & 0xFFFF
+
+
+def _decode_i16_pair(packed: int) -> tuple[int, int]:
+    high, low = _decode_u16_pair(packed)
+    return _signed_u16(high), _signed_u16(low)
 
 
 def format_commission_detail(detail: dict) -> str:
@@ -203,6 +229,61 @@ def format_commission_detail(detail: dict) -> str:
             phase_name,
             name,
             value0,
+            value1,
+            value2,
+        )
+    if code == 33:
+        reason = INDUCTANCE_CAPTURE_REJECT_REASON_NAMES.get(
+            value0, "reason %d" % value0
+        )
+        if value0 in (1, 2):
+            previous_phi, current_phi = _decode_u16_pair(value2)
+            return "%s: %s (reason=%s, samples=%d, previous_phi=%d, current_phi=%d)" % (
+                phase_name,
+                name,
+                reason,
+                value1,
+                previous_phi,
+                current_phi,
+            )
+        if value0 in (3, 4, 5, 6):
+            id_count, iq_count = _decode_i16_pair(value2)
+            return "%s: %s (reason=%s, samples=%d, id=%d, iq=%d)" % (
+                phase_name,
+                name,
+                reason,
+                value1,
+                id_count,
+                iq_count,
+            )
+        if value0 == 7:
+            previous_elapsed_us, current_elapsed_us = _decode_u16_pair(value2)
+            return (
+                "%s: %s (reason=%s, samples=%d, "
+                "previous_elapsed_us=%d, current_elapsed_us=%d)"
+                % (
+                    phase_name,
+                    name,
+                    reason,
+                    value1,
+                    previous_elapsed_us,
+                    current_elapsed_us,
+                )
+            )
+        if value0 == 8:
+            x_d, x_q = _decode_u16_pair(value2)
+            return "%s: %s (reason=%s, samples=%d, x_d=%d, x_q=%d)" % (
+                phase_name,
+                name,
+                reason,
+                value1,
+                x_d,
+                x_q,
+            )
+        return "%s: %s (reason=%s, samples=%d, aux=%d)" % (
+            phase_name,
+            name,
+            reason,
             value1,
             value2,
         )

@@ -96,6 +96,38 @@ def test_format_commission_detail_inductance_fit_points():
     assert "effective_ud=-358" in correction
 
 
+def test_format_commission_detail_inductance_capture_rejected():
+    phi = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 33,
+            "status": 1,
+            "value0": 2,
+            "value1": 0,
+            "value2": (1000 << 16) | 1000,
+        }
+    )
+    current = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 33,
+            "status": 1,
+            "value0": 4,
+            "value1": 0,
+            "value2": (20 << 16) | 0xFFAC,
+        }
+    )
+
+    assert "inductance AC capture rejected" in phi
+    assert "reason=zero phi delta" in phi
+    assert "samples=0" in phi
+    assert "previous_phi=1000" in phi
+    assert "current_phi=1000" in phi
+    assert "reason=saliency accumulator" in current
+    assert "id=20" in current
+    assert "iq=-84" in current
+
+
 def test_format_commission_detail_measurements():
     excitation = format_commission_detail(
         {
