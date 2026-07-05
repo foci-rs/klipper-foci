@@ -79,6 +79,8 @@ class FociMcuCommands:
         self.voltage_step_test = None
         self.resistance_test = None
         self.set_auto_calibrate_on_enable = None
+        self.dev_tmc_write_register = None
+        self.dev_tmc_read_register = None
 
     def bind(self, driver, mcu, oid: int) -> None:
         """Bind MCU command handles and response callbacks for one FOCI OID."""
@@ -222,3 +224,29 @@ class FociMcuCommands:
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
         )
         register_selftest_responses(mcu._serial, driver, oid)
+        self.dev_tmc_write_register = self._optional_lookup_command(
+            mcu,
+            "tmc_write_register oid=%c addr=%c value=%u",
+        )
+        self.dev_tmc_read_register = self._optional_lookup_query_command(
+            mcu,
+            "tmc_read_register oid=%c addr=%c",
+            "tmc_register_value oid=%c addr=%c value=%u",
+            oid=oid,
+        )
+
+    @staticmethod
+    def _optional_lookup_command(mcu, fmt: str):
+        """Return a command handle when a dev-gated MCU command exists."""
+        try:
+            return mcu.lookup_command(fmt)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _optional_lookup_query_command(mcu, send_fmt: str, recv_fmt: str, *, oid: int):
+        """Return a query handle when a dev-gated MCU command exists."""
+        try:
+            return mcu.lookup_query_command(send_fmt, recv_fmt, oid=oid)
+        except Exception:
+            return None

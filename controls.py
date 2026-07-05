@@ -111,6 +111,16 @@ class ControlsWorkflow:
             % (self.driver.name, run_current, run_ma)
         )
 
+    def tmc_write_register(self, gcmd) -> None:
+        """Write a raw TMC4671 register through dev firmware."""
+        addr = gcmd.get_int("ADDR", minval=0, maxval=0xFF)
+        value = gcmd.get_int("VALUE", minval=0, maxval=0xFFFFFFFF)
+        self.driver.protocol.dev_tmc_write_register(addr=addr, value=value)
+        gcmd.respond_info(
+            "FOCI_TMC_WRITE_REGISTER %s: addr=0x%02x value=0x%08x"
+            % (self.driver.stepper_name, addr, value)
+        )
+
     def set_velocity_feedforward(self, gcmd) -> None:
         """Set velocity feedforward multiplier for live bringup debugging."""
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)

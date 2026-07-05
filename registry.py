@@ -203,6 +203,23 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     ),
 )
 
+DEV_GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
+    GcodeCommandSpec(
+        "FOCI_TMC_READ_REGISTER",
+        "developer",
+        "diagnostics",
+        "tmc_read_register",
+        "Read a raw TMC4671 register through dev firmware",
+    ),
+    GcodeCommandSpec(
+        "FOCI_TMC_WRITE_REGISTER",
+        "developer",
+        "controls",
+        "tmc_write_register",
+        "Write a raw TMC4671 register through dev firmware",
+    ),
+)
+
 
 def mode_allows(active_mode: str, min_mode: str) -> bool:
     """Return true when `active_mode` includes `min_mode`."""

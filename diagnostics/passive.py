@@ -174,3 +174,13 @@ class PassiveDiagnostics:
             "tim5_dispatch_max_us=%s" % cycles_to_us("tim5_dispatch_max_cycles")
         )
         gcmd.respond_info(" ".join(parts))
+
+    def tmc_read_register(self, gcmd) -> None:
+        """Read a raw TMC4671 register through dev firmware."""
+        addr = gcmd.get_int("ADDR", minval=0, maxval=0xFF)
+        response = self.driver.protocol.dev_tmc_read_register(addr=addr)
+        value = int(response["value"])
+        gcmd.respond_info(
+            "FOCI_TMC_READ_REGISTER %s: addr=0x%02x value=0x%08x value=%d"
+            % (self.driver.stepper_name, addr, value, value)
+        )
