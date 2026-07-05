@@ -374,7 +374,6 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         d.diagnostics.active.handle_resistance_profile(
             {
                 "oid": d.oid,
-                "profile_version": 1,
                 "pwm_maxcnt": 3999,
                 "bbm_h": 9,
                 "bbm_l": 9,
@@ -388,7 +387,6 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         )
 
         out = d.printer.lookup_object("gcode")._responses[-1]
-        self.assertIn("profile_version=1", out)
         self.assertIn("pwm_maxcnt=3999", out)
         self.assertIn("bbm_h=9", out)
         self.assertIn("bbm_l=9", out)
@@ -401,7 +399,6 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
             {
                 "oid": d.oid,
                 "status": 0,
-                "profile_version": 1,
                 "selected_r_count_slope_milli": 1042,
                 "warning_flags": 0,
                 "status_flags_or": 0x00080000,
@@ -425,7 +422,6 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
             {
                 "oid": d.oid,
                 "status": 23,
-                "profile_version": 2,
                 "selected_r_count_slope_milli": 0,
                 "warning_flags": 0,
                 "status_flags_or": 0,

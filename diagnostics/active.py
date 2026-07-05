@@ -374,14 +374,13 @@ class ActiveDiagnostics:
         exactly as reported. The host performs no interpretation.
         """
         msg = (
-            "FOCI %s resistance profile: profile_version=%d"
+            "FOCI %s resistance profile:"
             " pwm_maxcnt=%d bbm_h=%d bbm_l=%d"
             " dsadc_mdec_a=%d dsadc_mdec_b=%d"
             " linear_current_threshold_count=%d encoder_move_warn_counts=%d"
             " status_flags_warn_mask=0x%08x scale_metadata_validated=%d"
             % (
                 self.driver.name,
-                params["profile_version"],
                 params["pwm_maxcnt"],
                 params["bbm_h"],
                 params["bbm_l"],
@@ -409,10 +408,9 @@ class ActiveDiagnostics:
             "gain_path_count_slope_milli": params.get("gain_path_count_slope_milli", 0),
             "status_flags_or": params["status_flags_or"],
             "warning_flags": params["warning_flags"],
-            "profile_version": params["profile_version"],
         }
         msg = (
-            "FOCI %s resistance run: status=%d status_name=%s profile_version=%d"
+            "FOCI %s resistance run: status=%d status_name=%s"
             " selected_r_count_slope_milli=%d warning_flags=%d"
             " status_flags_or=0x%08x pwm_maxcnt_readback=%d"
             " bbm_readback=0x%04x dsadc_mdec_readback=0x%08x"
@@ -423,7 +421,6 @@ class ActiveDiagnostics:
                 format_commission_error_detail_name(params["status"])
                 if params["status"]
                 else "ok",
-                params["profile_version"],
                 params["selected_r_count_slope_milli"],
                 params["warning_flags"],
                 params["status_flags_or"],
@@ -711,7 +708,6 @@ class ActiveDiagnostics:
             ],
             "resistance_status_flags_or": run["status_flags_or"],
             "resistance_warning_flags": run["warning_flags"],
-            "resistance_profile_version": run["profile_version"],
         }
 
         for axis_index, axis in ((0, axis0), (1, axis1)):

@@ -124,7 +124,6 @@ def _seed_tuning_state(driver):
     driver.config.identified_current_flux_encoder_delta_counts = 0
     driver.config.identified_current_torque_encoder_delta_counts = 4
 
-    driver.config.identified_r_profile_version = 1
     driver.config.identified_r_count_slope_milli = 1042
     driver.config.identified_r_gain_path_count_slope_milli = 66752
     driver.config.identified_r_axis0_count_slope_milli = 1038

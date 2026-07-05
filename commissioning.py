@@ -621,7 +621,6 @@ class CommissioningWorkflow:
             "resistance_selected_mask_axis1",
             "identified_r_selected_mask_axis1",
         ),
-        ("resistance_profile_version", "identified_r_profile_version"),
         (
             "resistance_axis0_signed_count_slope_milli",
             "identified_r_axis0_signed_count_slope_milli",

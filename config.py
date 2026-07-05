@@ -134,7 +134,6 @@ class FociDriverConfig:
     identified_r_axis1_rmse_permille: int | None
     identified_r_selected_mask_axis0: int | None
     identified_r_selected_mask_axis1: int | None
-    identified_r_profile_version: int | None
     identified_r_axis0_signed_count_slope_milli: int | None
     identified_r_axis1_signed_count_slope_milli: int | None
     identified_r_axis0_signed_asymmetry_permille: int | None
@@ -475,9 +474,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_r_selected_mask_axis1 = config.getint(
         "identified_r_selected_mask_axis1", None, minval=0, maxval=0xFFFF
     )
-    identified_r_profile_version = config.getint(
-        "identified_r_profile_version", None, minval=0
-    )
     identified_r_axis0_signed_count_slope_milli = config.getint(
         "identified_r_axis0_signed_count_slope_milli", None
     )
@@ -677,7 +673,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_r_axis1_rmse_permille=identified_r_axis1_rmse_permille,
         identified_r_selected_mask_axis0=identified_r_selected_mask_axis0,
         identified_r_selected_mask_axis1=identified_r_selected_mask_axis1,
-        identified_r_profile_version=identified_r_profile_version,
         identified_r_axis0_signed_count_slope_milli=(
             identified_r_axis0_signed_count_slope_milli
         ),

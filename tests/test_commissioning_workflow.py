@@ -344,7 +344,6 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         result = complete_commission_result()
         result.update(
             {
-                "resistance_profile_version": 1,
                 "resistance_selected_count_slope_milli": 1042,
                 "resistance_gain_path_count_slope_milli": 66752,
                 "resistance_axis0_count_slope_milli": 1038,
@@ -422,7 +421,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 {
                     "oid": driver.oid,
                     "status": 0,
-                    "profile_version": 3,
                     "selected_r_count_slope_milli": 1042,
                     "gain_path_count_slope_milli": 66752,
                     "warning_flags": 0,
@@ -485,10 +483,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 (driver.name, "identified_r_gain_path_count_slope_milli")
             ],
             "66752",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_profile_version")],
-            "3",
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_status_flags_or")],
@@ -593,7 +587,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 {
                     "oid": driver.oid,
                     "status": 0,
-                    "profile_version": 3,
                     "selected_r_count_slope_milli": 1042,
                     "gain_path_count_slope_milli": 66752,
                     "warning_flags": 0,
@@ -667,7 +660,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             {
                 "oid": driver.oid,
                 "status": 0,
-                "profile_version": 3,
                 "selected_r_count_slope_milli": 1042,
                 "gain_path_count_slope_milli": 0,
                 "warning_flags": 0,
@@ -751,7 +743,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             {
                 "oid": driver.oid,
                 "status": 0,
-                "profile_version": 3,
                 "selected_r_count_slope_milli": 9999,
                 "gain_path_count_slope_milli": 0,
                 "warning_flags": 0,
@@ -813,7 +804,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 {
                     "oid": driver.oid,
                     "status": 0,
-                    "profile_version": 3,
                     "selected_r_count_slope_milli": 1042,
                     "gain_path_count_slope_milli": 66752,
                     "warning_flags": 0,

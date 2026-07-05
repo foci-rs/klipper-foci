@@ -139,7 +139,6 @@ CONFIG_FIELD_NAMES = {
     "identified_r_axis1_rmse_permille",
     "identified_r_selected_mask_axis0",
     "identified_r_selected_mask_axis1",
-    "identified_r_profile_version",
     "identified_r_axis0_signed_count_slope_milli",
     "identified_r_axis1_signed_count_slope_milli",
     "identified_r_axis0_signed_asymmetry_permille",

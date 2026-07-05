@@ -137,7 +137,6 @@ CURRENT_VALIDATION_AXIS_TORQUE = 0x02
 # Firmware-owned resistance-identification evidence (count-space, no
 # host-side fitting). Displayed as persisted; not recomputed here.
 RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
-    "identified_r_profile_version",
     "identified_r_count_slope_milli",
     "identified_r_gain_path_count_slope_milli",
     "identified_r_axis0_count_slope_milli",

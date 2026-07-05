@@ -682,7 +682,6 @@ def test_saved_resistance_identification_fields_are_accepted_on_restart():
             "identified_r_axis1_rmse_permille": 9,
             "identified_r_selected_mask_axis0": 0b11111000,
             "identified_r_selected_mask_axis1": 0b11110000,
-            "identified_r_profile_version": 1,
             "identified_r_axis0_signed_count_slope_milli": 1041,
             "identified_r_axis1_signed_count_slope_milli": 1047,
             "identified_r_axis0_signed_asymmetry_permille": 12,
@@ -706,7 +705,6 @@ def test_saved_resistance_identification_fields_are_accepted_on_restart():
     assert driver.config.identified_r_axis1_rmse_permille == 9
     assert driver.config.identified_r_selected_mask_axis0 == 0b11111000
     assert driver.config.identified_r_selected_mask_axis1 == 0b11110000
-    assert driver.config.identified_r_profile_version == 1
     assert driver.config.identified_r_axis0_signed_count_slope_milli == 1041
     assert driver.config.identified_r_axis1_signed_count_slope_milli == 1047
     assert driver.config.identified_r_axis0_signed_asymmetry_permille == 12
@@ -732,7 +730,6 @@ def test_resistance_identification_fields_default_to_none():
 
     assert driver.config.identified_r_count_slope_milli is None
     assert driver.config.identified_r_gain_path_count_slope_milli is None
-    assert driver.config.identified_r_profile_version is None
     assert driver.config.identified_r_warning_flags is None
 
 
