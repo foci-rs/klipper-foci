@@ -68,6 +68,9 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     41: "inductance saliency calculation invalid",
     42: "sustained hold validation failed",
     43: "closed-loop entry stability failed",
+    44: "electrical model had no usable samples",
+    45: "electrical model scale rounded to zero",
+    46: "electrical theta too large for measured tau",
 }
 
 # Error codes for which the failure message should point at a dedicated
@@ -129,6 +132,35 @@ INDUCTANCE_CAPTURE_REJECT_REASON_NAMES: dict[int, str] = {
     6: "second-half accumulator",
     7: "elapsed interpolation",
     8: "saliency bracket invariant",
+}
+
+CURRENT_LOOP_FAILURE_NAMES: dict[int, str] = {
+    0: "none",
+    1: "resistance invalid",
+    2: "impedance invalid",
+    3: "gain synthesis",
+    4: "flux validation",
+    5: "torque validation",
+    6: "saturation",
+    7: "motion",
+    8: "status flags",
+    9: "retry exhausted",
+    10: "SPI",
+    11: "hold position span",
+    12: "hold status flags",
+    13: "hold sample error",
+}
+
+CURRENT_AXIS_STATUS_NAMES: dict[int, str] = {
+    0: "pass",
+    1: "wrong sign",
+    2: "low response",
+    3: "high response",
+    4: "cross-axis coupling",
+    5: "saturation",
+    6: "motion",
+    7: "status flags",
+    8: "zero target",
 }
 
 
@@ -351,6 +383,69 @@ def format_commission_error_detail_name(code: int) -> str:
     return COMMISSION_ERROR_NAMES.get(code, "UNKNOWN(%d)" % code)
 
 
+def _format_current_axis_sample(sample: dict) -> str:
+    status = sample.get("status")
+    status_name = CURRENT_AXIS_STATUS_NAMES.get(status, "status %s" % status)
+    return (
+        "%s at delay=%sms"
+        " response=%s/%s permille cross=%s permille"
+        " cross_peak=%s permille voltage=%s permille"
+        " encoder_delta=%s status_flags_or=0x%08x"
+        % (
+            status_name,
+            sample.get("sample_delay_ms"),
+            sample.get("positive_response_permille"),
+            sample.get("negative_response_permille"),
+            sample.get("cross_axis_permille"),
+            sample.get("cross_axis_peak_permille", sample.get("cross_axis_permille")),
+            sample.get("voltage_output_permille"),
+            sample.get("encoder_delta_counts"),
+            sample.get("status_flags_or", 0),
+        )
+    )
+
+
+def _first_current_gate_failure(samples: Sequence[dict]) -> dict | None:
+    for sample in samples:
+        if sample.get("gate_role") == "gate" and sample.get("status", 0) != 0:
+            return sample
+    for sample in samples:
+        if sample.get("status", 0) != 0:
+            return sample
+    return None
+
+
+def format_current_loop_failure_summary(
+    run: dict | None, samples: dict[str, list[dict]] | None = None
+) -> str | None:
+    """Format subordinate current-loop failure evidence for live errors."""
+    if not run:
+        return None
+    reason = run.get("failure_reason")
+    if reason in (None, 0):
+        return None
+    reason_name = CURRENT_LOOP_FAILURE_NAMES.get(reason, "reason %s" % reason)
+    parts = [reason_name]
+    axis_key = "flux" if reason == 4 else "torque" if reason == 5 else None
+    if samples is not None and axis_key is not None:
+        sample = _first_current_gate_failure(samples.get(axis_key, []))
+        if sample is not None:
+            parts.append(_format_current_axis_sample(sample))
+    if run.get("retry_budget_exhausted"):
+        parts.append("retry budget exhausted")
+    parts.append(
+        "candidate_attempt=%s candidate_flux=%s/%s candidate_torque=%s/%s"
+        % (
+            run.get("candidate_attempt"),
+            run.get("candidate_flux_p"),
+            run.get("candidate_flux_i"),
+            run.get("candidate_torque_p"),
+            run.get("candidate_torque_i"),
+        )
+    )
+    return "; ".join(parts)
+
+
 class CommissioningWorkflow:
     """Run Stage 1 commissioning and track commissioning responses."""
 
@@ -471,11 +566,11 @@ class CommissioningWorkflow:
                         "FOCI %s: FOCI_COMMISSION timed out" % self.driver.name
                     )
                 if self.error_code != 0:
-                    error_name = format_commission_error_name(self.error_code)
+                    error_name = self.format_commission_failure(self.error_code)
                     if self.error_code == 18:
                         self.handle_chip_reset_detected()
                     else:
-                        self.on_commission_failure()
+                        self.on_commission_failure(error_name)
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
                     self.driver.diagnostics.active.clear_inductance_cache(
                         self.driver.oid
@@ -524,11 +619,11 @@ class CommissioningWorkflow:
             )
             status = result.get("status", 255)
             if status > 1:
-                error_name = format_commission_error_name(status)
+                error_name = self.format_commission_failure(status)
                 if status == 18:
                     self.handle_chip_reset_detected()
                 else:
-                    self.on_commission_failure()
+                    self.on_commission_failure(error_name)
                 raise gcmd.error(
                     "FOCI %s: FOCI_COMMISSION failed: %s"
                     % (self.driver.name, error_name)
@@ -536,6 +631,7 @@ class CommissioningWorkflow:
 
             self.driver.state.is_calibrated = True
             self.driver.state.inhibited = False
+            self.driver.state.last_commission_failure = None
             self.driver.homing.set_auto_calibrate_on_enable_allowed(True)
             self.driver.state.commissioned_result = result
             self.driver.state.active_gains = {
@@ -586,19 +682,37 @@ class CommissioningWorkflow:
         finally:
             self.driver.state.release()
 
-    def on_commission_failure(self) -> None:
+    def format_commission_failure(self, status: int) -> str:
+        """Format a commission terminal status with cached subordinate evidence."""
+        error_name = format_commission_error_name(status)
+        if status == 9:
+            detail = format_current_loop_failure_summary(
+                self.driver.diagnostics.active.last_current_loop_evidence(
+                    self.driver.oid
+                ),
+                self.driver.diagnostics.active.last_current_loop_samples(
+                    self.driver.oid
+                ),
+            )
+            if detail is not None:
+                return "%s (%s)" % (error_name, detail)
+        return error_name
+
+    def on_commission_failure(self, failure: str | None = None) -> None:
         """Handle Stage 1 failure state transitions."""
         self.driver.state.is_calibrated = False
         self.driver.state.commissioned_result = None
         self.driver.state.active_gains = None
         self.driver.state.runtime_status = "uncommissioned"
         self.driver.state.inhibited = True
+        self.driver.state.last_commission_failure = failure
         self.driver.homing.set_auto_calibrate_on_enable_allowed(False)
 
     def handle_chip_reset_detected(self) -> None:
         """Clear calibration after firmware reports chip reset without inhibiting."""
         self.driver.state.is_calibrated = False
         self.driver.state.inhibited = False
+        self.driver.state.last_commission_failure = None
         self.driver.homing.set_auto_calibrate_on_enable_allowed(True)
 
     def maybe_clear_calibration_for_chip_reset(self, status: int) -> None:

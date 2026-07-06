@@ -173,6 +173,17 @@ class TestHomingStateTransitions(unittest.TestCase):
             d.homing.ensure_calibrated()
         self.assertIn("inhibited", str(ctx.exception))
 
+    def test_inhibited_reports_last_commission_failure(self):
+        d = make_driver()
+        d.state.inhibited = True
+        d.state.last_commission_failure = (
+            "current validation failed: flux validation, cross-axis coupling"
+        )
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+        self.assertIn("last failure", str(ctx.exception))
+        self.assertIn("cross-axis coupling", str(ctx.exception))
+
     def test_active_gain_apply_resends_configured_voltage_limit(self):
         d = make_driver()
         d.settings.voltage_limit = 29000

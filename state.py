@@ -32,6 +32,7 @@ class FociRuntimeState:
 
     is_calibrated: bool = False
     inhibited: bool = False
+    last_commission_failure: str | None = None
     commissioned_result: dict[str, int] | None = None
     active_gains: dict[str, int | None] | None = None
     adc_vm_offset_raw: int | None = None

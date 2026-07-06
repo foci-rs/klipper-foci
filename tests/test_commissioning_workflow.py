@@ -7,6 +7,7 @@ from klipper_foci.commissioning import (
     HARD_FAULT_CODES,
     PHASE_NAMES,
     CommissioningWorkflow,
+    format_current_loop_failure_summary,
     format_commission_error_name,
 )
 from klipper_foci.homing import HomingWorkflow
@@ -26,6 +27,44 @@ def test_sustained_hold_failure_has_operator_label_and_is_hard_fault():
     assert COMMISSION_ERROR_NAMES.get(42) == "sustained hold validation failed"
     assert format_commission_error_name(42) == "sustained hold validation failed"
     assert 42 in HARD_FAULT_CODES
+
+
+def test_current_loop_failure_summary_decodes_gate_sample_status():
+    run = {
+        "failure_reason": 4,
+        "candidate_attempt": 0,
+        "candidate_flux_p": 3564,
+        "candidate_flux_i": 220,
+        "candidate_torque_p": 3564,
+        "candidate_torque_i": 220,
+        "retry_budget_exhausted": 0,
+    }
+    samples = {
+        "flux": [
+            {
+                "status": 4,
+                "sample_delay_ms": 100,
+                "gate_role": "gate",
+                "positive_response_permille": 984,
+                "negative_response_permille": 1007,
+                "cross_axis_permille": 156,
+                "cross_axis_peak_permille": 281,
+                "voltage_output_permille": 159,
+                "encoder_delta_counts": 1,
+                "status_flags_or": 0xF000_0080,
+            }
+        ],
+        "torque": [],
+    }
+
+    text = format_current_loop_failure_summary(run, samples)
+
+    assert text is not None
+    assert "flux validation" in text
+    assert "cross-axis coupling" in text
+    assert "delay=100ms" in text
+    assert "cross=156 permille" in text
+    assert "candidate_flux=3564/220" in text
 
 
 class MockConfigFile:

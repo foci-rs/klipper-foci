@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from ..commissioning import format_commission_error_detail_name
+from ..commissioning import (
+    CURRENT_LOOP_FAILURE_NAMES,
+    format_commission_error_detail_name,
+)
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 
 CURRENT_STEP_AXIS_CODES = {
@@ -495,7 +498,7 @@ class ActiveDiagnostics:
         msg = (
             "FOCI %s current-loop run: status=%d source=%d tier=%d split_source=%d"
             " measured_split=%d applied_split=%d clamped=%d axes=%d"
-            " retry_exhausted=%d failure_reason=%d"
+            " retry_exhausted=%d failure_reason=%d/%s"
             " candidate_source=%d candidate_tier=%d candidate_attempt=%d"
             " candidate_flux=%d/%d candidate_torque=%d/%d"
             % (
@@ -510,6 +513,7 @@ class ActiveDiagnostics:
                 params["current_validation_axes"],
                 params["retry_budget_exhausted"],
                 params["failure_reason"],
+                CURRENT_LOOP_FAILURE_NAMES.get(params["failure_reason"], "unknown"),
                 params["candidate_gains_source"],
                 params["candidate_gains_tier"],
                 params["candidate_attempt"],

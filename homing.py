@@ -151,9 +151,15 @@ class HomingWorkflow:
     def ensure_calibrated(self) -> None:
         """Run calibration if not already calibrated. Blocks until complete."""
         if self.driver.state.inhibited:
+            detail = ""
+            if self.driver.state.last_commission_failure:
+                detail = (
+                    " last failure: %s." % self.driver.state.last_commission_failure
+                )
             raise self.driver.printer.command_error(
                 "FOCI %s: operation inhibited after failed FOCI_COMMISSION. "
-                "Retry FOCI_COMMISSION or restart Klipper." % self.driver.name
+                "Retry FOCI_COMMISSION or restart Klipper.%s"
+                % (self.driver.name, detail)
             )
         if self.driver.state.is_calibrated:
             return
