@@ -67,6 +67,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     40: "inductance drift calculation invalid",
     41: "inductance saliency calculation invalid",
     42: "sustained hold validation failed",
+    43: "closed-loop entry stability failed",
 }
 
 # Error codes for which the failure message should point at a dedicated
@@ -547,10 +548,16 @@ class CommissioningWorkflow:
                 "position_p": result["fallback_position_p"],
                 "position_i": result["fallback_position_i"],
                 "velocity_limit": result["fallback_velocity_limit"],
-                "velocity_filter_hz": self.driver.settings.velocity_filter_hz,
-                "torque_filter_hz": self.driver.settings.torque_filter_hz,
-                "position_filter_hz": self.driver.settings.position_filter_hz,
-                "flux_filter_hz": self.driver.settings.flux_filter_hz,
+                "velocity_filter_hz": result.get("velocity_filter_hz", 0),
+                "torque_filter_hz": result.get(
+                    "current_torque_filter_hz",
+                    self.driver.settings.torque_filter_hz,
+                ),
+                "position_filter_hz": result.get("position_filter_hz", 0),
+                "flux_filter_hz": result.get(
+                    "current_flux_filter_hz",
+                    self.driver.settings.flux_filter_hz,
+                ),
             }
             self.driver.state.runtime_status = "commissioned"
             enable_line.motor_enable(toolhead.get_last_move_time())

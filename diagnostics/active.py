@@ -521,6 +521,24 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_current_loop_filters(self, params: dict) -> None:
+        """Handle foci_current_loop_filters from firmware."""
+        filters = dict(params)
+        oid = params["oid"]
+        cached = self.current_loop_cache.setdefault(oid, {})
+        cached["filters"] = filters
+        msg = (
+            "FOCI %s current-loop filters: velocity=%d torque=%d position=%d flux=%d"
+            % (
+                self.driver.name,
+                params["velocity_filter_hz"],
+                params["torque_filter_hz"],
+                params["position_filter_hz"],
+                params["flux_filter_hz"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def handle_current_loop_hold(self, params: dict) -> None:
         """Handle foci_current_loop_hold from firmware."""
         self.last_current_loop_hold[params["oid"]] = dict(params)
@@ -822,23 +840,34 @@ class ActiveDiagnostics:
         if not cached:
             return {}
 
+        filters = cached.get("filters")
+        folded_filters = {}
+        if filters is not None:
+            folded_filters = {
+                "velocity_filter_hz": filters["velocity_filter_hz"],
+                "current_torque_filter_hz": filters["torque_filter_hz"],
+                "position_filter_hz": filters["position_filter_hz"],
+                "current_flux_filter_hz": filters["flux_filter_hz"],
+            }
+
         run = cached.get("run")
         flux_samples = cached.get("flux", [])
         torque_samples = cached.get("torque", [])
         if run is None:
-            return {}
+            return folded_filters
         if cached.get("invalid_axis"):
-            return {}
+            return folded_filters
         expected_flux_samples = run["flux_validation_sample_count"]
         expected_torque_samples = run["torque_validation_sample_count"]
         if expected_flux_samples == 0 or expected_torque_samples == 0:
-            return {}
+            return folded_filters
         if len(flux_samples) != expected_flux_samples:
-            return {}
+            return folded_filters
         if len(torque_samples) != expected_torque_samples:
-            return {}
+            return folded_filters
 
         return {
+            **folded_filters,
             "current_gains_source": run["gains_source"],
             "current_candidate_gains_source": run["candidate_gains_source"],
             "current_axis_split_source": run["axis_split_source"],

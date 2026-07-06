@@ -347,12 +347,14 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         )
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
 
-    def test_commission_success_active_gains_leave_omitted_current_filters_unset(
+    def test_commission_success_active_gains_use_applied_filter_evidence(
         self,
     ):
         driver = make_driver()
         result = complete_commission_result()
         result["bandwidth_hz"] = 1600
+        result["current_torque_filter_hz"] = 3000
+        result["current_flux_filter_hz"] = 3000
         driver.printer._objects["configfile"] = MockConfigFile()
 
         class CompleteCommissionCommand:
@@ -364,10 +366,10 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
         driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
 
-        self.assertIsNone(driver.state.active_gains["velocity_filter_hz"])
-        self.assertIsNone(driver.state.active_gains["torque_filter_hz"])
-        self.assertIsNone(driver.state.active_gains["position_filter_hz"])
-        self.assertIsNone(driver.state.active_gains["flux_filter_hz"])
+        self.assertEqual(driver.state.active_gains["velocity_filter_hz"], 0)
+        self.assertEqual(driver.state.active_gains["torque_filter_hz"], 3000)
+        self.assertEqual(driver.state.active_gains["position_filter_hz"], 0)
+        self.assertEqual(driver.state.active_gains["flux_filter_hz"], 3000)
 
     def test_commission_persists_resistance_count_space_fields(self):
         driver = make_driver()

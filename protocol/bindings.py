@@ -52,6 +52,11 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         "foci_inductance_estimate",
         oid,
     )
+    serial.register_response(
+        driver.diagnostics.active.handle_current_loop_filters,
+        "foci_current_loop_filters",
+        oid,
+    )
 
 
 def register_selftest_responses(serial, driver, oid: int) -> None:

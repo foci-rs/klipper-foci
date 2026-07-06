@@ -54,6 +54,27 @@ def test_current_loop_hold_caches_last_evidence():
         assert field_name in out
 
 
+def test_current_loop_filters_fold_into_commission_result_cache():
+    d = make_driver()
+
+    d.diagnostics.active.handle_current_loop_filters(
+        {
+            "oid": d.oid,
+            "velocity_filter_hz": 0,
+            "torque_filter_hz": 3000,
+            "position_filter_hz": 0,
+            "flux_filter_hz": 3000,
+        }
+    )
+
+    folded = d.diagnostics.active.pop_current_loop_cache(d.oid)
+
+    assert folded["velocity_filter_hz"] == 0
+    assert folded["current_torque_filter_hz"] == 3000
+    assert folded["position_filter_hz"] == 0
+    assert folded["current_flux_filter_hz"] == 3000
+
+
 class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_inductance_evidence_replies_format_gcode_lines(self):
         d = make_driver()
