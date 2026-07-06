@@ -113,6 +113,19 @@ def test_inductance_replies_are_not_active_diagnostic_responses():
     assert ("foci_inductance_estimate", driver.oid) not in registrations
 
 
+def test_registers_current_loop_hold_reply():
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_active_diagnostic_responses(serial, driver, driver.oid)
+
+    assert (
+        driver.diagnostics.active.handle_current_loop_hold,
+        "foci_current_loop_hold",
+        driver.oid,
+    ) in serial.responses
+
+
 def test_driver_mcu_identify_binds_protocol_without_driver_aliases():
     driver = make_driver(
         stepper_name="stepper_x",

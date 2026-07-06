@@ -49,6 +49,7 @@ class ActiveDiagnostics:
         self._last_inductance_evidence: dict[int, dict] = {}
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
+        self.last_current_loop_hold: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
         self.last_encoder_alignment: dict[int, dict] = {}
         self.current_step_pending_axis: str | None = None
@@ -520,6 +521,37 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_current_loop_hold(self, params: dict) -> None:
+        """Handle foci_current_loop_hold from firmware."""
+        self.last_current_loop_hold[params["oid"]] = dict(params)
+        msg = (
+            "FOCI %s current-loop hold: hold_status=%d warnings=%d"
+            " samples=%d elapsed_us=%d period_us=%d"
+            " pos_span=%d pos_drift=%d"
+            " torque_rms=%d torque_span=%d torque_crossings=%d"
+            " flux_rms=%d flux_span=%d flux_crossings=%d"
+            " status_or=0x%08x actionable_status_count=%d"
+            % (
+                self.driver.name,
+                params["hold_status"],
+                params["warning_flags"],
+                params["sample_count"],
+                params["elapsed_us"],
+                params["requested_sample_period_us"],
+                params["position_span_count"],
+                params["position_drift_count"],
+                params["torque_rms_count"],
+                params["torque_peak_to_peak_count"],
+                params["torque_crossing_count"],
+                params["flux_rms_count"],
+                params["flux_peak_to_peak_count"],
+                params["flux_crossing_count"],
+                params["status_flags_or"],
+                params["actionable_status_count"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def handle_inductance_run(self, params: dict) -> None:
         """Handle foci_inductance_run from firmware."""
         oid = params["oid"]
@@ -854,6 +886,10 @@ class ActiveDiagnostics:
     def last_current_loop_evidence(self, oid: int) -> dict:
         """Return the most recent transient current-loop run reply for `oid`."""
         return self.last_current_loop_run.get(oid, {})
+
+    def last_current_loop_hold_evidence(self, oid: int) -> dict:
+        """Return the most recent transient current-loop hold reply for `oid`."""
+        return self.last_current_loop_hold.get(oid, {})
 
     def last_inductance_evidence(self, oid: int) -> dict:
         """Return the most recent transient inductance evidence for `oid`."""

@@ -66,6 +66,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     39: "inductance reactance calculation invalid",
     40: "inductance drift calculation invalid",
     41: "inductance saliency calculation invalid",
+    42: "sustained hold validation failed",
 }
 
 # Error codes for which the failure message should point at a dedicated
@@ -82,7 +83,7 @@ RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31
 # Error codes that indicate a hard-disable fault: firmware has disabled the
 # motor and cleared its state. The host must sync its enable line and clear
 # is_calibrated.
-HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
+HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17, 42})
 
 # Bit-to-name mapping for the firmware-side `inner_warning_flags` bitfield.
 INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [

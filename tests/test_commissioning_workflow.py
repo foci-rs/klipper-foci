@@ -7,6 +7,7 @@ from klipper_foci.commissioning import (
     HARD_FAULT_CODES,
     PHASE_NAMES,
     CommissioningWorkflow,
+    format_commission_error_name,
 )
 from klipper_foci.homing import HomingWorkflow
 
@@ -19,6 +20,12 @@ from tests.mocks import (
     complete_commission_result,
     make_driver,
 )
+
+
+def test_sustained_hold_failure_has_operator_label_and_is_hard_fault():
+    assert COMMISSION_ERROR_NAMES.get(42) == "sustained hold validation failed"
+    assert format_commission_error_name(42) == "sustained hold validation failed"
+    assert 42 in HARD_FAULT_CODES
 
 
 class MockConfigFile:

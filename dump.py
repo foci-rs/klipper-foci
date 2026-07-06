@@ -130,6 +130,17 @@ CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
     8: "status_flags",
     9: "retry_exhausted",
     10: "spi",
+    11: "hold_position_span",
+    12: "hold_status_flags",
+    13: "hold_sample_error",
+}
+
+CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
+    0: "not_run",
+    1: "pass",
+    2: "fail_position_span",
+    3: "fail_status_flags",
+    4: "fail_sample_error",
 }
 
 CURRENT_VALIDATION_AXIS_FLUX = 0x01
@@ -337,6 +348,15 @@ class RegisterDumpWorkflow:
                     )
                 )
             )
+
+        last_current_loop_hold = (
+            self.driver.diagnostics.active.last_current_loop_hold_evidence(
+                self.driver.oid
+            )
+        )
+        if last_current_loop_hold:
+            lines.append("-- Last sustained-hold gate (not persisted) --")
+            lines.extend(self._format_last_current_loop_hold(last_current_loop_hold))
 
         last_encoder_alignment = (
             self.driver.diagnostics.active.last_encoder_alignment_evidence(
@@ -618,6 +638,62 @@ class RegisterDumpWorkflow:
             ),
         ]
 
+    def _format_last_current_loop_hold(self, evidence: dict) -> list[str]:
+        return [
+            self._format_hold_pair(
+                "last.hold_status",
+                self._label_code(
+                    evidence.get("hold_status"), CURRENT_LOOP_HOLD_STATUS_LABELS
+                ),
+            ),
+            self._format_hold_pair(
+                "last.hold_samples",
+                "%s @ %s us, elapsed_us=%s"
+                % (
+                    evidence.get("sample_count"),
+                    evidence.get("requested_sample_period_us"),
+                    evidence.get("elapsed_us"),
+                ),
+            ),
+            self._format_hold_pair(
+                "last.hold_position",
+                "span=%s drift=%s"
+                % (
+                    evidence.get("position_span_count"),
+                    evidence.get("position_drift_count"),
+                ),
+            ),
+            self._format_hold_pair(
+                "last.hold_torque",
+                "mean=%s rms=%s span=%s crossings=%s"
+                % (
+                    evidence.get("torque_mean_count"),
+                    evidence.get("torque_rms_count"),
+                    evidence.get("torque_peak_to_peak_count"),
+                    evidence.get("torque_crossing_count"),
+                ),
+            ),
+            self._format_hold_pair(
+                "last.hold_flux",
+                "mean=%s rms=%s span=%s crossings=%s"
+                % (
+                    evidence.get("flux_mean_count"),
+                    evidence.get("flux_rms_count"),
+                    evidence.get("flux_peak_to_peak_count"),
+                    evidence.get("flux_crossing_count"),
+                ),
+            ),
+            self._format_hold_pair(
+                "last.hold_status_flags",
+                "or=%s actionable_count=%s warnings=%s"
+                % (
+                    evidence.get("status_flags_or"),
+                    evidence.get("actionable_status_count"),
+                    evidence.get("warning_flags"),
+                ),
+            ),
+        ]
+
     def _format_last_current_validation_samples(self, samples: dict) -> list[str]:
         lines = []
         for axis_key in ("flux", "torque"):
@@ -700,6 +776,9 @@ class RegisterDumpWorkflow:
 
     def _format_pair(self, name: str, value: object | None) -> str:
         return "  %-34s = %s" % (name, self._display_value(value))
+
+    def _format_hold_pair(self, name: str, value: object | None) -> str:
+        return "  %-32s = %s" % (name, self._display_value(value))
 
     def _display_value(self, value: object | None) -> str:
         if value is None:

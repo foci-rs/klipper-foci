@@ -6,6 +6,54 @@ import unittest
 from tests.mocks import CommandError, MockGCmd, make_driver
 
 
+def test_current_loop_hold_caches_last_evidence():
+    d = make_driver()
+    params = {
+        "oid": d.oid,
+        "hold_status": 1,
+        "warning_flags": 0,
+        "elapsed_us": 250000,
+        "requested_sample_period_us": 1000,
+        "sample_count": 250,
+        "position_span_count": 1,
+        "position_drift_count": 1,
+        "torque_mean_count": 0,
+        "torque_rms_count": 12,
+        "torque_peak_to_peak_count": 34,
+        "torque_crossing_count": 17,
+        "flux_mean_count": 0,
+        "flux_rms_count": 9,
+        "flux_peak_to_peak_count": 21,
+        "flux_crossing_count": 11,
+        "status_flags_or": 0,
+        "actionable_status_count": 0,
+    }
+
+    d.diagnostics.active.handle_current_loop_hold(params)
+
+    assert d.diagnostics.active.last_current_loop_hold_evidence(d.oid) == params
+    assert d.diagnostics.active.last_current_loop_hold_evidence(d.oid + 1) == {}
+    out = d.printer.lookup_object("gcode")._responses[-1]
+    for field_name in (
+        "hold_status",
+        "warnings",
+        "samples",
+        "elapsed_us",
+        "period_us",
+        "pos_span",
+        "pos_drift",
+        "torque_rms",
+        "torque_span",
+        "torque_crossings",
+        "flux_rms",
+        "flux_span",
+        "flux_crossings",
+        "status_or",
+        "actionable_status_count",
+    ):
+        assert field_name in out
+
+
 class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_inductance_evidence_replies_format_gcode_lines(self):
         d = make_driver()

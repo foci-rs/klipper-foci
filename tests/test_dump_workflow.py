@@ -427,6 +427,28 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
             "failure_reason": 9,
         }
     )
+    driver.diagnostics.active.handle_current_loop_hold(
+        {
+            "oid": driver.oid,
+            "hold_status": 1,
+            "warning_flags": 0,
+            "elapsed_us": 250000,
+            "requested_sample_period_us": 1000,
+            "sample_count": 250,
+            "position_span_count": 1,
+            "position_drift_count": 1,
+            "torque_mean_count": 0,
+            "torque_rms_count": 12,
+            "torque_peak_to_peak_count": 34,
+            "torque_crossing_count": 17,
+            "flux_mean_count": 0,
+            "flux_rms_count": 9,
+            "flux_peak_to_peak_count": 21,
+            "flux_crossing_count": 11,
+            "status_flags_or": 0,
+            "actionable_status_count": 0,
+        }
+    )
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
@@ -441,6 +463,23 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.candidate_attempt             = 1" in output
     assert "last.current_validation            = flux=fail torque=not_run" in output
     assert "last.failure_reason                = retry_exhausted" in output
+    assert "-- Last sustained-hold gate (not persisted) --" in output
+    assert "last.hold_status                 = pass" in output
+    assert (
+        "last.hold_samples                = 250 @ 1000 us, elapsed_us=250000" in output
+    )
+    assert "last.hold_position               = span=1 drift=1" in output
+    assert (
+        "last.hold_torque                 = mean=0 rms=12 span=34 crossings=17"
+        in output
+    )
+    assert (
+        "last.hold_flux                   = mean=0 rms=9 span=21 crossings=11" in output
+    )
+    assert (
+        "last.hold_status_flags           = or=0 actionable_count=0 warnings=0"
+        in output
+    )
 
 
 def test_tuning_flag_appends_last_encoder_alignment_evidence():
