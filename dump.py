@@ -297,9 +297,9 @@ class RegisterDumpWorkflow:
             for field_name in IDENTIFIED_MODEL_FIELDS
         )
         lines.append(
-            "  Note: identified_r*/identified_l* are FOCI count-space"
-            " commissioning values; validated physical R/L comparison is"
-            " tracked separately."
+            "  Note: identified_r*/identified_l* are control-model count-space"
+            " fields derived during commissioning; AC reactance evidence is"
+            " reported separately below."
         )
 
         lines.append("-- Persisted inductance evidence --")

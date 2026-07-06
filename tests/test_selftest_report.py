@@ -61,7 +61,7 @@ def test_format_commission_detail_rejected_inductance_fit():
         }
     )
     assert "Electrical ID" in line
-    assert "corrected inductance fit rejected" in line
+    assert "legacy inductance fit rejected" in line
     assert "coil=B" in line
     assert "usable_points=2" in line
     assert "selected_mask=0x0005" in line
@@ -150,7 +150,7 @@ def test_format_commission_detail_measurements():
         }
     )
     assert "voltage_count=512" in excitation
-    assert "didt_cycles=5000" in excitation
+    assert "legacy_didt_cycles=5000" in excitation
     assert "coil A resistance" in resistance
     assert "avg_current=300 counts" in resistance
     assert "r_count_milli=1706" in resistance
@@ -185,7 +185,7 @@ def test_stage_names_map_contains_all_eight():
     assert SELFTEST_STAGES[5] == "Encoder"
     assert SELFTEST_STAGES[6] == "Encoder direction"
     assert SELFTEST_STAGES[7] == "R-model evidence"
-    assert SELFTEST_STAGES[8] == "L-model evidence"
+    assert SELFTEST_STAGES[8] == "L control-model evidence"
 
 
 def test_format_adc_calibration_unpacks_offsets():
@@ -228,7 +228,7 @@ def test_format_resistance_uses_diagnostic_count_units():
 
 def test_format_inductance_uses_diagnostic_count_units():
     out = format_selftest_value(8, 0, 3256)
-    assert "l_count_micro=3256" in out
+    assert "control_l_count_micro=3256" in out
     assert "mH" not in out
 
 
@@ -270,7 +270,7 @@ def test_cmd_selftest_builds_multiline_report():
     assert "Encoder " in out  # trailing space distinguishes from "Encoder direction"
     assert "Encoder direction" in out
     assert "R-model evidence" in out
-    assert "L-model evidence" in out
+    assert "L control-model evidence" in out
     assert "8/8 stages" in out
     assert "PASS" in out
 
@@ -334,7 +334,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
     out = gcmd.last_info
     assert "FAIL" in out
     assert "ADC calibration fault" in out
-    assert "corrected inductance fit rejected" in out
+    assert "legacy inductance fit rejected" in out
     assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
     assert "0/1 stages" in out
 

@@ -12,7 +12,7 @@ SELFTEST_STAGES: dict[int, str] = {
     5: "Encoder",
     6: "Encoder direction",
     7: "R-model evidence",
-    8: "L-model evidence",
+    8: "L control-model evidence",
 }
 
 
@@ -37,7 +37,7 @@ def format_selftest_value(stage: int, status: int, value: int) -> str:
     if stage == 7:
         return " (r_count_milli=%d)" % value
     if stage == 8:
-        return " (l_count_micro=%d)" % value
+        return " (control_l_count_micro=%d)" % value
     return ""
 
 

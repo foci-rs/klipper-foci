@@ -102,7 +102,7 @@ class TestCommissionGates(unittest.TestCase):
             d.commissioning.commission(gcmd)
 
         self.assertIn("commissioning diagnostics", gcmd.last_info)
-        self.assertIn("corrected inductance fit rejected", gcmd.last_info)
+        self.assertIn("legacy inductance fit rejected", gcmd.last_info)
         self.assertIn("usable_points=0", gcmd.last_info)
         self.assertIn("selected_mask=0x0000", gcmd.last_info)
 
@@ -334,7 +334,10 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
         driver.commissioning.commission(gcmd)
 
-        self.assertIn("r_count_milli=1700 l_count_micro=3300", gcmd.last_info)
+        self.assertIn(
+            "r_count_milli=1700 control_l_count_micro=3300",
+            gcmd.last_info,
+        )
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
 
     def test_commission_success_active_gains_leave_omitted_current_filters_unset(

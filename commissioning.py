@@ -87,7 +87,7 @@ HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17})
 # Bit-to-name mapping for the firmware-side `inner_warning_flags` bitfield.
 INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 0, "coil R mismatch"),
-    (1 << 1, "coil tau mismatch"),
+    (1 << 1, "coil control-model tau mismatch"),
     (1 << 3, "theta/tau ratio"),
     (1 << 5, "current gains fell back to defaults"),
     (1 << 6, "host-default confidence (no fresh measurement)"),
@@ -104,16 +104,16 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     2: "coil A resistance",
     3: "coil B resistance",
     20: "no usable per-coil samples",
-    21: "only one coil produced non-zero tau",
+    21: "only one coil produced non-zero control-model tau",
     22: "model scale rounded to zero",
     23: "resistance below short threshold",
     24: "resistance above open threshold",
     25: "coil resistance mismatch",
-    26: "coil tau mismatch",
-    28: "corrected inductance fit rejected",
+    26: "coil control-model tau mismatch",
+    28: "legacy inductance fit rejected",
     29: "transport delay too large",
-    30: "corrected inductance fit point",
-    31: "corrected inductance fit correction",
+    30: "legacy inductance fit point",
+    31: "legacy inductance fit correction",
     32: "inductance frequency out of range",
     33: "inductance AC capture rejected",
 }
@@ -173,12 +173,15 @@ def format_commission_detail(detail: dict) -> str:
             % (phase_name, coil, status, expected, other, value2)
         )
     if code == 1:
-        return "%s: %s (voltage_count=%d, didt_cycles=%d, sample_period=%dus)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-            value2,
+        return (
+            "%s: %s (voltage_count=%d, legacy_didt_cycles=%d, sample_period=%dus)"
+            % (
+                phase_name,
+                name,
+                value0,
+                value1,
+                value2,
+            )
         )
     if code in (2, 3):
         return "%s: %s (avg_current=%d counts, r_count_milli=%d, samples=%d)" % (
@@ -295,7 +298,7 @@ def format_commission_detail(detail: dict) -> str:
             value1,
         )
     if code == 22:
-        return "%s: %s (l_int=%d, l_count_micro=%d)" % (
+        return "%s: %s (l_int=%d, control_l_count_micro=%d)" % (
             phase_name,
             name,
             value0,
@@ -556,7 +559,7 @@ class CommissioningWorkflow:
             status_str = "accepted" if status == 0 else "accepted with warnings"
             gcmd.respond_info(
                 "FOCI %s commissioned (%s): "
-                "r_count_milli=%d l_count_micro=%d R_int=%d L_int=%d"
+                "r_count_milli=%d control_l_count_micro=%d R_int=%d L_int=%d"
                 % (
                     self.driver.name,
                     status_str,

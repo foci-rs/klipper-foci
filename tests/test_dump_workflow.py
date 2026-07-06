@@ -253,7 +253,7 @@ def test_tuning_flag_appends_context_and_count_space_note():
     assert "active.flux_p" in output
     assert "config.identified_lambda_us" in output
     assert "config.identified_ringing_count" in output
-    assert "count-space commissioning values" in output
+    assert "control-model count-space fields" in output
 
 
 def test_tuning_flag_appends_resistance_identification_evidence():
