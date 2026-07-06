@@ -149,6 +149,9 @@ CURRENT_LOOP_FAILURE_NAMES: dict[int, str] = {
     11: "hold position span",
     12: "hold status flags",
     13: "hold sample error",
+    14: "response magnitude",
+    15: "cross-axis coupling",
+    16: "wrong sign",
 }
 
 CURRENT_AXIS_STATUS_NAMES: dict[int, str] = {

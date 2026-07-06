@@ -133,6 +133,9 @@ CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
     11: "hold_position_span",
     12: "hold_status_flags",
     13: "hold_sample_error",
+    14: "response_magnitude",
+    15: "cross_axis_coupling",
+    16: "wrong_sign",
 }
 
 CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
