@@ -732,6 +732,24 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_current_validation_envelope(self, params: dict) -> None:
+        """Handle foci_current_validation_envelope from firmware."""
+        cached = self.current_loop_cache.setdefault(params["oid"], {})
+        cached["validation_envelope"] = dict(params)
+        msg = (
+            "FOCI %s current validation envelope: step_amplitude=%d"
+            " pidout_limit=%d current_limited=%d voltage_limited=%d max_p=%d"
+            % (
+                self.driver.name,
+                params["step_amplitude"],
+                params["pidout_limit"],
+                params["current_limited"],
+                params["voltage_limited"],
+                params["max_p"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def _current_validation_gate_role(
         self, axis_key: str | None, sample_delay_ms: int
     ) -> str:
