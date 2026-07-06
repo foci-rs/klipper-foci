@@ -53,6 +53,7 @@ class ActiveDiagnostics:
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
         self.last_current_loop_hold: dict[int, dict] = {}
+        self.last_closed_loop_entry: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
         self.last_encoder_alignment: dict[int, dict] = {}
         self.current_step_pending_axis: str | None = None
@@ -574,6 +575,25 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_closed_loop_entry(self, params: dict) -> None:
+        """Handle foci_closed_loop_entry from firmware."""
+        self.last_closed_loop_entry[params["oid"]] = dict(params)
+        msg = (
+            "FOCI %s closed-loop entry: entry_status=%d"
+            " position_1=%d position_2=%d drift_count=%d"
+            " threshold_count=%d runaway=%d"
+            % (
+                self.driver.name,
+                params["entry_status"],
+                params["position_1"],
+                params["position_2"],
+                params["drift_count"],
+                params["threshold_count"],
+                params["runaway"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def handle_inductance_run(self, params: dict) -> None:
         """Handle foci_inductance_run from firmware."""
         oid = params["oid"]
@@ -923,6 +943,10 @@ class ActiveDiagnostics:
     def last_current_loop_hold_evidence(self, oid: int) -> dict:
         """Return the most recent transient current-loop hold reply for `oid`."""
         return self.last_current_loop_hold.get(oid, {})
+
+    def last_closed_loop_entry_evidence(self, oid: int) -> dict:
+        """Return the most recent transient closed-loop entry reply for `oid`."""
+        return self.last_closed_loop_entry.get(oid, {})
 
     def last_inductance_evidence(self, oid: int) -> dict:
         """Return the most recent transient inductance evidence for `oid`."""

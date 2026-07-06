@@ -449,6 +449,17 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
             "actionable_status_count": 0,
         }
     )
+    driver.diagnostics.active.handle_closed_loop_entry(
+        {
+            "oid": driver.oid,
+            "entry_status": 3,
+            "position_1": -3,
+            "position_2": 4,
+            "drift_count": 7,
+            "threshold_count": 2,
+            "runaway": 0,
+        }
+    )
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
@@ -463,6 +474,11 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.candidate_attempt             = 1" in output
     assert "last.current_validation            = flux=fail torque=not_run" in output
     assert "last.failure_reason                = retry_exhausted" in output
+    assert "-- Last closed-loop entry (not persisted) --" in output
+    assert "last.entry_status                = fail_drift" in output
+    assert "last.entry_position              = pos1=-3 pos2=4" in output
+    assert "last.entry_drift                 = drift=7 threshold=2" in output
+    assert "last.entry_runaway               = no" in output
     assert "-- Last sustained-hold gate (not persisted) --" in output
     assert "last.hold_status                 = pass" in output
     assert (

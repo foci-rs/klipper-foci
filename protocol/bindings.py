@@ -124,6 +124,11 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.active.handle_closed_loop_entry,
+        "foci_closed_loop_entry",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.active.handle_encoder_alignment,
         "foci_encoder_alignment",
         oid,

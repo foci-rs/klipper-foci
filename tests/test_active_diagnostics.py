@@ -54,6 +54,34 @@ def test_current_loop_hold_caches_last_evidence():
         assert field_name in out
 
 
+def test_closed_loop_entry_caches_last_evidence():
+    d = make_driver()
+    params = {
+        "oid": d.oid,
+        "entry_status": 3,
+        "position_1": -3,
+        "position_2": 4,
+        "drift_count": 7,
+        "threshold_count": 2,
+        "runaway": 0,
+    }
+
+    d.diagnostics.active.handle_closed_loop_entry(params)
+
+    assert d.diagnostics.active.last_closed_loop_entry_evidence(d.oid) == params
+    assert d.diagnostics.active.last_closed_loop_entry_evidence(d.oid + 1) == {}
+    out = d.printer.lookup_object("gcode")._responses[-1]
+    for field_name in (
+        "entry_status",
+        "position_1",
+        "position_2",
+        "drift_count",
+        "threshold_count",
+        "runaway",
+    ):
+        assert field_name in out
+
+
 def test_current_loop_filters_fold_into_commission_result_cache():
     d = make_driver()
 

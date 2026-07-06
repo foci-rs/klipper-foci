@@ -136,6 +136,7 @@ CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
     14: "response_magnitude",
     15: "cross_axis_coupling",
     16: "wrong_sign",
+    17: "closed_loop_entry",
 }
 
 CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
@@ -144,6 +145,13 @@ CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
     2: "fail_position_span",
     3: "fail_status_flags",
     4: "fail_sample_error",
+}
+
+CLOSED_LOOP_ENTRY_STATUS_LABELS: dict[int, str] = {
+    0: "not_run",
+    1: "pass",
+    2: "fail_runaway",
+    3: "fail_drift",
 }
 
 CURRENT_VALIDATION_AXIS_FLUX = 0x01
@@ -360,6 +368,15 @@ class RegisterDumpWorkflow:
         if last_current_loop_hold:
             lines.append("-- Last sustained-hold gate (not persisted) --")
             lines.extend(self._format_last_current_loop_hold(last_current_loop_hold))
+
+        last_closed_loop_entry = (
+            self.driver.diagnostics.active.last_closed_loop_entry_evidence(
+                self.driver.oid
+            )
+        )
+        if last_closed_loop_entry:
+            lines.append("-- Last closed-loop entry (not persisted) --")
+            lines.extend(self._format_last_closed_loop_entry(last_closed_loop_entry))
 
         last_encoder_alignment = (
             self.driver.diagnostics.active.last_encoder_alignment_evidence(
@@ -694,6 +711,30 @@ class RegisterDumpWorkflow:
                     evidence.get("actionable_status_count"),
                     evidence.get("warning_flags"),
                 ),
+            ),
+        ]
+
+    def _format_last_closed_loop_entry(self, evidence: dict) -> list[str]:
+        return [
+            self._format_hold_pair(
+                "last.entry_status",
+                self._label_code(
+                    evidence.get("entry_status"), CLOSED_LOOP_ENTRY_STATUS_LABELS
+                ),
+            ),
+            self._format_hold_pair(
+                "last.entry_position",
+                "pos1=%s pos2=%s"
+                % (evidence.get("position_1"), evidence.get("position_2")),
+            ),
+            self._format_hold_pair(
+                "last.entry_drift",
+                "drift=%s threshold=%s"
+                % (evidence.get("drift_count"), evidence.get("threshold_count")),
+            ),
+            self._format_hold_pair(
+                "last.entry_runaway",
+                self._bool_code(evidence.get("runaway")),
             ),
         ]
 

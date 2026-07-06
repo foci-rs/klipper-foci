@@ -152,6 +152,7 @@ CURRENT_LOOP_FAILURE_NAMES: dict[int, str] = {
     14: "response magnitude",
     15: "cross-axis coupling",
     16: "wrong sign",
+    17: "closed-loop entry",
 }
 
 CURRENT_AXIS_STATUS_NAMES: dict[int, str] = {
