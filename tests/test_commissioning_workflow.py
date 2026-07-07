@@ -368,6 +368,8 @@ class CommissionModelSurfacingTests(unittest.TestCase):
     def test_commission_success_message_includes_internal_model(self):
         driver = make_driver()
         result = complete_commission_result()
+        result["bandwidth_hz"] = 800
+        result["current_candidate_attempt"] = 1
         driver.printer._objects["configfile"] = MockConfigFile()
 
         class CompleteCommissionCommand:
@@ -385,6 +387,8 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             gcmd.last_info,
         )
         self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
+        self.assertIn("bandwidth_hz=800", gcmd.last_info)
+        self.assertIn("current_candidate_attempt=1", gcmd.last_info)
 
     def test_commission_success_active_gains_use_applied_filter_evidence(
         self,

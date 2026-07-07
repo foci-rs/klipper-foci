@@ -667,7 +667,8 @@ class CommissioningWorkflow:
             status_str = "accepted" if status == 0 else "accepted with warnings"
             gcmd.respond_info(
                 "FOCI %s commissioned (%s): "
-                "r_count_milli=%d control_l_count_micro=%d R_int=%d L_int=%d"
+                "r_count_milli=%d control_l_count_micro=%d R_int=%d L_int=%d "
+                "bandwidth_hz=%d current_candidate_attempt=%d"
                 % (
                     self.driver.name,
                     status_str,
@@ -675,6 +676,8 @@ class CommissioningWorkflow:
                     result["l_uh"],
                     result.get("r_int", 0),
                     result.get("l_int", 0),
+                    result.get("bandwidth_hz", 0),
+                    result.get("current_candidate_attempt", 0),
                 )
             )
             flags = result.get("inner_warning_flags", 0)
