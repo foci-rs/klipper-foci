@@ -139,6 +139,11 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.active.handle_current_validation_settled_sample,
+        "foci_current_validation_settled_sample",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.active.handle_current_validation_envelope,
         "foci_current_validation_envelope",
         oid,

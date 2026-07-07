@@ -732,6 +732,35 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_current_validation_settled_sample(self, params: dict) -> None:
+        """Handle foci_current_validation_settled_sample from firmware."""
+        cached = self.current_loop_cache.setdefault(params["oid"], {})
+        settled_samples = cached.setdefault("settled_samples", [])
+        settled_samples.append(dict(params))
+        msg = (
+            "FOCI %s current validation settled: axis=%d sample_index=%d"
+            " direction=%d raw_index=%d attempt=%d target=%d delay_ms=%d"
+            " same_count=%d cross_count=%d cross=%d voltage=%d"
+            " encoder_delta=%d status_flags=0x%08x"
+            % (
+                self.driver.name,
+                params["axis"],
+                params["sample_index"],
+                params["direction"],
+                params["raw_index"],
+                params["attempt"],
+                params["target"],
+                params["sample_delay_ms"],
+                params["same_axis_count"],
+                params["cross_axis_count"],
+                params["cross_axis_permille"],
+                params["voltage_output_permille"],
+                params["encoder_delta_counts"],
+                params["status_flags"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
     def handle_current_validation_envelope(self, params: dict) -> None:
         """Handle foci_current_validation_envelope from firmware."""
         cached = self.current_loop_cache.setdefault(params["oid"], {})

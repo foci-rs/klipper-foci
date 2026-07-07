@@ -1038,6 +1038,36 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
             }
         )
 
+    def test_settled_current_validation_samples_are_cached(self):
+        driver = make_driver()
+
+        driver.diagnostics.active.handle_current_validation_settled_sample(
+            {
+                "oid": driver.oid,
+                "axis": 0,
+                "sample_index": 3,
+                "direction": 1,
+                "raw_index": 2,
+                "attempt": 0,
+                "target": -128,
+                "sample_delay_ms": 100,
+                "same_axis_count": -121,
+                "cross_axis_count": -37,
+                "cross_axis_permille": 289,
+                "voltage_output_permille": 410,
+                "encoder_delta_counts": 0,
+                "status_flags": 0x40,
+            }
+        )
+
+        cached = driver.diagnostics.active.current_loop_cache[driver.oid]
+        self.assertEqual(len(cached["settled_samples"]), 1)
+        self.assertEqual(cached["settled_samples"][0]["cross_axis_count"], -37)
+        out = driver.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("current validation settled: axis=0", out)
+        self.assertIn("direction=1 raw_index=2", out)
+        self.assertIn("cross_count=-37 cross=289", out)
+
     def _emit_current_loop_run(self, driver) -> None:
         driver.diagnostics.active.handle_current_loop_run(
             {"oid": driver.oid, **self.CURRENT_LOOP_RUN}
