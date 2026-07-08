@@ -132,6 +132,8 @@ INDUCTANCE_CAPTURE_REJECT_REASON_NAMES: dict[int, str] = {
     6: "second-half accumulator",
     7: "elapsed interpolation",
     8: "saliency bracket invariant",
+    9: "saliency average below bracket",
+    10: "saliency average above bracket",
 }
 
 CURRENT_LOOP_FAILURE_NAMES: dict[int, str] = {
@@ -320,6 +322,22 @@ def format_commission_detail(detail: dict) -> str:
                 value1,
                 x_d,
                 x_q,
+            )
+        if value0 in (9, 10):
+            x_average, bound = _decode_u16_pair(value2)
+            bound_name = "low" if value0 == 9 else "high"
+            return (
+                "%s: %s (reason=%s, saliency_permille=%d, "
+                "x_average=%d, %s_bound=%d)"
+                % (
+                    phase_name,
+                    name,
+                    reason,
+                    value1,
+                    x_average,
+                    bound_name,
+                    bound,
+                )
             )
         return "%s: %s (reason=%s, samples=%d, aux=%d)" % (
             phase_name,
