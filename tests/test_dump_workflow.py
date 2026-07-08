@@ -498,6 +498,27 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     )
 
 
+def test_tuning_flag_names_bounded_closed_loop_entry_drift():
+    driver = make_driver()
+    driver.diagnostics.active.handle_closed_loop_entry(
+        {
+            "oid": driver.oid,
+            "entry_status": 4,
+            "position_1": 0,
+            "position_2": 17,
+            "drift_count": 17,
+            "threshold_count": 2,
+            "runaway": 0,
+        }
+    )
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Last closed-loop entry (not persisted) --" in output
+    assert "last.entry_status                = warn_drift" in output
+    assert "last.entry_drift                 = drift=17 threshold=2" in output
+
+
 def test_tuning_flag_appends_last_encoder_alignment_evidence():
     driver = make_driver()
     driver.diagnostics.active.handle_encoder_alignment(

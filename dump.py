@@ -152,6 +152,7 @@ CLOSED_LOOP_ENTRY_STATUS_LABELS: dict[int, str] = {
     1: "pass",
     2: "fail_runaway",
     3: "fail_drift",
+    4: "warn_drift",
 }
 
 CURRENT_VALIDATION_AXIS_FLUX = 0x01
