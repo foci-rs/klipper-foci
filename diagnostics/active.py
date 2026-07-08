@@ -767,10 +767,13 @@ class ActiveDiagnostics:
         cached["validation_envelope"] = dict(params)
         msg = (
             "FOCI %s current validation envelope: step_amplitude=%d"
+            " flux_step_amplitude=%d torque_step_amplitude=%d"
             " pidout_limit=%d current_limited=%d voltage_limited=%d max_p=%d"
             % (
                 self.driver.name,
                 params["step_amplitude"],
+                params["flux_step_amplitude"],
+                params["torque_step_amplitude"],
                 params["pidout_limit"],
                 params["current_limited"],
                 params["voltage_limited"],
