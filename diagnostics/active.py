@@ -56,6 +56,7 @@ class ActiveDiagnostics:
         self.last_closed_loop_entry: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
         self.last_encoder_alignment: dict[int, dict] = {}
+        self.adc_residuals: dict[int, list[dict]] = {}
         self.current_step_pending_axis: str | None = None
 
     def handle_current_step_result(self, params: dict) -> None:
@@ -687,6 +688,32 @@ class ActiveDiagnostics:
                 params["movement_counts"],
                 params["min_movement_counts"],
                 params["counts_per_electrical_rev"],
+            )
+        )
+        self.driver.printer.lookup_object("gcode").respond_info(msg)
+
+    def handle_adc_residual(self, params: dict) -> None:
+        """Handle foci_adc_residual from firmware."""
+        cached = self.adc_residuals.setdefault(params["oid"], [])
+        cached.append(dict(params))
+        msg = (
+            "FOCI %s adc residual: stage=%d sample_count=%d"
+            " pwm_sv_chop=%d pwm_bbm=0x%08x"
+            " adc_i0_scale_offset=0x%08x adc_i1_scale_offset=0x%08x"
+            " adc_iux_mean_count=%d adc_iwy_mean_count=%d"
+            " pid_flux_mean_count=%d pid_torque_mean_count=%d"
+            % (
+                self.driver.name,
+                params["stage"],
+                params["sample_count"],
+                params["pwm_sv_chop"],
+                params["pwm_bbm"],
+                params["adc_i0_scale_offset"],
+                params["adc_i1_scale_offset"],
+                params["adc_iux_mean_count"],
+                params["adc_iwy_mean_count"],
+                params["pid_flux_mean_count"],
+                params["pid_torque_mean_count"],
             )
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)

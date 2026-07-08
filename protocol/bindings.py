@@ -134,6 +134,11 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.active.handle_adc_residual,
+        "foci_adc_residual",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.active.handle_current_validation_axis,
         "foci_current_validation_axis",
         oid,
