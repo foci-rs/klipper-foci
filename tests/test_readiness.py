@@ -95,6 +95,17 @@ def test_model_quality_flags_derate_without_forcing_conservative():
     assert any("theta/tau ratio" in item for item in report.warnings)
 
 
+def test_inner_warning_bit4_alone_is_ignored():
+    driver = _driver_ready_for_autotune()
+    driver.config.identified_inner_warning_flags = 1 << 4
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_READY
+    assert report.stage2_policy == POLICY_NORMAL
+    assert report.warnings == ()
+
+
 def test_saliency_not_determinable_marks_split_unavailable():
     driver = _driver_ready_for_autotune()
     driver.config.identified_l_saliency_status = 0
@@ -178,6 +189,33 @@ def test_sustained_hold_hard_failure_blocks_autotune():
     assert any("sustained-hold hard failure status=3" in item for item in report.blockers)
 
 
+def test_closed_loop_entry_warning_is_ready_with_warnings_and_normal_policy():
+    driver = _driver_ready_for_autotune()
+    driver.diagnostics.active.last_closed_loop_entry[driver.oid] = {
+        "entry_status": 4,
+    }
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_READY_WITH_WARNINGS
+    assert report.stage2_policy == POLICY_NORMAL
+    assert any("bounded closed-loop entry drift" in item for item in report.warnings)
+
+
+def test_sustained_hold_warning_flags_are_ready_with_warnings_and_normal_policy():
+    driver = _driver_ready_for_autotune()
+    driver.diagnostics.active.last_current_loop_hold[driver.oid] = {
+        "hold_status": 1,
+        "warning_flags": 3,
+    }
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_READY_WITH_WARNINGS
+    assert report.stage2_policy == POLICY_NORMAL
+    assert any("bounded sustained-hold warning flags=3" in item for item in report.warnings)
+
+
 def test_closed_loop_entry_hard_failures_block_autotune():
     for status in (2, 3):
         driver = _driver_ready_for_autotune()
@@ -192,3 +230,16 @@ def test_closed_loop_entry_hard_failures_block_autotune():
             "closed-loop entry hard failure status=%d" % status in item
             for item in report.blockers
         )
+
+
+def test_sustained_hold_status_4_blocks_autotune():
+    driver = _driver_ready_for_autotune()
+    driver.diagnostics.active.last_current_loop_hold[driver.oid] = {
+        "hold_status": 4,
+        "warning_flags": 0,
+    }
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_BLOCKED
+    assert any("sustained-hold hard failure status=4" in item for item in report.blockers)

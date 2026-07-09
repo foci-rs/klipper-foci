@@ -276,8 +276,6 @@ def _stage2_policy(
         return POLICY_CONSERVATIVE
     if inner_warning_flags & DERATING_INNER_FLAGS:
         return POLICY_DERATED
-    if warnings:
-        return POLICY_DERATED
     return POLICY_NORMAL
 
 
