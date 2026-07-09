@@ -240,6 +240,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d = self._ready_driver()
         d.config.identified_current_failure_reason = 6
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        calls = []
+        d.homing.invalidate_homing = lambda: calls.append("invalidate_homing")
 
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
@@ -247,6 +249,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertIn("FOCI_AUTOTUNE blocked", str(ctx.exception))
         self.assertIn("current-loop failure reason=6", str(ctx.exception))
         self.assertIsNone(d.protocol.commands.tune.last_args)
+        self.assertEqual(calls, [])
 
     def test_resolver_preserves_host_default_confidence_bit6(self):
         d = self._ready_driver()
