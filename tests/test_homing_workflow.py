@@ -58,6 +58,43 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         # Calibration should not have been requested.
         self.assertIsNone(d.protocol.commands.calibrate.last_args)
 
+    def test_calibration_failure_reports_encoder_check_diagnostics(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        reactor = d.printer.get_reactor()
+        reactor.completion_result = {
+            "oid": d.oid,
+            "status": 8,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 0,
+        }
+
+        def send_calibrate(_args):
+            d.commissioning.handle_commission_detail(
+                {
+                    "phase": 4,
+                    "code": 2,
+                    "status": 1,
+                    "value0": 123,
+                    "value1": 123,
+                    "value2": 0,
+                }
+            )
+
+        d.protocol.commands.calibrate.send = send_calibrate
+
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+
+        self.assertIn("ENCODER_FAULT", str(ctx.exception))
+        gcode = d.printer.lookup_object("gcode")
+        self.assertEqual(len(gcode._responses), 1)
+        self.assertIn("calibration diagnostics", gcode._responses[0])
+        self.assertIn("Encoder check: direction sweep FAIL", gcode._responses[0])
+        self.assertIn("start=123", gcode._responses[0])
+        self.assertIn("delta=0", gcode._responses[0])
+
 
 class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_delegates_initial_homing_state(self):

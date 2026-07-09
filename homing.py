@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from .commissioning import COMMISSION_ERROR_NAMES
+from .commissioning import format_commission_detail
 
 
 class HomingWorkflow:
@@ -73,6 +74,16 @@ class HomingWorkflow:
         """Handle foci_calibrate_response message from firmware."""
         if self.driver.state.calibration_completion is not None:
             self.driver.state.calibration_completion.complete(params)
+
+    def _report_calibration_details(self) -> None:
+        """Emit retained calibration diagnostics, if the firmware sent any."""
+        details = self.driver.commissioning.details
+        if not details:
+            return
+        gcode = self.driver.printer.lookup_object("gcode")
+        lines = ["FOCI %s calibration diagnostics:" % self.driver.stepper_name]
+        lines.extend("  %s" % format_commission_detail(detail) for detail in details)
+        gcode.respond_info("\n".join(lines))
 
     def apply_initial_state(self) -> None:
         """Apply connect-time homing state after driver config is loaded."""
@@ -174,6 +185,7 @@ class HomingWorkflow:
             )
         try:
             self.apply_active_gains_to_firmware()
+            self.driver.commissioning.clear_details()
 
             reactor = self.driver.printer.get_reactor()
             self.driver.state.calibration_completion = reactor.completion()
@@ -208,6 +220,7 @@ class HomingWorkflow:
                 msg = self.format_calibration_status(status)
                 if status == 2:
                     self.driver.commissioning.handle_chip_reset_detected()
+                self._report_calibration_details()
                 raise self.driver.printer.command_error(
                     "FOCI %s calibration failed: %s" % (self.driver.name, msg)
                 )
