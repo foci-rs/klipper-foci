@@ -83,6 +83,23 @@ def test_default_current_gains_force_conservative():
     assert any("current gains fell back" in item for item in report.warnings)
 
 
+def test_default_current_gain_warning_is_reported_once():
+    driver = _driver_ready_for_autotune()
+    driver.config.identified_current_gains_source = 2
+    driver.config.identified_current_gains_tier = 3
+
+    report = resolve_autotune_readiness(driver)
+
+    fallback_warnings = [
+        item
+        for item in report.warnings
+        if "current gains fell back to defaults" in item
+    ]
+    assert fallback_warnings == [
+        "inner confidence: current gains fell back to defaults"
+    ]
+
+
 def test_model_quality_flags_derate_without_forcing_conservative():
     driver = _driver_ready_for_autotune()
     driver.config.identified_inner_warning_flags = (1 << 0) | (1 << 3)
@@ -158,7 +175,21 @@ def test_active_current_gain_missing_blocks_autotune():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_BLOCKED
-    assert any("active current-loop gain flux_p unavailable" in item for item in report.blockers)
+    assert any(
+        "active current-loop gain flux_p unavailable" in item
+        for item in report.blockers
+    )
+
+
+def test_current_loop_gains_trusted_with_unrelated_blocker():
+    driver = _driver_ready_for_autotune()
+    driver.state.runtime_status = "uncommissioned"
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_BLOCKED
+    assert any("not commissioned" in item for item in report.blockers)
+    assert "current_loop_gains" in report.trusted_inputs
 
 
 def test_live_current_gain_mismatch_blocks_when_live_readback_provided():
@@ -173,7 +204,9 @@ def test_live_current_gain_mismatch_blocks_when_live_readback_provided():
     report = resolve_autotune_readiness(driver, live_current_gains=live_current_gains)
 
     assert report.result == RESULT_BLOCKED
-    assert any("live current-loop gain flux_p mismatch" in item for item in report.blockers)
+    assert any(
+        "live current-loop gain flux_p mismatch" in item for item in report.blockers
+    )
 
 
 def test_fresh_commissioned_evidence_overrides_stale_config_for_readiness():
@@ -246,7 +279,9 @@ def test_sustained_hold_hard_failure_blocks_autotune():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_BLOCKED
-    assert any("sustained-hold hard failure status=3" in item for item in report.blockers)
+    assert any(
+        "sustained-hold hard failure status=3" in item for item in report.blockers
+    )
 
 
 def test_closed_loop_entry_warning_is_ready_with_warnings_and_normal_policy():
@@ -273,7 +308,9 @@ def test_sustained_hold_warning_flags_are_ready_with_warnings_and_normal_policy(
 
     assert report.result == RESULT_READY_WITH_WARNINGS
     assert report.stage2_policy == POLICY_NORMAL
-    assert any("bounded sustained-hold warning flags=3" in item for item in report.warnings)
+    assert any(
+        "bounded sustained-hold warning flags=3" in item for item in report.warnings
+    )
 
 
 def test_closed_loop_entry_hard_failures_block_autotune():
@@ -302,4 +339,6 @@ def test_sustained_hold_status_4_blocks_autotune():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_BLOCKED
-    assert any("sustained-hold hard failure status=4" in item for item in report.blockers)
+    assert any(
+        "sustained-hold hard failure status=4" in item for item in report.blockers
+    )

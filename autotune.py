@@ -30,11 +30,6 @@ class AutotuneWorkflow:
         self.result = params
         self.done = True
 
-    def resolve_inner_confidence(self) -> tuple[int, int]:
-        """Resolve the Phase 1 inner-confidence fields for Stage 2."""
-        readiness = resolve_autotune_readiness(self.driver)
-        return readiness.tau_e_us, readiness.inner_warning_flags
-
     def autotune(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing."""
         profile_name = gcmd.get("PROFILE", "balanced").lower()

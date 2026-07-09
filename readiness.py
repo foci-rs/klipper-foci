@@ -247,23 +247,27 @@ def _classify_current_gains(
         blockers.append("active gains unavailable")
         return
 
+    current_gain_blocked = False
     for field_name in CURRENT_GAIN_FIELDS:
         active_value = active_gains.get(field_name)
         if active_value is None:
             blockers.append("active current-loop gain %s unavailable" % field_name)
+            current_gain_blocked = True
             continue
         if live_current_gains is None:
             continue
         live_value = live_current_gains.get(field_name)
         if live_value is None:
             blockers.append("live current-loop gain %s unavailable" % field_name)
+            current_gain_blocked = True
         elif live_value != active_value:
             blockers.append(
                 "live current-loop gain %s mismatch live=%s host=%s"
                 % (field_name, live_value, active_value)
             )
+            current_gain_blocked = True
 
-    if not blockers:
+    if not current_gain_blocked:
         trusted_inputs.append("current_loop_gains")
 
 
@@ -277,8 +281,6 @@ def _classify_current_loop_evidence(
     failure_reason = evidence.get("failure_reason")
     if failure_reason not in (None, 0):
         blockers.append("current-loop failure reason=%s" % failure_reason)
-    if evidence.get("gains_source") == 2 or evidence.get("gains_tier") == 3:
-        warnings.append("current gains fell back to defaults")
 
 
 def _classify_inner_warnings(inner_warning_flags: int, warnings: list[str]) -> None:
@@ -342,7 +344,9 @@ def _classify_last_hold_and_entry(
     if hold_status in CURRENT_HOLD_BLOCKING_STATUSES:
         blockers.append("sustained-hold hard failure status=%s" % hold_status)
     elif hold and hold.get("warning_flags", 0):
-        warnings.append("bounded sustained-hold warning flags=%s" % hold["warning_flags"])
+        warnings.append(
+            "bounded sustained-hold warning flags=%s" % hold["warning_flags"]
+        )
 
     entry = active.last_closed_loop_entry_evidence(driver.oid)
     entry_status = entry.get("entry_status") if entry else None
@@ -363,9 +367,9 @@ def _stage2_policy(
         return POLICY_UNAVAILABLE
     if _required_stage2_inputs_missing(unavailable_inputs):
         return POLICY_UNAVAILABLE
-    if (
-        inner_warning_flags & CONSERVATIVE_INNER_FLAGS
-        or current_bandwidth_hz in (None, 0)
+    if inner_warning_flags & CONSERVATIVE_INNER_FLAGS or current_bandwidth_hz in (
+        None,
+        0,
     ):
         return POLICY_CONSERVATIVE
     if inner_warning_flags & DERATING_INNER_FLAGS:

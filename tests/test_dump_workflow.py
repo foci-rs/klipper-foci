@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from klipper_foci.registers import REGISTERS
 from tests.mocks import (
+    CommandError,
     MockGCmd,
     SAMPLE_ACTIVE_GAINS,
     make_config_driver,
@@ -34,6 +37,19 @@ class DumpOnlyProtocol:
         for addr, value in self.dump_values.items():
             self.driver.dump.handle_dump_value({"addr": addr, "value": value})
         self.driver.dump.handle_dump_done({})
+
+    def __getattr__(self, name):
+        raise AssertionError("unexpected protocol call: %s" % name)
+
+
+class TimeoutDumpProtocol:
+    """Protocol fake that never reports dump completion."""
+
+    def __init__(self):
+        self.calls = []
+
+    def dump_registers(self):
+        self.calls.append("dump_registers")
 
     def __getattr__(self, name):
         raise AssertionError("unexpected protocol call: %s" % name)
@@ -338,6 +354,18 @@ def test_read_live_current_gains_returns_missing_fields_as_none():
         "torque_p": None,
         "torque_i": None,
     }
+
+
+def test_read_live_current_gains_reports_dump_timeout():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    protocol = TimeoutDumpProtocol()
+    driver.protocol = protocol
+
+    with pytest.raises(CommandError, match="live current-loop gain readback timed out"):
+        driver.dump.read_live_current_gains()
+
+    assert protocol.calls == ["dump_registers"]
 
 
 def test_tuning_flag_appends_resistance_identification_evidence():

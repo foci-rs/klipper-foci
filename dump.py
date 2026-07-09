@@ -236,7 +236,10 @@ class RegisterDumpWorkflow:
 
     def read_live_current_gains(self) -> dict[str, int | None]:
         """Read live current-loop gains from the firmware dump path."""
-        self._request_dump_values()
+        if not self._request_dump_values():
+            raise self.driver.printer.command_error(
+                "FOCI %s: live current-loop gain readback timed out" % self.driver.name
+            )
         live_gains = self._live_gain_values()
         return {
             "flux_p": live_gains.get("flux_p"),
