@@ -8,6 +8,7 @@ from .commissioning import (
     PROFILE_MAP,
     format_inner_warning_flags,
 )
+from .readiness import resolve_autotune_readiness
 
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
@@ -31,31 +32,8 @@ class AutotuneWorkflow:
 
     def resolve_inner_confidence(self) -> tuple[int, int]:
         """Resolve the Phase 1 inner-confidence fields for Stage 2."""
-        if self.driver.state.commissioned_result is not None:
-            r = self.driver.state.commissioned_result
-            return (
-                r.get("tau_e_us", 0),
-                r.get("inner_warning_flags", 0),
-            )
-
-        config = self.driver.config
-
-        tau_e_us = config.identified_tau_e_us
-        if tau_e_us is None:
-            if config.identified_lambda_us is None:
-                tau_e_us = 1000
-            else:
-                tau_e_us = max(config.identified_lambda_us, 1000)
-
-        inner_warning_flags = config.identified_inner_warning_flags
-        if inner_warning_flags is None:
-            # Bit 6: host-defaulted confidence data (no fresh measurement).
-            inner_warning_flags = 0x40
-
-        return (
-            tau_e_us,
-            inner_warning_flags,
-        )
+        readiness = resolve_autotune_readiness(self.driver)
+        return readiness.tau_e_us, readiness.inner_warning_flags
 
     def autotune(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing."""
@@ -119,6 +97,24 @@ class AutotuneWorkflow:
                         "FOCI %s: homing lost during wait" % self.driver.name
                     )
 
+            readiness = resolve_autotune_readiness(self.driver)
+            if readiness.blocked:
+                raise gcmd.error(
+                    "FOCI %s: FOCI_AUTOTUNE blocked: %s"
+                    % (self.driver.name, "; ".join(readiness.blockers))
+                )
+
+            if readiness.warnings:
+                gcmd.respond_info(
+                    "FOCI %s autotune readiness warnings: %s"
+                    % (self.driver.name, "; ".join(readiness.warnings))
+                )
+            if readiness.unavailable_inputs:
+                gcmd.respond_info(
+                    "FOCI %s autotune unavailable inputs: %s"
+                    % (self.driver.name, ", ".join(readiness.unavailable_inputs))
+                )
+
             self.driver.homing.invalidate_homing()
 
             if self.driver.state.commissioned_result is not None:
@@ -133,10 +129,8 @@ class AutotuneWorkflow:
                 ringing = config.identified_ringing_count
                 bandwidth = config.identified_bandwidth_hz
 
-            (
-                tau_e_us,
-                inner_warning_flags,
-            ) = self.resolve_inner_confidence()
+            tau_e_us = readiness.tau_e_us
+            inner_warning_flags = readiness.inner_warning_flags
 
             self.done = False
             self.result = None

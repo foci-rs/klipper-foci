@@ -15,6 +15,14 @@ from tests.mocks import (
 )
 
 
+class MockConfigFile:
+    def __init__(self):
+        self.values = {}
+
+    def set(self, section, key, value):
+        self.values[(section, key)] = value
+
+
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(kinematics=kinematics, homed_axes=homed_axes)
@@ -204,3 +212,75 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
 
     def test_format_inner_warning_flags_ignores_tau_residual_telemetry(self):
         self.assertEqual(format_inner_warning_flags(1 << 2), "none")
+
+
+class TestAutotuneReadinessAdmission(unittest.TestCase):
+    def _ready_driver(self):
+        d = make_driver(homed_axes="xyz")
+        d.state.is_calibrated = True
+        d.state.runtime_status = "commissioned"
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.config.identified_lambda_us = 700
+        d.config.identified_tau_e_us = 730
+        d.config.identified_theta_e_us = 160
+        d.config.identified_ringing_count = 7
+        d.config.identified_bandwidth_hz = 1600
+        d.config.identified_inner_warning_flags = 0
+        d.config.identified_current_gains_source = 1
+        d.config.identified_current_gains_tier = 1
+        d.config.identified_current_retry_budget_exhausted = 0
+        d.config.identified_current_failure_reason = 0
+        d.config.identified_l_source = 1
+        d.config.identified_l_reactance_count_ratio_milli = 8600
+        d.config.identified_l_saliency_status = 1
+        d.config.identified_r_count_slope_milli = 1042
+        return d
+
+    def test_blocks_before_tune_when_current_loop_failed(self):
+        d = self._ready_driver()
+        d.config.identified_current_failure_reason = 6
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("FOCI_AUTOTUNE blocked", str(ctx.exception))
+        self.assertIn("current-loop failure reason=6", str(ctx.exception))
+        self.assertIsNone(d.protocol.commands.tune.last_args)
+
+    def test_resolver_preserves_host_default_confidence_bit6(self):
+        d = self._ready_driver()
+        d.config.identified_inner_warning_flags = None
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def finish_tune(deadline):
+            reactor._time = deadline
+            d.autotune.handle_tune_result(
+                {
+                    "status": 0,
+                    "warning_code": 0,
+                    "velocity_p": 1152,
+                    "velocity_i": 0,
+                    "position_p": 640,
+                    "position_i": 0,
+                    "velocity_limit": 500000,
+                    "velocity_filter_hz": 0,
+                    "torque_filter_hz": 0,
+                    "position_filter_hz": 0,
+                    "flux_filter_hz": 0,
+                    "j_eff": 42,
+                    "b_eff": 11,
+                }
+            )
+            return reactor._time
+
+        reactor.pause = finish_tune
+
+        d.autotune.autotune(gcmd)
+
+        args = d.protocol.commands.tune.last_args
+        self.assertIsNotNone(args)
+        self.assertEqual(args[-1], 0x40)
+        self.assertIn("inner confidence", gcmd.last_info)
