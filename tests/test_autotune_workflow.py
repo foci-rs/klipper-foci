@@ -213,6 +213,9 @@ class InnerConfidenceRoundtripTests(unittest.TestCase):
     def test_format_inner_warning_flags_ignores_tau_residual_telemetry(self):
         self.assertEqual(format_inner_warning_flags(1 << 2), "none")
 
+    def test_format_inner_warning_flags_ignores_deprecated_bit4(self):
+        self.assertEqual(format_inner_warning_flags(1 << 4), "none")
+
 
 class TestAutotuneReadinessAdmission(unittest.TestCase):
     def _ready_driver(self):

@@ -30,18 +30,21 @@ as a bitfield:
 
 | Bit | Meaning |
 | --- | --- |
-| 0 | Per-coil resistance mismatch warning |
-| 1 | Per-coil electrical time-constant mismatch warning |
+| 0 | Per-coil resistance mismatch warning; widens Stage 2 lambda |
+| 1 | Per-coil electrical time-constant mismatch warning; widens Stage 2 lambda |
 | 2 | Reserved; tau residual is reported as telemetry, not a warning |
-| 3 | Electrical delay/theta-to-tau ratio warning |
-| 4 | Current validation accepted after retry |
-| 5 | Current gains fell back to defaults |
-| 6 | Confidence fields are host defaults, not a fresh measurement |
+| 3 | Electrical delay/theta-to-tau ratio warning; widens Stage 2 lambda |
+| 4 | Reserved/deprecated; successful current-validation retry is evidence, not an inner warning |
+| 5 | Current gains fell back to defaults; forces conservative Stage 2 synthesis |
+| 6 | Confidence fields are host defaults, not a fresh measurement; forces conservative Stage 2 synthesis |
 | 7 | Reserved |
 
-Non-zero flags are shown in `FOCI_COMMISSION` and `FOCI_TUNE` console output.
-Bits 5 and 6 force conservative Stage 2 synthesis when new gains are generated;
-persisted outer gains from an earlier tune remain unchanged until retuned.
+Non-zero displayable flags are shown in `FOCI_COMMISSION` and `FOCI_TUNE`
+console output. Bits 0, 1, and 3 derate Stage 2 by widening lambda. Bits 5 and
+6 force conservative Stage 2 synthesis when new gains are generated. Bit 4 is
+kept reserved/deprecated because successful current-validation retry is reported
+through current-loop evidence, not `inner_warning_flags`. Persisted outer gains
+from an earlier tune remain unchanged until retuned.
 
 ## License
 
