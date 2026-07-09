@@ -212,6 +212,31 @@ def format_commission_detail(detail: dict) -> str:
             "(expected=%d counts, other=%d counts, raw=0x%08x)"
             % (phase_name, coil, status, expected, other, value2)
         )
+    if detail["phase"] == 4 and code == 1:
+        return "%s: ABN read unstable (samples=%d/%d/%d)" % (
+            phase_name,
+            value0,
+            value1,
+            value2,
+        )
+    if detail["phase"] == 4 and code == 2:
+        status = "FAIL" if detail["status"] else "PASS"
+        return "%s: direction sweep %s (start=%d, end=%d, delta=%d)" % (
+            phase_name,
+            status,
+            value0,
+            value1,
+            value2,
+        )
+    if detail["phase"] == 16 and code == 1:
+        status = "FAIL" if detail["status"] else "PASS"
+        return "%s: alignment movement %s (movement=%d, min=%d, stability=%d)" % (
+            phase_name,
+            status,
+            value0,
+            value1,
+            value2,
+        )
     if code == 1:
         return (
             "%s: %s (voltage_count=%d, legacy_didt_cycles=%d, sample_period=%dus)"

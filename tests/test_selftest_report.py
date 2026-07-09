@@ -203,6 +203,63 @@ def test_format_commission_detail_coil_check_sample():
     assert "raw=0xffec0078" in line
 
 
+def test_format_commission_detail_encoder_read_unstable():
+    line = format_commission_detail(
+        {
+            "phase": 4,
+            "code": 1,
+            "status": 1,
+            "value0": 500,
+            "value1": 600,
+            "value2": 500,
+        }
+    )
+
+    assert "Encoder check" in line
+    assert "ABN read unstable" in line
+    assert "samples=500/600/500" in line
+
+
+def test_format_commission_detail_encoder_direction_result():
+    line = format_commission_detail(
+        {
+            "phase": 4,
+            "code": 2,
+            "status": 1,
+            "value0": 1234,
+            "value1": 1234,
+            "value2": 0,
+        }
+    )
+
+    assert "Encoder check" in line
+    assert "direction sweep" in line
+    assert "FAIL" in line
+    assert "start=1234" in line
+    assert "end=1234" in line
+    assert "delta=0" in line
+
+
+def test_format_commission_detail_encoder_alignment_result():
+    line = format_commission_detail(
+        {
+            "phase": 16,
+            "code": 1,
+            "status": 1,
+            "value0": 1,
+            "value1": 4,
+            "value2": 0,
+        }
+    )
+
+    assert "Encoder alignment" in line
+    assert "alignment movement" in line
+    assert "FAIL" in line
+    assert "movement=1" in line
+    assert "min=4" in line
+    assert "stability=0" in line
+
+
 def test_stage_names_map_contains_all_eight():
     assert SELFTEST_STAGES[1] == "ADC calibration"
     assert SELFTEST_STAGES[2] == "Motor coil A"
