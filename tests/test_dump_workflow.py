@@ -274,11 +274,14 @@ def test_tuning_flag_appends_autotune_readiness_report():
     assert "FOCI foci manual_stepper stepper_x autotune readiness:" in output
     assert "result: ready" in output
     assert "stage2_policy: normal" in output
+    assert "blockers: none" in output
+    assert "warnings: none" in output
     trusted_inputs_line = next(
         line for line in output.splitlines() if "trusted_inputs:" in line
     )
     assert "current_loop_gains" in trusted_inputs_line
     assert "current_bandwidth" in trusted_inputs_line
+    assert "unavailable_inputs: none" in output
 
 
 def test_tuning_readiness_blocks_live_current_gain_mismatch():
@@ -294,7 +297,47 @@ def test_tuning_readiness_blocks_live_current_gain_mismatch():
     assert "-- Autotune readiness --" in output
     assert "result: blocked" in output
     assert "stage2_policy: unavailable" in output
+    assert "warnings: inner confidence:" in output
+    assert "unavailable_inputs: none" in output
     assert "live current-loop gain flux_p mismatch live=257 host=256" in output
+
+
+def test_tuning_readiness_reports_unavailable_inputs_line():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.state.is_calibrated = True
+    driver.state.runtime_status = "commissioned"
+    driver.config.identified_l_source = 0
+    driver.config.identified_l_reactance_count_ratio_milli = None
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "result: ready_with_warnings" in output
+    assert "blockers: none" in output
+    assert "warnings: inner confidence:" in output
+    assert "unavailable_inputs: average_inductance" in output
+
+
+def test_read_live_current_gains_returns_missing_fields_as_none():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    protocol = DumpOnlyProtocol(
+        driver,
+        {
+            REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+        },
+    )
+    driver.protocol = protocol
+
+    live_gains = driver.dump.read_live_current_gains()
+
+    assert protocol.calls == ["dump_registers"]
+    assert live_gains == {
+        "flux_p": 256,
+        "flux_i": 26,
+        "torque_p": None,
+        "torque_i": None,
+    }
 
 
 def test_tuning_flag_appends_resistance_identification_evidence():

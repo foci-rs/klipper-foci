@@ -3,6 +3,7 @@
 import unittest
 
 from klipper_foci.commissioning import format_inner_warning_flags
+from klipper_foci.registers import REGISTERS
 
 from tests.mocks import (
     CommandError,
@@ -23,6 +24,22 @@ class MockConfigFile:
         self.values[(section, key)] = value
 
 
+def install_live_dump(driver, dump_values=None):
+    values = {
+        REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+        REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+    }
+    if dump_values is not None:
+        values.update(dump_values)
+
+    def dump_registers():
+        for addr, value in values.items():
+            driver.dump.handle_dump_value({"addr": addr, "value": value})
+        driver.dump.handle_dump_done({})
+
+    driver.protocol.dump_registers = dump_registers
+
+
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(kinematics=kinematics, homed_axes=homed_axes)
@@ -30,6 +47,22 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         d.state.runtime_status = "commissioned"
         d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
+        d.state.commissioned_result.update(
+            {
+                "tau_e_us": 730,
+                "inner_warning_flags": 0,
+                "bandwidth_hz": 1600,
+                "current_gains_source": 1,
+                "current_gains_tier": 1,
+                "current_retry_budget_exhausted": 0,
+                "current_failure_reason": 0,
+                "inductance_source": 1,
+                "inductance_reactance_count_ratio_milli": 8600,
+                "inductance_saliency_status": 1,
+                "resistance_selected_count_slope_milli": 1042,
+            }
+        )
+        install_live_dump(d)
         return d
 
     def test_raises_if_lock_held(self):
@@ -237,7 +270,20 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.config.identified_l_reactance_count_ratio_milli = 8600
         d.config.identified_l_saliency_status = 1
         d.config.identified_r_count_slope_milli = 1042
+        install_live_dump(d)
         return d
+
+    def _install_live_dump(self, driver, dump_values):
+        calls = []
+
+        def dump_registers():
+            calls.append("dump_registers")
+            for addr, value in dump_values.items():
+                driver.dump.handle_dump_value({"addr": addr, "value": value})
+            driver.dump.handle_dump_done({})
+
+        driver.protocol.dump_registers = dump_registers
+        return calls
 
     def test_blocks_before_tune_when_current_loop_failed(self):
         d = self._ready_driver()
@@ -290,3 +336,108 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertIsNotNone(args)
         self.assertEqual(args[-1], 0x40)
         self.assertIn("inner confidence", gcmd.last_info)
+
+    def test_blocks_before_tune_when_live_current_gains_mismatch(self):
+        d = self._ready_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        invalidate_calls = []
+        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
+        self._install_live_dump(
+            d,
+            {
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 26,
+                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+            },
+        )
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("live current-loop gain flux_p mismatch", str(ctx.exception))
+        self.assertIsNone(d.protocol.commands.tune.last_args)
+        self.assertEqual(invalidate_calls, [])
+
+    def test_blocks_before_tune_when_live_current_gain_readback_is_missing(self):
+        d = self._ready_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        invalidate_calls = []
+        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
+        self._install_live_dump(
+            d,
+            {
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+            },
+        )
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("live current-loop gain torque_p unavailable", str(ctx.exception))
+        self.assertIsNone(d.protocol.commands.tune.last_args)
+        self.assertEqual(invalidate_calls, [])
+
+    def test_unavailable_stage2_inputs_refuse_before_homing_invalidation_and_tune(self):
+        d = self._ready_driver()
+        d.config.identified_l_source = 0
+        d.config.identified_l_reactance_count_ratio_milli = None
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        invalidate_calls = []
+        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
+        self._install_live_dump(
+            d,
+            {
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+            },
+        )
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("stage 2 unavailable inputs: average_inductance", str(ctx.exception))
+        self.assertIsNone(d.protocol.commands.tune.last_args)
+        self.assertEqual(invalidate_calls, [])
+
+    def test_default_current_gain_evidence_sets_inner_warning_bit5_for_tune(self):
+        d = self._ready_driver()
+        d.config.identified_current_gains_source = 2
+        d.config.identified_current_gains_tier = 3
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        self._install_live_dump(
+            d,
+            {
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+            },
+        )
+
+        def finish_tune(deadline):
+            reactor._time = deadline
+            d.autotune.handle_tune_result(
+                {
+                    "status": 0,
+                    "warning_code": 0,
+                    "velocity_p": 1152,
+                    "velocity_i": 0,
+                    "position_p": 640,
+                    "position_i": 0,
+                    "velocity_limit": 500000,
+                    "velocity_filter_hz": 0,
+                    "torque_filter_hz": 0,
+                    "position_filter_hz": 0,
+                    "flux_filter_hz": 0,
+                    "j_eff": 42,
+                    "b_eff": 11,
+                }
+            )
+            return reactor._time
+
+        reactor.pause = finish_tune
+
+        d.autotune.autotune(gcmd)
+
+        args = d.protocol.commands.tune.last_args
+        self.assertIsNotNone(args)
+        self.assertEqual(args[-1], 1 << 5)

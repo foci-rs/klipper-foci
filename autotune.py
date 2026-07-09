@@ -8,7 +8,7 @@ from .commissioning import (
     PROFILE_MAP,
     format_inner_warning_flags,
 )
-from .readiness import resolve_autotune_readiness
+from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
@@ -97,11 +97,20 @@ class AutotuneWorkflow:
                         "FOCI %s: homing lost during wait" % self.driver.name
                     )
 
-            readiness = resolve_autotune_readiness(self.driver)
+            live_current_gains = self.driver.dump.read_live_current_gains()
+            readiness = resolve_autotune_readiness(
+                self.driver,
+                live_current_gains=live_current_gains,
+            )
             if readiness.blocked:
                 raise gcmd.error(
                     "FOCI %s: FOCI_AUTOTUNE blocked: %s"
                     % (self.driver.name, "; ".join(readiness.blockers))
+                )
+            if readiness.stage2_policy == POLICY_UNAVAILABLE:
+                raise gcmd.error(
+                    "FOCI %s: FOCI_AUTOTUNE stage 2 unavailable inputs: %s"
+                    % (self.driver.name, ", ".join(readiness.unavailable_inputs))
                 )
 
             if readiness.warnings:

@@ -56,8 +56,6 @@ def resolve_autotune_readiness(
     unavailable_inputs: list[str] = []
 
     state = driver.state
-    config = driver.config
-
     if state.inhibited:
         blockers.append("inhibited after failed FOCI_COMMISSION")
     if state.runtime_status == "uncommissioned":
@@ -65,8 +63,16 @@ def resolve_autotune_readiness(
     if not state.is_calibrated:
         blockers.append("not calibrated")
 
+    current_loop_evidence = _resolve_current_loop_evidence(driver)
+    inductance_evidence = _resolve_inductance_evidence(driver)
+    resistance_evidence = _resolve_resistance_evidence(driver)
     tau_e_us, inner_warning_flags = _resolve_inner_confidence(driver)
     current_bandwidth_hz = _resolve_current_bandwidth(driver)
+    if (
+        current_loop_evidence["gains_source"] == 2
+        or current_loop_evidence["gains_tier"] == 3
+    ):
+        inner_warning_flags |= 1 << 5
 
     _classify_current_gains(
         state.active_gains,
@@ -74,11 +80,11 @@ def resolve_autotune_readiness(
         blockers,
         trusted_inputs,
     )
-    _classify_current_loop_evidence(config, blockers, warnings)
+    _classify_current_loop_evidence(current_loop_evidence, blockers, warnings)
     _classify_inner_warnings(inner_warning_flags, warnings)
     _classify_bandwidth(current_bandwidth_hz, warnings, trusted_inputs)
-    _classify_inductance(config, trusted_inputs, unavailable_inputs)
-    _classify_resistance(config, trusted_inputs)
+    _classify_inductance(inductance_evidence, trusted_inputs, unavailable_inputs)
+    _classify_resistance(resistance_evidence, trusted_inputs)
     _classify_last_hold_and_entry(driver, blockers, warnings)
 
     stage2_policy = _stage2_policy(
@@ -87,7 +93,6 @@ def resolve_autotune_readiness(
         unavailable_inputs,
         inner_warning_flags,
         current_bandwidth_hz,
-        config,
     )
     if blockers:
         result = RESULT_BLOCKED
@@ -150,6 +155,88 @@ def _resolve_current_bandwidth(driver) -> int | None:
     return driver.config.identified_bandwidth_hz
 
 
+def _resolve_current_loop_evidence(driver) -> dict[str, int | None]:
+    if driver.state.commissioned_result is not None:
+        result = driver.state.commissioned_result
+        if any(
+            key in result
+            for key in (
+                "current_gains_source",
+                "current_gains_tier",
+                "current_retry_budget_exhausted",
+                "current_failure_reason",
+            )
+        ):
+            return {
+                "gains_source": result.get("current_gains_source"),
+                "gains_tier": result.get("current_gains_tier"),
+                "retry_budget_exhausted": result.get("current_retry_budget_exhausted"),
+                "failure_reason": result.get("current_failure_reason"),
+            }
+
+    config = driver.config
+    return {
+        "gains_source": config.identified_current_gains_source,
+        "gains_tier": config.identified_current_gains_tier,
+        "retry_budget_exhausted": config.identified_current_retry_budget_exhausted,
+        "failure_reason": config.identified_current_failure_reason,
+    }
+
+
+def _resolve_inductance_evidence(driver) -> dict[str, int | None]:
+    if driver.state.commissioned_result is not None:
+        result = driver.state.commissioned_result
+        if any(
+            key in result
+            for key in (
+                "inductance_source",
+                "inductance_reactance_count_ratio_milli",
+                "inductance_saliency_status",
+            )
+        ):
+            return {
+                "source": result.get("inductance_source"),
+                "reactance_count_ratio_milli": result.get(
+                    "inductance_reactance_count_ratio_milli"
+                ),
+                "saliency_status": result.get("inductance_saliency_status"),
+            }
+
+    config = driver.config
+    return {
+        "source": config.identified_l_source,
+        "reactance_count_ratio_milli": config.identified_l_reactance_count_ratio_milli,
+        "saliency_status": config.identified_l_saliency_status,
+    }
+
+
+def _resolve_resistance_evidence(driver) -> dict[str, int | None]:
+    if driver.state.commissioned_result is not None:
+        result = driver.state.commissioned_result
+        if any(
+            key in result
+            for key in (
+                "resistance_selected_count_slope_milli",
+                "r_mohm",
+                "r_int",
+            )
+        ):
+            return {
+                "selected_count_slope_milli": result.get(
+                    "resistance_selected_count_slope_milli"
+                ),
+                "r_mohm": result.get("r_mohm"),
+                "r_int": result.get("r_int"),
+            }
+
+    config = driver.config
+    return {
+        "selected_count_slope_milli": config.identified_r_count_slope_milli,
+        "r_mohm": config.identified_r_count_milli,
+        "r_int": config.identified_r_int,
+    }
+
+
 def _classify_current_gains(
     active_gains: Mapping[str, int | None] | None,
     live_current_gains: Mapping[str, int | None] | None,
@@ -180,13 +267,17 @@ def _classify_current_gains(
         trusted_inputs.append("current_loop_gains")
 
 
-def _classify_current_loop_evidence(config, blockers: list[str], warnings: list[str]) -> None:
-    if config.identified_current_retry_budget_exhausted:
+def _classify_current_loop_evidence(
+    evidence: Mapping[str, int | None],
+    blockers: list[str],
+    warnings: list[str],
+) -> None:
+    if evidence.get("retry_budget_exhausted"):
         blockers.append("current-loop retry exhausted")
-    failure_reason = config.identified_current_failure_reason
+    failure_reason = evidence.get("failure_reason")
     if failure_reason not in (None, 0):
         blockers.append("current-loop failure reason=%s" % failure_reason)
-    if config.identified_current_gains_source == 2 or config.identified_current_gains_tier == 3:
+    if evidence.get("gains_source") == 2 or evidence.get("gains_tier") == 3:
         warnings.append("current gains fell back to defaults")
 
 
@@ -210,26 +301,32 @@ def _classify_bandwidth(
 
 
 def _classify_inductance(
-    config,
+    evidence: Mapping[str, int | None],
     trusted_inputs: list[str],
     unavailable_inputs: list[str],
 ) -> None:
-    if config.identified_l_source == 1 or config.identified_l_reactance_count_ratio_milli is not None:
+    if (
+        evidence.get("source") == 1
+        or evidence.get("reactance_count_ratio_milli") is not None
+    ):
         trusted_inputs.append("average_inductance")
     else:
         unavailable_inputs.append("average_inductance")
 
-    if config.identified_l_saliency_status == 1:
+    if evidence.get("saliency_status") == 1:
         trusted_inputs.append("ld_lq_split")
     else:
         unavailable_inputs.append("ld_lq_split")
 
 
-def _classify_resistance(config, trusted_inputs: list[str]) -> None:
+def _classify_resistance(
+    evidence: Mapping[str, int | None],
+    trusted_inputs: list[str],
+) -> None:
     if (
-        config.identified_r_count_slope_milli is not None
-        or config.identified_r_count_milli is not None
-        or config.identified_r_int is not None
+        evidence.get("selected_count_slope_milli") is not None
+        or evidence.get("r_mohm") is not None
+        or evidence.get("r_int") is not None
     ):
         trusted_inputs.append("count_space_resistance")
 
@@ -261,7 +358,6 @@ def _stage2_policy(
     unavailable_inputs: list[str],
     inner_warning_flags: int,
     current_bandwidth_hz: int | None,
-    config,
 ) -> str:
     if blockers:
         return POLICY_UNAVAILABLE
@@ -270,8 +366,6 @@ def _stage2_policy(
     if (
         inner_warning_flags & CONSERVATIVE_INNER_FLAGS
         or current_bandwidth_hz in (None, 0)
-        or config.identified_current_gains_source == 2
-        or config.identified_current_gains_tier == 3
     ):
         return POLICY_CONSERVATIVE
     if inner_warning_flags & DERATING_INNER_FLAGS:

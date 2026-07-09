@@ -176,6 +176,66 @@ def test_live_current_gain_mismatch_blocks_when_live_readback_provided():
     assert any("live current-loop gain flux_p mismatch" in item for item in report.blockers)
 
 
+def test_fresh_commissioned_evidence_overrides_stale_config_for_readiness():
+    driver = _driver_ready_for_autotune()
+    driver.config.identified_current_gains_source = 2
+    driver.config.identified_current_gains_tier = 3
+    driver.config.identified_l_source = 0
+    driver.config.identified_l_reactance_count_ratio_milli = None
+    driver.config.identified_l_saliency_status = 0
+    driver.config.identified_r_count_slope_milli = None
+    driver.config.identified_r_int = None
+    driver.state.commissioned_result = {
+        "tau_e_us": 730,
+        "inner_warning_flags": 0,
+        "bandwidth_hz": 1600,
+        "current_gains_source": 1,
+        "current_gains_tier": 1,
+        "current_retry_budget_exhausted": 0,
+        "current_failure_reason": 0,
+        "inductance_source": 1,
+        "inductance_reactance_count_ratio_milli": 8600,
+        "inductance_saliency_status": 1,
+        "resistance_selected_count_slope_milli": 1042,
+        "r_mohm": 1700,
+        "r_int": 1706,
+    }
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_READY
+    assert report.stage2_policy == POLICY_NORMAL
+    assert report.warnings == ()
+    assert report.unavailable_inputs == ()
+    assert "average_inductance" in report.trusted_inputs
+    assert "ld_lq_split" in report.trusted_inputs
+    assert "count_space_resistance" in report.trusted_inputs
+
+
+def test_fresh_commissioned_current_loop_failure_blocks_despite_stale_config():
+    driver = _driver_ready_for_autotune()
+    driver.config.identified_current_failure_reason = 0
+    driver.state.commissioned_result = {
+        "tau_e_us": 730,
+        "inner_warning_flags": 0,
+        "bandwidth_hz": 1600,
+        "current_gains_source": 1,
+        "current_gains_tier": 1,
+        "current_retry_budget_exhausted": 0,
+        "current_failure_reason": 6,
+        "inductance_source": 1,
+        "inductance_reactance_count_ratio_milli": 8600,
+        "inductance_saliency_status": 1,
+        "resistance_selected_count_slope_milli": 1042,
+    }
+
+    report = resolve_autotune_readiness(driver)
+
+    assert report.result == RESULT_BLOCKED
+    assert report.stage2_policy == POLICY_UNAVAILABLE
+    assert any("current-loop failure reason=6" in item for item in report.blockers)
+
+
 def test_sustained_hold_hard_failure_blocks_autotune():
     driver = _driver_ready_for_autotune()
     driver.diagnostics.active.last_current_loop_hold[driver.oid] = {

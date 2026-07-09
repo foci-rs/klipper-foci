@@ -220,16 +220,7 @@ class RegisterDumpWorkflow:
         """Handle dump completion signal from firmware."""
         self._dump_complete = True
 
-    def dump_registers(self, gcmd) -> None:
-        """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
-
-        Sends a single foci_dump_registers command to the firmware and
-        waits for all register values to be streamed back via the
-        FOCI:DUMP: output protocol, then prints them formatted to the
-        GCode console. ``TUNING=1`` appends host-derived read-only tuning
-        analysis using the same dump response.
-        """
-        include_tuning = bool(gcmd.get_int("TUNING", 0, minval=0, maxval=1))
+    def _request_dump_values(self) -> bool:
         reactor = self.driver.printer.get_reactor()
         self._dump_buffer.clear()
         self._dump_complete = False
@@ -241,7 +232,30 @@ class RegisterDumpWorkflow:
         while not self._dump_complete and reactor.monotonic() < deadline:
             reactor.pause(reactor.monotonic() + 0.05)
 
-        if not self._dump_complete:
+        return self._dump_complete
+
+    def read_live_current_gains(self) -> dict[str, int | None]:
+        """Read live current-loop gains from the firmware dump path."""
+        self._request_dump_values()
+        live_gains = self._live_gain_values()
+        return {
+            "flux_p": live_gains.get("flux_p"),
+            "flux_i": live_gains.get("flux_i"),
+            "torque_p": live_gains.get("torque_p"),
+            "torque_i": live_gains.get("torque_i"),
+        }
+
+    def dump_registers(self, gcmd) -> None:
+        """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
+
+        Sends a single foci_dump_registers command to the firmware and
+        waits for all register values to be streamed back via the
+        FOCI:DUMP: output protocol, then prints them formatted to the
+        GCode console. ``TUNING=1`` appends host-derived read-only tuning
+        analysis using the same dump response.
+        """
+        include_tuning = bool(gcmd.get_int("TUNING", 0, minval=0, maxval=1))
+        if not self._request_dump_values():
             gcmd.respond_info("FOCI register dump timed out")
             return
 
