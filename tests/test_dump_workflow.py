@@ -256,6 +256,47 @@ def test_tuning_flag_appends_context_and_count_space_note():
     assert "control-model count-space fields" in output
 
 
+def test_tuning_flag_appends_autotune_readiness_report():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.state.is_calibrated = True
+    driver.state.runtime_status = "commissioned"
+    driver.config.identified_bandwidth_hz = 1600
+    driver.config.identified_inner_warning_flags = 0
+    driver.config.identified_l_source = 1
+    driver.config.identified_l_reactance_count_ratio_milli = 8600
+    driver.config.identified_l_saliency_status = 1
+    driver.config.identified_r_count_slope_milli = 1042
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Autotune readiness --" in output
+    assert "FOCI foci manual_stepper stepper_x autotune readiness:" in output
+    assert "result: ready" in output
+    assert "stage2_policy: normal" in output
+    trusted_inputs_line = next(
+        line for line in output.splitlines() if "trusted_inputs:" in line
+    )
+    assert "current_loop_gains" in trusted_inputs_line
+    assert "current_bandwidth" in trusted_inputs_line
+
+
+def test_tuning_readiness_blocks_live_current_gain_mismatch():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.identified_bandwidth_hz = 1600
+    values = {
+        REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 26,
+    }
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"}, values)
+
+    assert "-- Autotune readiness --" in output
+    assert "result: blocked" in output
+    assert "stage2_policy: unavailable" in output
+    assert "live current-loop gain flux_p mismatch live=257 host=256" in output
+
+
 def test_tuning_flag_appends_resistance_identification_evidence():
     driver = make_driver()
     _seed_tuning_state(driver)

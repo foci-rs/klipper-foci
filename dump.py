@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .readiness import format_readiness_report, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
     FIELD_FORMATTERS,
@@ -290,6 +291,17 @@ class RegisterDumpWorkflow:
                 "  WARNING: autotune_status/runtime_status divergence persisted=%s"
                 " validated=%s" % (persisted_status, state.runtime_status)
             )
+
+        readiness = resolve_autotune_readiness(
+            self.driver,
+            live_current_gains={
+                "flux_p": live_gains.get("flux_p"),
+                "flux_i": live_gains.get("flux_i"),
+                "torque_p": live_gains.get("torque_p"),
+                "torque_i": live_gains.get("torque_i"),
+            },
+        )
+        lines.extend(format_readiness_report(readiness, self.driver.name))
 
         lines.append("-- Live TMC gains --")
         lines.extend(
