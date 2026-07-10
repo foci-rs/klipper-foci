@@ -248,6 +248,18 @@ class AutotuneWorkflow:
                     result["position_p"],
                 )
             )
+            if "stiffness_timebase_ms" in result:
+                gcmd.respond_info(
+                    "FOCI %s autotune evidence: budget=%dmrev "
+                    "stiffness_timebase=%dms search_stop=%d flags=0x%02x"
+                    % (
+                        self.driver.name,
+                        result.get("motion_budget_mrev", 0),
+                        result.get("stiffness_timebase_ms", 0),
+                        result.get("velocity_search_stop_reason", 0),
+                        result.get("outer_evidence_flags", 0),
+                    )
+                )
             if inner_warning_flags:
                 gcmd.respond_info(
                     "FOCI %s inner confidence: %s"

@@ -333,11 +333,17 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
             },
         )
 
-        d.autotune.autotune(MockGCmd({"PROFILE": "balanced", "MODE": "nominal"}))
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        d.autotune.autotune(gcmd)
 
         gcode = d.printer.lookup_object("gcode")
         self.assertEqual(gcode._scripts, ["G0 X60.000 Y60.000"])
         self.assertEqual(d.protocol.commands.tune.last_args[-4:], [750, 6000, 3000, 3])
+        self.assertIn(
+            "FOCI foci stepper_x autotune evidence: budget=750mrev "
+            "stiffness_timebase=50ms search_stop=1 flags=0x00",
+            gcmd._responses,
+        )
 
     def test_autotune_refuses_unsupported_kinematics_before_tune(self):
         d = self._ready_driver()
