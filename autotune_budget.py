@@ -62,8 +62,21 @@ def _stepper_role(stepper_name: str) -> str:
 def _rotation_distance_mm(driver) -> float:
     toolhead = driver.printer.lookup_object("toolhead")
     kinematics = toolhead.get_kinematics()
-    for rail in getattr(kinematics, "rails", ()):
-        for stepper in rail.get_steppers():
+    rails = getattr(kinematics, "rails", None)
+    if rails is None and hasattr(kinematics, "get_rails"):
+        rails = kinematics.get_rails()
+    if rails is not None:
+        for rail in rails:
+            for stepper in rail.get_steppers():
+                if stepper.get_name() == driver.stepper_name:
+                    return (
+                        float(stepper.get_step_dist())
+                        * float(driver.config.microsteps)
+                        * float(driver.config.full_steps)
+                    )
+    get_steppers = getattr(kinematics, "get_steppers", None)
+    if get_steppers is not None:
+        for stepper in get_steppers():
             if stepper.get_name() == driver.stepper_name:
                 return (
                     float(stepper.get_step_dist())

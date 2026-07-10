@@ -15,6 +15,16 @@ from tests.mocks import (
 )
 
 
+class GetRailsCartesianKinematics:
+    """Cartesian kinematics that exposes rails through get_rails only."""
+
+    def __init__(self):
+        self._delegate = MockCartesianKinematics()
+
+    def get_rails(self):
+        return self._delegate.rails
+
+
 def ready_driver(stepper_name="stepper_x", kinematics=None):
     driver = make_driver(
         stepper_name=stepper_name,
@@ -63,6 +73,16 @@ def test_corexy_budget_doubles_axis_clearance_before_margin():
     assert budget.stepper_role == "x"
     assert budget.max_travel_mm == pytest.approx(60.0)
     assert budget.max_travel_mrev == 1500
+
+
+def test_budget_resolves_rotation_distance_from_get_rails_kinematics():
+    kin = GetRailsCartesianKinematics()
+    driver = ready_driver("stepper_x", kin)
+    kin.get_rails()[0].get_steppers()[0]._step_dist = 0.01
+
+    budget = compute_autotune_motion_budget(driver, MockGCmd({}))
+
+    assert budget.max_travel_mrev == 750
 
 
 def test_unsupported_kinematics_refuses():

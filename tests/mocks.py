@@ -291,6 +291,16 @@ class MockStepperEnable:
         return self._lines[stepper_name]
 
 
+class MockPrintStats:
+    """Mock print_stats module."""
+
+    def __init__(self, state="standby"):
+        self.state = state
+
+    def get_status(self, _eventtime):
+        return {"state": self.state}
+
+
 class MockGCmd:
     """Mock GCode command object for command handlers."""
 
@@ -557,6 +567,7 @@ def make_config_printer(stepper_sections, chips=None, kinematics=None, foci_mode
     printer._objects["gcode"] = MockGCode()
     printer._objects["pins"] = MockPins(chips)
     printer._objects["stepper_enable"] = MockStepperEnable()
+    printer._objects["print_stats"] = MockPrintStats()
     printer._objects["toolhead"] = MockToolhead(
         kinematics or MockCartesianKinematics([[stepper] for stepper in stepper_names])
     )
@@ -596,6 +607,7 @@ def make_driver(
     printer._objects["gcode"] = MockGCode()
     printer._objects["toolhead"] = toolhead
     printer._objects["stepper_enable"] = MockStepperEnable()
+    printer._objects["print_stats"] = MockPrintStats()
     driver.printer = printer
 
     # Runtime collaborators installed by FociDriver.__init__.

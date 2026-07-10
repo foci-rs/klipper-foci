@@ -21,6 +21,8 @@ MODE_MAP: dict[str, int] = {
     "high_inertia": 2,
 }
 
+IDLE_PRINT_STATES = frozenset(("standby", "complete", "cancelled"))
+
 
 class AutotuneWorkflow:
     """Run installed Stage 2 tuning after commissioning and homing."""
@@ -34,6 +36,20 @@ class AutotuneWorkflow:
         """Handle foci_tune_result from firmware."""
         self.result = params
         self.done = True
+
+    def _ensure_printer_idle(self, gcmd, toolhead) -> None:
+        print_stats = self.driver.printer.lookup_object("print_stats", None)
+        if print_stats is None:
+            raise gcmd.error(
+                "FOCI %s: printer idle state unavailable" % self.driver.name
+            )
+        status = print_stats.get_status(toolhead.get_last_move_time())
+        state = str(status.get("state", "")).lower()
+        if state not in IDLE_PRINT_STATES:
+            raise gcmd.error(
+                "FOCI %s: printer is not idle (print_stats state=%s)"
+                % (self.driver.name, state or "unknown")
+            )
 
     def autotune(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing."""
@@ -72,12 +88,14 @@ class AutotuneWorkflow:
                 )
 
             toolhead = self.driver.printer.lookup_object("toolhead")
+            self._ensure_printer_idle(gcmd, toolhead)
             try:
                 motion_budget = compute_autotune_motion_budget(self.driver, gcmd)
             except AutotuneBudgetError as err:
                 raise gcmd.error("FOCI %s: %s" % (self.driver.name, err))
 
             toolhead.wait_moves()
+            self._ensure_printer_idle(gcmd, toolhead)
 
             if not self.driver.state.is_calibrated:
                 raise gcmd.error(

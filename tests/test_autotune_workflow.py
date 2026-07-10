@@ -10,6 +10,7 @@ from tests.mocks import (
     MockCartesianKinematics,
     MockGCmd,
     MockNoneKinematics,
+    MockPrintStats,
     SAMPLE_ACTIVE_GAINS,
     SAMPLE_COMMISSION_RESULT,
     make_driver,
@@ -118,6 +119,18 @@ class TestAutotuneGates(unittest.TestCase):
             d.autotune.autotune(gcmd)
 
         self.assertIn("unsupported kinematics", str(ctx.exception))
+
+    def test_refuses_autotune_when_printer_is_not_idle(self):
+        d = self._commissioned_driver()
+        d.printer._objects["print_stats"] = MockPrintStats("printing")
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("printer is not idle", str(ctx.exception))
+        self.assertEqual(d.printer.lookup_object("gcode")._scripts, [])
+        self.assertIsNone(d.protocol.commands.tune.last_args)
 
     def test_rejects_invalid_profile(self):
         d = self._commissioned_driver()
