@@ -67,6 +67,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_commission_phase", driver.oid) in registrations
     assert ("foci_commission_result", driver.oid) in registrations
     assert ("foci_tune_result", driver.oid) in registrations
+    assert ("foci_outer_safety_fault", driver.oid) in registrations
     assert ("foci_selftest_result", driver.oid) in registrations
     assert ("foci_selftest_done", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations

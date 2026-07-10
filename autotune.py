@@ -23,6 +23,15 @@ MODE_MAP: dict[str, int] = {
 
 IDLE_PRINT_STATES = frozenset(("standby", "complete", "cancelled"))
 
+OUTER_SAFETY_FAULT_NAMES = {
+    1: "invalid_budget",
+    2: "unusable_budget",
+    3: "duration",
+    4: "velocity",
+    5: "position",
+    6: "post_switch_settle",
+}
+
 
 class AutotuneWorkflow:
     """Run installed Stage 2 tuning after commissioning and homing."""
@@ -30,12 +39,48 @@ class AutotuneWorkflow:
     def __init__(self, driver) -> None:
         self.driver = driver
         self.result: dict | None = None
+        self.outer_safety_fault: dict | None = None
         self.done = False
 
     def handle_tune_result(self, params: dict) -> None:
         """Handle foci_tune_result from firmware."""
         self.result = params
         self.done = True
+
+    def handle_outer_safety_fault(self, params: dict) -> None:
+        """Handle foci_outer_safety_fault from firmware."""
+        self.outer_safety_fault = dict(params)
+
+    def _format_outer_safety_fault(self) -> str:
+        fault = self.outer_safety_fault
+        if not fault:
+            return ""
+        reason_code = int(fault.get("reason", 0))
+        reason = OUTER_SAFETY_FAULT_NAMES.get(
+            reason_code,
+            "unknown_%d" % reason_code,
+        )
+        return (
+            "outer safety %s: delta_counts=%d dt_us=%d "
+            "velocity_counts_per_ms=%d cap_counts_per_ms=%d "
+            "position_counts=%d/%d elapsed_us=%d/%d "
+            "budget=%dmrev/%dmrev_s/%dms dir=0x%02x"
+            % (
+                reason,
+                fault.get("delta_counts", 0),
+                fault.get("dt_us", 0),
+                fault.get("velocity_counts_per_ms", 0),
+                fault.get("velocity_cap_counts_per_ms", 0),
+                fault.get("position_counts", 0),
+                fault.get("position_window_counts", 0),
+                fault.get("elapsed_us", 0),
+                fault.get("duration_cap_us", 0),
+                fault.get("max_travel_mrev", 0),
+                fault.get("max_velocity_mrev_s", 0),
+                fault.get("max_duration_ms", 0),
+                fault.get("direction_mask", 0),
+            )
+        )
 
     def _ensure_printer_idle(self, gcmd, toolhead) -> None:
         print_stats = self.driver.printer.lookup_object("print_stats", None)
@@ -164,6 +209,7 @@ class AutotuneWorkflow:
 
             self.done = False
             self.result = None
+            self.outer_safety_fault = None
             self.driver.commissioning.error_code = 0
 
             self.driver.protocol.run_tune(
@@ -221,9 +267,12 @@ class AutotuneWorkflow:
                     stepper_enable = self.driver.printer.lookup_object("stepper_enable")
                     enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
                     enable_line.motor_disable(toolhead.get_last_move_time())
+                    safety_detail = self._format_outer_safety_fault()
+                    detail_suffix = "; %s" % safety_detail if safety_detail else ""
                     raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE safety fault: %s "
-                        "(motor disabled by firmware)" % (self.driver.name, error_name)
+                        "FOCI %s: FOCI_AUTOTUNE safety fault: %s%s "
+                        "(motor disabled by firmware)"
+                        % (self.driver.name, error_name, detail_suffix)
                     )
                 gcmd.respond_info(
                     "FOCI %s: FOCI_AUTOTUNE failed: %s "

@@ -2,6 +2,8 @@
 
 import unittest
 
+from klipper_foci.registers import REGISTERS
+
 from tests.mocks import (
     CommandError,
     MockCartesianKinematics,
@@ -419,6 +421,24 @@ class TestHomingCalibrationCoupling(unittest.TestCase):
 class TestCommandHomingInvalidation(unittest.TestCase):
     """Verify that commands invalidate homing before starting firmware ops."""
 
+    def _install_live_dump(self, driver):
+        def dump_registers():
+            driver.dump.handle_dump_value(
+                {
+                    "addr": REGISTERS["PID_FLUX_P_FLUX_I"],
+                    "value": (256 << 16) | 26,
+                }
+            )
+            driver.dump.handle_dump_value(
+                {
+                    "addr": REGISTERS["PID_TORQUE_P_TORQUE_I"],
+                    "value": (256 << 16) | 26,
+                }
+            )
+            driver.dump.handle_dump_done({})
+
+        driver.protocol.dump_registers = dump_registers
+
     def _driver_with_cartesian(self):
         kin = MockCartesianKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_x", kinematics=kin, homed_axes="xyz")
@@ -426,6 +446,22 @@ class TestCommandHomingInvalidation(unittest.TestCase):
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         d.state.runtime_status = "commissioned"
         d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
+        d.state.commissioned_result.update(
+            {
+                "tau_e_us": 730,
+                "inner_warning_flags": 0,
+                "bandwidth_hz": 1600,
+                "current_gains_source": 1,
+                "current_gains_tier": 1,
+                "current_retry_budget_exhausted": 0,
+                "current_failure_reason": 0,
+                "inductance_source": 1,
+                "inductance_reactance_count_ratio_milli": 8600,
+                "inductance_saliency_status": 1,
+                "resistance_selected_count_slope_milli": 1042,
+            }
+        )
+        self._install_live_dump(d)
         return d, kin
 
     def test_commission_invalidates_homing(self):

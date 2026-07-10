@@ -202,6 +202,49 @@ class TestAutotuneGates(unittest.TestCase):
             d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
         )
 
+    def test_safety_fault_reports_outer_envelope_detail(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report_safety_fault(deadline):
+            reactor._time = deadline
+            d.autotune.handle_outer_safety_fault(
+                {
+                    "reason": 4,
+                    "max_travel_mrev": 750,
+                    "max_velocity_mrev_s": 6000,
+                    "max_duration_ms": 3000,
+                    "direction_mask": 3,
+                    "delta_counts": -125,
+                    "dt_us": 4000,
+                    "velocity_counts_per_ms": -31,
+                    "velocity_cap_counts_per_ms": 24,
+                    "position_counts": -373,
+                    "position_window_counts": 3000,
+                    "elapsed_us": 120000,
+                    "duration_cap_us": 3000000,
+                }
+            )
+            d.autotune.handle_tune_result({"status": 17})
+            return reactor._time
+
+        reactor.pause = pause_and_report_safety_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("safety fault: safety envelope violation", message)
+        self.assertIn("outer safety velocity", message)
+        self.assertIn("delta_counts=-125", message)
+        self.assertIn("dt_us=4000", message)
+        self.assertIn("velocity_counts_per_ms=-31", message)
+        self.assertIn("cap_counts_per_ms=24", message)
+        self.assertIn("position_counts=-373/3000", message)
+        self.assertIn("elapsed_us=120000/3000000", message)
+        self.assertIn("budget=750mrev/6000mrev_s/3000ms dir=0x03", message)
+
 
 class TestAutotuneStateTransitions(unittest.TestCase):
     def test_inhibited_blocks_autotune(self):

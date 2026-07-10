@@ -33,6 +33,11 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.autotune.handle_outer_safety_fault,
+        "foci_outer_safety_fault",
+        oid,
+    )
+    serial.register_response(
         driver.commissioning.handle_commission_detail,
         "foci_commission_detail",
         oid,
