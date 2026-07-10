@@ -8,6 +8,11 @@ from .commissioning import (
     PROFILE_MAP,
     format_inner_warning_flags,
 )
+from .autotune_budget import (
+    AutotuneBudgetError,
+    compute_autotune_motion_budget,
+    format_safe_pose_move,
+)
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 
 MODE_MAP: dict[str, int] = {
@@ -67,17 +72,10 @@ class AutotuneWorkflow:
                 )
 
             toolhead = self.driver.printer.lookup_object("toolhead")
-            kinematics = toolhead.get_kinematics()
-            if hasattr(kinematics, "rails"):
-                kin_status = toolhead.get_status(toolhead.get_last_move_time())
-                homed = set(kin_status.get("homed_axes", ""))
-                expected = set("xyz")
-                if not expected.issubset(homed):
-                    missing = expected - homed
-                    raise gcmd.error(
-                        "FOCI %s: printer not fully homed (missing: %s). "
-                        "Home first." % (self.driver.name, "".join(sorted(missing)))
-                    )
+            try:
+                motion_budget = compute_autotune_motion_budget(self.driver, gcmd)
+            except AutotuneBudgetError as err:
+                raise gcmd.error("FOCI %s: %s" % (self.driver.name, err))
 
             toolhead.wait_moves()
 
@@ -85,12 +83,9 @@ class AutotuneWorkflow:
                 raise gcmd.error(
                     "FOCI %s: calibration lost during wait" % self.driver.name
                 )
-            if hasattr(kinematics, "rails"):
-                kin_status = toolhead.get_status(toolhead.get_last_move_time())
-                if not expected.issubset(set(kin_status.get("homed_axes", ""))):
-                    raise gcmd.error(
-                        "FOCI %s: homing lost during wait" % self.driver.name
-                    )
+            kin_status = toolhead.get_status(toolhead.get_last_move_time())
+            if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
+                raise gcmd.error("FOCI %s: homing lost during wait" % self.driver.name)
 
             live_current_gains = self.driver.dump.read_live_current_gains()
             readiness = resolve_autotune_readiness(
@@ -117,6 +112,19 @@ class AutotuneWorkflow:
                 gcmd.respond_info(
                     "FOCI %s autotune unavailable inputs: %s"
                     % (self.driver.name, ", ".join(readiness.unavailable_inputs))
+                )
+
+            gcode = self.driver.printer.lookup_object("gcode")
+            gcode.run_script_from_command(format_safe_pose_move(motion_budget))
+            toolhead.wait_moves()
+            if not self.driver.state.is_calibrated:
+                raise gcmd.error(
+                    "FOCI %s: calibration lost during safe-pose move" % self.driver.name
+                )
+            kin_status = toolhead.get_status(toolhead.get_last_move_time())
+            if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
+                raise gcmd.error(
+                    "FOCI %s: homing lost during safe-pose move" % self.driver.name
                 )
 
             self.driver.homing.invalidate_homing()
@@ -149,6 +157,10 @@ class AutotuneWorkflow:
                 current_bw=bandwidth,
                 tau_e_us=tau_e_us,
                 inner_warning_flags=inner_warning_flags,
+                max_travel_mrev=motion_budget.max_travel_mrev,
+                max_velocity_mrev_s=motion_budget.max_velocity_mrev_s,
+                max_duration_ms=motion_budget.max_duration_ms,
+                direction_mask=motion_budget.direction_mask,
             )
 
             reactor = self.driver.printer.get_reactor()

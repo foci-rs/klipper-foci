@@ -618,6 +618,10 @@ def test_run_tune_sends_existing_payload():
         current_bw=500,
         tau_e_us=730,
         inner_warning_flags=8,
+        max_travel_mrev=750,
+        max_velocity_mrev_s=6000,
+        max_duration_ms=3000,
+        direction_mask=3,
     )
 
     assert driver.protocol.commands.tune.last_args == [
@@ -630,6 +634,10 @@ def test_run_tune_sends_existing_payload():
         500,
         730,
         8,
+        750,
+        6000,
+        3000,
+        3,
     ]
 
 

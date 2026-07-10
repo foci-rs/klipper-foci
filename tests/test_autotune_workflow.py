@@ -42,7 +42,12 @@ def install_live_dump(driver, dump_values=None):
 
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
-        d = make_driver(kinematics=kinematics, homed_axes=homed_axes)
+        d = make_driver(
+            stepper_name="stepper_x",
+            kinematics=kinematics
+            or MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
+            homed_axes=homed_axes,
+        )
         d.state.is_calibrated = True
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         d.state.runtime_status = "commissioned"
@@ -103,19 +108,16 @@ class TestAutotuneGates(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
-        self.assertIn("not fully homed", str(ctx.exception))
+        self.assertIn("not homed for X/Y", str(ctx.exception))
 
-    def test_skips_homing_check_for_none_kinematics(self):
-        """NoneKinematics (manual_stepper) has no axes to home."""
+    def test_refuses_none_kinematics_for_production_autotune(self):
         d = self._commissioned_driver(kinematics=MockNoneKinematics(), homed_axes="")
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        # Should get past the homing gate. Will fail later in the
-        # polling loop due to incomplete mocks, but should NOT raise
-        # "not fully homed".
-        try:
+
+        with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
-        except (CommandError, AttributeError, TypeError) as e:
-            self.assertNotIn("not fully homed", str(e))
+
+        self.assertIn("unsupported kinematics", str(ctx.exception))
 
     def test_rejects_invalid_profile(self):
         d = self._commissioned_driver()
@@ -220,7 +222,11 @@ class InnerWarningFlagFormattingTests(unittest.TestCase):
 
 class TestAutotuneReadinessAdmission(unittest.TestCase):
     def _ready_driver(self):
-        d = make_driver(homed_axes="xyz")
+        d = make_driver(
+            stepper_name="stepper_x",
+            kinematics=MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
+            homed_axes="xyz",
+        )
         d.state.is_calibrated = True
         d.state.runtime_status = "commissioned"
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
@@ -240,6 +246,32 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.config.identified_r_count_slope_milli = 1042
         install_live_dump(d)
         return d
+
+    def _finish_tune_on_next_pause(self, driver, result_fields=None):
+        reactor = driver.printer.get_reactor()
+        result = {
+            "status": 0,
+            "warning_code": 0,
+            "velocity_p": 1152,
+            "velocity_i": 0,
+            "position_p": 640,
+            "position_i": 0,
+            "velocity_limit": 500000,
+            "velocity_filter_hz": 0,
+            "torque_filter_hz": 0,
+            "position_filter_hz": 0,
+            "flux_filter_hz": 0,
+            "j_eff": 42,
+            "b_eff": 11,
+        }
+        result.update(result_fields or {})
+
+        def finish_tune(deadline):
+            reactor._time = deadline
+            driver.autotune.handle_tune_result(result)
+            return reactor._time
+
+        reactor.pause = finish_tune
 
     def _install_live_dump(self, driver, dump_values):
         calls = []
@@ -273,37 +305,51 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.config.identified_inner_warning_flags = None
         d.printer._objects["configfile"] = MockConfigFile()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        reactor = d.printer.get_reactor()
-
-        def finish_tune(deadline):
-            reactor._time = deadline
-            d.autotune.handle_tune_result(
-                {
-                    "status": 0,
-                    "warning_code": 0,
-                    "velocity_p": 1152,
-                    "velocity_i": 0,
-                    "position_p": 640,
-                    "position_i": 0,
-                    "velocity_limit": 500000,
-                    "velocity_filter_hz": 0,
-                    "torque_filter_hz": 0,
-                    "position_filter_hz": 0,
-                    "flux_filter_hz": 0,
-                    "j_eff": 42,
-                    "b_eff": 11,
-                }
-            )
-            return reactor._time
-
-        reactor.pause = finish_tune
+        self._finish_tune_on_next_pause(d)
 
         d.autotune.autotune(gcmd)
 
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
-        self.assertEqual(args[-1], 0x40)
+        self.assertEqual(args[8], 0x40)
         self.assertIn("inner confidence", gcmd.last_info)
+
+    def test_autotune_moves_to_safe_pose_and_sends_budget(self):
+        d = self._ready_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        toolhead._kinematics = MockCartesianKinematics([["stepper_x"], ["stepper_y"]])
+        toolhead._kinematics.rails[0].get_steppers()[0]._step_dist = 0.01
+        toolhead._homed_axes = "xy"
+        toolhead.set_bounds(x_min=0.0, x_max=120.0, y_min=0.0, y_max=120.0)
+        toolhead.set_position(x=10.0, y=20.0)
+        d.printer._objects["configfile"] = MockConfigFile()
+        self._finish_tune_on_next_pause(
+            d,
+            {
+                "outer_evidence_flags": 0,
+                "stiffness_timebase_ms": 50,
+                "velocity_search_stop_reason": 1,
+                "motion_budget_mrev": 750,
+            },
+        )
+
+        d.autotune.autotune(MockGCmd({"PROFILE": "balanced", "MODE": "nominal"}))
+
+        gcode = d.printer.lookup_object("gcode")
+        self.assertEqual(gcode._scripts, ["G0 X60.000 Y60.000"])
+        self.assertEqual(d.protocol.commands.tune.last_args[-4:], [750, 6000, 3000, 3])
+
+    def test_autotune_refuses_unsupported_kinematics_before_tune(self):
+        d = self._ready_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        toolhead._kinematics = MockNoneKinematics()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("unsupported kinematics", str(ctx.exception))
+        self.assertIsNone(d.protocol.commands.tune.last_args)
 
     def test_blocks_before_tune_when_live_current_gains_mismatch(self):
         d = self._ready_driver()
@@ -416,4 +462,4 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
-        self.assertEqual(args[-1], 1 << 5)
+        self.assertEqual(args[8], 1 << 5)

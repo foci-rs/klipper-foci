@@ -364,6 +364,10 @@ class FociProtocol:
         current_bw: int,
         tau_e_us: int,
         inner_warning_flags: int,
+        max_travel_mrev: int,
+        max_velocity_mrev_s: int,
+        max_duration_ms: int,
+        direction_mask: int,
     ) -> None:
         self.commands.tune.send(
             [
@@ -376,6 +380,10 @@ class FociProtocol:
                 current_bw,
                 tau_e_us,
                 inner_warning_flags,
+                max_travel_mrev,
+                max_velocity_mrev_s,
+                max_duration_ms,
+                direction_mask,
             ]
         )
 

@@ -340,12 +340,16 @@ class MockGCode:
     def __init__(self):
         self._mux_commands = []
         self._responses = []
+        self._scripts = []
 
     def register_mux_command(self, *args, **kwargs):
         self._mux_commands.append((args, kwargs))
 
     def respond_info(self, msg):
         self._responses.append(msg)
+
+    def run_script_from_command(self, command):
+        self._scripts.append(command)
 
 
 class MockReactor:
