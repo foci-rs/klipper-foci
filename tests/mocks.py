@@ -117,6 +117,9 @@ class MockToolhead:
     def __init__(self, kinematics=None):
         self._kinematics = kinematics or MockNoneKinematics()
         self._homed_axes = ""
+        self._position = [100.0, 100.0, 0.0, 0.0]
+        self._axis_minimum = [0.0, 0.0, 0.0, 0.0]
+        self._axis_maximum = [200.0, 200.0, 0.0, 0.0]
         self.last_move_time = 0.0
 
     def get_kinematics(self):
@@ -125,8 +128,24 @@ class MockToolhead:
     def get_last_move_time(self):
         return self.last_move_time
 
+    def set_bounds(self, *, x_min=0.0, x_max=200.0, y_min=0.0, y_max=200.0):
+        self._axis_minimum[0] = float(x_min)
+        self._axis_maximum[0] = float(x_max)
+        self._axis_minimum[1] = float(y_min)
+        self._axis_maximum[1] = float(y_max)
+
+    def set_position(self, *, x=100.0, y=100.0, z=0.0):
+        self._position[0] = float(x)
+        self._position[1] = float(y)
+        self._position[2] = float(z)
+
     def get_status(self, _time):
-        return {"homed_axes": self._homed_axes}
+        return {
+            "homed_axes": self._homed_axes,
+            "position": tuple(self._position),
+            "axis_minimum": tuple(self._axis_minimum),
+            "axis_maximum": tuple(self._axis_maximum),
+        }
 
     def wait_moves(self):
         pass
