@@ -320,6 +320,31 @@ def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
     assert printer.lookup_object("pins") is not None
 
 
+def test_parse_driver_config_accepts_largest_encoder_ppr_that_fits_quadrature():
+    _printer, _chips, _sections, config = make_foci_config(
+        foci_values={"encoder_ppr": 0x3FFF_FFFF}
+    )
+
+    parsed = parse_driver_config(config)
+
+    assert parsed.encoder_ppr == 0x3FFF_FFFF
+
+
+def test_parse_driver_config_rejects_encoder_ppr_above_quadrature_bound_with_context():
+    _printer, _chips, _sections, config = make_foci_config(
+        foci_values={"encoder_ppr": 0x4000_0000}
+    )
+
+    with pytest.raises(CommandError) as excinfo:
+        parse_driver_config(config)
+
+    message = str(excinfo.value)
+    assert "foci stepper_x" in message
+    assert "encoder_ppr" in message
+    assert "1073741824" in message
+    assert "1..1073741823" in message
+
+
 @pytest.mark.parametrize(
     ("stepper_values", "invalid_value"),
     [

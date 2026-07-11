@@ -17,6 +17,7 @@ STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
 FILTER_MIN_HZ = 10
 MOTION_FILTER_MAX_HZ = 1000
 CURRENT_FILTER_MAX_HZ = 6000
+MAX_ENCODER_PPR = 0x3FFF_FFFF
 
 
 @dataclass
@@ -249,6 +250,11 @@ def parse_driver_config(config) -> FociDriverConfig:
 
     run_current = config.getfloat("run_current", above=0.0)
     encoder_ppr = config.getint("encoder_ppr", minval=1)
+    if encoder_ppr > MAX_ENCODER_PPR:
+        raise config.error(
+            "encoder_ppr %d in [%s] is outside 1..%d"
+            % (encoder_ppr, name, MAX_ENCODER_PPR)
+        )
     voltage_limit = config.getint(
         "voltage_limit",
         DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
