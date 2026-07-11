@@ -110,9 +110,7 @@ class FociMcuCommands:
             " encoder_counts_per_rev=%u tmc_grid=%u"
             " physical_step_width=%u motion_scale_configured=%c"
             " step_half_period_ticks=%u dir_setup_ticks=%u"
-            " handler_wcet_ticks=%u timing_provisional=%c"
-            " admission_margin_ticks=%u"
-            " required_worst_case_interval_ticks=%u"
+            " waveform_worst_case_ticks=%u fatal_lateness_ticks=%u"
             " queue_empty_count=%u missed_deadline_count=%u",
             oid=oid,
         )

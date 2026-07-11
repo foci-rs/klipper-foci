@@ -33,12 +33,10 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
             "tmc_grid": 4096,
             "physical_step_width": 16,
             "motion_scale_configured": 1,
-            "step_half_period_ticks": 168,
-            "dir_setup_ticks": 168,
-            "handler_wcet_ticks": 2048,
-            "timing_provisional": 1,
-            "admission_margin_ticks": 512,
-            "required_worst_case_interval_ticks": 3064,
+            "step_half_period_ticks": 4,
+            "dir_setup_ticks": 8,
+            "waveform_worst_case_ticks": 24,
+            "fatal_lateness_ticks": 84000,
             "queue_empty_count": 0,
             "missed_deadline_count": 0,
         }
@@ -96,12 +94,14 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
     assert "tmc_grid=4096" in gcmd.last_info
     assert "physical_step_width=16" in gcmd.last_info
     assert "motion_scale_configured=1" in gcmd.last_info
-    assert "step_half_period_ticks=168" in gcmd.last_info
-    assert "dir_setup_ticks=168" in gcmd.last_info
-    assert "handler_wcet_ticks=2048" in gcmd.last_info
-    assert "timing_provisional=1" in gcmd.last_info
-    assert "admission_margin_ticks=512" in gcmd.last_info
-    assert "required_worst_case_interval_ticks=3064" in gcmd.last_info
+    assert "step_half_period_ticks=4" in gcmd.last_info
+    assert "dir_setup_ticks=8" in gcmd.last_info
+    assert "waveform_worst_case_ticks=24" in gcmd.last_info
+    assert "fatal_lateness_ticks=84000" in gcmd.last_info
+    assert "handler_wcet_ticks" not in gcmd.last_info
+    assert "timing_provisional" not in gcmd.last_info
+    assert "admission_margin_ticks" not in gcmd.last_info
+    assert "required_worst_case_interval_ticks" not in gcmd.last_info
     assert "activation_count=2" in gcmd.last_info
     assert "last_activation_clock=123456" in gcmd.last_info
     assert "first_load_now=123584" in gcmd.last_info

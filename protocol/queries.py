@@ -14,10 +14,8 @@ MOTION_SCALE_STATS_FIELDS = (
     "motion_scale_configured",
     "step_half_period_ticks",
     "dir_setup_ticks",
-    "handler_wcet_ticks",
-    "timing_provisional",
-    "admission_margin_ticks",
-    "required_worst_case_interval_ticks",
+    "waveform_worst_case_ticks",
+    "fatal_lateness_ticks",
 )
 
 

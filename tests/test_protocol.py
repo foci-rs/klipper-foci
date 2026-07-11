@@ -527,12 +527,10 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
             "tmc_grid": 4096,
             "physical_step_width": 16,
             "motion_scale_configured": 1,
-            "step_half_period_ticks": 168,
-            "dir_setup_ticks": 168,
-            "handler_wcet_ticks": 2048,
-            "timing_provisional": 1,
-            "admission_margin_ticks": 512,
-            "required_worst_case_interval_ticks": 3064,
+            "step_half_period_ticks": 4,
+            "dir_setup_ticks": 8,
+            "waveform_worst_case_ticks": 24,
+            "fatal_lateness_ticks": 84000,
         }
     )
     driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 2})
