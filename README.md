@@ -46,7 +46,7 @@ compare `rotation_distance` with the actual mechanical transmission. The host
 cannot infer the truthful transmission distance from firmware scale data.
 
 `FOCI_STEPPER_STATS` reports the firmware's authoritative logical and physical
-directional counts, motion-scale values, and board admission/timing provenance.
+directional counts, motion-scale values, and waveform/runtime-lateness fields.
 The new protocol is intentionally incompatible: update host and firmware
 together because the host does not provide an old-firmware fallback.
 
