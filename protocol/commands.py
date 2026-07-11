@@ -7,6 +7,7 @@ from .bindings import (
     register_commissioning_responses,
     register_dump_responses,
     register_homing_responses,
+    register_motion_scale_responses,
     register_selftest_responses,
 )
 
@@ -149,6 +150,7 @@ class FociMcuCommands:
             "tmc_set_motion_scale oid=%c channel=%c"
             " encoder_ppr=%u planner_steps_per_rev=%u"
         )
+        register_motion_scale_responses(mcu._serial, driver, oid)
         self.set_encoder_dir = mcu.lookup_command(
             "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
         )

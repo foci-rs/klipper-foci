@@ -2,6 +2,43 @@
 
 from __future__ import annotations
 
+import logging
+
+
+MOTION_SCALE_REJECTION_NAMES = {
+    1: "encoder_ppr is zero",
+    2: "encoder_ppr exceeds 1073741823",
+    3: "planner_steps_per_rev is zero",
+    4: "planner_steps_per_rev exceeds 16777216",
+    5: "motor runtime is enabled",
+    6: "armed mirror is set",
+    7: "physical step queue is not empty",
+    8: "physical step timer is active",
+    9: "mapper installation failed",
+    10: "ABN_DECODER_PPR write failed",
+    11: "STEP_WIDTH write failed",
+    12: "TMC request queue is full",
+    13: "board channel is unavailable",
+}
+
+
+def register_motion_scale_responses(serial, driver, oid: int) -> None:
+    """Register the cause-specific motion-scale rejection diagnostic."""
+
+    def handle_rejection(params) -> None:
+        stage = {0: "P2", 1: "P1"}.get(params["stage"], "stage %d" % params["stage"])
+        reason = MOTION_SCALE_REJECTION_NAMES.get(
+            params["reason"], "unknown reason %d" % params["reason"]
+        )
+        logging.error(
+            "FOCI %s motion-scale configuration rejected in %s: %s",
+            driver.stepper_name,
+            stage,
+            reason,
+        )
+
+    serial.register_response(handle_rejection, "foci_motion_scale_rejected", oid)
+
 
 def register_dump_responses(serial, driver, oid: int) -> None:
     serial.register_response(driver.dump.handle_dump_value, "foci_dump_value", oid)

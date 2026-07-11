@@ -6,6 +6,7 @@ import pytest
 
 from klipper_foci.protocol import FociProtocol
 from klipper_foci.protocol.bindings import (
+    MOTION_SCALE_REJECTION_NAMES,
     register_active_diagnostic_responses,
     register_commissioning_responses,
 )
@@ -91,7 +92,45 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_current_loop_run", driver.oid) in registrations
     assert ("foci_current_validation_axis", driver.oid) in registrations
     assert ("foci_current_validation_envelope", driver.oid) in registrations
+    assert ("foci_motion_scale_rejected", driver.oid) in registrations
     assert len(registrations) == len(set(registrations))
+
+
+def test_motion_scale_rejection_response_is_actionable(caplog):
+    driver = make_driver()
+    mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
+
+    driver.protocol.bind_mcu(mcu, driver.oid)
+
+    callback, _name, _oid = next(
+        response
+        for response in mcu._serial.responses
+        if response[1] == "foci_motion_scale_rejected"
+    )
+    callback({"oid": driver.oid, "stage": 1, "reason": 9})
+
+    assert "stepper_x" in caplog.text
+    assert "P1" in caplog.text
+    assert "mapper installation failed" in caplog.text
+
+
+def test_motion_scale_rejection_reason_names_match_firmware_wire_codes():
+    assert MOTION_SCALE_REJECTION_NAMES == {
+        1: "encoder_ppr is zero",
+        2: "encoder_ppr exceeds 1073741823",
+        3: "planner_steps_per_rev is zero",
+        4: "planner_steps_per_rev exceeds 16777216",
+        5: "motor runtime is enabled",
+        6: "armed mirror is set",
+        7: "physical step queue is not empty",
+        8: "physical step timer is active",
+        9: "mapper installation failed",
+        10: "ABN_DECODER_PPR write failed",
+        11: "STEP_WIDTH write failed",
+        12: "TMC request queue is full",
+        13: "board channel is unavailable",
+    }
 
 
 def test_inductance_replies_are_registered_as_commissioning_responses():
