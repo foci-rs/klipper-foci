@@ -29,8 +29,10 @@ class FociDriverConfig:
     encoder_ppr: int
     voltage_limit: int
     encoder_reversed: bool
+    rotation_distance: float
     microsteps: int
     full_steps: int
+    planner_steps_per_rev: int
     step_pin_name: str
     mcu: object
     channel: int
@@ -522,6 +524,14 @@ def parse_driver_config(config) -> FociDriverConfig:
     stepper_config = config.getsection(stepper_name)
     microsteps = stepper_config.getint("microsteps")
     full_steps = stepper_config.getint("full_steps_per_rotation", 200)
+    rotation_distance = stepper_config.getfloat("rotation_distance", above=0.0)
+    planner_steps_per_rev = microsteps * full_steps
+    if not 1 <= planner_steps_per_rev <= 16_777_216:
+        raise config.error(
+            "[%s] stepper %s planner_steps_per_rev=%d"
+            " (full_steps_per_rotation=%d * microsteps=%d) must be in 1..16777216"
+            % (name, stepper_name, planner_steps_per_rev, full_steps, microsteps)
+        )
     step_pin = stepper_config.get("step_pin")
     ppins = printer.lookup_object("pins")
     pin_params = ppins.parse_pin(step_pin, can_invert=True)
@@ -539,8 +549,10 @@ def parse_driver_config(config) -> FociDriverConfig:
         encoder_ppr=encoder_ppr,
         voltage_limit=voltage_limit,
         encoder_reversed=encoder_reversed,
+        rotation_distance=rotation_distance,
         microsteps=microsteps,
         full_steps=full_steps,
+        planner_steps_per_rev=planner_steps_per_rev,
         step_pin_name=step_pin_name,
         mcu=pin_params["chip"],
         channel=STEP_PINS[step_pin_name],

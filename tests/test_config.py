@@ -70,6 +70,15 @@ class ProductionMcu(MockMCU):
         return super().lookup_query_command(send_fmt, recv_fmt, oid=oid)
 
 
+class OldFirmwareMcu(MockMCU):
+    """Mock an old dictionary that lacks the mandatory motion-scale contract."""
+
+    def lookup_command(self, fmt, cq=None):
+        if fmt.startswith("tmc_set_motion_scale "):
+            raise CommandError("unknown command tmc_set_motion_scale")
+        return super().lookup_command(fmt, cq=cq)
+
+
 def registered_command_names(printer):
     gcode = printer.lookup_object("gcode")
     return {args[0] for args, _kwargs in gcode._mux_commands}
@@ -478,6 +487,59 @@ def test_perf_stats_query_format_includes_scheduler_attribution_fields():
     assert "scheduler_cycles_per_event_max=%u" in recv_fmt
     assert "scheduler_cycles_per_event_floor3_max=%u" in recv_fmt
     assert "scheduler_full_count=%u" in recv_fmt
+
+
+def test_motion_scale_and_stats_dictionary_contract_is_mandatory():
+    printer, chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    driver._handle_mcu_identify()
+
+    assert (
+        "tmc_set_motion_scale oid=%c channel=%c encoder_ppr=%u planner_steps_per_rev=%u"
+    ) in chips["foci"].command_formats
+    _send_fmt, recv_fmt, _oid = next(
+        query
+        for query in chips["foci"].query_commands
+        if query[0] == "foci_stepper_exec_stats oid=%c"
+    )
+    assert recv_fmt == (
+        "foci_stepper_exec_stats_result oid=%c channel=%c"
+        " executed_pos_steps=%u executed_neg_steps=%u"
+        " physical_pos_pulses=%u physical_neg_pulses=%u"
+        " planner_steps_per_rev=%u encoder_ppr=%u"
+        " encoder_counts_per_rev=%u tmc_grid=%u"
+        " physical_step_width=%u motion_scale_configured=%c"
+        " step_half_period_ticks=%u dir_setup_ticks=%u"
+        " handler_wcet_ticks=%u timing_provisional=%c"
+        " admission_margin_ticks=%u required_worst_case_interval_ticks=%u"
+        " queue_empty_count=%u missed_deadline_count=%u"
+    )
+
+
+def test_old_firmware_dictionary_fails_identification_without_fallback():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        },
+        chips={"foci": OldFirmwareMcu("foci")},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    with pytest.raises(CommandError, match="unknown command tmc_set_motion_scale"):
+        driver._handle_mcu_identify()
 
 
 def test_configured_voltage_limit_is_sent_on_connect():

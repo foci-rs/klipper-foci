@@ -31,8 +31,10 @@ CONFIG_FIELD_NAMES = {
     "encoder_ppr",
     "voltage_limit",
     "encoder_reversed",
+    "rotation_distance",
     "microsteps",
     "full_steps",
+    "planner_steps_per_rev",
     "step_pin_name",
     "mcu",
     "channel",
@@ -289,6 +291,7 @@ def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
         stepper_values={
             "microsteps": 32,
             "full_steps_per_rotation": 400,
+            "rotation_distance": 32.0,
             "step_pin": "foci:STEP1",
             "oid": 10,
         },
@@ -307,12 +310,37 @@ def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
     assert parsed.encoder_ppr == 2048
     assert parsed.voltage_limit == 16000
     assert parsed.encoder_reversed is True
+    assert parsed.rotation_distance == 32.0
     assert parsed.microsteps == 32
     assert parsed.full_steps == 400
+    assert parsed.planner_steps_per_rev == 12800
     assert parsed.step_pin_name == "STEP1"
     assert parsed.mcu is chips["foci"]
     assert parsed.channel == 1
     assert printer.lookup_object("pins") is not None
+
+
+@pytest.mark.parametrize(
+    ("stepper_values", "invalid_value"),
+    [
+        ({"microsteps": 0, "full_steps_per_rotation": 200}, 0),
+        ({"microsteps": 256, "full_steps_per_rotation": 65537}, 16777472),
+    ],
+)
+def test_parse_driver_config_rejects_invalid_planner_scale_with_context(
+    stepper_values, invalid_value
+):
+    _printer, _chips, _sections, config = make_foci_config(
+        stepper_values=stepper_values
+    )
+
+    with pytest.raises(CommandError) as excinfo:
+        parse_driver_config(config)
+
+    message = str(excinfo.value)
+    assert "stepper_x" in message
+    assert str(invalid_value) in message
+    assert "1..16777216" in message
 
 
 def test_parse_driver_config_preserves_persisted_and_tuning_fields():
@@ -624,8 +652,10 @@ def test_foci_driver_stores_config_settings_and_explicit_facade():
     assert driver.config.run_current == 0.9
     assert driver.settings.run_current == 0.9
     assert driver.config.encoder_ppr == 1200
+    assert driver.config.rotation_distance == 40.0
     assert driver.config.microsteps == 16
     assert driver.config.full_steps == 400
+    assert driver.config.planner_steps_per_rev == 6400
     for field_name in DRIVER_CONFIG_FACADE_FIELDS:
         assert getattr(driver, field_name) == getattr(driver.config, field_name)
     for field_name in DISALLOWED_DRIVER_CONFIG_FACADE_FIELDS:
@@ -905,5 +935,61 @@ def test_handle_connect_reads_mechanical_payloads_from_config_not_facade():
 
     driver._handle_connect()
 
-    assert driver.protocol.commands.set_encoder.last_args == [10, 0, 1000]
     assert driver.protocol.commands.set_encoder_dir.last_args == [10, 0, 1]
+    assert driver.protocol.commands.set_motion_scale.last_args == [10, 0, 1000, 4000]
+
+
+@pytest.mark.parametrize("full_steps", [200, 400])
+@pytest.mark.parametrize("microsteps", [1, 2, 4, 8, 16, 32, 64, 128, 256])
+def test_handle_connect_supports_common_power_of_two_microsteps_without_warning(
+    microsteps, full_steps
+):
+    printer, _chips, sections, config = make_foci_config(
+        stepper_values={
+            "microsteps": microsteps,
+            "full_steps_per_rotation": full_steps,
+        }
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    planner_steps_per_rev = full_steps * microsteps
+    assert driver.protocol.commands.set_motion_scale.last_args == [
+        10,
+        0,
+        1000,
+        planner_steps_per_rev,
+    ]
+    output = "\n".join(printer.lookup_object("gcode")._responses)
+    assert "Consider microsteps" not in output
+    assert "does not match" not in output
+
+
+def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
+    printer, _chips, sections, config = make_foci_config(
+        stepper_values={
+            "microsteps": 16,
+            "full_steps_per_rotation": 200,
+            "rotation_distance": 40.0,
+        }
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    output = "\n".join(printer.lookup_object("gcode")._responses)
+    assert (
+        "planner=200*16=3200 steps/rev encoder=1000 ppr=4000 quadrature counts/rev\n"
+        "tmc_grid=4096 pulses/rev step_width=16 position_units/pulse "
+        "pulse_ratio=4096/3200\n"
+        "accumulated_scale_error=0 instantaneous_error_bound=8 position_units"
+    ) in output
+    assert "rotation_distance=40" in output
+    assert "remove legacy hand compensation" in output
+    assert (
+        "compare rotation_distance with the actual transmission before enabling motion"
+        in output
+    )

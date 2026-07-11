@@ -34,7 +34,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
 
     commands = driver.protocol.commands
     assert commands.set_current is not None
-    assert commands.set_encoder is not None
+    assert commands.set_motion_scale is not None
     assert commands.calibrate is not None
     assert commands.commission is not None
     assert commands.tune is not None
@@ -191,7 +191,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
             "set_current",
             "set_voltage_limit",
             "query_adc_vm_offset",
-            "set_encoder",
+            "set_motion_scale",
             "set_encoder_dir",
             "set_pid_gains",
             "set_velocity_filter",
@@ -216,6 +216,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
         voltage_limit=16000,
         channel=0,
         encoder_ppr=1000,
+        planner_steps_per_rev=3200,
         encoder_reversed=True,
         pid_gains=(100, 200, 300, 400),
         filter_hz={
@@ -233,7 +234,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
         ("set_current", [driver.oid, 800]),
         ("set_voltage_limit", [driver.oid, 16000]),
         ("query_adc_vm_offset", [driver.oid]),
-        ("set_encoder", [driver.oid, 0, 1000]),
+        ("set_motion_scale", [driver.oid, 0, 1000, 3200]),
         ("set_encoder_dir", [driver.oid, 0, 1]),
         ("set_pid_gains", [driver.oid, 100, 200, 300, 400]),
         ("set_velocity_filter", [driver.oid, 80]),
@@ -256,7 +257,7 @@ def test_configure_startup_skips_unset_optional_payloads():
             "set_current",
             "set_voltage_limit",
             "query_adc_vm_offset",
-            "set_encoder",
+            "set_motion_scale",
             "set_encoder_dir",
             "set_pid_gains",
             "set_velocity_filter",
@@ -278,6 +279,7 @@ def test_configure_startup_skips_unset_optional_payloads():
         voltage_limit=16000,
         channel=0,
         encoder_ppr=1000,
+        planner_steps_per_rev=3200,
         encoder_reversed=False,
         pid_gains=None,
         filter_hz={"velocity": None, "torque": None, "position": None, "flux": None},
@@ -290,7 +292,7 @@ def test_configure_startup_skips_unset_optional_payloads():
         ("set_current", [driver.oid, 800]),
         ("set_voltage_limit", [driver.oid, 16000]),
         ("query_adc_vm_offset", [driver.oid]),
-        ("set_encoder", [driver.oid, 0, 1000]),
+        ("set_motion_scale", [driver.oid, 0, 1000, 3200]),
         ("set_encoder_dir", [driver.oid, 0, 0]),
     ]
     assert driver.state.adc_vm_offset_raw == 33662
@@ -305,7 +307,7 @@ def test_configure_startup_sends_explicit_zero_filter_disables():
             "set_current",
             "set_voltage_limit",
             "query_adc_vm_offset",
-            "set_encoder",
+            "set_motion_scale",
             "set_encoder_dir",
             "set_velocity_filter",
             "set_torque_filter",
@@ -326,6 +328,7 @@ def test_configure_startup_sends_explicit_zero_filter_disables():
         voltage_limit=16000,
         channel=0,
         encoder_ppr=1000,
+        planner_steps_per_rev=3200,
         encoder_reversed=False,
         pid_gains=None,
         filter_hz={"velocity": 0, "torque": 0, "position": 0, "flux": 0},
@@ -338,7 +341,7 @@ def test_configure_startup_sends_explicit_zero_filter_disables():
         ("set_current", [driver.oid, 800]),
         ("set_voltage_limit", [driver.oid, 16000]),
         ("query_adc_vm_offset", [driver.oid]),
-        ("set_encoder", [driver.oid, 0, 1000]),
+        ("set_motion_scale", [driver.oid, 0, 1000, 3200]),
         ("set_encoder_dir", [driver.oid, 0, 0]),
         ("set_velocity_filter", [driver.oid, 0]),
         ("set_torque_filter", [driver.oid, 0]),
@@ -368,6 +371,7 @@ def test_configure_startup_requires_runtime_adc_vm_offset():
             voltage_limit=16000,
             channel=0,
             encoder_ppr=1000,
+            planner_steps_per_rev=3200,
             encoder_reversed=False,
             pid_gains=None,
             filter_hz={"velocity": 0, "torque": 0, "position": 0, "flux": 0},
@@ -474,7 +478,23 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
     driver.protocol.commands.stepper_get_position = MockCommand({"pos": -19176})
     driver.protocol.commands.stepper_stats = MockCommand({"position": -26360})
     driver.protocol.commands.stepper_exec_stats = MockCommand(
-        {"executed_pos_steps": 39538}
+        {
+            "executed_pos_steps": 39538,
+            "physical_pos_pulses": 50609,
+            "physical_neg_pulses": 0,
+            "planner_steps_per_rev": 3200,
+            "encoder_ppr": 1000,
+            "encoder_counts_per_rev": 4000,
+            "tmc_grid": 4096,
+            "physical_step_width": 16,
+            "motion_scale_configured": 1,
+            "step_half_period_ticks": 168,
+            "dir_setup_ticks": 168,
+            "handler_wcet_ticks": 2048,
+            "timing_provisional": 1,
+            "admission_margin_ticks": 512,
+            "required_worst_case_interval_ticks": 3064,
+        }
     )
     driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 2})
     driver.protocol.commands.stepper_stop_stats = MockCommand({"stop_count": 1})
@@ -488,7 +508,7 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
 
     assert stats == (
         {"position": -26360},
-        {"executed_pos_steps": 39538},
+        driver.protocol.commands.stepper_exec_stats.response,
         {"activation_count": 2},
         {"stop_count": 1},
     )
@@ -499,6 +519,21 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
     assert driver.protocol.commands.stepper_timing_stats.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_stop_stats.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_perf_stats.last_args == [driver.oid, 1]
+
+
+def test_motion_scale_protocol_sends_only_truthful_scale_values():
+    driver = make_driver()
+
+    driver.protocol.set_motion_scale(
+        channel=0, encoder_ppr=1000, planner_steps_per_rev=3200
+    )
+
+    assert driver.protocol.commands.set_motion_scale.last_args == [
+        driver.oid,
+        0,
+        1000,
+        3200,
+    ]
 
 
 def test_passive_diagnostic_protocol_methods_preserve_errors():
@@ -518,6 +553,22 @@ def test_passive_diagnostic_protocol_methods_preserve_errors():
     driver.protocol.commands.stepper_stats = MockCommand(None)
     with pytest.raises(
         CommandError, match="FOCI_STEPPER_STATS stats query returned no data"
+    ):
+        driver.protocol.get_stepper_stats()
+
+
+def test_stepper_stats_rejects_incomplete_new_firmware_response():
+    driver = make_driver()
+    driver.protocol.commands.stepper_stats = MockCommand({"position": 0})
+    driver.protocol.commands.stepper_exec_stats = MockCommand(
+        {"executed_pos_steps": 1, "executed_neg_steps": 0}
+    )
+    driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 1})
+    driver.protocol.commands.stepper_stop_stats = MockCommand({"stop_count": 0})
+
+    with pytest.raises(
+        CommandError,
+        match="FOCI_STEPPER_STATS exec_stats query returned incomplete data",
     ):
         driver.protocol.get_stepper_stats()
 

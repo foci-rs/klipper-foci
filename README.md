@@ -22,6 +22,34 @@ scp -r foci/ pi@<host>:/home/pi/klipper/klippy/extras/foci/
 
 See the [FOCI project README](https://github.com/foci-rs/foci) for full setup instructions.
 
+## Motion Scale
+
+FOCI reads `rotation_distance`, `full_steps_per_rotation`, and `microsteps`
+directly from the linked Klipper stepper. It leaves all three mechanically
+truthful settings untouched and sends the firmware only `encoder_ppr` and the
+derived planner steps per revolution. Every common power-of-two microstep
+selection from 1 through 256 is supported; 32 and 64 microsteps are normal
+selections and do not need to match the encoder count.
+
+For an LDO 1.8-degree stepper at 16 microsteps with a 1000 PPR encoder, startup
+reports:
+
+```text
+planner=200*16=3200 steps/rev encoder=1000 ppr=4000 quadrature counts/rev
+tmc_grid=4096 pulses/rev step_width=16 position_units/pulse pulse_ratio=4096/3200
+accumulated_scale_error=0 instantaneous_error_bound=8 position_units
+```
+
+The startup diagnostic also shows the live configured `rotation_distance`.
+Before enabling motion during rollout, remove any legacy hand compensation and
+compare `rotation_distance` with the actual mechanical transmission. The host
+cannot infer the truthful transmission distance from firmware scale data.
+
+`FOCI_STEPPER_STATS` reports the firmware's authoritative logical and physical
+directional counts, motion-scale values, and board admission/timing provenance.
+The new protocol is intentionally incompatible: update host and firmware
+together because the host does not provide an old-firmware fallback.
+
 ## Commissioning Diagnostics
 
 `FOCI_COMMISSION` persists inner electrical identification fields for later

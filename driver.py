@@ -156,12 +156,7 @@ class FociDriver:
         self._dev_gcode_registered = True
 
     def _handle_connect(self) -> None:
-        """Send configuration to firmware and check microstep alignment.
-
-        Converts run_current to milliamps and sends it with the encoder
-        PPR to the firmware. Warns if the configured microstep resolution
-        does not match the encoder's natural resolution.
-        """
+        """Send truthful planner and encoder configuration to firmware."""
         settings = self.settings
         parsed = self.config
         run_ma: int = int(settings.run_current * 1000.0)
@@ -186,6 +181,7 @@ class FociDriver:
             voltage_limit=settings.voltage_limit,
             channel=self.channel,
             encoder_ppr=parsed.encoder_ppr,
+            planner_steps_per_rev=parsed.planner_steps_per_rev,
             encoder_reversed=parsed.encoder_reversed,
             pid_gains=pid_gains,
             filter_hz={
@@ -201,23 +197,46 @@ class FociDriver:
             ),
             velocity_limit=settings.pid_velocity_limit,
         )
-        encoder_steps: int = parsed.encoder_ppr * 4
-        configured_steps: int = parsed.microsteps * parsed.full_steps
-        if configured_steps != encoder_steps:
-            optimal: int = encoder_steps // parsed.full_steps
-            gcode = self.printer.lookup_object("gcode")
-            gcode.respond_info(
-                "[foci %s] Note: microsteps=%d gives %d steps/rev,"
-                " encoder resolves %d. Consider microsteps=%d"
-                % (
-                    self.stepper_name,
-                    parsed.microsteps,
-                    configured_steps,
-                    encoder_steps,
-                    optimal,
-                )
-            )
+        self._report_motion_scale_mapping()
         validation = validate_runtime_config(self.config)
         self.state.runtime_status = validation.runtime_status
         self.state.active_gains = validation.active_gains
         self.homing.apply_initial_state()
+
+    def _report_motion_scale_mapping(self) -> None:
+        """Explain the deterministic startup mapping without overriding firmware."""
+        parsed = self.config
+        planner_steps = parsed.planner_steps_per_rev
+        tmc_grid = (
+            1 << (planner_steps - 1).bit_length() if planner_steps < 65_536 else 65_536
+        )
+        step_width = 65_536 // tmc_grid
+        error_bound = str(step_width // 2) if step_width % 2 == 0 else "0.5"
+        gcode = self.printer.lookup_object("gcode")
+        gcode.respond_info(
+            "[foci %s] motion scale:\n"
+            "planner=%d*%d=%d steps/rev encoder=%d ppr=%d quadrature counts/rev\n"
+            "tmc_grid=%d pulses/rev step_width=%d position_units/pulse"
+            " pulse_ratio=%d/%d\n"
+            "accumulated_scale_error=0 instantaneous_error_bound=%s position_units\n"
+            "configured rotation_distance=%g"
+            % (
+                self.stepper_name,
+                parsed.full_steps,
+                parsed.microsteps,
+                planner_steps,
+                parsed.encoder_ppr,
+                parsed.encoder_ppr * 4,
+                tmc_grid,
+                step_width,
+                tmc_grid,
+                planner_steps,
+                error_bound,
+                parsed.rotation_distance,
+            )
+        )
+        gcode.respond_info(
+            "[foci %s] rollout warning: remove legacy hand compensation and compare"
+            " rotation_distance with the actual transmission before enabling motion"
+            % self.stepper_name
+        )

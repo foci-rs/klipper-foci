@@ -3,6 +3,24 @@
 from __future__ import annotations
 
 
+MOTION_SCALE_STATS_FIELDS = (
+    "physical_pos_pulses",
+    "physical_neg_pulses",
+    "planner_steps_per_rev",
+    "encoder_ppr",
+    "encoder_counts_per_rev",
+    "tmc_grid",
+    "physical_step_width",
+    "motion_scale_configured",
+    "step_half_period_ticks",
+    "dir_setup_ticks",
+    "handler_wcet_ticks",
+    "timing_provisional",
+    "admission_margin_ticks",
+    "required_worst_case_interval_ticks",
+)
+
+
 def get_step_position(protocol) -> dict:
     if protocol.driver.oid is None or protocol.commands.stepper_get_position is None:
         raise protocol.driver.printer.command_error(
@@ -34,6 +52,15 @@ def get_stepper_stats(protocol) -> tuple[dict, dict, dict, dict]:
             raise protocol.driver.printer.command_error(
                 "FOCI_STEPPER_STATS %s query returned no data" % name
             )
+        if name == "exec_stats":
+            missing = [
+                field for field in MOTION_SCALE_STATS_FIELDS if field not in response
+            ]
+            if missing:
+                raise protocol.driver.printer.command_error(
+                    "FOCI_STEPPER_STATS exec_stats query returned incomplete data: %s"
+                    % ", ".join(missing)
+                )
         responses.append(response)
     return tuple(responses)
 

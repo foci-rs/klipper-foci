@@ -52,7 +52,7 @@ class FociMcuCommands:
         self.stepper_perf_stats = None
         self.query_adc_vm_offset = None
         self.set_current = None
-        self.set_encoder = None
+        self.set_motion_scale = None
         self.set_encoder_dir = None
         self.selftest = None
         self.calibrate = None
@@ -104,6 +104,14 @@ class FociMcuCommands:
             "foci_stepper_exec_stats oid=%c",
             "foci_stepper_exec_stats_result oid=%c channel=%c"
             " executed_pos_steps=%u executed_neg_steps=%u"
+            " physical_pos_pulses=%u physical_neg_pulses=%u"
+            " planner_steps_per_rev=%u encoder_ppr=%u"
+            " encoder_counts_per_rev=%u tmc_grid=%u"
+            " physical_step_width=%u motion_scale_configured=%c"
+            " step_half_period_ticks=%u dir_setup_ticks=%u"
+            " handler_wcet_ticks=%u timing_provisional=%c"
+            " admission_margin_ticks=%u"
+            " required_worst_case_interval_ticks=%u"
             " queue_empty_count=%u missed_deadline_count=%u",
             oid=oid,
         )
@@ -137,8 +145,9 @@ class FociMcuCommands:
             oid=oid,
         )
         self.set_current = mcu.lookup_command("tmc_set_current oid=%c run_ma=%u")
-        self.set_encoder = mcu.lookup_command(
-            "tmc_set_encoder oid=%c channel=%c ppr=%u"
+        self.set_motion_scale = mcu.lookup_command(
+            "tmc_set_motion_scale oid=%c channel=%c"
+            " encoder_ppr=%u planner_steps_per_rev=%u"
         )
         self.set_encoder_dir = mcu.lookup_command(
             "tmc_set_encoder_dir oid=%c channel=%c invert=%c"

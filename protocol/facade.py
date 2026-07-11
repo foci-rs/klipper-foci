@@ -48,8 +48,12 @@ class FociProtocol:
         self.driver.state.adc_vm_offset_raw = offset_raw
         return offset_raw
 
-    def set_encoder(self, channel: int, encoder_ppr: int) -> None:
-        self.commands.set_encoder.send([self.driver.oid, channel, encoder_ppr])
+    def set_motion_scale(
+        self, *, channel: int, encoder_ppr: int, planner_steps_per_rev: int
+    ) -> None:
+        self.commands.set_motion_scale.send(
+            [self.driver.oid, channel, encoder_ppr, planner_steps_per_rev]
+        )
 
     def set_encoder_direction(self, channel: int, encoder_reversed: bool) -> None:
         self.commands.set_encoder_dir.send(
@@ -284,6 +288,7 @@ class FociProtocol:
         voltage_limit: int,
         channel: int,
         encoder_ppr: int,
+        planner_steps_per_rev: int,
         encoder_reversed: bool,
         pid_gains: tuple[int, int, int, int] | None,
         filter_hz: dict[str, int | None],
@@ -295,7 +300,11 @@ class FociProtocol:
         self.set_current(current_ma)
         self.set_voltage_limit(voltage_limit)
         self.query_adc_vm_offset()
-        self.set_encoder(channel, encoder_ppr)
+        self.set_motion_scale(
+            channel=channel,
+            encoder_ppr=encoder_ppr,
+            planner_steps_per_rev=planner_steps_per_rev,
+        )
         self.set_encoder_direction(channel, encoder_reversed)
         if pid_gains is not None:
             self.set_pid_gains(*pid_gains)

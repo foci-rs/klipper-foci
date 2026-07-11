@@ -425,6 +425,7 @@ class MockMCU:
         self._next_oid = 1
         self._config_callbacks = []
         self.config_commands = []
+        self.command_formats = []
         self.query_commands = []
         self._serial = MockSerial()
 
@@ -447,6 +448,7 @@ class MockMCU:
         return object()
 
     def lookup_command(self, _fmt, cq=None):
+        self.command_formats.append(_fmt)
         return MockCommand()
 
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
@@ -552,6 +554,7 @@ def make_config_printer(stepper_sections, chips=None, kinematics=None, foci_mode
         section = {
             "microsteps": values.get("microsteps", 20),
             "full_steps_per_rotation": values.get("full_steps_per_rotation", 200),
+            "rotation_distance": values.get("rotation_distance", 40.0),
             "step_pin": values["step_pin"],
             "dir_pin": values.get("dir_pin", "foci:DIR0"),
         }
@@ -627,6 +630,7 @@ def make_driver(
         driver.stepper_name: {
             "microsteps": 20,
             "full_steps_per_rotation": 200,
+            "rotation_distance": 40.0,
             "step_pin": "foci:STEP0",
             "dir_pin": "foci:DIR0",
         },

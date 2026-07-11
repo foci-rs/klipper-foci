@@ -25,6 +25,20 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
         {
             "executed_pos_steps": 39538,
             "executed_neg_steps": 0,
+            "physical_pos_pulses": 50609,
+            "physical_neg_pulses": 3,
+            "planner_steps_per_rev": 3200,
+            "encoder_ppr": 1000,
+            "encoder_counts_per_rev": 4000,
+            "tmc_grid": 4096,
+            "physical_step_width": 16,
+            "motion_scale_configured": 1,
+            "step_half_period_ticks": 168,
+            "dir_setup_ticks": 168,
+            "handler_wcet_ticks": 2048,
+            "timing_provisional": 1,
+            "admission_margin_ticks": 512,
+            "required_worst_case_interval_ticks": 3064,
             "queue_empty_count": 0,
             "missed_deadline_count": 0,
         }
@@ -74,6 +88,20 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
     assert "loaded_steps=39538" in gcmd.last_info
     assert "executed_pos_steps=39538" in gcmd.last_info
     assert "executed_neg_steps=0" in gcmd.last_info
+    assert "physical_pos_pulses=50609" in gcmd.last_info
+    assert "physical_neg_pulses=3" in gcmd.last_info
+    assert "planner_steps_per_rev=3200" in gcmd.last_info
+    assert "encoder_ppr=1000" in gcmd.last_info
+    assert "encoder_counts_per_rev=4000" in gcmd.last_info
+    assert "tmc_grid=4096" in gcmd.last_info
+    assert "physical_step_width=16" in gcmd.last_info
+    assert "motion_scale_configured=1" in gcmd.last_info
+    assert "step_half_period_ticks=168" in gcmd.last_info
+    assert "dir_setup_ticks=168" in gcmd.last_info
+    assert "handler_wcet_ticks=2048" in gcmd.last_info
+    assert "timing_provisional=1" in gcmd.last_info
+    assert "admission_margin_ticks=512" in gcmd.last_info
+    assert "required_worst_case_interval_ticks=3064" in gcmd.last_info
     assert "activation_count=2" in gcmd.last_info
     assert "last_activation_clock=123456" in gcmd.last_info
     assert "first_load_now=123584" in gcmd.last_info
