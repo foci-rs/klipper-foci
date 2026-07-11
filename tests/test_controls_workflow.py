@@ -22,87 +22,77 @@ class TestDebugGainsCommand(unittest.TestCase):
         self.assertEqual(d.config.run_current, 0.8)
         self.assertIn("run_current=1.700A", gcmd.last_info)
 
-    def test_sets_position_and_velocity_gains_as_q8_8(self):
+    def test_requests_position_and_velocity_gains_without_claiming_applied_state(self):
         d = make_driver()
-
-        d.controls.set_gains(
-            MockGCmd(
-                {
-                    "VELOCITY_P": "2.0",
-                    "VELOCITY_I": "0.0",
-                    "POSITION_P": "1.0",
-                    "POSITION_I": "0.0",
-                }
-            )
+        d.settings.pid_velocity_p = 101
+        d.settings.pid_velocity_i = 102
+        d.settings.pid_position_p = 103
+        d.settings.pid_position_i = 104
+        previous_active_gains = dict(SAMPLE_ACTIVE_GAINS)
+        previous_active_gains.update(
+            velocity_p=301,
+            velocity_i=302,
+            position_p=303,
+            position_i=304,
         )
+        d.state.active_gains = previous_active_gains.copy()
+
+        gcmd = MockGCmd(
+            {
+                "VELOCITY_P": "2.0",
+                "VELOCITY_I": "0.0",
+                "POSITION_P": "1.0",
+                "POSITION_I": "0.0",
+            }
+        )
+        d.controls.set_gains(gcmd)
 
         self.assertEqual(
             d.protocol.commands.set_position_gains.last_args,
             [d.oid, 256, 0, 512, 0],
         )
-        self.assertEqual(d.settings.pid_velocity_p, 512)
-        self.assertEqual(d.settings.pid_velocity_i, 0)
-        self.assertEqual(d.settings.pid_position_p, 256)
-        self.assertEqual(d.settings.pid_position_i, 0)
+        self.assertEqual(d.settings.pid_velocity_p, 101)
+        self.assertEqual(d.settings.pid_velocity_i, 102)
+        self.assertEqual(d.settings.pid_position_p, 103)
+        self.assertEqual(d.settings.pid_position_i, 104)
+        self.assertEqual(d.state.active_gains, previous_active_gains)
+        self.assertIn("requested", gcmd.last_info)
 
-    def test_updates_active_gains_without_persisting(self):
+    def test_requests_inner_gains_without_claiming_applied_state(self):
         d = make_driver()
-        d.state.active_gains = dict(SAMPLE_ACTIVE_GAINS)
-
-        d.controls.set_gains(
-            MockGCmd(
-                {
-                    "VELOCITY_P": 2.0,
-                    "VELOCITY_I": 0.0,
-                    "POSITION_P": 1.0,
-                    "POSITION_I": 0.0,
-                }
-            )
+        d.settings.pid_flux_p = 201
+        d.settings.pid_flux_i = 202
+        d.settings.pid_torque_p = 203
+        d.settings.pid_torque_i = 204
+        previous_active_gains = dict(SAMPLE_ACTIVE_GAINS)
+        previous_active_gains.update(
+            flux_p=401,
+            flux_i=402,
+            torque_p=403,
+            torque_i=404,
         )
+        d.state.active_gains = previous_active_gains.copy()
 
-        self.assertEqual(d.state.active_gains["velocity_p"], 512)
-        self.assertEqual(d.state.active_gains["velocity_i"], 0)
-        self.assertEqual(d.state.active_gains["position_p"], 256)
-        self.assertEqual(d.state.active_gains["position_i"], 0)
-
-    def test_sets_inner_current_gains_as_raw_register_values(self):
-        d = make_driver()
-
-        d.controls.set_inner_gains(
-            MockGCmd(
-                {
-                    "FLUX_P": 706,
-                    "FLUX_I": 162,
-                    "TORQUE_P": 706,
-                    "TORQUE_I": 162,
-                }
-            )
+        gcmd = MockGCmd(
+            {
+                "FLUX_P": 706,
+                "FLUX_I": 162,
+                "TORQUE_P": 706,
+                "TORQUE_I": 162,
+            }
         )
+        d.controls.set_inner_gains(gcmd)
 
         self.assertEqual(
             d.protocol.commands.set_pid_gains.last_args,
             [d.oid, 706, 162, 706, 162],
         )
-
-    def test_updates_active_inner_gains_without_persisting(self):
-        d = make_driver()
-        d.state.active_gains = dict(SAMPLE_ACTIVE_GAINS)
-
-        d.controls.set_inner_gains(
-            MockGCmd(
-                {
-                    "FLUX_P": 706,
-                    "FLUX_I": 162,
-                    "TORQUE_P": 706,
-                    "TORQUE_I": 162,
-                }
-            )
-        )
-
-        self.assertEqual(d.state.active_gains["flux_p"], 706)
-        self.assertEqual(d.state.active_gains["flux_i"], 162)
-        self.assertEqual(d.state.active_gains["torque_p"], 706)
-        self.assertEqual(d.state.active_gains["torque_i"], 162)
+        self.assertEqual(d.settings.pid_flux_p, 201)
+        self.assertEqual(d.settings.pid_flux_i, 202)
+        self.assertEqual(d.settings.pid_torque_p, 203)
+        self.assertEqual(d.settings.pid_torque_i, 204)
+        self.assertEqual(d.state.active_gains, previous_active_gains)
+        self.assertIn("requested", gcmd.last_info)
 
 
 class TestRuntimeFiltersCommand(unittest.TestCase):

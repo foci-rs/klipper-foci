@@ -17,8 +17,8 @@ class ControlsWorkflow:
 
         Parameters are floating-point gain values. For example, `VELOCITY_P=2.0`
         writes raw Q8.8 value 512 and `POSITION_P=1.0` writes raw value 256.
-        Values are applied immediately and kept in memory for the current Klipper
-        session, but are not persisted to printer.cfg.
+        The command is asynchronous and does not update host applied-state
+        caches because firmware application is not confirmed.
         """
         velocity_p = self._get_outer_gain(gcmd, "VELOCITY_P")
         velocity_i = self._get_outer_gain(gcmd, "VELOCITY_I")
@@ -32,18 +32,8 @@ class ControlsWorkflow:
             velocity_i,
         )
 
-        self.driver.settings.pid_velocity_p = velocity_p
-        self.driver.settings.pid_velocity_i = velocity_i
-        self.driver.settings.pid_position_p = position_p
-        self.driver.settings.pid_position_i = position_i
-        if self.driver.state.active_gains is not None:
-            self.driver.state.active_gains["velocity_p"] = velocity_p
-            self.driver.state.active_gains["velocity_i"] = velocity_i
-            self.driver.state.active_gains["position_p"] = position_p
-            self.driver.state.active_gains["position_i"] = position_i
-
         gcmd.respond_info(
-            "FOCI %s debug gains set: vel_p=%d/256 vel_i=%d/256"
+            "FOCI %s debug gain update requested: vel_p=%d/256 vel_i=%d/256"
             " pos_p=%d/256 pos_i=%d/256"
             % (self.driver.name, velocity_p, velocity_i, position_p, position_i)
         )
@@ -54,9 +44,9 @@ class ControlsWorkflow:
         Parameters are raw TMC4671 register values. P gains are Q8.8
         numerators. Current I gains are also Q8.8 while
         CONFIG_ADVANCED_PI_REPRESENT remains at its default 0; in advanced PI
-        mode their effective zero factor is raw/65536 per PWM sample. Values
-        are applied immediately and kept in memory for the current Klipper
-        session, but are not persisted to printer.cfg.
+        mode their effective zero factor is raw/65536 per PWM sample. The
+        command is asynchronous and does not update host applied-state caches
+        because firmware application is not confirmed.
         """
         flux_p = gcmd.get_int("FLUX_P", minval=0, maxval=65535)
         flux_i = gcmd.get_int("FLUX_I", minval=0, maxval=65535)
@@ -65,18 +55,8 @@ class ControlsWorkflow:
 
         self.driver.protocol.set_pid_gains(flux_p, flux_i, torque_p, torque_i)
 
-        self.driver.settings.pid_flux_p = flux_p
-        self.driver.settings.pid_flux_i = flux_i
-        self.driver.settings.pid_torque_p = torque_p
-        self.driver.settings.pid_torque_i = torque_i
-        if self.driver.state.active_gains is not None:
-            self.driver.state.active_gains["flux_p"] = flux_p
-            self.driver.state.active_gains["flux_i"] = flux_i
-            self.driver.state.active_gains["torque_p"] = torque_p
-            self.driver.state.active_gains["torque_i"] = torque_i
-
         gcmd.respond_info(
-            "FOCI %s inner gains set: flux_p=%d/256"
+            "FOCI %s inner gain update requested: flux_p=%d/256"
             " flux_i=%d(q8.8=%.3f zero=%d/65536)"
             " torque_p=%d/256 torque_i=%d(q8.8=%.3f zero=%d/65536)"
             % (
