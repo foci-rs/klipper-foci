@@ -2,8 +2,12 @@
 
 import unittest
 
+import pytest
+
+import klipper_foci.commissioning as commissioning
 from klipper_foci.commissioning import (
     COMMISSION_ERROR_NAMES,
+    ELECTRICAL_ID_DETAIL_NAMES,
     HARD_FAULT_CODES,
     PHASE_NAMES,
     CommissioningWorkflow,
@@ -27,6 +31,18 @@ def test_sustained_hold_failure_has_operator_label_and_is_hard_fault():
     assert COMMISSION_ERROR_NAMES.get(42) == "sustained hold validation failed"
     assert format_commission_error_name(42) == "sustained hold validation failed"
     assert 42 in HARD_FAULT_CODES
+
+
+def test_timing_error_names_match_firmware_wire_codes():
+    expected = {
+        47: "invalid_schedule",
+        48: "resistance_timing",
+        49: "resistance_timeout",
+        50: "inductance_timing",
+        51: "delay_timing",
+    }
+    assert {code: COMMISSION_ERROR_NAMES[code] for code in expected} == expected
+    assert {code: ELECTRICAL_ID_DETAIL_NAMES[code] for code in expected} == expected
 
 
 def test_current_loop_failure_summary_decodes_gate_sample_status():
@@ -65,6 +81,123 @@ def test_current_loop_failure_summary_decodes_gate_sample_status():
     assert "delay=100ms" in text
     assert "cross=156 permille" in text
     assert "candidate_flux=3564/220" in text
+
+
+def timing_reply(method=0, status=1, **overrides):
+    reply = {
+        "oid": 1,
+        "method": method,
+        "status": status,
+        "requested_period_us": 5000,
+        "valid_samples": 8,
+        "missed_samples": 0,
+        "max_consecutive_misses": 0,
+        "max_lateness_us": 12,
+        "max_interval_us": 5012,
+        "max_poll_wall_us": 20,
+        "max_spi_wall_us": 8,
+    }
+    reply.update(overrides)
+    return reply
+
+
+def test_timing_rejection_is_not_downgraded():
+    driver = make_driver()
+
+    driver.commissioning.handle_commission_timing(
+        timing_reply(method=2, status=2, requested_period_us=160)
+    )
+
+    assert driver.commissioning.timing_by_method[2]["status"] == 2
+
+
+def test_timing_summary_decodes_not_run_accepted_and_rejected():
+    packed = 0 | (1 << 2) | (2 << 4) | (1 << 6) | (5 << 8) | (40 << 16)
+
+    summary = commissioning.decode_timing_summary(packed)
+
+    assert summary == {
+        "statuses": {0: 0, 1: 1, 2: 2},
+        "rejected": True,
+        "overflowed": False,
+        "missed_samples": 5,
+        "max_lateness_us": 40,
+    }
+
+
+def test_timing_formatter_uses_microseconds_and_exact_field_order():
+    assert commissioning.format_timing_evidence("resistance", timing_reply()) == (
+        "timing resistance: status=accepted period_us=5000 valid=8 missed=0 "
+        "max_lateness_us=12 max_interval_us=5012 max_poll_wall_us=20 "
+        "max_spi_wall_us=8"
+    )
+
+
+def test_timing_detail_must_match_terminal_summary():
+    driver = make_driver()
+    driver.commissioning.handle_commission_timing(timing_reply(status=2))
+
+    with pytest.raises(
+        ValueError, match="resistance.*detail=rejected.*summary=accepted"
+    ):
+        driver.commissioning.consume_timing_evidence(1)
+
+
+def test_rejected_timing_is_fatal_even_with_plausible_model_values():
+    driver = make_driver()
+    driver.printer._objects["configfile"] = MockConfigFile()
+    result = complete_commission_result()
+    result["timing_summary"] = 2 << 4 | 1 << 6
+
+    def drive_rejected_timing(_args):
+        driver.commissioning.handle_commission_timing(
+            timing_reply(method=2, status=2, requested_period_us=160)
+        )
+        driver.commissioning.result = result
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_rejected_timing
+
+    with pytest.raises(CommandError, match="delay_timing"):
+        driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert not driver.state.is_calibrated
+    assert driver.commissioning.timing_by_method == {}
+
+
+def test_commission_start_clears_stale_timing_cache():
+    driver = make_driver()
+    driver.printer._objects["configfile"] = MockConfigFile()
+    driver.commissioning.handle_commission_timing(timing_reply())
+
+    def drive_success(_args):
+        driver.commissioning.result = complete_commission_result()
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_success
+    driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert driver.commissioning.timing_by_method == {}
+
+
+def test_persistence_ignores_rejected_timing_evidence():
+    driver = make_driver()
+    configfile = MockConfigFile()
+    driver.printer._objects["configfile"] = configfile
+    result = complete_commission_result()
+    result["commission_timing"] = {
+        0: timing_reply(status=1),
+        1: timing_reply(method=1, status=2),
+    }
+
+    driver.commissioning.persist_commission_results(result, "balanced")
+
+    timing_keys = {key for section, key in configfile.values if section == driver.name}
+    assert configfile.values[(driver.name, "identified_timing_resistance_status")] == (
+        "accepted"
+    )
+    assert "identified_timing_resistance_period_us" in timing_keys
+    assert not any("timing_inductance" in key for key in timing_keys)
 
 
 class MockConfigFile:

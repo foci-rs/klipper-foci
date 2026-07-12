@@ -71,6 +71,11 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     44: "electrical model had no usable samples",
     45: "electrical model scale rounded to zero",
     46: "electrical theta too large for measured tau",
+    47: "invalid_schedule",
+    48: "resistance_timing",
+    49: "resistance_timeout",
+    50: "inductance_timing",
+    51: "delay_timing",
 }
 
 # Error codes for which the failure message should point at a dedicated
@@ -121,6 +126,29 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     31: "legacy inductance fit correction",
     32: "inductance frequency out of range",
     33: "inductance AC capture rejected",
+    47: "invalid_schedule",
+    48: "resistance_timing",
+    49: "resistance_timeout",
+    50: "inductance_timing",
+    51: "delay_timing",
+}
+
+TIMING_METHOD_NAMES: dict[int, str] = {
+    0: "resistance",
+    1: "inductance",
+    2: "delay",
+}
+
+TIMING_STATUS_NAMES: dict[int, str] = {
+    0: "not-run",
+    1: "accepted",
+    2: "rejected",
+}
+
+TIMING_REJECTION_ERROR_CODES: dict[int, int] = {
+    0: 48,
+    1: 50,
+    2: 51,
 }
 
 INDUCTANCE_CAPTURE_REJECT_REASON_NAMES: dict[int, str] = {
@@ -409,6 +437,39 @@ def format_inner_warning_flags(flags: int) -> str:
     return ", ".join(names) if names else "none"
 
 
+def decode_timing_summary(packed: int) -> dict:
+    """Decode the terminal timing bitfield emitted by commissioning."""
+    return {
+        "statuses": {method: (packed >> (method * 2)) & 0x03 for method in range(3)},
+        "rejected": bool(packed & (1 << 6)),
+        "overflowed": bool(packed & (1 << 7)),
+        "missed_samples": (packed >> 8) & 0xFF,
+        "max_lateness_us": (packed >> 16) & 0xFFFF,
+    }
+
+
+def format_timing_evidence(method_name: str, evidence: dict) -> str:
+    """Format one detailed timing reply without changing microsecond units."""
+    status = evidence["status"]
+    status_name = TIMING_STATUS_NAMES.get(status, "unknown(%d)" % status)
+    return (
+        "timing %s: status=%s period_us=%d valid=%d missed=%d "
+        "max_lateness_us=%d max_interval_us=%d max_poll_wall_us=%d "
+        "max_spi_wall_us=%d"
+        % (
+            method_name,
+            status_name,
+            evidence["requested_period_us"],
+            evidence["valid_samples"],
+            evidence["missed_samples"],
+            evidence["max_lateness_us"],
+            evidence["max_interval_us"],
+            evidence["max_poll_wall_us"],
+            evidence["max_spi_wall_us"],
+        )
+    )
+
+
 def format_commission_error_name(code: int) -> str:
     """Render a commission status code's name, with a doc link if one exists."""
     detail_name = format_commission_error_detail_name(code)
@@ -503,6 +564,7 @@ class CommissioningWorkflow:
         self.done = False
         self.error_code = 0
         self.details: list[dict] = []
+        self.timing_by_method: dict[int, dict] = {}
 
     def clear_details(self) -> None:
         """Clear structured commissioning diagnostic details."""
@@ -540,6 +602,63 @@ class CommissioningWorkflow:
             }
         )
 
+    def handle_commission_timing(self, params: dict) -> None:
+        """Cache detailed timing quality for one electrical method."""
+        method = params["method"]
+        if method in TIMING_METHOD_NAMES:
+            self.timing_by_method[method] = dict(params)
+
+    def clear_timing_evidence(self) -> None:
+        """Clear detailed timing replies from the current or prior run."""
+        self.timing_by_method = {}
+
+    def consume_timing_evidence(self, packed: int) -> dict[int, dict]:
+        """Validate detailed replies against a terminal summary and consume them."""
+        summary = decode_timing_summary(packed)
+        details = self.timing_by_method
+        self.clear_timing_evidence()
+        rejected = False
+        accepted = {}
+        for method, method_name in TIMING_METHOD_NAMES.items():
+            summary_status = summary["statuses"][method]
+            if summary_status not in TIMING_STATUS_NAMES:
+                raise ValueError(
+                    "%s timing summary has reserved status %d"
+                    % (method_name, summary_status)
+                )
+            detail = details.get(method)
+            if summary_status == 0 and detail is None:
+                continue
+            if detail is None:
+                raise ValueError("%s timing detail is missing" % method_name)
+            detail_status = detail["status"]
+            if detail_status != summary_status:
+                raise ValueError(
+                    "%s timing status mismatch: detail=%s summary=%s"
+                    % (
+                        method_name,
+                        TIMING_STATUS_NAMES.get(
+                            detail_status, "unknown(%d)" % detail_status
+                        ),
+                        TIMING_STATUS_NAMES[summary_status],
+                    )
+                )
+            if detail_status == 2:
+                rejected = True
+                continue
+            if detail_status == 1:
+                accepted[method] = detail
+        if summary["rejected"] != rejected:
+            raise ValueError("timing rejection flag does not match method statuses")
+        if rejected:
+            method = next(
+                method for method in details if details[method]["status"] == 2
+            )
+            raise ValueError(
+                COMMISSION_ERROR_NAMES[TIMING_REJECTION_ERROR_CODES[method]]
+            )
+        return accepted
+
     def commission(self, gcmd) -> None:
         """Stage 1: commission motor for safe printer motion."""
         profile_name = gcmd.get("PROFILE", "balanced").lower()
@@ -571,6 +690,7 @@ class CommissioningWorkflow:
             self.error_code = 0
             self.last_phase_id = None
             self.clear_details()
+            self.clear_timing_evidence()
 
             # Clear any resistance-reply cache left over from a standalone
             # FOCI_RESISTANCE_TEST run before this commission's firmware
@@ -664,6 +784,16 @@ class CommissioningWorkflow:
             result.update(
                 self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid)
             )
+            try:
+                result["commission_timing"] = self.consume_timing_evidence(
+                    result.get("timing_summary", 0)
+                )
+            except ValueError as error:
+                self.on_commission_failure(str(error))
+                raise gcmd.error(
+                    "FOCI %s: FOCI_COMMISSION timing evidence rejected: %s"
+                    % (self.driver.name, error)
+                ) from error
             status = result.get("status", 255)
             if status > 1:
                 error_name = self.format_commission_failure(status)
@@ -729,7 +859,12 @@ class CommissioningWorkflow:
                     "FOCI %s inner confidence: %s"
                     % (self.driver.name, format_inner_warning_flags(flags))
                 )
+            for method, evidence in result["commission_timing"].items():
+                gcmd.respond_info(
+                    format_timing_evidence(TIMING_METHOD_NAMES[method], evidence)
+                )
         finally:
+            self.clear_timing_evidence()
             self.driver.state.release()
 
     def format_commission_failure(self, status: int) -> str:
@@ -853,8 +988,37 @@ class CommissioningWorkflow:
         self._persist_resistance_identification(configfile, result)
         self._persist_inductance_identification(configfile, result)
         self._persist_current_loop_identification(configfile, result)
+        self._persist_timing_evidence(configfile, result)
         configfile.set(self.driver.name, "autotune_profile", profile_name)
         configfile.set(self.driver.name, "autotune_status", "commissioned")
+
+    def _persist_timing_evidence(self, configfile, result: dict) -> None:
+        """Persist only firmware-accepted per-method timing evidence."""
+        key_names = {
+            "requested_period_us": "period_us",
+            "valid_samples": "valid",
+            "missed_samples": "missed",
+            "max_consecutive_misses": "max_consecutive_misses",
+            "max_lateness_us": "max_lateness_us",
+            "max_interval_us": "max_interval_us",
+            "max_poll_wall_us": "max_poll_wall_us",
+            "max_spi_wall_us": "max_spi_wall_us",
+        }
+        for method, evidence in result.get("commission_timing", {}).items():
+            if evidence.get("status") != 1 or method not in TIMING_METHOD_NAMES:
+                continue
+            method_name = TIMING_METHOD_NAMES[method]
+            configfile.set(
+                self.driver.name,
+                "identified_timing_%s_status" % method_name,
+                TIMING_STATUS_NAMES[evidence["status"]],
+            )
+            for reply_key, config_suffix in key_names.items():
+                configfile.set(
+                    self.driver.name,
+                    "identified_timing_%s_%s" % (method_name, config_suffix),
+                    "%d" % evidence[reply_key],
+                )
 
     # Maps each firmware-reported resistance-identification result key to
     # the persisted config key. All values are firmware-owned: the host

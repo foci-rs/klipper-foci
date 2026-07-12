@@ -145,6 +145,15 @@ def test_inductance_replies_are_registered_as_commissioning_responses():
     assert ("foci_inductance_estimate", driver.oid) in registrations
 
 
+def test_commissioning_registers_timing_reply():
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_commissioning_responses(serial, driver, driver.oid)
+
+    assert ("foci_commission_timing", driver.oid) in response_names(serial)
+
+
 def test_inductance_replies_are_not_active_diagnostic_responses():
     driver = make_driver()
     serial = MockSerial()

@@ -80,6 +80,11 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.commissioning.handle_commission_timing,
+        "foci_commission_timing",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.active.handle_inductance_run,
         "foci_inductance_run",
         oid,
