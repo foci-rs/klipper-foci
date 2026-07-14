@@ -61,8 +61,6 @@ CONFIG_GAIN_FIELDS: tuple[str, ...] = (
 IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
     "identified_r_count_milli",
     "identified_l_count_micro",
-    "identified_r_int",
-    "identified_l_int",
     "identified_lambda_us",
     "identified_tau_e_us",
     "identified_theta_e_us",

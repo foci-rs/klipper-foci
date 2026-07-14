@@ -80,8 +80,6 @@ CONFIG_FIELD_NAMES = {
     "commissioned_position_p",
     "commissioned_position_i",
     "commissioned_velocity_limit",
-    "identified_r_int",
-    "identified_l_int",
     "identified_r_count_milli",
     "identified_l_count_micro",
     "identified_lambda_us",
@@ -391,8 +389,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "commissioned_position_p": 600,
             "commissioned_position_i": 4,
             "commissioned_velocity_limit": 300000,
-            "identified_r_int": 1706,
-            "identified_l_int": 1245,
             "identified_r_count_milli": 1700,
             "identified_l_count_micro": 3300,
             "identified_lambda_us": 12,
@@ -483,7 +479,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.pid_velocity_limit == 500000
     assert parsed.commissioned_velocity_p == 1100
     assert parsed.commissioned_position_i == 4
-    assert parsed.identified_r_int == 1706
+    assert parsed.identified_r_count_milli == 1700
     assert parsed.identified_l_count_micro == 3300
     assert parsed.identified_tau_e_us == 730
     assert parsed.identified_inner_warning_flags == 2

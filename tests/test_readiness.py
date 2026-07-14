@@ -217,7 +217,6 @@ def test_fresh_commissioned_evidence_overrides_stale_config_for_readiness():
     driver.config.identified_l_reactance_count_ratio_milli = None
     driver.config.identified_l_saliency_status = 0
     driver.config.identified_r_count_slope_milli = None
-    driver.config.identified_r_int = None
     driver.state.commissioned_result = {
         "tau_e_us": 730,
         "inner_warning_flags": 0,
@@ -230,8 +229,7 @@ def test_fresh_commissioned_evidence_overrides_stale_config_for_readiness():
         "inductance_reactance_count_ratio_milli": 8600,
         "inductance_saliency_status": 1,
         "resistance_selected_count_slope_milli": 1042,
-        "r_mohm": 1700,
-        "r_int": 1706,
+        "r_count_milli": 1706,
     }
 
     report = resolve_autotune_readiness(driver)

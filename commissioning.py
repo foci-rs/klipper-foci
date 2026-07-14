@@ -407,11 +407,10 @@ def format_commission_detail(detail: dict) -> str:
             value1,
         )
     if code == 22:
-        return "%s: %s (l_int=%d, control_l_count_micro=%d)" % (
+        return "%s: %s (l_count_micro=%d)" % (
             phase_name,
             name,
             value0,
-            value1,
         )
     if code == 29:
         return "%s: %s (theta_us=%d, tau_us=%d)" % (
@@ -840,15 +839,13 @@ class CommissioningWorkflow:
             status_str = "accepted" if status == 0 else "accepted with warnings"
             gcmd.respond_info(
                 "FOCI %s commissioned (%s): "
-                "r_count_milli=%d control_l_count_micro=%d R_int=%d L_int=%d "
+                "r_count_milli=%d l_count_micro=%d "
                 "bandwidth_hz=%d current_candidate_attempt=%d"
                 % (
                     self.driver.name,
                     status_str,
-                    result["r_mohm"],
-                    result["l_uh"],
-                    result.get("r_int", 0),
-                    result.get("l_int", 0),
+                    result["r_count_milli"],
+                    result["l_count_micro"],
                     result.get("bandwidth_hz", 0),
                     result.get("current_candidate_attempt", 0),
                 )
@@ -940,22 +937,12 @@ class CommissioningWorkflow:
         configfile.set(
             self.driver.name,
             "identified_r_count_milli",
-            "%d" % result["r_mohm"],
+            "%d" % result["r_count_milli"],
         )
         configfile.set(
             self.driver.name,
             "identified_l_count_micro",
-            "%d" % result["l_uh"],
-        )
-        configfile.set(
-            self.driver.name,
-            "identified_r_int",
-            "%d" % result.get("r_int", 0),
-        )
-        configfile.set(
-            self.driver.name,
-            "identified_l_int",
-            "%d" % result.get("l_int", 0),
+            "%d" % result["l_count_micro"],
         )
         configfile.set(
             self.driver.name, "identified_lambda_us", "%d" % result["lambda_us"]

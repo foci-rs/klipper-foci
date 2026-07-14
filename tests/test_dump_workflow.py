@@ -90,8 +90,6 @@ def _seed_tuning_state(driver):
 
     driver.config.identified_r_count_milli = 3002
     driver.config.identified_l_count_micro = 4046
-    driver.config.identified_r_int = 3002
-    driver.config.identified_l_int = 4046
     driver.config.identified_lambda_us = 0
     driver.config.identified_tau_e_us = 1348
     driver.config.identified_theta_e_us = 160

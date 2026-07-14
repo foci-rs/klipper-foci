@@ -470,7 +470,7 @@ class TestNameMaps(unittest.TestCase):
 
 
 class CommissionModelSurfacingTests(unittest.TestCase):
-    def test_persists_internal_electrical_model_fields(self):
+    def test_persists_count_space_electrical_model_fields(self):
         driver = make_driver()
         configfile = MockConfigFile()
         driver.printer._objects["configfile"] = configfile
@@ -481,24 +481,18 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_count_milli")],
-            "1700",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_l_count_micro")],
-            "3300",
-        )
-        self.assertNotIn((driver.name, "identified_r_mohm"), configfile.values)
-        self.assertNotIn((driver.name, "identified_l_uh"), configfile.values)
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_int")],
             "1706",
         )
         self.assertEqual(
-            configfile.values[(driver.name, "identified_l_int")],
+            configfile.values[(driver.name, "identified_l_count_micro")],
             "1245",
         )
+        self.assertNotIn((driver.name, "identified_r_mohm"), configfile.values)
+        self.assertNotIn((driver.name, "identified_l_uh"), configfile.values)
+        self.assertNotIn((driver.name, "identified_r_int"), configfile.values)
+        self.assertNotIn((driver.name, "identified_l_int"), configfile.values)
 
-    def test_commission_success_message_includes_internal_model(self):
+    def test_commission_success_message_includes_count_space_model(self):
         driver = make_driver()
         result = complete_commission_result()
         result["bandwidth_hz"] = 800
@@ -516,10 +510,9 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         driver.commissioning.commission(gcmd)
 
         self.assertIn(
-            "r_count_milli=1700 control_l_count_micro=3300",
+            "r_count_milli=1706 l_count_micro=1245",
             gcmd.last_info,
         )
-        self.assertIn("R_int=1706 L_int=1245", gcmd.last_info)
         self.assertIn("bandwidth_hz=800", gcmd.last_info)
         self.assertIn("current_candidate_attempt=1", gcmd.last_info)
 
@@ -841,8 +834,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         # The entire resistance-identification block must be skipped: none
         # of its config keys persisted, not even the ones the run/axis0
         # replies could have supplied on their own. (Excludes the
-        # unrelated always-persisted internal electrical model keys like
-        # identified_r_count_milli/identified_r_int.)
+        # unrelated always-persisted count-space electrical model keys.)
         resistance_config_keys = {
             config_key for _, config_key in CommissioningWorkflow.RESISTANCE_RESULT_KEYS
         }

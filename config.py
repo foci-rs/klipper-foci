@@ -79,8 +79,6 @@ class FociDriverConfig:
     commissioned_position_p: int | None
     commissioned_position_i: int | None
     commissioned_velocity_limit: int | None
-    identified_r_int: int | None
-    identified_l_int: int | None
     identified_r_count_milli: int | None
     identified_l_count_micro: int | None
     identified_lambda_us: int | None
@@ -324,8 +322,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         "commissioned_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
     )
 
-    identified_r_int = config.getint("identified_r_int", None, minval=0)
-    identified_l_int = config.getint("identified_l_int", None, minval=0)
     identified_r_count_milli = config.getint("identified_r_count_milli", None, minval=0)
     identified_l_count_micro = config.getint("identified_l_count_micro", None, minval=0)
     identified_lambda_us = config.getint("identified_lambda_us", None, minval=0)
@@ -604,8 +600,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         commissioned_position_p=commissioned_position_p,
         commissioned_position_i=commissioned_position_i,
         commissioned_velocity_limit=commissioned_velocity_limit,
-        identified_r_int=identified_r_int,
-        identified_l_int=identified_l_int,
         identified_r_count_milli=identified_r_count_milli,
         identified_l_count_micro=identified_l_count_micro,
         identified_lambda_us=identified_lambda_us,

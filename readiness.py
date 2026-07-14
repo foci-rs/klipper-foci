@@ -217,23 +217,20 @@ def _resolve_resistance_evidence(driver) -> dict[str, int | None]:
             key in result
             for key in (
                 "resistance_selected_count_slope_milli",
-                "r_mohm",
-                "r_int",
+                "r_count_milli",
             )
         ):
             return {
                 "selected_count_slope_milli": result.get(
                     "resistance_selected_count_slope_milli"
                 ),
-                "r_mohm": result.get("r_mohm"),
-                "r_int": result.get("r_int"),
+                "r_count_milli": result.get("r_count_milli"),
             }
 
     config = driver.config
     return {
         "selected_count_slope_milli": config.identified_r_count_slope_milli,
-        "r_mohm": config.identified_r_count_milli,
-        "r_int": config.identified_r_int,
+        "r_count_milli": config.identified_r_count_milli,
     }
 
 
@@ -327,8 +324,7 @@ def _classify_resistance(
 ) -> None:
     if (
         evidence.get("selected_count_slope_milli") is not None
-        or evidence.get("r_mohm") is not None
-        or evidence.get("r_int") is not None
+        or evidence.get("r_count_milli") is not None
     ):
         trusted_inputs.append("count_space_resistance")
 
