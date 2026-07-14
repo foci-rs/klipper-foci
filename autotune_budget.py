@@ -9,6 +9,7 @@ DEFAULT_AUTOTUNE_TRAVEL_MM = 40.0
 MAX_AUTOTUNE_TRAVEL_MM = 120.0
 AUTOTUNE_SAFETY_MARGIN_MM = 10.0
 DEFAULT_MAX_VELOCITY_MREV_S = 6000
+# Maximum duration of one active motion or excitation primitive.
 DEFAULT_MAX_DURATION_MS = 3000
 DIRECTION_BOTH = 0x03
 
@@ -19,7 +20,11 @@ class AutotuneBudgetError(Exception):
 
 @dataclass(frozen=True)
 class AutotuneMotionBudget:
-    """Firmware-ready motion budget plus host safe-pose evidence."""
+    """Firmware-ready motion budget plus host safe-pose evidence.
+
+    ``max_duration_ms`` caps one active motion or excitation primitive. It is
+    not a whole-autotune timeout.
+    """
 
     kinematics: str
     stepper_role: str
