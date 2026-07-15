@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from .config import CURRENT_FILTER_MAX_HZ, FILTER_MIN_HZ, MOTION_FILTER_MAX_HZ
-from .constants import MAX_DIAGNOSTIC_VOLTAGE_LIMIT, MIN_RAW_VOLTAGE_LIMIT
+from .constants import (
+    MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
+    MIN_RAW_VOLTAGE_LIMIT,
+    PID_GAIN_MAX_RAW,
+)
 
 
 class ControlsWorkflow:
@@ -48,10 +52,10 @@ class ControlsWorkflow:
         command is asynchronous and does not update host applied-state caches
         because firmware application is not confirmed.
         """
-        flux_p = gcmd.get_int("FLUX_P", minval=0, maxval=65535)
-        flux_i = gcmd.get_int("FLUX_I", minval=0, maxval=65535)
-        torque_p = gcmd.get_int("TORQUE_P", minval=0, maxval=65535)
-        torque_i = gcmd.get_int("TORQUE_I", minval=0, maxval=65535)
+        flux_p = gcmd.get_int("FLUX_P", minval=0, maxval=PID_GAIN_MAX_RAW)
+        flux_i = gcmd.get_int("FLUX_I", minval=0, maxval=PID_GAIN_MAX_RAW)
+        torque_p = gcmd.get_int("TORQUE_P", minval=0, maxval=PID_GAIN_MAX_RAW)
+        torque_i = gcmd.get_int("TORQUE_I", minval=0, maxval=PID_GAIN_MAX_RAW)
 
         self.driver.protocol.set_pid_gains(flux_p, flux_i, torque_p, torque_i)
 
@@ -448,8 +452,8 @@ class ControlsWorkflow:
 
     def _get_outer_gain(self, gcmd, key: str) -> int:
         """Read a floating-point gain parameter and convert it to raw Q8.8."""
-        value = gcmd.get_float(key, minval=0.0, maxval=32767.0 / 256.0)
-        return min(32767, int(value * 256.0 + 0.5))
+        value = gcmd.get_float(key, minval=0.0, maxval=PID_GAIN_MAX_RAW / 256.0)
+        return min(PID_GAIN_MAX_RAW, int(value * 256.0 + 0.5))
 
     def _get_filter_hz(self, gcmd, key: str, max_hz: int) -> int | None:
         """Read an optional filter cutoff parameter in Hz."""

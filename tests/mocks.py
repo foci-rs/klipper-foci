@@ -396,9 +396,11 @@ class MockCommand:
 
     def __init__(self, response=None):
         self.last_args = None
+        self.call_count = 0
         self.response = response
 
     def send(self, args=None):
+        self.call_count += 1
         self.last_args = args
         return self.response
 

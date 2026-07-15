@@ -11,6 +11,63 @@ from tests.mocks import (
 
 
 class TestDebugGainsCommand(unittest.TestCase):
+    def test_inner_gain_boundary_rejects_negative_register_encoding(self):
+        d = make_driver()
+        command = d.protocol.commands.set_pid_gains
+        maximum = {
+            "FLUX_P": 32767,
+            "FLUX_I": 32767,
+            "TORQUE_P": 32767,
+            "TORQUE_I": 32767,
+        }
+
+        d.controls.set_inner_gains(MockGCmd(maximum))
+
+        self.assertEqual(command.call_count, 1)
+        self.assertEqual(command.last_args, [d.oid, 32767, 32767, 32767, 32767])
+
+        for key in maximum:
+            with self.subTest(key=key):
+                params = dict(maximum)
+                params[key] = 32768
+                previous_args = list(command.last_args)
+                previous_count = command.call_count
+
+                with self.assertRaises(CommandError):
+                    d.controls.set_inner_gains(MockGCmd(params))
+
+                self.assertEqual(command.call_count, previous_count)
+                self.assertEqual(command.last_args, previous_args)
+
+    def test_outer_gain_boundary_rejects_negative_register_encoding(self):
+        d = make_driver()
+        command = d.protocol.commands.set_position_gains
+        maximum_value = 32767.0 / 256.0
+        maximum = {
+            "VELOCITY_P": maximum_value,
+            "VELOCITY_I": maximum_value,
+            "POSITION_P": maximum_value,
+            "POSITION_I": maximum_value,
+        }
+
+        d.controls.set_gains(MockGCmd(maximum))
+
+        self.assertEqual(command.call_count, 1)
+        self.assertEqual(command.last_args, [d.oid, 32767, 32767, 32767, 32767])
+
+        for key in maximum:
+            with self.subTest(key=key):
+                params = dict(maximum)
+                params[key] = 128.0
+                previous_args = list(command.last_args)
+                previous_count = command.call_count
+
+                with self.assertRaises(CommandError):
+                    d.controls.set_gains(MockGCmd(params))
+
+                self.assertEqual(command.call_count, previous_count)
+                self.assertEqual(command.last_args, previous_args)
+
     def test_sets_run_current_in_milliamps_without_persisting(self):
         d = make_driver()
 

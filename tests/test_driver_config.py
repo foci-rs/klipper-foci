@@ -255,6 +255,25 @@ INDUCTANCE_FIELD_MAX_VALUES = {
 }
 
 
+ACTIVE_PID_GAIN_FIELDS = (
+    "pid_flux_p",
+    "pid_flux_i",
+    "pid_torque_p",
+    "pid_torque_i",
+    "pid_position_p",
+    "pid_position_i",
+    "pid_velocity_p",
+    "pid_velocity_i",
+)
+
+CURRENT_CANDIDATE_GAIN_FIELDS = (
+    "identified_current_candidate_flux_p",
+    "identified_current_candidate_flux_i",
+    "identified_current_candidate_torque_p",
+    "identified_current_candidate_torque_i",
+)
+
+
 def make_foci_config(stepper_values=None, foci_values=None, chips=None):
     stepper_values = dict(stepper_values or {})
     stepper_values.setdefault("step_pin", "foci:STEP0")
@@ -535,6 +554,30 @@ def test_parse_driver_config_bounds_current_loop_evidence_fields():
             parsed_config_with({field_name: -1})
         with pytest.raises(CommandError, match="above maximum"):
             parsed_config_with({field_name: max_value + 1})
+
+
+@pytest.mark.parametrize("field_name", ACTIVE_PID_GAIN_FIELDS)
+def test_parse_driver_config_bounds_active_pid_gains(field_name):
+    inner = {name: 0 for name in ACTIVE_PID_GAIN_FIELDS[:4]}
+    outer = {name: 0 for name in ACTIVE_PID_GAIN_FIELDS[4:]}
+    values = {**inner, **outer, field_name: 32767}
+
+    parsed = parsed_config_with(values)
+
+    assert getattr(parsed, field_name) == 32767
+
+    values[field_name] = 32768
+    with pytest.raises(CommandError, match="%s above maximum" % field_name):
+        parsed_config_with(values)
+
+
+@pytest.mark.parametrize("field_name", CURRENT_CANDIDATE_GAIN_FIELDS)
+def test_parse_driver_config_preserves_raw_candidate_gain_range(field_name):
+    parsed = parsed_config_with({field_name: 65535})
+    assert getattr(parsed, field_name) == 65535
+
+    with pytest.raises(CommandError, match="%s above maximum" % field_name):
+        parsed_config_with({field_name: 65536})
 
 
 def test_parse_driver_config_bounds_inductance_evidence_fields():

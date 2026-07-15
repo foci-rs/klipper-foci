@@ -10,6 +10,7 @@ from .constants import (
     DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
     MIN_RAW_VOLTAGE_LIMIT,
+    PID_GAIN_MAX_RAW,
 )
 from .state import RuntimeStatus
 
@@ -265,10 +266,14 @@ def parse_driver_config(config) -> FociDriverConfig:
         default="default",
     )
 
-    pid_flux_p = config.getint("pid_flux_p", None, minval=0, maxval=65535)
-    pid_flux_i = config.getint("pid_flux_i", None, minval=0, maxval=65535)
-    pid_torque_p = config.getint("pid_torque_p", None, minval=0, maxval=65535)
-    pid_torque_i = config.getint("pid_torque_i", None, minval=0, maxval=65535)
+    pid_flux_p = config.getint("pid_flux_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
+    pid_flux_i = config.getint("pid_flux_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
+    pid_torque_p = config.getint(
+        "pid_torque_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
+    )
+    pid_torque_i = config.getint(
+        "pid_torque_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
+    )
     _validate_complete_group(
         config,
         name,
@@ -287,10 +292,18 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
     flux_filter_hz = _filter_hz(config, name, "flux_filter_hz", CURRENT_FILTER_MAX_HZ)
 
-    pid_position_p = config.getint("pid_position_p", None, minval=0, maxval=32767)
-    pid_position_i = config.getint("pid_position_i", None, minval=0, maxval=32767)
-    pid_velocity_p = config.getint("pid_velocity_p", None, minval=0, maxval=32767)
-    pid_velocity_i = config.getint("pid_velocity_i", None, minval=0, maxval=32767)
+    pid_position_p = config.getint(
+        "pid_position_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
+    )
+    pid_position_i = config.getint(
+        "pid_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
+    )
+    pid_velocity_p = config.getint(
+        "pid_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
+    )
+    pid_velocity_i = config.getint(
+        "pid_velocity_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
+    )
     _validate_complete_group(
         config,
         name,
@@ -307,16 +320,16 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
 
     commissioned_velocity_p = config.getint(
-        "commissioned_velocity_p", None, minval=0, maxval=32767
+        "commissioned_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
     )
     commissioned_velocity_i = config.getint(
-        "commissioned_velocity_i", None, minval=0, maxval=32767
+        "commissioned_velocity_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
     )
     commissioned_position_p = config.getint(
-        "commissioned_position_p", None, minval=0, maxval=32767
+        "commissioned_position_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
     )
     commissioned_position_i = config.getint(
-        "commissioned_position_i", None, minval=0, maxval=32767
+        "commissioned_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
     )
     commissioned_velocity_limit = config.getint(
         "commissioned_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
