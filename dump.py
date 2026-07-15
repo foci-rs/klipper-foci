@@ -178,6 +178,9 @@ RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_r_axis1_drift_permille",
     "identified_r_status_flags_or",
     "identified_r_warning_flags",
+    "identified_r_peak_abs_current_count",
+    "identified_r_max_abs_steady_mean_current_count",
+    "identified_r_current_ceiling_count",
 )
 
 INDUCTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
@@ -430,8 +433,9 @@ class RegisterDumpWorkflow:
         lines.append(
             "  Note: identified_r_* resistance fields are firmware-reported"
             " count-space evidence (selected/gain-path/per-axis slopes,"
-            " fit quality, signed-anchor, and drift); the host performs no"
-            " fitting or quality-gate evaluation."
+            " fit quality, signed-anchor, drift, current maxima, and the"
+            " applied ceiling); the host performs no fitting or quality-gate"
+            " evaluation."
         )
 
         lines.append("-- Comparison --")

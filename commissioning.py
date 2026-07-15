@@ -1067,6 +1067,18 @@ class CommissioningWorkflow:
         ("resistance_axis1_drift_permille", "identified_r_axis1_drift_permille"),
         ("resistance_status_flags_or", "identified_r_status_flags_or"),
         ("resistance_warning_flags", "identified_r_warning_flags"),
+        (
+            "resistance_peak_abs_current_count",
+            "identified_r_peak_abs_current_count",
+        ),
+        (
+            "resistance_max_abs_steady_mean_current_count",
+            "identified_r_max_abs_steady_mean_current_count",
+        ),
+        (
+            "resistance_current_ceiling_count",
+            "identified_r_current_ceiling_count",
+        ),
     )
 
     def _persist_resistance_identification(self, configfile, result: dict) -> None:
@@ -1075,9 +1087,10 @@ class CommissioningWorkflow:
         Every value here is reported by firmware as-is: the selected
         count-space slope, the slope actually consumed by the gain path,
         per-axis fit evidence, point-selection masks, signed-anchor
-        evidence, thermal-drift evidence, and warning/status flags. The
-        host performs no fitting, point selection, or quality-gate
-        evaluation; it only stores what firmware already decided.
+        evidence, thermal-drift evidence, current sample/window maxima,
+        the applied current ceiling, and warning/status flags. The host
+        performs no fitting, point selection, unit conversion, or
+        quality-gate evaluation; it only stores what firmware reported.
 
         Skips this group entirely when ``result`` does not contain these
         keys, so commissioning against older firmware that has not yet

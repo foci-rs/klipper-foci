@@ -147,6 +147,9 @@ class FociDriverConfig:
     identified_r_axis1_drift_permille: int | None
     identified_r_status_flags_or: int | None
     identified_r_warning_flags: int | None
+    identified_r_peak_abs_current_count: int | None
+    identified_r_max_abs_steady_mean_current_count: int | None
+    identified_r_current_ceiling_count: int | None
     autotune_profile: str | None
     autotune_mode: str | None
     autotune_status: str | None
@@ -527,6 +530,18 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_r_warning_flags = config.getint(
         "identified_r_warning_flags", None, minval=0
     )
+    identified_r_peak_abs_current_count = config.getint(
+        "identified_r_peak_abs_current_count", None, minval=0, maxval=0xFFFF
+    )
+    identified_r_max_abs_steady_mean_current_count = config.getint(
+        "identified_r_max_abs_steady_mean_current_count",
+        None,
+        minval=0,
+        maxval=0xFFFF,
+    )
+    identified_r_current_ceiling_count = config.getint(
+        "identified_r_current_ceiling_count", None, minval=0, maxval=0xFFFF
+    )
 
     autotune_profile = config.get("autotune_profile", None)
     autotune_mode = config.get("autotune_mode", None)
@@ -726,6 +741,11 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_r_axis1_drift_permille=identified_r_axis1_drift_permille,
         identified_r_status_flags_or=identified_r_status_flags_or,
         identified_r_warning_flags=identified_r_warning_flags,
+        identified_r_peak_abs_current_count=identified_r_peak_abs_current_count,
+        identified_r_max_abs_steady_mean_current_count=(
+            identified_r_max_abs_steady_mean_current_count
+        ),
+        identified_r_current_ceiling_count=identified_r_current_ceiling_count,
         autotune_profile=autotune_profile,
         autotune_mode=autotune_mode,
         autotune_status=autotune_status,

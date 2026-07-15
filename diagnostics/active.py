@@ -883,6 +883,11 @@ class ActiveDiagnostics:
             ],
             "resistance_status_flags_or": run["status_flags_or"],
             "resistance_warning_flags": run["warning_flags"],
+            "resistance_peak_abs_current_count": run["peak_abs_current_count"],
+            "resistance_max_abs_steady_mean_current_count": run[
+                "max_abs_steady_mean_current_count"
+            ],
+            "resistance_current_ceiling_count": run["current_ceiling_count"],
         }
 
         for axis_index, axis in ((0, axis0), (1, axis1)):

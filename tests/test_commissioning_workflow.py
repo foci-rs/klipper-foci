@@ -565,6 +565,9 @@ class CommissionModelSurfacingTests(unittest.TestCase):
                 "resistance_axis1_drift_permille": 6,
                 "resistance_status_flags_or": 0x00080000,
                 "resistance_warning_flags": 0,
+                "resistance_peak_abs_current_count": 1200,
+                "resistance_max_abs_steady_mean_current_count": 900,
+                "resistance_current_ceiling_count": 1600,
             }
         )
 
@@ -595,6 +598,23 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_status_flags_or")],
             "524288",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_peak_abs_current_count")],
+            "1200",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_max_abs_steady_mean_current_count")
+            ],
+            "900",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_current_ceiling_count")],
+            "1600",
+        )
+        self.assertNotIn(
+            (driver.name, "identified_r_power_stage_tripped"), configfile.values
         )
 
 
@@ -628,6 +648,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                     "gain_path_count_slope_milli": 66752,
                     "warning_flags": 0,
                     "status_flags_or": 0x00080000,
+                    "peak_abs_current_count": 1200,
+                    "max_abs_steady_mean_current_count": 900,
+                    "current_ceiling_count": 1600,
+                    "power_stage_tripped": 0,
                     "pwm_maxcnt_readback": 3999,
                     "bbm_readback": 0x00000909,
                     "dsadc_mdec_readback": 0x00080008,
@@ -694,6 +718,23 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_warning_flags")],
             "0",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_peak_abs_current_count")],
+            "1200",
+        )
+        self.assertEqual(
+            configfile.values[
+                (driver.name, "identified_r_max_abs_steady_mean_current_count")
+            ],
+            "900",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_r_current_ceiling_count")],
+            "1600",
+        )
+        self.assertNotIn(
+            (driver.name, "identified_r_power_stage_tripped"), configfile.values
         )
         # Distinct axis0/axis1 values, routed by electrical_axis despite
         # arriving axis1-before-axis0 above. A swapped-routing bug would
@@ -794,6 +835,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                     "gain_path_count_slope_milli": 66752,
                     "warning_flags": 0,
                     "status_flags_or": 0x00080000,
+                    "peak_abs_current_count": 1200,
+                    "max_abs_steady_mean_current_count": 900,
+                    "current_ceiling_count": 1600,
+                    "power_stage_tripped": 0,
                     "pwm_maxcnt_readback": 3999,
                     "bbm_readback": 0x00000909,
                     "dsadc_mdec_readback": 0x00080008,
@@ -866,6 +911,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 "gain_path_count_slope_milli": 0,
                 "warning_flags": 0,
                 "status_flags_or": 0,
+                "peak_abs_current_count": 1200,
+                "max_abs_steady_mean_current_count": 900,
+                "current_ceiling_count": 1600,
+                "power_stage_tripped": 0,
                 "pwm_maxcnt_readback": 3999,
                 "bbm_readback": 0,
                 "dsadc_mdec_readback": 0,
@@ -949,6 +998,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 "gain_path_count_slope_milli": 0,
                 "warning_flags": 0,
                 "status_flags_or": 0,
+                "peak_abs_current_count": 1200,
+                "max_abs_steady_mean_current_count": 900,
+                "current_ceiling_count": 1600,
+                "power_stage_tripped": 0,
                 "pwm_maxcnt_readback": 3999,
                 "bbm_readback": 0,
                 "dsadc_mdec_readback": 0,
@@ -1010,6 +1063,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                     "gain_path_count_slope_milli": 66752,
                     "warning_flags": 0,
                     "status_flags_or": 0x00080000,
+                    "peak_abs_current_count": 1200,
+                    "max_abs_steady_mean_current_count": 900,
+                    "current_ceiling_count": 1600,
+                    "power_stage_tripped": 0,
                     "pwm_maxcnt_readback": 3999,
                     "bbm_readback": 0x00000909,
                     "dsadc_mdec_readback": 0x00080008,

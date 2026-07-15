@@ -156,6 +156,9 @@ def _seed_tuning_state(driver):
     driver.config.identified_r_axis1_drift_permille = 6
     driver.config.identified_r_status_flags_or = 524288
     driver.config.identified_r_warning_flags = 0
+    driver.config.identified_r_peak_abs_current_count = 1200
+    driver.config.identified_r_max_abs_steady_mean_current_count = 900
+    driver.config.identified_r_current_ceiling_count = 1600
 
 
 def _run_dump(driver, params=None, values=None):
@@ -380,6 +383,9 @@ def test_tuning_flag_appends_resistance_identification_evidence():
     assert "config.identified_r_axis0_count_slope_milli" in output
     assert "config.identified_r_axis1_drift_permille" in output
     assert "config.identified_r_status_flags_or" in output
+    assert "config.identified_r_peak_abs_current_count" in output
+    assert "config.identified_r_max_abs_steady_mean_current_count" in output
+    assert "config.identified_r_current_ceiling_count" in output
     assert "host performs no" in output
 
 
