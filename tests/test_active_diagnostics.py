@@ -3,7 +3,12 @@
 import unittest
 
 
-from tests.mocks import CommandError, MockGCmd, make_driver
+from tests.mocks import (
+    CommandError,
+    MockCoreXYKinematics,
+    MockGCmd,
+    make_driver,
+)
 
 
 def test_current_loop_hold_caches_last_evidence():
@@ -490,7 +495,13 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("scale_metadata_validated=1", out)
 
     def test_resistance_run_reply_prints_firmware_run_summary(self):
-        d = make_driver()
+        kinematics = MockCoreXYKinematics([["manual_stepper stepper_x"], ["stepper_y"]])
+        d = make_driver(kinematics=kinematics, homed_axes="xy")
+        d.state.is_calibrated = True
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
+            d.stepper_name
+        )
+        enable_line.motor_enable(0.0)
 
         d.diagnostics.active.handle_resistance_run(
             {
@@ -499,6 +510,10 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
                 "selected_r_count_slope_milli": 1042,
                 "warning_flags": 0,
                 "status_flags_or": 0x00080000,
+                "peak_abs_current_count": 1200,
+                "max_abs_steady_mean_current_count": 900,
+                "current_ceiling_count": 1600,
+                "power_stage_tripped": 0,
                 "pwm_maxcnt_readback": 3999,
                 "bbm_readback": 0x00000909,
                 "dsadc_mdec_readback": 0x00080008,
@@ -511,6 +526,19 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         self.assertIn("selected_r_count_slope_milli=1042", out)
         self.assertIn("warning_flags=0", out)
         self.assertIn("status_flags_or=0x00080000", out)
+        self.assertIn("peak_abs_current_count=1200", out)
+        self.assertIn("max_abs_steady_mean_current_count=900", out)
+        self.assertIn("current_ceiling_count=1600", out)
+        self.assertIn("power_stage_tripped=0", out)
+        cached_run = d.diagnostics.active.resistance_cache[d.oid]["run"]
+        self.assertEqual(cached_run["peak_abs_current_count"], 1200)
+        self.assertEqual(cached_run["max_abs_steady_mean_current_count"], 900)
+        self.assertEqual(cached_run["current_ceiling_count"], 1600)
+        self.assertEqual(cached_run["power_stage_tripped"], 0)
+        self.assertTrue(enable_line.is_motor_enabled())
+        self.assertTrue(d.state.is_calibrated)
+        self.assertIsNone(kinematics._cleared_axes)
+        self.assertEqual(d.protocol.commands.commission.call_count, 0)
 
     def test_resistance_run_reply_prints_specific_failure_name(self):
         d = make_driver()
@@ -522,6 +550,10 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
                 "selected_r_count_slope_milli": 0,
                 "warning_flags": 0,
                 "status_flags_or": 0,
+                "peak_abs_current_count": 0,
+                "max_abs_steady_mean_current_count": 0,
+                "current_ceiling_count": 1600,
+                "power_stage_tripped": 0,
                 "pwm_maxcnt_readback": 3999,
                 "bbm_readback": 0x00000909,
                 "dsadc_mdec_readback": 0x00080008,
@@ -532,6 +564,42 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         out = d.printer.lookup_object("gcode")._responses[-1]
         self.assertIn("status=23", out)
         self.assertIn("status_name=resistance insufficient linear points", out)
+
+    def test_cleanup_error_with_trip_reconciles_disabled_motor_and_homing(self):
+        kinematics = MockCoreXYKinematics([["manual_stepper stepper_x"], ["stepper_y"]])
+        d = make_driver(kinematics=kinematics, homed_axes="xy")
+        d.state.is_calibrated = True
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
+            d.stepper_name
+        )
+        enable_line.motor_enable(0.0)
+
+        d.diagnostics.active.handle_resistance_run(
+            {
+                "oid": d.oid,
+                "status": 3,
+                "selected_r_count_slope_milli": 0,
+                "gain_path_count_slope_milli": 0,
+                "warning_flags": 0,
+                "status_flags_or": 0,
+                "peak_abs_current_count": 1800,
+                "max_abs_steady_mean_current_count": 1000,
+                "current_ceiling_count": 1600,
+                "power_stage_tripped": 1,
+                "pwm_maxcnt_readback": 3999,
+                "bbm_readback": 0x00000909,
+                "dsadc_mdec_readback": 0x00080008,
+                "pwm_sv_chop_readback": 0,
+            }
+        )
+
+        self.assertFalse(enable_line.is_motor_enabled())
+        self.assertFalse(d.state.is_calibrated)
+        self.assertEqual(kinematics._cleared_axes, {0, 1, "x", "y"})
+        self.assertEqual(d.protocol.commands.commission.call_count, 0)
+        out = "\n".join(d.printer.lookup_object("gcode")._responses)
+        self.assertIn("firmware disabled the motor", out)
+        self.assertIn("rehoming is required", out)
 
     def test_resistance_axis_reply_prints_firmware_fit_result(self):
         d = make_driver()

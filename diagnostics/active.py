@@ -414,11 +414,19 @@ class ActiveDiagnostics:
             "gain_path_count_slope_milli": params.get("gain_path_count_slope_milli", 0),
             "status_flags_or": params["status_flags_or"],
             "warning_flags": params["warning_flags"],
+            "peak_abs_current_count": params["peak_abs_current_count"],
+            "max_abs_steady_mean_current_count": params[
+                "max_abs_steady_mean_current_count"
+            ],
+            "current_ceiling_count": params["current_ceiling_count"],
+            "power_stage_tripped": params["power_stage_tripped"],
         }
         msg = (
             "FOCI %s resistance run: status=%d status_name=%s"
             " selected_r_count_slope_milli=%d warning_flags=%d"
-            " status_flags_or=0x%08x pwm_maxcnt_readback=%d"
+            " status_flags_or=0x%08x peak_abs_current_count=%d"
+            " max_abs_steady_mean_current_count=%d current_ceiling_count=%d"
+            " power_stage_tripped=%d pwm_maxcnt_readback=%d"
             " bbm_readback=0x%04x dsadc_mdec_readback=0x%08x"
             " pwm_sv_chop_readback=0x%08x"
             % (
@@ -430,13 +438,29 @@ class ActiveDiagnostics:
                 params["selected_r_count_slope_milli"],
                 params["warning_flags"],
                 params["status_flags_or"],
+                params["peak_abs_current_count"],
+                params["max_abs_steady_mean_current_count"],
+                params["current_ceiling_count"],
+                params["power_stage_tripped"],
                 params["pwm_maxcnt_readback"],
                 params["bbm_readback"],
                 params["dsadc_mdec_readback"],
                 params["pwm_sv_chop_readback"],
             )
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        gcode = self.driver.printer.lookup_object("gcode")
+        gcode.respond_info(msg)
+        if params["power_stage_tripped"]:
+            toolhead = self.driver.printer.lookup_object("toolhead")
+            stepper_enable = self.driver.printer.lookup_object("stepper_enable")
+            enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
+            enable_line.motor_disable(toolhead.get_last_move_time())
+            self.driver.state.is_calibrated = False
+            self.driver.homing.invalidate_homing()
+            gcode.respond_info(
+                "FOCI %s resistance containment: firmware disabled the motor; "
+                "calibration was cleared and rehoming is required" % self.driver.name
+            )
 
     def handle_resistance_axis(self, params: dict) -> None:
         """Handle foci_resistance_axis from firmware.
