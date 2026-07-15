@@ -340,6 +340,20 @@ def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
     assert printer.lookup_object("pins") is not None
 
 
+def test_parse_driver_config_bounds_run_current_at_five_amps():
+    _printer, _chips, _sections, config = make_foci_config(
+        foci_values={"run_current": 5.0}
+    )
+
+    assert parse_driver_config(config).run_current == 5.0
+
+    _printer, _chips, _sections, config = make_foci_config(
+        foci_values={"run_current": 5.001}
+    )
+    with pytest.raises(CommandError, match="run_current above maximum"):
+        parse_driver_config(config)
+
+
 def test_parse_driver_config_accepts_largest_encoder_ppr_that_fits_quadrature():
     _printer, _chips, _sections, config = make_foci_config(
         foci_values={"encoder_ppr": 0x3FFF_FFFF}

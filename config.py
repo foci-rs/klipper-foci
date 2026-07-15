@@ -9,6 +9,7 @@ from dataclasses import dataclass, fields
 from .constants import (
     DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
+    MAX_RUN_CURRENT_AMPS,
     MIN_RAW_VOLTAGE_LIMIT,
     PID_GAIN_MAX_RAW,
 )
@@ -250,7 +251,11 @@ def parse_driver_config(config) -> FociDriverConfig:
     stepper_name = " ".join(name.split()[1:])
     printer = config.get_printer()
 
-    run_current = config.getfloat("run_current", above=0.0)
+    run_current = config.getfloat(
+        "run_current",
+        above=0.0,
+        maxval=MAX_RUN_CURRENT_AMPS,
+    )
     encoder_ppr = config.getint("encoder_ppr", minval=1)
     if encoder_ppr > MAX_ENCODER_PPR:
         raise config.error(

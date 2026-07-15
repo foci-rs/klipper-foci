@@ -515,11 +515,15 @@ class MockConfig:
             raise self.error("%s above maximum" % key)
         return value
 
-    def getfloat(self, key, default=None, above=None):
+    def getfloat(self, key, default=None, minval=None, maxval=None, above=None):
         value = self.get(key, default)
         if value is None:
             return None
         value = float(value)
+        if minval is not None and value < minval:
+            raise self.error("%s below minimum" % key)
+        if maxval is not None and value > maxval:
+            raise self.error("%s above maximum" % key)
         if above is not None and value <= above:
             raise self.error("%s must be above %s" % (key, above))
         return value
