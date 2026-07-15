@@ -204,7 +204,6 @@ class AutotuneWorkflow:
                 ringing = config.identified_ringing_count
                 bandwidth = config.identified_bandwidth_hz
 
-            tau_e_us = readiness.tau_e_us
             inner_warning_flags = readiness.inner_warning_flags
 
             self.done = False
@@ -219,7 +218,6 @@ class AutotuneWorkflow:
                 theta_e=theta_e,
                 current_ringing=ringing,
                 current_bw=bandwidth,
-                tau_e_us=tau_e_us,
                 inner_warning_flags=inner_warning_flags,
                 max_travel_mrev=motion_budget.max_travel_mrev,
                 max_velocity_mrev_s=motion_budget.max_velocity_mrev_s,

@@ -164,8 +164,7 @@ class FociMcuCommands:
         self.tune = mcu.lookup_command(
             "foci_tune oid=%c profile=%c mode=%c"
             " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
-            " tau_e_us=%u inner_warning_flags=%c"
-            " max_travel_mrev=%u max_velocity_mrev_s=%u"
+            " inner_warning_flags=%c max_travel_mrev=%u max_velocity_mrev_s=%u"
             " max_duration_ms=%hu direction_mask=%c"
         )
         register_commissioning_responses(mcu._serial, driver, oid)
