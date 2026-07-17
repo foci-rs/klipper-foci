@@ -237,6 +237,21 @@ def test_plan_is_timeout_authority_before_terminal():
     assert assembler.plan["rung_count"] == 5
 
 
+def test_plan_ignores_klipper_reply_name_metadata():
+    assembler = VelocitySweepAssembler()
+    limits, geometry, timing = plan_fragments()
+    limits["#name"] = "foci_velocity_sweep_plan_limits"
+    geometry["#name"] = "foci_velocity_sweep_plan_geometry"
+    timing["#name"] = "foci_velocity_sweep_plan_timing"
+
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+
+    assert assembler.plan_ready
+    assert "#name" not in assembler.plan
+
+
 def test_reordered_or_duplicate_fragment_is_rejected():
     limits, geometry, _timing = plan_fragments()
     assembler = VelocitySweepAssembler()
