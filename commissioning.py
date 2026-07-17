@@ -76,6 +76,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     49: "resistance_timeout",
     50: "inductance_timing",
     51: "delay_timing",
+    52: "velocity sweep analysis overrun",
 }
 
 # Error codes for which the failure message should point at a dedicated

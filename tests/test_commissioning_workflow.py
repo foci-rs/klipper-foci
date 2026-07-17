@@ -45,6 +45,11 @@ def test_timing_error_names_match_firmware_wire_codes():
     assert {code: ELECTRICAL_ID_DETAIL_NAMES[code] for code in expected} == expected
 
 
+def test_analysis_overrun_has_a_dedicated_operator_label():
+    assert COMMISSION_ERROR_NAMES[52] == "velocity sweep analysis overrun"
+    assert format_commission_error_name(52) == "velocity sweep analysis overrun"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
