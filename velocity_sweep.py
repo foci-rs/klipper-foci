@@ -13,7 +13,26 @@ INCONCLUSIVE_REMEDIATION = {
     1: "one direction lacks sufficient evidence; inspect directional preload or binding",
     2: "both directions lack sufficient evidence; review TUNE_VELOCITY, travel, and current headroom",
     3: "firmware report integrity failed; retain the trace and redeploy a matched build",
+    4: "current headroom ended the sweep; review current headroom if evidence is insufficient",
 }
+
+OBSERVATION_ELIGIBLE = 0
+OBSERVATION_INERT = 1
+OBSERVATION_DEFICIT_UNRESOLVED = 2
+OBSERVATION_CURRENT_HEADROOM = 3
+OBSERVATION_STATIONARITY_MIN = 4
+OBSERVATION_STATIONARITY_MAX = 8
+OBSERVATION_FAULT_MIN = 9
+OBSERVATION_FAULT_MAX = 11
+
+RUNG_ELIGIBLE = 0
+RUNG_INERT = 1
+RUNG_DEFICIT_UNRESOLVED = 2
+RUNG_CURRENT_HEADROOM = 3
+RUNG_DISJOINT_PAIR = 4
+RUNG_AMBIGUOUS = 5
+RUNG_EXCLUDED = 6
+RUNG_FAULT = 7
 
 
 class VelocitySweepProtocolError(Exception):
@@ -32,6 +51,7 @@ class VelocitySweepAssembler:
         self.outer_inconclusive: dict | None = None
         self.outcome: str | None = None
         self.sufficient_direction_mask = 0
+        self.full_plan_executed = False
         self.done = False
         self._run_sequence: int | None = None
         self._next_evidence_sequence = 0
@@ -247,21 +267,77 @@ class VelocitySweepAssembler:
         for observation in observations:
             if int(observation["velocity_p"]) != int(rung["velocity_p"]):
                 raise VelocitySweepProtocolError("rung gain disagrees with observation")
-        for slots, prefix in (((0, 2), "forward"), ((1, 3), "reverse")):
-            low = max(
-                int(observations[index]["disturbance_low_q16"]) for index in slots
+        expected_flags = 0
+        for direction, (slots, prefix) in enumerate(
+            (((0, 2), "forward"), ((1, 3), "reverse"))
+        ):
+            rung_class, interval, reproduced_moving = self._reproduce_pair(
+                observations[slots[0]], observations[slots[1]]
             )
-            high = min(
-                int(observations[index]["disturbance_high_q16"]) for index in slots
+            if int(rung[prefix + "_class"]) != rung_class:
+                raise VelocitySweepProtocolError(
+                    "firmware rung classification disagrees with observations"
+                )
+            reported_interval = (
+                int(rung[prefix + "_low_q16"]),
+                int(rung[prefix + "_high_q16"]),
             )
-            if low != int(rung[prefix + "_low_q16"]) or high != int(
-                rung[prefix + "_high_q16"]
-            ):
+            if reported_interval != interval:
                 raise VelocitySweepProtocolError(
                     "firmware rung verdict disagrees with observation intervals"
                 )
+            if reproduced_moving:
+                expected_flags |= 1 << direction
+            if any(int(observations[index]["flags"]) & 1 for index in slots):
+                expected_flags |= 1 << (direction + 2)
+        if int(rung["flags"]) != expected_flags:
+            raise VelocitySweepProtocolError(
+                "firmware rung flags disagree with observations"
+            )
         self.rungs[rung_index] = rung
         self._hash_rung(rung)
+
+    @staticmethod
+    def _reproduce_pair(first: dict, second: dict) -> tuple[int, tuple[int, int], bool]:
+        first_class = int(first["classification"])
+        second_class = int(second["classification"])
+        moving_classes = {
+            OBSERVATION_ELIGIBLE,
+            OBSERVATION_DEFICIT_UNRESOLVED,
+            OBSERVATION_CURRENT_HEADROOM,
+        }
+        reproduced_moving = (
+            first_class in moving_classes and second_class in moving_classes
+        )
+        if first_class == OBSERVATION_ELIGIBLE and second_class == OBSERVATION_ELIGIBLE:
+            low = max(
+                int(first["disturbance_low_q16"]),
+                int(second["disturbance_low_q16"]),
+            )
+            high = min(
+                int(first["disturbance_high_q16"]),
+                int(second["disturbance_high_q16"]),
+            )
+            if low <= high:
+                return RUNG_ELIGIBLE, (low, high), reproduced_moving
+            return RUNG_DISJOINT_PAIR, (0, 0), reproduced_moving
+        if first_class == second_class == OBSERVATION_INERT:
+            return RUNG_INERT, (0, 0), reproduced_moving
+        if first_class == second_class == OBSERVATION_DEFICIT_UNRESOLVED:
+            return RUNG_DEFICIT_UNRESOLVED, (0, 0), reproduced_moving
+        if first_class == second_class == OBSERVATION_CURRENT_HEADROOM:
+            return RUNG_CURRENT_HEADROOM, (0, 0), reproduced_moving
+        if any(
+            OBSERVATION_FAULT_MIN <= value <= OBSERVATION_FAULT_MAX
+            for value in (first_class, second_class)
+        ):
+            return RUNG_FAULT, (0, 0), reproduced_moving
+        if all(
+            OBSERVATION_STATIONARITY_MIN <= value <= OBSERVATION_STATIONARITY_MAX
+            for value in (first_class, second_class)
+        ):
+            return RUNG_EXCLUDED, (0, 0), reproduced_moving
+        return RUNG_AMBIGUOUS, (0, 0), reproduced_moving
 
     def _finish_terminal(self, parts: list[dict]) -> None:
         directions = [dict(parts[0]), dict(parts[1])]
@@ -285,10 +361,9 @@ class VelocitySweepAssembler:
             raise VelocitySweepProtocolError("terminal observation count mismatch")
         if int(integrity["emitted_rungs"]) != len(self.rungs):
             raise VelocitySweepProtocolError("terminal rung count mismatch")
-        if expected_observations != len(self.observations) or expected_rungs != len(
-            self.rungs
-        ):
-            raise VelocitySweepProtocolError("velocity sweep evidence is incomplete")
+        self.full_plan_executed = expected_observations == len(
+            self.observations
+        ) and expected_rungs == len(self.rungs)
         reported_digest = int(integrity["digest_low"]) | (
             int(integrity["digest_high"]) << 32
         )

@@ -97,7 +97,17 @@ def feed_plan(assembler, rung_count=5):
     assembler.handle_plan_timing(timing)
 
 
-def feed_observation(assembler, *, sequence, slot, low, high, velocity_p=16):
+def feed_observation(
+    assembler,
+    *,
+    sequence,
+    slot,
+    low,
+    high,
+    velocity_p=16,
+    classification=0,
+    flags=0,
+):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     assembler.handle_observation_core(
         {
@@ -105,8 +115,8 @@ def feed_observation(assembler, *, sequence, slot, low, high, velocity_p=16):
             "fragment": 0,
             "rung_index": 0,
             "slot": slot,
-            "classification": 0,
-            "flags": 0,
+            "classification": classification,
+            "flags": flags,
             "delta_sign": slot & 1,
             "delta_mantissa": 1,
             "delta_shift": 0,
@@ -162,10 +172,22 @@ def feed_observation(assembler, *, sequence, slot, low, high, velocity_p=16):
     )
 
 
-def terminal_fragments(*, outcome=0, mask=3, digest=None):
+def terminal_fragments(
+    *,
+    outcome=0,
+    mask=3,
+    digest=None,
+    cause=None,
+    sequence=1,
+    expected_observations=0,
+    emitted_observations=0,
+    expected_rungs=0,
+    emitted_rungs=0,
+):
     digest = plan_digest(0) if digest is None else digest
-    cause = 1 if outcome == 1 and mask in (1, 2) else 2 if outcome == 1 else 0
-    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 1}
+    if cause is None:
+        cause = 1 if outcome == 1 and mask in (1, 2) else 2 if outcome == 1 else 0
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     direction = {
         "direction_closure": 0,
         "first_moving": 8,
@@ -192,10 +214,10 @@ def terminal_fragments(*, outcome=0, mask=3, digest=None):
         {
             **common,
             "fragment": 2,
-            "expected_observations": 0,
-            "emitted_observations": 0,
-            "expected_rungs": 0,
-            "emitted_rungs": 0,
+            "expected_observations": expected_observations,
+            "emitted_observations": emitted_observations,
+            "expected_rungs": expected_rungs,
+            "emitted_rungs": emitted_rungs,
             "digest_low": digest & 0xFFFF_FFFF,
             "digest_high": digest >> 32,
             "outcome": outcome,
@@ -368,6 +390,124 @@ def test_four_observations_reconstruct_and_check_firmware_rung_verdict():
     )
 
     assert assembler.rungs[0]["forward_low_q16"] == 120
+
+
+@pytest.mark.parametrize(
+    (
+        "first_class",
+        "second_class",
+        "first_interval",
+        "second_interval",
+        "rung_class",
+        "forward_moving",
+    ),
+    [
+        (0, 0, (100, 150), (200, 250), 4, True),
+        (0, 1, (100, 200), (0, 0), 5, False),
+        (4, 5, (0, 0), (0, 0), 6, False),
+        (3, 3, (0, 0), (0, 0), 3, True),
+        (9, 0, (0, 0), (100, 200), 7, False),
+    ],
+)
+def test_noneligible_rung_verdicts_do_not_require_interval_intersection(
+    first_class,
+    second_class,
+    first_interval,
+    second_interval,
+    rung_class,
+    forward_moving,
+):
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1)
+    feed_observation(
+        assembler,
+        sequence=1,
+        slot=0,
+        low=first_interval[0],
+        high=first_interval[1],
+        classification=first_class,
+    )
+    feed_observation(assembler, sequence=2, slot=1, low=-200, high=-100)
+    feed_observation(
+        assembler,
+        sequence=3,
+        slot=2,
+        low=second_interval[0],
+        high=second_interval[1],
+        classification=second_class,
+    )
+    feed_observation(assembler, sequence=4, slot=3, low=-220, high=-120)
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 5}
+    assembler.handle_rung_band(
+        {
+            **common,
+            "fragment": 0,
+            "rung_index": 0,
+            "velocity_p": 16,
+            "forward_low_q16": 0,
+            "forward_high_q16": 0,
+            "reverse_low_q16": -200,
+            "reverse_high_q16": -120,
+            "forward_p_low": 0,
+            "forward_p_high": 0,
+            "reverse_p_low": 16,
+            "reverse_p_high": 16,
+        }
+    )
+    assembler.handle_rung_quality(
+        {
+            **common,
+            "fragment": 1,
+            "rung_index": 0,
+            "forward_class": rung_class,
+            "reverse_class": 0,
+            "forward_closure": 0,
+            "reverse_closure": 0,
+            "flags": 2 | int(forward_moving),
+            "forward_eligible_rungs": 0,
+            "reverse_eligible_rungs": 1,
+            "forward_eligible_observations": 0,
+            "reverse_eligible_observations": 2,
+        }
+    )
+
+    assert assembler.rungs[0]["forward_class"] == rung_class
+
+
+@pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4)])
+def test_terminal_accepts_digest_verified_evidence_prefix(outcome, cause):
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1)
+    feed_observation(
+        assembler,
+        sequence=1,
+        slot=0,
+        low=0,
+        high=0,
+        classification=9 if outcome == 2 else 3,
+    )
+    forward, reverse, integrity = terminal_fragments(
+        outcome=outcome,
+        mask=0,
+        digest=assembler._digest,
+        cause=cause,
+        sequence=2,
+        expected_observations=4,
+        emitted_observations=1,
+        expected_rungs=1,
+        emitted_rungs=0,
+    )
+
+    assembler.handle_terminal_direction(forward)
+    assembler.handle_terminal_direction(reverse)
+    assembler.handle_terminal_integrity(integrity)
+
+    assert not assembler.full_plan_executed
+    assert assembler.outcome == ("fault" if outcome == 2 else "inconclusive")
+    if outcome == 1:
+        assert "current headroom" in assembler.remediation
+    else:
+        assert assembler.done
 
 
 def test_rung_verdict_disagreement_is_transport_failure():
