@@ -175,6 +175,34 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("commissioning already running", str(ctx.exception))
         self.assertNotIn("timed out", str(ctx.exception))
 
+    def test_missing_velocity_sweep_plan_uses_short_setup_timeout(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("timed out waiting for plan", str(ctx.exception))
+
+    def test_firmware_plan_replaces_short_timeout_with_reported_maximum(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_plan(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_sweep.plan is None:
+                d.autotune.velocity_sweep.plan = {"maximum_workflow_ms": 10_000}
+            if reactor._time >= 6.0:
+                d.autotune.handle_tune_result({"status": 2})
+            return reactor._time
+
+        reactor.pause = pause_with_plan
+
+        d.autotune.autotune(gcmd)
+
+        self.assertGreaterEqual(reactor._time, 6.0)
+
     def test_hard_fault_inhibits_future_raw_enable(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})

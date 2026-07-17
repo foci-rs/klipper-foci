@@ -14,6 +14,7 @@ from .autotune_budget import (
     format_safe_pose_move,
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
+from .velocity_sweep import VelocitySweepAssembler, VelocitySweepProtocolError
 
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
@@ -22,6 +23,8 @@ MODE_MAP: dict[str, int] = {
 }
 
 IDLE_PRINT_STATES = frozenset(("standby", "complete", "cancelled"))
+VELOCITY_SWEEP_PLAN_TIMEOUT_S = 5.0
+VELOCITY_SWEEP_COMMS_MARGIN_S = 5.0
 
 OUTER_SAFETY_FAULT_NAMES = {
     1: "invalid_budget",
@@ -40,6 +43,8 @@ class AutotuneWorkflow:
         self.driver = driver
         self.result: dict | None = None
         self.outer_safety_fault: dict | None = None
+        self.velocity_sweep = VelocitySweepAssembler()
+        self.velocity_sweep_error: VelocitySweepProtocolError | None = None
         self.done = False
 
     def handle_tune_result(self, params: dict) -> None:
@@ -50,6 +55,88 @@ class AutotuneWorkflow:
     def handle_outer_safety_fault(self, params: dict) -> None:
         """Handle foci_outer_safety_fault from firmware."""
         self.outer_safety_fault = dict(params)
+
+    def _handle_velocity_sweep(self, method_name: str, params: dict) -> None:
+        if self.velocity_sweep_error is not None:
+            return
+        try:
+            getattr(self.velocity_sweep, method_name)(params)
+        except VelocitySweepProtocolError as err:
+            self.velocity_sweep_error = err
+
+    def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_plan_limits", params)
+
+    def handle_velocity_sweep_plan_geometry(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_plan_geometry", params)
+
+    def handle_velocity_sweep_plan_timing(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_plan_timing", params)
+
+    def handle_velocity_observation_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_observation_core", params)
+
+    def handle_velocity_observation_rate(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_observation_rate", params)
+
+    def handle_velocity_observation_stationarity(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_observation_stationarity", params)
+
+    def handle_velocity_observation_disturbance(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_observation_disturbance", params)
+
+    def handle_velocity_rung_verdict_band(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_rung_band", params)
+
+    def handle_velocity_rung_verdict_quality(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_rung_quality", params)
+
+    def handle_velocity_sweep_terminal_direction(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_terminal_direction", params)
+
+    def handle_velocity_sweep_terminal_integrity(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_terminal_integrity", params)
+
+    def handle_outer_inconclusive(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_outer_inconclusive", params)
+
+    def _format_velocity_sweep_result(self) -> str:
+        sweep = self.velocity_sweep
+        plan = sweep.plan or {}
+        directions = sweep.terminal_directions
+        direction_text = []
+        for name, report in zip(("forward", "reverse"), directions):
+            direction_text.append(
+                "%s P=%d..%d D_eq=%d [%d,%d] quality=[%d,%d]"
+                % (
+                    name,
+                    report.get("p_low", 0),
+                    report.get("p_high", 0),
+                    report.get("pooled_q16", 0),
+                    report.get("pooled_low_q16", 0),
+                    report.get("pooled_high_q16", 0),
+                    report.get("common_low_q16", 0),
+                    report.get("common_high_q16", 0),
+                )
+            )
+        message = (
+            "velocity sweep %s: requested=%dmrev/s used=%dmrev/s "
+            "clamp=0x%04x binding=%d runtime=%dms rungs=%d cause=%d; %s"
+            % (
+                sweep.outcome,
+                plan.get("requested_velocity_mrev_s", 0),
+                plan.get("used_velocity_mrev_s", 0),
+                plan.get("clamp_flags", 0),
+                plan.get("binding_source", 0),
+                plan.get("maximum_workflow_ms", 0),
+                plan.get("rung_count", 0),
+                (sweep.integrity or {}).get("cause", 0),
+                "; ".join(direction_text),
+            )
+        )
+        if sweep.remediation:
+            message += "; remediation: %s" % sweep.remediation
+        return message
 
     def _format_outer_safety_fault(self) -> str:
         fault = self.outer_safety_fault
@@ -209,6 +296,8 @@ class AutotuneWorkflow:
             self.done = False
             self.result = None
             self.outer_safety_fault = None
+            self.velocity_sweep = VelocitySweepAssembler()
+            self.velocity_sweep_error = None
             self.driver.commissioning.error_code = 0
 
             self.driver.protocol.run_tune(
@@ -237,12 +326,27 @@ class AutotuneWorkflow:
 
             reactor = self.driver.printer.get_reactor()
             eventtime = reactor.monotonic()
-            timeout = eventtime + 30.0
-            while not self.done:
+            timeout = eventtime + VELOCITY_SWEEP_PLAN_TIMEOUT_S
+            plan_timeout_armed = False
+            while not self.done and not self.velocity_sweep.done:
                 eventtime = reactor.pause(eventtime + 0.1)
-                if eventtime > timeout:
+                if self.velocity_sweep_error is not None:
                     raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE timed out" % self.driver.name
+                        "FOCI %s: velocity sweep transport failure: %s"
+                        % (self.driver.name, self.velocity_sweep_error)
+                    )
+                if self.velocity_sweep.plan_ready and not plan_timeout_armed:
+                    timeout = (
+                        eventtime
+                        + self.velocity_sweep.maximum_duration_s
+                        + VELOCITY_SWEEP_COMMS_MARGIN_S
+                    )
+                    plan_timeout_armed = True
+                if eventtime > timeout:
+                    phase = "run" if plan_timeout_armed else "waiting for plan"
+                    raise gcmd.error(
+                        "FOCI %s: FOCI_AUTOTUNE timed out %s"
+                        % (self.driver.name, phase)
                     )
                 if self.driver.commissioning.error_code != 0:
                     error_name = COMMISSION_ERROR_NAMES.get(
@@ -256,6 +360,21 @@ class AutotuneWorkflow:
                         "FOCI %s: FOCI_AUTOTUNE failed: %s"
                         % (self.driver.name, error_name)
                     )
+
+            if self.velocity_sweep.done:
+                gcmd.respond_info(
+                    "FOCI %s: %s"
+                    % (self.driver.name, self._format_velocity_sweep_result())
+                )
+                if self.velocity_sweep.outcome == "fault":
+                    raise gcmd.error(
+                        "FOCI %s: velocity sweep fault (cause=%d)"
+                        % (
+                            self.driver.name,
+                            self.velocity_sweep.integrity.get("cause", 0),
+                        )
+                    )
+                return
 
             result = self.result
             status = result.get("status", 255)

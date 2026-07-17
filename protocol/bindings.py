@@ -54,6 +54,54 @@ def register_homing_responses(serial, driver, oid: int) -> None:
 
 
 def register_commissioning_responses(serial, driver, oid: int) -> None:
+    for callback, name in (
+        (
+            driver.autotune.handle_velocity_sweep_plan_limits,
+            "foci_velocity_sweep_plan_limits",
+        ),
+        (
+            driver.autotune.handle_velocity_sweep_plan_geometry,
+            "foci_velocity_sweep_plan_geometry",
+        ),
+        (
+            driver.autotune.handle_velocity_sweep_plan_timing,
+            "foci_velocity_sweep_plan_timing",
+        ),
+        (
+            driver.autotune.handle_velocity_observation_core,
+            "foci_velocity_observation_core",
+        ),
+        (
+            driver.autotune.handle_velocity_observation_rate,
+            "foci_velocity_observation_rate",
+        ),
+        (
+            driver.autotune.handle_velocity_observation_stationarity,
+            "foci_velocity_observation_stationarity",
+        ),
+        (
+            driver.autotune.handle_velocity_observation_disturbance,
+            "foci_velocity_observation_disturbance",
+        ),
+        (
+            driver.autotune.handle_velocity_rung_verdict_band,
+            "foci_velocity_rung_verdict_band",
+        ),
+        (
+            driver.autotune.handle_velocity_rung_verdict_quality,
+            "foci_velocity_rung_verdict_quality",
+        ),
+        (
+            driver.autotune.handle_velocity_sweep_terminal_direction,
+            "foci_velocity_sweep_terminal_direction",
+        ),
+        (
+            driver.autotune.handle_velocity_sweep_terminal_integrity,
+            "foci_velocity_sweep_terminal_integrity",
+        ),
+        (driver.autotune.handle_outer_inconclusive, "foci_outer_inconclusive"),
+    ):
+        serial.register_response(callback, name, oid)
     serial.register_response(
         driver.commissioning.handle_commission_phase,
         "foci_commission_phase",

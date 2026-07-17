@@ -69,6 +69,21 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_commission_result", driver.oid) in registrations
     assert ("foci_tune_result", driver.oid) in registrations
     assert ("foci_outer_safety_fault", driver.oid) in registrations
+    for name in (
+        "foci_velocity_sweep_plan_limits",
+        "foci_velocity_sweep_plan_geometry",
+        "foci_velocity_sweep_plan_timing",
+        "foci_velocity_observation_core",
+        "foci_velocity_observation_rate",
+        "foci_velocity_observation_stationarity",
+        "foci_velocity_observation_disturbance",
+        "foci_velocity_rung_verdict_band",
+        "foci_velocity_rung_verdict_quality",
+        "foci_velocity_sweep_terminal_direction",
+        "foci_velocity_sweep_terminal_integrity",
+        "foci_outer_inconclusive",
+    ):
+        assert (name, driver.oid) in registrations
     assert ("foci_selftest_result", driver.oid) in registrations
     assert ("foci_selftest_done", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations
