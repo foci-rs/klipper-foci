@@ -394,7 +394,10 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         gcode = d.printer.lookup_object("gcode")
         self.assertEqual(gcode._scripts, ["G0 X60.000 Y60.000"])
-        self.assertEqual(d.protocol.commands.tune.last_args[-4:], [750, 6000, 3000, 3])
+        self.assertEqual(
+            d.protocol.commands.tune.last_args[-8:],
+            [5000, 7500, 1, 1000, 250, 1250, 1250, 3000],
+        )
         self.assertIn(
             "FOCI foci stepper_x autotune evidence: budget=750mrev "
             "stiffness_timebase=50ms search_stop=1 flags=0x00",

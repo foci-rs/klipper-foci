@@ -219,10 +219,20 @@ class AutotuneWorkflow:
                 current_ringing=ringing,
                 current_bw=bandwidth,
                 inner_warning_flags=inner_warning_flags,
-                max_travel_mrev=motion_budget.max_travel_mrev,
-                max_velocity_mrev_s=motion_budget.max_velocity_mrev_s,
+                requested_velocity_mrev_s=motion_budget.requested_velocity_mrev_s,
+                machine_velocity_ceiling_mrev_s=(
+                    motion_budget.machine_velocity_ceiling_mrev_s
+                ),
+                requested_velocity_source=motion_budget.requested_velocity_source,
+                max_stroke_travel_mrev=motion_budget.max_stroke_travel_mrev,
+                settle_travel_reserve_mrev=(motion_budget.settle_travel_reserve_mrev),
+                negative_position_headroom_mrev=(
+                    motion_budget.negative_position_headroom_mrev
+                ),
+                positive_position_headroom_mrev=(
+                    motion_budget.positive_position_headroom_mrev
+                ),
                 max_duration_ms=motion_budget.max_duration_ms,
-                direction_mask=motion_budget.direction_mask,
             )
 
             reactor = self.driver.printer.get_reactor()

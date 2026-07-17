@@ -119,6 +119,7 @@ class MockToolhead:
         self._axis_minimum = [0.0, 0.0, 0.0, 0.0]
         self._axis_maximum = [200.0, 200.0, 0.0, 0.0]
         self.last_move_time = 0.0
+        self.max_velocity = 300.0
 
     def get_kinematics(self):
         return self._kinematics
@@ -143,6 +144,7 @@ class MockToolhead:
             "position": tuple(self._position),
             "axis_minimum": tuple(self._axis_minimum),
             "axis_maximum": tuple(self._axis_maximum),
+            "max_velocity": self.max_velocity,
         }
 
     def wait_moves(self):
@@ -628,7 +630,13 @@ def make_driver(
     driver.autotune = AutotuneWorkflow(driver)
     driver.diagnostics = DiagnosticsWorkflow(driver)
 
-    driver.mcu = MockMCU()
+    driver.mcu = MockMCU(
+        constants={
+            "ENVELOPE_PROPORTIONAL_NUM": 3,
+            "ENVELOPE_PROPORTIONAL_DEN": 2,
+            "ENVELOPE_ABSOLUTE_MARGIN_MREV_S": 2000,
+        }
+    )
     printer._objects["pins"] = MockPins({"foci": driver.mcu})
     sections = {
         driver.stepper_name: {

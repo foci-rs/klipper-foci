@@ -8,10 +8,16 @@ from dataclasses import dataclass
 DEFAULT_AUTOTUNE_TRAVEL_MM = 40.0
 MAX_AUTOTUNE_TRAVEL_MM = 120.0
 AUTOTUNE_SAFETY_MARGIN_MM = 10.0
-DEFAULT_MAX_VELOCITY_MREV_S = 6000
 # Maximum duration of one active motion or excitation primitive.
 DEFAULT_MAX_DURATION_MS = 3000
-DIRECTION_BOTH = 0x03
+REQUESTED_VELOCITY_EXPLICIT = 0
+REQUESTED_VELOCITY_DEFAULTED = 1
+
+_ENVELOPE_CONSTANT_NAMES = (
+    "ENVELOPE_PROPORTIONAL_NUM",
+    "ENVELOPE_PROPORTIONAL_DEN",
+    "ENVELOPE_ABSOLUTE_MARGIN_MREV_S",
+)
 
 
 class AutotuneBudgetError(Exception):
@@ -31,10 +37,14 @@ class AutotuneMotionBudget:
     safe_x: float
     safe_y: float
     max_travel_mm: float
-    max_travel_mrev: int
-    max_velocity_mrev_s: int
+    requested_velocity_mrev_s: int
+    machine_velocity_ceiling_mrev_s: int
+    requested_velocity_source: int
+    max_stroke_travel_mrev: int
+    settle_travel_reserve_mrev: int
+    negative_position_headroom_mrev: int
+    positive_position_headroom_mrev: int
     max_duration_ms: int
-    direction_mask: int
 
 
 def _status_axis_tuple(status: dict, key: str) -> tuple[float, float]:
@@ -108,6 +118,53 @@ def _kinematic_budget_mm(
     raise AutotuneBudgetError("unsupported kinematics/stepper combination")
 
 
+def _motor_headroom_mm(
+    kind: str,
+    role: str,
+    *,
+    x: float,
+    y: float,
+    min_x: float,
+    min_y: float,
+    max_x: float,
+    max_y: float,
+) -> tuple[float, float]:
+    """Return negative and positive motor travel before a printer-space bound."""
+    if kind == "cartesian" and role == "x":
+        return x - min_x, max_x - x
+    if kind == "cartesian" and role == "y":
+        return y - min_y, max_y - y
+    if kind == "corexy" and role == "x":
+        return 2.0 * min(x - min_x, y - min_y), 2.0 * min(max_x - x, max_y - y)
+    if kind == "corexy" and role == "y":
+        return 2.0 * min(x - min_x, max_y - y), 2.0 * min(max_x - x, y - min_y)
+    raise AutotuneBudgetError("unsupported kinematics/stepper combination")
+
+
+def _mrev(value_mm: float, rotation_distance_mm: float) -> int:
+    """Convert a nonnegative printer-space distance to conservative motor mrev."""
+    return int((value_mm * 1000.0) / rotation_distance_mm)
+
+
+def _firmware_envelope_constants(driver) -> tuple[int, int, int]:
+    get_constants = getattr(driver.mcu, "get_constants", None)
+    constants = get_constants() if get_constants is not None else {}
+    missing = [name for name in _ENVELOPE_CONSTANT_NAMES if name not in constants]
+    if missing:
+        raise AutotuneBudgetError(
+            "missing firmware envelope constant(s): %s" % ", ".join(missing)
+        )
+    try:
+        numerator, denominator, margin = (
+            int(constants[name]) for name in _ENVELOPE_CONSTANT_NAMES
+        )
+    except (TypeError, ValueError) as err:
+        raise AutotuneBudgetError("invalid firmware envelope constants") from err
+    if numerator <= denominator or denominator <= 0 or margin <= 0:
+        raise AutotuneBudgetError("invalid firmware envelope constants")
+    return numerator, denominator, margin
+
+
 def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     """Compute firmware motor-space motion caps for one named FOCI stepper."""
     toolhead = driver.printer.lookup_object("toolhead")
@@ -128,15 +185,16 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     x_clearance = min(safe_x - min_x, max_x - safe_x)
     y_clearance = min(safe_y - min_y, max_y - safe_y)
 
-    requested_mm = gcmd.get_float(
+    requested_travel_mm = gcmd.get_float(
         "TRAVEL",
         DEFAULT_AUTOTUNE_TRAVEL_MM,
         minval=1.0,
         maxval=MAX_AUTOTUNE_TRAVEL_MM,
     )
     available_mm = _kinematic_budget_mm(kind, role, x_clearance, y_clearance)
-    safe_mm = min(requested_mm, available_mm) - AUTOTUNE_SAFETY_MARGIN_MM
-    if safe_mm <= 0.0:
+    full_stroke_mm = min(requested_travel_mm, available_mm)
+    moving_travel_mm = full_stroke_mm - AUTOTUNE_SAFETY_MARGIN_MM
+    if moving_travel_mm <= 0.0:
         raise AutotuneBudgetError("insufficient X/Y travel for FOCI_AUTOTUNE")
 
     rotation_distance = _rotation_distance_mm(driver)
@@ -144,20 +202,83 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
         raise AutotuneBudgetError(
             "invalid rotation_distance for '%s'" % driver.stepper_name
         )
-    max_travel_mrev = int(round((safe_mm / rotation_distance) * 1000.0))
-    if max_travel_mrev <= 0:
+    max_stroke_travel_mrev = _mrev(full_stroke_mm, rotation_distance)
+    settle_travel_reserve_mrev = _mrev(AUTOTUNE_SAFETY_MARGIN_MM, rotation_distance)
+    if (
+        max_stroke_travel_mrev <= 0
+        or settle_travel_reserve_mrev <= 0
+        or settle_travel_reserve_mrev >= max_stroke_travel_mrev
+    ):
         raise AutotuneBudgetError("insufficient motor travel for FOCI_AUTOTUNE")
+
+    negative_mm, positive_mm = _motor_headroom_mm(
+        kind,
+        role,
+        x=safe_x,
+        y=safe_y,
+        min_x=min_x,
+        min_y=min_y,
+        max_x=max_x,
+        max_y=max_y,
+    )
+    absolute_margin_mm = _kinematic_budget_mm(
+        kind,
+        role,
+        AUTOTUNE_SAFETY_MARGIN_MM,
+        AUTOTUNE_SAFETY_MARGIN_MM,
+    )
+    negative_position_headroom_mrev = _mrev(
+        negative_mm - absolute_margin_mm, rotation_distance
+    )
+    positive_position_headroom_mrev = _mrev(
+        positive_mm - absolute_margin_mm, rotation_distance
+    )
+    if negative_position_headroom_mrev <= 0 or positive_position_headroom_mrev <= 0:
+        raise AutotuneBudgetError("insufficient absolute-position headroom")
+
+    try:
+        machine_velocity_mm_s = float(status["max_velocity"])
+    except (KeyError, TypeError, ValueError) as err:
+        raise AutotuneBudgetError("missing or invalid configured max_velocity") from err
+    if machine_velocity_mm_s <= 0.0:
+        raise AutotuneBudgetError("missing or invalid configured max_velocity")
+    machine_velocity_ceiling_mrev_s = _mrev(machine_velocity_mm_s, rotation_distance)
+    numerator, denominator, margin_mrev_s = _firmware_envelope_constants(driver)
+    if machine_velocity_ceiling_mrev_s <= margin_mrev_s:
+        raise AutotuneBudgetError("configured max_velocity is below envelope margin")
+
+    explicit_velocity = gcmd.get("TUNE_VELOCITY", None)
+    if explicit_velocity is None:
+        requested_velocity_mrev_s = min(
+            denominator * machine_velocity_ceiling_mrev_s // numerator,
+            machine_velocity_ceiling_mrev_s - margin_mrev_s,
+        )
+        requested_velocity_source = REQUESTED_VELOCITY_DEFAULTED
+    else:
+        requested_velocity_mm_s = gcmd.get_float(
+            "TUNE_VELOCITY",
+            minval=0.001,
+            maxval=machine_velocity_mm_s,
+        )
+        requested_velocity_mrev_s = _mrev(requested_velocity_mm_s, rotation_distance)
+        requested_velocity_source = REQUESTED_VELOCITY_EXPLICIT
+    if requested_velocity_mrev_s <= 0:
+        raise AutotuneBudgetError("requested velocity is not representable")
 
     return AutotuneMotionBudget(
         kinematics=kind,
         stepper_role=role,
         safe_x=safe_x,
         safe_y=safe_y,
-        max_travel_mm=safe_mm,
-        max_travel_mrev=max_travel_mrev,
-        max_velocity_mrev_s=DEFAULT_MAX_VELOCITY_MREV_S,
+        max_travel_mm=moving_travel_mm,
+        requested_velocity_mrev_s=requested_velocity_mrev_s,
+        machine_velocity_ceiling_mrev_s=machine_velocity_ceiling_mrev_s,
+        requested_velocity_source=requested_velocity_source,
+        max_stroke_travel_mrev=max_stroke_travel_mrev,
+        settle_travel_reserve_mrev=settle_travel_reserve_mrev,
+        negative_position_headroom_mrev=negative_position_headroom_mrev,
+        positive_position_headroom_mrev=positive_position_headroom_mrev,
         max_duration_ms=DEFAULT_MAX_DURATION_MS,
-        direction_mask=DIRECTION_BOTH,
     )
 
 

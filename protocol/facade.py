@@ -372,10 +372,14 @@ class FociProtocol:
         current_ringing: int,
         current_bw: int,
         inner_warning_flags: int,
-        max_travel_mrev: int,
-        max_velocity_mrev_s: int,
+        requested_velocity_mrev_s: int,
+        machine_velocity_ceiling_mrev_s: int,
+        requested_velocity_source: int,
+        max_stroke_travel_mrev: int,
+        settle_travel_reserve_mrev: int,
+        negative_position_headroom_mrev: int,
+        positive_position_headroom_mrev: int,
         max_duration_ms: int,
-        direction_mask: int,
     ) -> None:
         self.commands.tune.send(
             [
@@ -387,10 +391,14 @@ class FociProtocol:
                 current_ringing,
                 current_bw,
                 inner_warning_flags,
-                max_travel_mrev,
-                max_velocity_mrev_s,
+                requested_velocity_mrev_s,
+                machine_velocity_ceiling_mrev_s,
+                requested_velocity_source,
+                max_stroke_travel_mrev,
+                settle_travel_reserve_mrev,
+                negative_position_headroom_mrev,
+                positive_position_headroom_mrev,
                 max_duration_ms,
-                direction_mask,
             ]
         )
 
