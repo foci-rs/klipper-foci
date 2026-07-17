@@ -273,6 +273,39 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("elapsed_us=120000/3000000", message)
         self.assertIn("budget=750mrev/6000mrev_s/3000ms dir=0x03", message)
 
+    def test_velocity_sweep_fault_reports_outer_envelope_detail(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report_sweep_fault(deadline):
+            reactor._time = deadline
+            d.autotune.handle_outer_safety_fault(
+                {
+                    "reason": 7,
+                    "dt_us": 2_137,
+                    "max_travel_mrev": 750,
+                    "max_velocity_mrev_s": 6000,
+                    "max_duration_ms": 3000,
+                    "direction_mask": 3,
+                }
+            )
+            d.autotune.velocity_sweep.plan = {"maximum_workflow_ms": 49_728}
+            d.autotune.velocity_sweep.integrity = {"cause": 17}
+            d.autotune.velocity_sweep.outcome = "fault"
+            d.autotune.velocity_sweep.done = True
+            return reactor._time
+
+        reactor.pause = pause_and_report_sweep_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("velocity sweep fault (cause=17)", message)
+        self.assertIn("outer safety observation_gap", message)
+        self.assertIn("dt_us=2137", message)
+
 
 class TestAutotuneStateTransitions(unittest.TestCase):
     def test_inhibited_blocks_autotune(self):

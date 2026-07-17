@@ -33,6 +33,9 @@ OUTER_SAFETY_FAULT_NAMES = {
     4: "velocity",
     5: "position",
     6: "post_switch_settle",
+    7: "observation_gap",
+    8: "quarter_turn",
+    9: "current",
 }
 
 
@@ -367,11 +370,14 @@ class AutotuneWorkflow:
                     % (self.driver.name, self._format_velocity_sweep_result())
                 )
                 if self.velocity_sweep.outcome == "fault":
+                    safety_detail = self._format_outer_safety_fault()
+                    detail_suffix = "; %s" % safety_detail if safety_detail else ""
                     raise gcmd.error(
-                        "FOCI %s: velocity sweep fault (cause=%d)"
+                        "FOCI %s: velocity sweep fault (cause=%d)%s"
                         % (
                             self.driver.name,
                             self.velocity_sweep.integrity.get("cause", 0),
+                            detail_suffix,
                         )
                     )
                 return
