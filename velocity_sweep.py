@@ -372,6 +372,11 @@ class VelocitySweepAssembler:
         outcome_code = int(integrity["outcome"])
         if outcome_code not in OUTCOME_NAMES:
             raise VelocitySweepProtocolError("unknown velocity sweep outcome")
+        cause = int(integrity["cause"])
+        if not self.full_plan_executed and outcome_code != 2 and cause != 4:
+            raise VelocitySweepProtocolError(
+                "velocity sweep evidence is incomplete without an early terminus"
+            )
         mask = int(integrity["sufficient_direction_mask"])
         direction_mask = 0
         for index, direction in enumerate(directions):

@@ -474,7 +474,7 @@ def test_noneligible_rung_verdicts_do_not_require_interval_intersection(
     assert assembler.rungs[0]["forward_class"] == rung_class
 
 
-@pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4)])
+@pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4), (0, 4)])
 def test_terminal_accepts_digest_verified_evidence_prefix(outcome, cause):
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=1)
@@ -503,11 +503,42 @@ def test_terminal_accepts_digest_verified_evidence_prefix(outcome, cause):
     assembler.handle_terminal_integrity(integrity)
 
     assert not assembler.full_plan_executed
-    assert assembler.outcome == ("fault" if outcome == 2 else "inconclusive")
+    expected_outcome = {0: "complete", 1: "inconclusive", 2: "fault"}[outcome]
+    assert assembler.outcome == expected_outcome
     if outcome == 1:
         assert "current headroom" in assembler.remediation
     else:
         assert assembler.done
+
+
+@pytest.mark.parametrize(("outcome", "cause"), [(0, 0), (1, 1), (1, 2), (1, 3)])
+def test_terminal_rejects_unexplained_incomplete_evidence(outcome, cause):
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1)
+    feed_observation(
+        assembler,
+        sequence=1,
+        slot=0,
+        low=0,
+        high=0,
+        classification=1,
+    )
+    forward, reverse, integrity = terminal_fragments(
+        outcome=outcome,
+        mask=0,
+        digest=assembler._digest,
+        cause=cause,
+        sequence=2,
+        expected_observations=4,
+        emitted_observations=1,
+        expected_rungs=1,
+        emitted_rungs=0,
+    )
+    assembler.handle_terminal_direction(forward)
+    assembler.handle_terminal_direction(reverse)
+
+    with pytest.raises(VelocitySweepProtocolError, match="incomplete"):
+        assembler.handle_terminal_integrity(integrity)
 
 
 def test_rung_verdict_disagreement_is_transport_failure():
