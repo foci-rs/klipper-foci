@@ -243,6 +243,9 @@ def test_plan_ignores_klipper_reply_name_metadata():
     limits["#name"] = "foci_velocity_sweep_plan_limits"
     geometry["#name"] = "foci_velocity_sweep_plan_geometry"
     timing["#name"] = "foci_velocity_sweep_plan_timing"
+    limits["#receive_time"] = 1.0
+    geometry["#receive_time"] = 2.0
+    timing["#receive_time"] = 3.0
 
     assembler.handle_plan_limits(limits)
     assembler.handle_plan_geometry(geometry)
@@ -250,6 +253,7 @@ def test_plan_ignores_klipper_reply_name_metadata():
 
     assert assembler.plan_ready
     assert "#name" not in assembler.plan
+    assert "#receive_time" not in assembler.plan
 
 
 def test_reordered_or_duplicate_fragment_is_rejected():

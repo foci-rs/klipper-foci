@@ -220,7 +220,7 @@ class VelocitySweepAssembler:
         merged: dict = {}
         for part in parts:
             for key, value in part.items():
-                if key in ("fragment", "oid", "#name"):
+                if key in ("fragment", "oid") or key.startswith("#"):
                     continue
                 if key in merged and merged[key] != value:
                     raise VelocitySweepProtocolError(
