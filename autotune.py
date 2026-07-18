@@ -123,12 +123,13 @@ class AutotuneWorkflow:
                 )
             )
         message = (
-            "velocity sweep %s: requested=%dmrev/s used=%dmrev/s "
+            "velocity sweep %s: requested=%dmrev/s planned=%dmrev/s target=%dRPM "
             "clamp=0x%04x binding=%d runtime=%dms rungs=%d cause=%d; %s"
             % (
                 sweep.outcome,
                 plan.get("requested_velocity_mrev_s", 0),
-                plan.get("used_velocity_mrev_s", 0),
+                plan.get("planned_velocity_mrev_s", 0),
+                plan.get("target_velocity_rpm", 0),
                 plan.get("clamp_flags", 0),
                 plan.get("binding_source", 0),
                 plan.get("maximum_workflow_ms", 0),
