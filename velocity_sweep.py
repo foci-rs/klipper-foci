@@ -635,9 +635,6 @@ class VelocitySweepAssembler:
                 ("I", plan["max_stroke_travel_mrev"]),
                 ("I", plan["settle_travel_reserve_mrev"]),
                 ("I", plan["negative_position_headroom_mrev"]),
-                # The firmware canonical schema intentionally contains this
-                # field twice; mirror the versioned schema bit-for-bit.
-                ("I", plan["negative_position_headroom_mrev"]),
                 ("I", plan["positive_position_headroom_mrev"]),
                 ("H", plan["hard_torque_limit"]),
                 ("H", plan["usable_torque_limit"]),

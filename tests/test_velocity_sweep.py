@@ -90,6 +90,46 @@ def plan_digest(rung_count=5):
     )
 
 
+def test_stage_b_plan_canonical_record_matches_firmware_schema():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+
+    encoded = assembler._encode_plan(plan_digest())
+
+    assert len(encoded) == 78
+    assert encoded == b"".join(
+        struct.pack("<" + fmt, value)
+        for fmt, value in (
+            ("B", 1),
+            ("I", 7),
+            ("H", 0),
+            ("I", plan_digest() & 0xFFFF_FFFF),
+            ("I", plan_digest() >> 32),
+            ("I", 5000),
+            ("B", 1),
+            ("I", 4800),
+            ("I", 7500),
+            ("H", 1),
+            ("B", 0),
+            ("i", 3200),
+            ("H", 8),
+            ("H", 128),
+            ("B", 5),
+            ("H", 2),
+            ("I", 256000),
+            ("I", 200000),
+            ("I", 9120),
+            ("I", 10000),
+            ("I", 1000),
+            ("I", 250),
+            ("I", 1250),
+            ("I", 1250),
+            ("H", 1000),
+            ("H", 900),
+        )
+    )
+
+
 def feed_plan(assembler, rung_count=5):
     limits, geometry, timing = plan_fragments(rung_count)
     assembler.handle_plan_limits(limits)
