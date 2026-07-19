@@ -97,6 +97,203 @@ def feed_plan(assembler, rung_count=5):
     assembler.handle_plan_timing(timing)
 
 
+def stage_b_region_fragments(*, sequence=1, direction=0, member_mask=0b11100):
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
+    return (
+        {
+            **common,
+            "direction_kind_closure": direction | (4 << 2),
+            "member_mask": member_mask,
+            "rung_bounds": 2 | (4 << 8),
+            "p_low": 512,
+            "p_high": 1024,
+            "member_count": 3,
+            "boundary_rung_plus_one": 0,
+        },
+        {
+            **common,
+            "member_mask": member_mask,
+            "common_low_q16": 100,
+            "common_high_q16": 120,
+            "pooled_q16": 110,
+            "pooled_low_q16": 104,
+            "pooled_high_q16": 116,
+            "variance_floor_observations": 0,
+        },
+        {
+            **common,
+            "member_mask": member_mask,
+            "mean_min_mantissa": 10,
+            "mean_max_mantissa": 12,
+            "envelope_low_mantissa": 9,
+            "envelope_high_mantissa": 13,
+            "rate_shift": 0,
+        },
+        {
+            **common,
+            "member_mask": member_mask,
+            "tested_low_q16": 121,
+            "tested_high_q16": 130,
+        },
+    )
+
+
+def feed_stage_b_region(assembler, **kwargs):
+    core, model, rates, boundary = stage_b_region_fragments(**kwargs)
+    assembler.handle_directional_region_core(core)
+    assembler.handle_directional_region_model(model)
+    assembler.handle_directional_region_rates(rates)
+    assembler.handle_directional_region_boundary(boundary)
+
+
+def feed_stage_b_handoff(assembler, *, sequence=3, member_mask=0b11100):
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
+    assembler.handle_stage_b_handoff_core(
+        {
+            **common,
+            "nominated_p": 724,
+            "joint_member_mask": member_mask,
+            "forward_member_mask": member_mask,
+            "reverse_member_mask": member_mask,
+            "flags": 0b11,
+        }
+    )
+    assembler.handle_stage_b_nomination(
+        {
+            **common,
+            "nominated_rung": 3,
+            "nominated_p": 724,
+            "distance_to_start_q16": 4 << 16,
+            "distance_to_top_q16": 2 << 16,
+            "flags": 0,
+        }
+    )
+    for direction in range(2):
+        assembler.handle_stage_b_directional_handoff(
+            {
+                **common,
+                "direction": direction,
+                "member_mask": member_mask,
+                "coverage": 0,
+                "signed_rung_distance": 0,
+                "gain_ratio_num": 1,
+                "gain_ratio_den": 1,
+                "settled_rate_difference_mantissa": 0,
+                "settled_rate_difference_shift": 0,
+            }
+        )
+
+
+def feed_stage_b_reproduction(
+    assembler,
+    *,
+    sequence,
+    member_mask=0b11100,
+    previous_digest=0x0102_0304_0506_0708,
+    current_digest=0,
+):
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
+    assembler.handle_stage_b_reproduction_core(
+        {
+            **common,
+            "outcome": 1,
+            "previous_nominated_p": 724,
+            "current_nominated_p": 724,
+        }
+    )
+    assembler.handle_stage_b_reproduction_membership(
+        {
+            **common,
+            "previous_forward_mask": member_mask,
+            "previous_reverse_mask": member_mask,
+            "previous_joint_mask": member_mask,
+            "current_forward_mask": member_mask,
+            "current_reverse_mask": member_mask,
+            "current_joint_mask": member_mask,
+        }
+    )
+    for direction in range(2):
+        assembler.handle_stage_b_reproduction_interval(
+            {
+                **common,
+                "direction": direction,
+                "previous_low_q16": 104,
+                "previous_high_q16": 116,
+                "current_low_q16": 104,
+                "current_high_q16": 116,
+            }
+        )
+    assembler.handle_stage_b_reproduction_digest(
+        {
+            **common,
+            "previous_digest_low": previous_digest & 0xFFFF_FFFF,
+            "previous_digest_high": previous_digest >> 32,
+            "current_digest_low": current_digest & 0xFFFF_FFFF,
+            "current_digest_high": current_digest >> 32,
+        }
+    )
+
+
+def feed_stage_b_terminal(
+    assembler,
+    *,
+    sequence=4,
+    outcome=0,
+    cause=0,
+    member_mask=0b11100,
+    nominated_p=724,
+    digest=0,
+    plan_digest_value=0,
+):
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
+    assembler.handle_stage_b_terminal_core(
+        {
+            **common,
+            "fragment": 0,
+            "outcome": outcome,
+            "cause": cause,
+            "model_direction_mask": 3 if member_mask else 0,
+            "coverage_mask": 3 if member_mask else 0,
+            "forward_region_count": 1 if member_mask else 0,
+            "reverse_region_count": 1 if member_mask else 0,
+            "forward_fragment_count": 0,
+            "reverse_fragment_count": 0,
+            "expected_observations": 0,
+            "emitted_observations": 0,
+            "expected_rungs": 0,
+            "emitted_rungs": 0,
+        }
+    )
+    assembler.handle_stage_b_terminal_identity(
+        {
+            **common,
+            "fragment": 1,
+            "forward_member_mask": member_mask,
+            "reverse_member_mask": member_mask,
+            "joint_member_mask": member_mask,
+            "nominated_p": nominated_p,
+            "plan_digest_low": plan_digest_value & 0xFFFF_FFFF,
+            "plan_digest_high": plan_digest_value >> 32,
+            "digest_low": digest & 0xFFFF_FFFF,
+            "digest_high": digest >> 32,
+        }
+    )
+    for direction in range(2):
+        assembler.handle_stage_b_terminal_interval(
+            {
+                **common,
+                "fragment": direction + 2,
+                "direction": direction,
+                "pooled_low_q16": 104,
+                "pooled_high_q16": 116,
+                "started_low": 10,
+                "started_high": 0,
+                "completed_low": 20,
+                "completed_high": 0,
+            }
+        )
+
+
 def feed_observation(
     assembler,
     *,
@@ -254,6 +451,168 @@ def test_plan_ignores_klipper_reply_name_metadata():
     assert assembler.plan_ready
     assert "#name" not in assembler.plan
     assert "#receive_time" not in assembler.plan
+
+
+def test_stage_b_assembler_has_no_host_evidence_authority():
+    assembler = VelocitySweepAssembler()
+
+    assert not hasattr(assembler, "segment_regions")
+    assert not hasattr(assembler, "choose_p")
+
+
+def test_directional_region_joins_fragments_by_exact_membership():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+
+    feed_stage_b_region(assembler, sequence=1)
+
+    assert assembler.directional_regions[0]["member_mask"] == 0b11100
+    assert assembler.directional_regions[0]["common_interval_q16"] == (100, 120)
+    assert assembler.directional_regions[0]["pooled_interval_q16"] == (104, 116)
+
+
+def test_directional_region_rejects_reordered_fragments():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    _core, model, _rates, _boundary = stage_b_region_fragments()
+
+    with pytest.raises(VelocitySweepProtocolError, match="directional region"):
+        assembler.handle_directional_region_model(model)
+
+
+def test_stage_b_handoff_uses_firmware_nomination_and_annotates_membership():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    feed_stage_b_region(assembler, sequence=1, direction=0)
+    feed_stage_b_region(assembler, sequence=2, direction=1)
+    assembler.handle_joint_region(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 3,
+            "member_mask": 0b11100,
+            "rung_bounds": 2 | (4 << 8),
+            "member_count": 3,
+            "p_low": 512,
+            "p_high": 1024,
+            "closure": 1,
+        }
+    )
+    feed_stage_b_handoff(assembler, sequence=4)
+
+    assert assembler.handoff["nominated_p"] == 724
+    assert assembler.directional_regions[0]["covers_nominated_p"] is True
+    assert assembler.directional_regions[1]["covers_nominated_p"] is True
+
+
+def test_preflight_plan_mismatch_terminal_is_accepted_without_motion_plan():
+    assembler = VelocitySweepAssembler()
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=0,
+        outcome=4,
+        cause=6,
+        member_mask=0,
+        nominated_p=0,
+        digest=0,
+        plan_digest_value=123,
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "rejected_plan_mismatch"
+    assert assembler.terminal["plan_digest"] == 123
+
+
+def test_stage_b_terminal_checks_selected_records_and_exact_digest():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    feed_stage_b_region(assembler, sequence=1, direction=0)
+    feed_stage_b_region(assembler, sequence=2, direction=1)
+    assembler.handle_joint_region(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 3,
+            "member_mask": 0b11100,
+            "rung_bounds": 2 | (4 << 8),
+            "member_count": 3,
+            "p_low": 512,
+            "p_high": 1024,
+            "closure": 1,
+        }
+    )
+    feed_stage_b_handoff(assembler, sequence=4)
+    plan_identity = 0x1111_2222_3333_4444
+    digest = assembler._stage_b_digest(plan_identity)
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=5,
+        digest=digest,
+        plan_digest_value=plan_identity,
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "complete_candidate"
+    assert assembler.terminal["nominated_p"] == 724
+
+
+def test_stage_b_terminal_rejects_digest_mismatch():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+
+    with pytest.raises(VelocitySweepProtocolError, match="digest"):
+        feed_stage_b_terminal(
+            assembler,
+            sequence=1,
+            outcome=2,
+            cause=1,
+            member_mask=0,
+            nominated_p=0,
+            digest=1,
+            plan_digest_value=123,
+        )
+
+
+def test_stage_b_reproduction_precedes_matching_complete_terminal():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    feed_stage_b_region(assembler, sequence=1, direction=0)
+    feed_stage_b_region(assembler, sequence=2, direction=1)
+    assembler.handle_joint_region(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 3,
+            "member_mask": 0b11100,
+            "rung_bounds": 2 | (4 << 8),
+            "member_count": 3,
+            "p_low": 512,
+            "p_high": 1024,
+            "closure": 1,
+        }
+    )
+    feed_stage_b_handoff(assembler, sequence=4)
+    plan_identity = 0x1111_2222_3333_4444
+    pre_reproduction_digest = assembler._stage_b_digest(plan_identity)
+    feed_stage_b_reproduction(
+        assembler,
+        sequence=5,
+        current_digest=pre_reproduction_digest,
+    )
+    final_digest = assembler._stage_b_digest(plan_identity)
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=6,
+        outcome=1,
+        digest=final_digest,
+        plan_digest_value=plan_identity,
+    )
+
+    assert assembler.outcome == "complete"
+    assert assembler.reproduction["current_digest"] == pre_reproduction_digest
 
 
 def test_reordered_or_duplicate_fragment_is_rejected():
