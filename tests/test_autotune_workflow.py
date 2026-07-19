@@ -79,6 +79,41 @@ class TestAutotuneGates(unittest.TestCase):
             d.autotune.autotune(gcmd)
         self.assertIn("another FOCI operation", str(ctx.exception))
 
+    def test_stage_b_candidate_retains_and_reissues_exact_request_fields(self):
+        d = self._commissioned_driver()
+        request = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
+        d.autotune.velocity_sweep.outcome = "complete_candidate"
+        d.autotune.velocity_sweep.terminal = {"cause": 0}
+
+        d.autotune._retain_stage_b_request_from_terminal(request)
+        reissued = d.autotune._request_for_stage_b_dispatch(dict(request))
+
+        self.assertEqual(reissued, request)
+        self.assertIsNot(reissued, request)
+
+    def test_stage_b_changed_request_is_not_normalized_to_retained_plan(self):
+        d = self._commissioned_driver()
+        retained = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
+        changed = {"profile_code": 1, "requested_velocity_mrev_s": 3000}
+        d.autotune._stage_b_candidate_request = dict(retained)
+
+        dispatched = d.autotune._request_for_stage_b_dispatch(changed)
+
+        self.assertEqual(dispatched, changed)
+
+    def test_stage_b_plan_mismatch_preserves_original_reissue_fields(self):
+        d = self._commissioned_driver()
+        retained = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
+        d.autotune._stage_b_candidate_request = dict(retained)
+        d.autotune.velocity_sweep.outcome = "rejected_plan_mismatch"
+        d.autotune.velocity_sweep.terminal = {"cause": 6}
+
+        d.autotune._retain_stage_b_request_from_terminal(
+            {"profile_code": 1, "requested_velocity_mrev_s": 3000}
+        )
+
+        self.assertEqual(d.autotune._stage_b_candidate_request, retained)
+
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()
         d.state.inhibited = True

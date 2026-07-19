@@ -48,6 +48,7 @@ class AutotuneWorkflow:
         self.outer_safety_fault: dict | None = None
         self.velocity_sweep = VelocitySweepAssembler()
         self.velocity_sweep_error: VelocitySweepProtocolError | None = None
+        self._stage_b_candidate_request: dict | None = None
         self.done = False
 
     def handle_tune_result(self, params: dict) -> None:
@@ -66,6 +67,26 @@ class AutotuneWorkflow:
             getattr(self.velocity_sweep, method_name)(params)
         except VelocitySweepProtocolError as err:
             self.velocity_sweep_error = err
+
+    def _request_for_stage_b_dispatch(self, request_fields: dict) -> dict:
+        """Reuse the exact retained encoding when the explicit request matches."""
+        if (
+            self._stage_b_candidate_request is not None
+            and request_fields == self._stage_b_candidate_request
+        ):
+            return dict(self._stage_b_candidate_request)
+        return request_fields
+
+    def _retain_stage_b_request_from_terminal(self, request_fields: dict) -> None:
+        """Mirror firmware candidate lifetime without interpreting its evidence."""
+        outcome = self.velocity_sweep.outcome
+        cause = int((self.velocity_sweep.terminal or {}).get("cause", 0))
+        if outcome == "complete_candidate" or (
+            outcome == "inconclusive" and cause == 5
+        ):
+            self._stage_b_candidate_request = dict(request_fields)
+        elif outcome != "rejected_plan_mismatch":
+            self._stage_b_candidate_request = None
 
     def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_plan_limits", params)
@@ -94,6 +115,54 @@ class AutotuneWorkflow:
     def handle_velocity_rung_verdict_quality(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_rung_quality", params)
 
+    def handle_velocity_structured_boundary(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_structured_boundary", params)
+
+    def handle_velocity_directional_region_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_directional_region_core", params)
+
+    def handle_velocity_directional_region_model(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_directional_region_model", params)
+
+    def handle_velocity_directional_region_rates(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_directional_region_rates", params)
+
+    def handle_velocity_directional_region_boundary(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_directional_region_boundary", params)
+
+    def handle_velocity_joint_region(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_joint_region", params)
+
+    def handle_velocity_stage_b_handoff_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_handoff_core", params)
+
+    def handle_velocity_stage_b_nomination(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_nomination", params)
+
+    def handle_velocity_stage_b_directional_handoff(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_directional_handoff", params)
+
+    def handle_velocity_stage_b_reproduction_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_core", params)
+
+    def handle_velocity_stage_b_reproduction_membership(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_membership", params)
+
+    def handle_velocity_stage_b_reproduction_interval(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_interval", params)
+
+    def handle_velocity_stage_b_reproduction_digest(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_digest", params)
+
+    def handle_velocity_stage_b_terminal_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_terminal_core", params)
+
+    def handle_velocity_stage_b_terminal_identity(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_terminal_identity", params)
+
+    def handle_velocity_stage_b_terminal_interval(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_terminal_interval", params)
+
     def handle_velocity_sweep_terminal_direction(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_terminal_direction", params)
 
@@ -106,6 +175,54 @@ class AutotuneWorkflow:
     def _format_velocity_sweep_result(self) -> str:
         sweep = self.velocity_sweep
         plan = sweep.plan or {}
+        if sweep.terminal is not None:
+            valid_regions = [
+                region
+                for region in sweep.directional_regions
+                if region["kind"] == "valid"
+            ]
+            region_text = []
+            for direction, name in ((0, "forward"), (1, "reverse")):
+                selected = [
+                    region
+                    for region in valid_regions
+                    if int(region["direction"]) == direction
+                    and int(region["member_mask"])
+                    == int(sweep.terminal["selected_memberships"][direction])
+                ]
+                if selected:
+                    region = selected[0]
+                    region_text.append(
+                        "%s mask=0x%08x D_eq=[%d,%d] common=[%d,%d]"
+                        % (
+                            name,
+                            region["member_mask"],
+                            region["pooled_low_q16"],
+                            region["pooled_high_q16"],
+                            region["common_low_q16"],
+                            region["common_high_q16"],
+                        )
+                    )
+            message = (
+                "stage b %s: nominated_P=%d model_mask=0x%02x "
+                "coverage=0x%02x regions=%d/%d fragments=%d/%d cause=%d"
+                % (
+                    sweep.outcome,
+                    sweep.terminal["nominated_p"],
+                    sweep.terminal["model_direction_mask"],
+                    sweep.terminal["coverage_mask"],
+                    sweep.terminal["forward_region_count"],
+                    sweep.terminal["reverse_region_count"],
+                    sweep.terminal["forward_fragment_count"],
+                    sweep.terminal["reverse_fragment_count"],
+                    sweep.terminal["cause"],
+                )
+            )
+            if region_text:
+                message += "; " + "; ".join(region_text)
+            if sweep.remediation:
+                message += "; remediation: %s" % sweep.remediation
+            return message
         directions = sweep.terminal_directions
         direction_text = []
         for name, report in zip(("forward", "reverse"), directions):
@@ -304,29 +421,38 @@ class AutotuneWorkflow:
             self.velocity_sweep_error = None
             self.driver.commissioning.error_code = 0
 
-            self.driver.protocol.run_tune(
-                profile_code=PROFILE_MAP[profile_name],
-                mode_code=MODE_MAP[mode_name],
-                inner_lambda=inner_lambda,
-                theta_e=theta_e,
-                current_ringing=ringing,
-                current_bw=bandwidth,
-                inner_warning_flags=inner_warning_flags,
-                requested_velocity_mrev_s=motion_budget.requested_velocity_mrev_s,
-                machine_velocity_ceiling_mrev_s=(
-                    motion_budget.machine_velocity_ceiling_mrev_s
-                ),
-                requested_velocity_source=motion_budget.requested_velocity_source,
-                max_stroke_travel_mrev=motion_budget.max_stroke_travel_mrev,
-                settle_travel_reserve_mrev=(motion_budget.settle_travel_reserve_mrev),
-                negative_position_headroom_mrev=(
-                    motion_budget.negative_position_headroom_mrev
-                ),
-                positive_position_headroom_mrev=(
-                    motion_budget.positive_position_headroom_mrev
-                ),
-                max_duration_ms=motion_budget.max_duration_ms,
+            request_fields = self._request_for_stage_b_dispatch(
+                {
+                    "profile_code": PROFILE_MAP[profile_name],
+                    "mode_code": MODE_MAP[mode_name],
+                    "inner_lambda": inner_lambda,
+                    "theta_e": theta_e,
+                    "current_ringing": ringing,
+                    "current_bw": bandwidth,
+                    "inner_warning_flags": inner_warning_flags,
+                    "requested_velocity_mrev_s": (
+                        motion_budget.requested_velocity_mrev_s
+                    ),
+                    "machine_velocity_ceiling_mrev_s": (
+                        motion_budget.machine_velocity_ceiling_mrev_s
+                    ),
+                    "requested_velocity_source": (
+                        motion_budget.requested_velocity_source
+                    ),
+                    "max_stroke_travel_mrev": motion_budget.max_stroke_travel_mrev,
+                    "settle_travel_reserve_mrev": (
+                        motion_budget.settle_travel_reserve_mrev
+                    ),
+                    "negative_position_headroom_mrev": (
+                        motion_budget.negative_position_headroom_mrev
+                    ),
+                    "positive_position_headroom_mrev": (
+                        motion_budget.positive_position_headroom_mrev
+                    ),
+                    "max_duration_ms": motion_budget.max_duration_ms,
+                }
             )
+            self.driver.protocol.run_tune(**request_fields)
 
             reactor = self.driver.printer.get_reactor()
             eventtime = reactor.monotonic()
@@ -366,6 +492,7 @@ class AutotuneWorkflow:
                     )
 
             if self.velocity_sweep.done:
+                self._retain_stage_b_request_from_terminal(request_fields)
                 gcmd.respond_info(
                     "FOCI %s: %s"
                     % (self.driver.name, self._format_velocity_sweep_result())
