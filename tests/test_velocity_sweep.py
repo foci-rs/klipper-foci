@@ -10,7 +10,7 @@ from klipper_foci.velocity_sweep import (
 )
 
 
-def plan_fragments(rung_count=5):
+def plan_fragments(rung_count=5, observations_per_direction=2):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 0}
     return (
         {
@@ -30,7 +30,7 @@ def plan_fragments(rung_count=5):
             "p_start": 8,
             "p_top": 128,
             "rung_count": rung_count,
-            "observations_per_direction": 2,
+            "observations_per_direction": observations_per_direction,
             "max_stroke_travel_mrev": 1000,
             "settle_travel_reserve_mrev": 250,
             "negative_position_headroom_mrev": 1250,
@@ -130,8 +130,8 @@ def test_stage_b_plan_canonical_record_matches_firmware_schema():
     )
 
 
-def feed_plan(assembler, rung_count=5):
-    limits, geometry, timing = plan_fragments(rung_count)
+def feed_plan(assembler, rung_count=5, observations_per_direction=2):
+    limits, geometry, timing = plan_fragments(rung_count, observations_per_direction)
     assembler.handle_plan_limits(limits)
     assembler.handle_plan_geometry(geometry)
     assembler.handle_plan_timing(timing)
@@ -766,130 +766,100 @@ def test_compressed_observation_digest_matches_firmware_fixture():
     assert assembler._digest == 0xA4D1_29E7_0765_6385
 
 
-def test_four_observations_reconstruct_and_check_firmware_rung_verdict():
+def consensus_core(*, sequence, forward_class=0, reverse_class=0):
+    component_counts = {0: 1, 1: 2, 2: 0, 3: 0}
+    return {
+        "oid": 0,
+        "run_sequence": 7,
+        "evidence_sequence": sequence,
+        "fragment": 0,
+        "rung_index": 0,
+        "velocity_p": 16,
+        "forward_class": forward_class,
+        "reverse_class": reverse_class,
+        "forward_collected_mask": 0b1111,
+        "reverse_collected_mask": 0b1111,
+        "forward_eligible_mask": 0b1111,
+        "reverse_eligible_mask": 0b1111,
+        "forward_included_mask": 0b0111 if forward_class == 0 else 0,
+        "reverse_included_mask": 0b1110 if reverse_class == 0 else 0,
+        "forward_component_count": component_counts[forward_class],
+        "reverse_component_count": component_counts[reverse_class],
+        "forward_operable_count": 4,
+        "reverse_operable_count": 3,
+        "flags": 0b11,
+    }
+
+
+def consensus_component(*, sequence, direction, component_index, low, high):
+    return {
+        "oid": 0,
+        "run_sequence": 7,
+        "evidence_sequence": sequence,
+        "fragment": 1 + direction * 2 + component_index,
+        "rung_index": 0,
+        "direction": direction,
+        "component_index": component_index,
+        "low_q16": low,
+        "high_q16": high,
+    }
+
+
+def consensus_pool(*, sequence, direction):
+    return {
+        "oid": 0,
+        "run_sequence": 7,
+        "evidence_sequence": sequence,
+        "fragment": 5 + direction,
+        "rung_index": 0,
+        "direction": direction,
+        "pooled_q16": 150 if direction == 0 else -150,
+        "pooled_low_q16": 140 if direction == 0 else -160,
+        "pooled_high_q16": 160 if direction == 0 else -140,
+        "variance_floor_observations": 0,
+        "mean_min_mantissa": 1,
+        "mean_max_mantissa": 2,
+        "envelope_low_mantissa": 0,
+        "envelope_high_mantissa": 3,
+        "rate_shift": 0,
+    }
+
+
+def feed_eight_observations(assembler):
+    for slot in range(8):
+        sign = 1 if slot % 2 == 0 else -1
+        feed_observation(
+            assembler,
+            sequence=slot + 1,
+            slot=slot,
+            low=sign * 100 if sign > 0 else sign * 200,
+            high=sign * 200 if sign > 0 else sign * 100,
+        )
+
+
+def test_eight_observations_preserve_firmware_consensus_group():
     assembler = VelocitySweepAssembler()
-    feed_plan(assembler, rung_count=1)
-    feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
-    feed_observation(assembler, sequence=2, slot=1, low=-200, high=-100)
-    feed_observation(assembler, sequence=3, slot=2, low=120, high=220)
-    feed_observation(assembler, sequence=4, slot=3, low=-220, high=-120)
-    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 5}
-    assembler.handle_rung_band(
-        {
-            **common,
-            "fragment": 0,
-            "rung_index": 0,
-            "velocity_p": 16,
-            "forward_low_q16": 120,
-            "forward_high_q16": 200,
-            "reverse_low_q16": -200,
-            "reverse_high_q16": -120,
-            "forward_p_low": 16,
-            "forward_p_high": 16,
-            "reverse_p_low": 16,
-            "reverse_p_high": 16,
-        }
+    feed_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    sequence = 9
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=145, high=155
+        )
     )
-    assembler.handle_rung_quality(
-        {
-            **common,
-            "fragment": 1,
-            "rung_index": 0,
-            "forward_class": 0,
-            "reverse_class": 0,
-            "forward_closure": 0,
-            "reverse_closure": 0,
-            "flags": 3,
-            "forward_eligible_rungs": 1,
-            "reverse_eligible_rungs": 1,
-            "forward_eligible_observations": 2,
-            "reverse_eligible_observations": 2,
-        }
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
+        )
     )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
 
-    assert assembler.rungs[0]["forward_low_q16"] == 120
-
-
-@pytest.mark.parametrize(
-    (
-        "first_class",
-        "second_class",
-        "first_interval",
-        "second_interval",
-        "rung_class",
-        "forward_moving",
-    ),
-    [
-        (0, 0, (100, 150), (200, 250), 4, True),
-        (0, 1, (100, 200), (0, 0), 5, False),
-        (4, 5, (0, 0), (0, 0), 6, False),
-        (3, 3, (0, 0), (0, 0), 3, True),
-        (9, 0, (0, 0), (100, 200), 7, False),
-    ],
-)
-def test_noneligible_rung_verdicts_do_not_require_interval_intersection(
-    first_class,
-    second_class,
-    first_interval,
-    second_interval,
-    rung_class,
-    forward_moving,
-):
-    assembler = VelocitySweepAssembler()
-    feed_plan(assembler, rung_count=1)
-    feed_observation(
-        assembler,
-        sequence=1,
-        slot=0,
-        low=first_interval[0],
-        high=first_interval[1],
-        classification=first_class,
-    )
-    feed_observation(assembler, sequence=2, slot=1, low=-200, high=-100)
-    feed_observation(
-        assembler,
-        sequence=3,
-        slot=2,
-        low=second_interval[0],
-        high=second_interval[1],
-        classification=second_class,
-    )
-    feed_observation(assembler, sequence=4, slot=3, low=-220, high=-120)
-    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 5}
-    assembler.handle_rung_band(
-        {
-            **common,
-            "fragment": 0,
-            "rung_index": 0,
-            "velocity_p": 16,
-            "forward_low_q16": 0,
-            "forward_high_q16": 0,
-            "reverse_low_q16": -200,
-            "reverse_high_q16": -120,
-            "forward_p_low": 0,
-            "forward_p_high": 0,
-            "reverse_p_low": 16,
-            "reverse_p_high": 16,
-        }
-    )
-    assembler.handle_rung_quality(
-        {
-            **common,
-            "fragment": 1,
-            "rung_index": 0,
-            "forward_class": rung_class,
-            "reverse_class": 0,
-            "forward_closure": 0,
-            "reverse_closure": 0,
-            "flags": 2 | int(forward_moving),
-            "forward_eligible_rungs": 0,
-            "reverse_eligible_rungs": 1,
-            "forward_eligible_observations": 0,
-            "reverse_eligible_observations": 2,
-        }
-    )
-
-    assert assembler.rungs[0]["forward_class"] == rung_class
+    assert sorted(assembler.observations) == [(0, slot) for slot in range(8)]
+    assert assembler.rungs[0]["forward_included_mask"] == 0b0111
+    assert assembler.rungs[0]["reverse_operable_count"] == 3
+    assert assembler.rungs[0]["components"][0] == [(145, 155)]
 
 
 @pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4), (0, 4)])
@@ -959,48 +929,124 @@ def test_terminal_rejects_unexplained_incomplete_evidence(outcome, cause):
         assembler.handle_terminal_integrity(integrity)
 
 
-def test_rung_verdict_disagreement_is_transport_failure():
+def test_host_does_not_recompute_a_structurally_valid_firmware_consensus():
     assembler = VelocitySweepAssembler()
-    feed_plan(assembler, rung_count=1)
-    feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
-    feed_observation(assembler, sequence=2, slot=1, low=-200, high=-100)
-    feed_observation(assembler, sequence=3, slot=2, low=120, high=220)
-    feed_observation(assembler, sequence=4, slot=3, low=-220, high=-120)
-    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 5}
-    assembler.handle_rung_band(
-        {
-            **common,
-            "fragment": 0,
-            "rung_index": 0,
-            "velocity_p": 16,
-            "forward_low_q16": 121,
-            "forward_high_q16": 200,
-            "reverse_low_q16": -200,
-            "reverse_high_q16": -120,
-            "forward_p_low": 16,
-            "forward_p_high": 16,
-            "reverse_p_low": 16,
-            "reverse_p_high": 16,
-        }
+    feed_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    sequence = 9
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=300, high=400
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-400, high=-300
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+
+    assert assembler.rungs[0]["components"] == [[(300, 400)], [(-400, -300)]]
+
+
+def test_ambiguous_and_incomplete_groups_preserve_firmware_classes():
+    ambiguous = VelocitySweepAssembler()
+    feed_plan(ambiguous, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(ambiguous)
+    core = consensus_core(sequence=9, forward_class=1, reverse_class=3)
+    ambiguous.handle_rung_consensus_core(core)
+    for component_index, bounds in enumerate(((100, 120), (200, 220))):
+        ambiguous.handle_rung_consensus_component(
+            consensus_component(
+                sequence=9,
+                direction=0,
+                component_index=component_index,
+                low=bounds[0],
+                high=bounds[1],
+            )
+        )
+    assert ambiguous.rungs[0]["forward_class"] == 1
+    assert ambiguous.rungs[0]["components"][0] == [(100, 120), (200, 220)]
+
+    incomplete = VelocitySweepAssembler()
+    feed_plan(incomplete, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(incomplete)
+    core = consensus_core(sequence=9, forward_class=3, reverse_class=3)
+    core["forward_collected_mask"] = 0b0111
+    core["reverse_collected_mask"] = 0b0111
+    core["forward_eligible_mask"] = 0b0111
+    core["reverse_eligible_mask"] = 0b0111
+    incomplete.observations.pop((0, 6))
+    incomplete.observations.pop((0, 7))
+    incomplete.handle_rung_consensus_core(core)
+    assert incomplete.rungs[0]["forward_class"] == 3
+    assert incomplete.rungs[0]["components"] == [[], []]
+
+
+def test_consensus_group_rejects_missing_duplicate_and_misidentified_parts():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    assembler.handle_rung_consensus_core(consensus_core(sequence=9))
+    forward = consensus_component(
+        sequence=9, direction=0, component_index=0, low=100, high=200
+    )
+    assembler.handle_rung_consensus_component(forward)
+    with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
+        assembler.handle_rung_consensus_component(forward)
+    forward_pool = consensus_pool(sequence=9, direction=0)
+    assembler.handle_rung_consensus_pool(forward_pool)
+    with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
+        assembler.handle_rung_consensus_pool(forward_pool)
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=9, direction=1, component_index=0, low=-200, high=-100
+        )
     )
 
-    with pytest.raises(VelocitySweepProtocolError, match="verdict"):
-        assembler.handle_rung_quality(
-            {
-                **common,
-                "fragment": 1,
-                "rung_index": 0,
-                "forward_class": 0,
-                "reverse_class": 0,
-                "forward_closure": 0,
-                "reverse_closure": 0,
-                "flags": 3,
-                "forward_eligible_rungs": 1,
-                "reverse_eligible_rungs": 1,
-                "forward_eligible_observations": 2,
-                "reverse_eligible_observations": 2,
-            }
-        )
+    wrong = VelocitySweepAssembler()
+    feed_plan(wrong, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(wrong)
+    wrong.handle_rung_consensus_core(consensus_core(sequence=9))
+    component = consensus_component(
+        sequence=9, direction=0, component_index=0, low=100, high=200
+    )
+    component["fragment"] = 2
+    with pytest.raises(VelocitySweepProtocolError, match="identity"):
+        wrong.handle_rung_consensus_component(component)
+
+    missing = VelocitySweepAssembler()
+    feed_plan(missing, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(missing)
+    missing.handle_rung_consensus_core(consensus_core(sequence=9))
+    with pytest.raises(VelocitySweepProtocolError, match="fragment|interrupted"):
+        missing.handle_plan_limits(plan_fragments(1, 4)[0])
+
+
+def test_consensus_core_rejects_invalid_masks_gain_and_observation_order():
+    masks = VelocitySweepAssembler()
+    feed_plan(masks, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(masks)
+    core = consensus_core(sequence=9)
+    core["forward_included_mask"] = 0b1_0000
+    with pytest.raises(VelocitySweepProtocolError, match="mask"):
+        masks.handle_rung_consensus_core(core)
+
+    gain = VelocitySweepAssembler()
+    feed_plan(gain, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(gain)
+    core = consensus_core(sequence=9)
+    core["velocity_p"] = 17
+    with pytest.raises(VelocitySweepProtocolError, match="gain"):
+        gain.handle_rung_consensus_core(core)
+
+    early = VelocitySweepAssembler()
+    feed_plan(early, rung_count=1, observations_per_direction=4)
+    core = consensus_core(sequence=1)
+    with pytest.raises(VelocitySweepProtocolError, match="before"):
+        early.handle_rung_consensus_core(core)
 
 
 def test_inconclusive_requires_matching_generic_terminal():

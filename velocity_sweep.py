@@ -25,23 +25,10 @@ INCONCLUSIVE_REMEDIATION = {
     6: "the second request changed the frozen plan; rerun with identical request fields",
 }
 
-OBSERVATION_ELIGIBLE = 0
-OBSERVATION_INERT = 1
-OBSERVATION_DEFICIT_UNRESOLVED = 2
-OBSERVATION_CURRENT_HEADROOM = 3
-OBSERVATION_STATIONARITY_MIN = 4
-OBSERVATION_STATIONARITY_MAX = 8
-OBSERVATION_FAULT_MIN = 9
-OBSERVATION_FAULT_MAX = 11
-
-RUNG_ELIGIBLE = 0
-RUNG_INERT = 1
-RUNG_DEFICIT_UNRESOLVED = 2
-RUNG_CURRENT_HEADROOM = 3
-RUNG_DISJOINT_PAIR = 4
-RUNG_AMBIGUOUS = 5
-RUNG_EXCLUDED = 6
-RUNG_FAULT = 7
+CONSENSUS_ELIGIBLE = 0
+CONSENSUS_AMBIGUOUS = 1
+CONSENSUS_INSUFFICIENT = 2
+CONSENSUS_INCOMPLETE = 3
 
 
 class VelocitySweepProtocolError(Exception):
@@ -73,6 +60,8 @@ class VelocitySweepAssembler:
         self._group_kind: str | None = None
         self._group_parts: list[dict] = []
         self._group_fragments = 0
+        self._rung_expected_fragments: set[int] = set()
+        self._rung_expected_order: list[int] = []
         self._digest = FNV1A64_OFFSET
         self._canonical_events: list[bytes] = []
         self._unframed_kind: str | None = None
@@ -125,11 +114,50 @@ class VelocitySweepAssembler:
     def handle_observation_disturbance(self, params: dict) -> None:
         self._accept_group_fragment("observation", 4, 3, params)
 
-    def handle_rung_band(self, params: dict) -> None:
-        self._accept_group_fragment("rung", 2, 0, params)
+    def handle_rung_consensus_core(self, params: dict) -> None:
+        """Start one firmware-authored consensus record group."""
+        if self._group_kind is not None:
+            raise VelocitySweepProtocolError(
+                "consensus core interrupted fragment group"
+            )
+        if self._unframed_kind is not None:
+            raise VelocitySweepProtocolError(
+                "consensus core interrupted unframed record"
+            )
+        if self.plan is None:
+            raise VelocitySweepProtocolError("rung consensus arrived before plan")
+        if int(params.get("fragment", -1)) != 0:
+            raise VelocitySweepProtocolError("consensus group did not start at core")
+        self._validate_consensus_core(params)
+        expected_order = [0]
+        for direction, prefix in enumerate(("forward", "reverse")):
+            component_count = int(params[prefix + "_component_count"])
+            expected_order.extend(
+                1 + direction * 2 + index for index in range(component_count)
+            )
+            if int(params[prefix + "_class"]) == CONSENSUS_ELIGIBLE:
+                expected_order.append(5 + direction)
+        self._start_group("rung consensus", len(expected_order), params)
+        self._rung_expected_order = expected_order
+        self._rung_expected_fragments = set(expected_order)
+        self._group_parts.append(dict(params))
+        self._finish_consensus_if_complete()
 
-    def handle_rung_quality(self, params: dict) -> None:
-        self._accept_group_fragment("rung", 2, 1, params)
+    def handle_rung_consensus_component(self, params: dict) -> None:
+        """Append one exact directional consensus component."""
+        direction = int(params.get("direction", -1))
+        component_index = int(params.get("component_index", -1))
+        if direction not in (0, 1) or component_index not in (0, 1):
+            raise VelocitySweepProtocolError("invalid consensus component identity")
+        fragment = 1 + direction * 2 + component_index
+        self._accept_consensus_part(params, fragment)
+
+    def handle_rung_consensus_pool(self, params: dict) -> None:
+        """Append one eligible direction's firmware-authored pool."""
+        direction = int(params.get("direction", -1))
+        if direction not in (0, 1):
+            raise VelocitySweepProtocolError("invalid consensus pool direction")
+        self._accept_consensus_part(params, 5 + direction)
 
     def handle_structured_boundary(self, params: dict) -> None:
         """Retain a diagnostic emitted after its owning observation."""
@@ -261,6 +289,121 @@ class VelocitySweepAssembler:
         if len(self._group_parts) == self._group_fragments:
             self._finish_group()
 
+    def _accept_consensus_part(self, params: dict, expected_fragment: int) -> None:
+        if self._group_kind != "rung consensus":
+            raise VelocitySweepProtocolError("consensus fragment arrived without core")
+        fragment = int(params.get("fragment", -1))
+        if fragment != expected_fragment:
+            raise VelocitySweepProtocolError("consensus fragment identity mismatch")
+        if fragment not in self._rung_expected_fragments:
+            raise VelocitySweepProtocolError("unexpected consensus fragment")
+        if any(int(part["fragment"]) == fragment for part in self._group_parts):
+            raise VelocitySweepProtocolError("duplicate consensus fragment")
+        if fragment != self._rung_expected_order[len(self._group_parts)]:
+            raise VelocitySweepProtocolError("reordered consensus fragment")
+        self._validate_identity(params, expected_fragment=fragment)
+        core = self._group_parts[0]
+        if int(params.get("rung_index", -1)) != int(core["rung_index"]):
+            raise VelocitySweepProtocolError("consensus rung identity mismatch")
+        if fragment in (1, 2, 3, 4):
+            direction = int(params["direction"])
+            component_index = int(params["component_index"])
+            prefix = ("forward", "reverse")[direction]
+            if component_index >= int(core[prefix + "_component_count"]):
+                raise VelocitySweepProtocolError("undeclared consensus component")
+            if int(params["low_q16"]) > int(params["high_q16"]):
+                raise VelocitySweepProtocolError("reversed consensus component")
+        else:
+            direction = int(params["direction"])
+            prefix = ("forward", "reverse")[direction]
+            if int(core[prefix + "_class"]) != CONSENSUS_ELIGIBLE:
+                raise VelocitySweepProtocolError(
+                    "pool supplied for ineligible consensus"
+                )
+            if int(params["pooled_low_q16"]) > int(params["pooled_high_q16"]):
+                raise VelocitySweepProtocolError("reversed consensus pool interval")
+        self._group_parts.append(dict(params))
+        self._finish_consensus_if_complete()
+
+    def _finish_consensus_if_complete(self) -> None:
+        received = {int(part["fragment"]) for part in self._group_parts}
+        if received != self._rung_expected_fragments:
+            return
+        self._finish_rung_consensus(self._group_parts)
+        self._next_evidence_sequence += 1
+        self._group_kind = None
+        self._group_parts = []
+        self._group_fragments = 0
+        self._rung_expected_fragments = set()
+        self._rung_expected_order = []
+
+    def _validate_consensus_core(self, core: dict) -> None:
+        rung_index = int(core["rung_index"])
+        if rung_index in self.rungs:
+            raise VelocitySweepProtocolError("duplicate rung")
+        if int(self.plan["observations_per_direction"]) != 4:
+            raise VelocitySweepProtocolError(
+                "consensus requires four observations per direction"
+            )
+        for direction, prefix in enumerate(("forward", "reverse")):
+            classification = int(core[prefix + "_class"])
+            component_count = int(core[prefix + "_component_count"])
+            expected_components = {
+                CONSENSUS_ELIGIBLE: 1,
+                CONSENSUS_AMBIGUOUS: 2,
+                CONSENSUS_INSUFFICIENT: 0,
+                CONSENSUS_INCOMPLETE: 0,
+            }.get(classification)
+            if expected_components is None or component_count != expected_components:
+                raise VelocitySweepProtocolError(
+                    "invalid consensus class/component count"
+                )
+            collected = int(core[prefix + "_collected_mask"])
+            eligible = int(core[prefix + "_eligible_mask"])
+            included = int(core[prefix + "_included_mask"])
+            if any(mask & ~0x0F for mask in (collected, eligible, included)):
+                raise VelocitySweepProtocolError(
+                    "consensus mask exceeds four observations"
+                )
+            if eligible & ~collected or included & ~eligible:
+                raise VelocitySweepProtocolError("consensus masks are not nested")
+            if classification == CONSENSUS_ELIGIBLE and included.bit_count() < 3:
+                raise VelocitySweepProtocolError("eligible consensus lacks three votes")
+            if classification != CONSENSUS_ELIGIBLE and included != 0:
+                raise VelocitySweepProtocolError(
+                    "ineligible consensus includes observations"
+                )
+            operable_count = int(core[prefix + "_operable_count"])
+            if operable_count not in range(5):
+                raise VelocitySweepProtocolError("invalid consensus operable count")
+            observed_slots = {
+                slot
+                for member in range(4)
+                if collected & (1 << member)
+                for slot in (2 * member + direction,)
+            }
+            if any(
+                (rung_index, slot) not in self.observations for slot in observed_slots
+            ):
+                raise VelocitySweepProtocolError(
+                    "rung arrived before its declared collected observations"
+                )
+            actual_slots = {
+                slot
+                for observed_rung, slot in self.observations
+                if observed_rung == rung_index and slot % 2 == direction
+            }
+            if actual_slots != observed_slots:
+                raise VelocitySweepProtocolError(
+                    "consensus collected mask disagrees with stream"
+                )
+        for slot in range(8):
+            observation = self.observations.get((rung_index, slot))
+            if observation is not None and int(observation["velocity_p"]) != int(
+                core["velocity_p"]
+            ):
+                raise VelocitySweepProtocolError("rung gain disagrees with observation")
+
     def _accept_unframed(self, kind: str, expected_part: int, params: dict) -> None:
         part_counts = {
             "directional region": 4,
@@ -368,9 +511,6 @@ class VelocitySweepAssembler:
         elif kind == "observation":
             self._finish_observation(parts)
             self._next_evidence_sequence += 1
-        elif kind == "rung":
-            self._finish_rung(parts)
-            self._next_evidence_sequence += 1
         elif kind == "terminal":
             self._finish_terminal(parts)
         elif kind == "stage b terminal":
@@ -417,50 +557,30 @@ class VelocitySweepAssembler:
         key = (int(observation["rung_index"]), int(observation["slot"]))
         if key in self.observations:
             raise VelocitySweepProtocolError("duplicate observation")
-        if key[1] not in range(4):
+        slot_count = 2 * int(self.plan["observations_per_direction"])
+        if key[1] not in range(slot_count):
             raise VelocitySweepProtocolError("invalid observation slot")
         self.observations[key] = observation
         self._hash_observation(observation)
         self._canonical_events.append(self._encode_observation(observation))
 
-    def _finish_rung(self, parts: list[dict]) -> None:
-        rung = self._merge(parts)
+    def _finish_rung_consensus(self, parts: list[dict]) -> None:
+        core = dict(parts[0])
+        components: list[list[tuple[int, int]]] = [[], []]
+        pools: list[dict | None] = [None, None]
+        for part in parts[1:]:
+            fragment = int(part["fragment"])
+            direction = int(part["direction"])
+            if fragment in (1, 2, 3, 4):
+                components[direction].append(
+                    (int(part["low_q16"]), int(part["high_q16"]))
+                )
+            else:
+                pools[direction] = self._strip_metadata(part)
+        rung = self._strip_metadata(core)
+        rung["components"] = components
+        rung["pools"] = pools
         rung_index = int(rung["rung_index"])
-        if rung_index in self.rungs:
-            raise VelocitySweepProtocolError("duplicate rung")
-        observations = [self.observations.get((rung_index, slot)) for slot in range(4)]
-        if any(observation is None for observation in observations):
-            raise VelocitySweepProtocolError("rung arrived before four observations")
-        for observation in observations:
-            if int(observation["velocity_p"]) != int(rung["velocity_p"]):
-                raise VelocitySweepProtocolError("rung gain disagrees with observation")
-        expected_flags = 0
-        for direction, (slots, prefix) in enumerate(
-            (((0, 2), "forward"), ((1, 3), "reverse"))
-        ):
-            rung_class, interval, reproduced_moving = self._reproduce_pair(
-                observations[slots[0]], observations[slots[1]]
-            )
-            if int(rung[prefix + "_class"]) != rung_class:
-                raise VelocitySweepProtocolError(
-                    "firmware rung classification disagrees with observations"
-                )
-            reported_interval = (
-                int(rung[prefix + "_low_q16"]),
-                int(rung[prefix + "_high_q16"]),
-            )
-            if reported_interval != interval:
-                raise VelocitySweepProtocolError(
-                    "firmware rung verdict disagrees with observation intervals"
-                )
-            if reproduced_moving:
-                expected_flags |= 1 << direction
-            if any(int(observations[index]["flags"]) & 1 for index in slots):
-                expected_flags |= 1 << (direction + 2)
-        if int(rung["flags"]) != expected_flags:
-            raise VelocitySweepProtocolError(
-                "firmware rung flags disagree with observations"
-            )
         self.rungs[rung_index] = rung
         self._hash_rung(rung)
         self._canonical_events.append(self._encode_rung(rung))
@@ -688,24 +808,59 @@ class VelocitySweepAssembler:
         )
 
     def _encode_rung(self, value: dict) -> bytes:
-        return self._record(
-            (
-                ("B", 3),
-                ("I", value["run_sequence"]),
-                ("H", value["evidence_sequence"]),
-                ("B", value["rung_index"]),
-                ("H", value["velocity_p"]),
-                ("i", value["forward_low_q16"]),
-                ("i", value["forward_high_q16"]),
-                ("i", value["reverse_low_q16"]),
-                ("i", value["reverse_high_q16"]),
-                ("B", value["forward_class"]),
-                ("B", value["reverse_class"]),
-                ("B", value["flags"]),
-                ("H", value["forward_eligible_observations"]),
-                ("H", value["reverse_eligible_observations"]),
+        fields: list[tuple[str, int]] = [
+            ("B", 3),
+            ("I", value["run_sequence"]),
+            ("H", value["evidence_sequence"]),
+            ("B", value["rung_index"]),
+            ("H", value["velocity_p"]),
+        ]
+        combined_flags = int(value["flags"])
+        for direction, prefix in enumerate(("forward", "reverse")):
+            directional_flags = ((combined_flags >> direction) & 1) | (
+                ((combined_flags >> (direction + 2)) & 1) << 1
             )
-        )
+            fields.extend(
+                (
+                    ("B", value[prefix + "_class"]),
+                    ("B", value[prefix + "_component_count"]),
+                    ("B", value[prefix + "_collected_mask"]),
+                    ("B", value[prefix + "_eligible_mask"]),
+                    ("B", value[prefix + "_included_mask"]),
+                    ("B", value[prefix + "_operable_count"]),
+                    ("B", directional_flags),
+                )
+            )
+            components = value["components"][direction]
+            for component_index in range(2):
+                low, high = (
+                    components[component_index]
+                    if component_index < len(components)
+                    else (0, 0)
+                )
+                fields.extend((("i", low), ("i", high)))
+            pool = value["pools"][direction]
+            if pool is None:
+                fields.extend((("i", 0), ("i", 0), ("i", 0), ("B", 0)))
+                for _ in range(4):
+                    fields.extend((("i", 0), ("B", 0)))
+            else:
+                fields.extend(
+                    (
+                        ("i", pool["pooled_q16"]),
+                        ("i", pool["pooled_low_q16"]),
+                        ("i", pool["pooled_high_q16"]),
+                        ("B", pool["variance_floor_observations"]),
+                    )
+                )
+                for name in (
+                    "mean_min_mantissa",
+                    "mean_max_mantissa",
+                    "envelope_low_mantissa",
+                    "envelope_high_mantissa",
+                ):
+                    fields.extend((("i", pool[name]), ("B", pool["rate_shift"])))
+        return self._record(tuple(fields))
 
     def _encode_structured_boundary(self, value: dict) -> bytes:
         shift = int(value["rate_shift"])
@@ -838,48 +993,6 @@ class VelocitySweepAssembler:
             digest ^= byte
             digest = (digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
         return digest
-
-    @staticmethod
-    def _reproduce_pair(first: dict, second: dict) -> tuple[int, tuple[int, int], bool]:
-        first_class = int(first["classification"])
-        second_class = int(second["classification"])
-        moving_classes = {
-            OBSERVATION_ELIGIBLE,
-            OBSERVATION_DEFICIT_UNRESOLVED,
-            OBSERVATION_CURRENT_HEADROOM,
-        }
-        reproduced_moving = (
-            first_class in moving_classes and second_class in moving_classes
-        )
-        if first_class == OBSERVATION_ELIGIBLE and second_class == OBSERVATION_ELIGIBLE:
-            low = max(
-                int(first["disturbance_low_q16"]),
-                int(second["disturbance_low_q16"]),
-            )
-            high = min(
-                int(first["disturbance_high_q16"]),
-                int(second["disturbance_high_q16"]),
-            )
-            if low <= high:
-                return RUNG_ELIGIBLE, (low, high), reproduced_moving
-            return RUNG_DISJOINT_PAIR, (0, 0), reproduced_moving
-        if first_class == second_class == OBSERVATION_INERT:
-            return RUNG_INERT, (0, 0), reproduced_moving
-        if first_class == second_class == OBSERVATION_DEFICIT_UNRESOLVED:
-            return RUNG_DEFICIT_UNRESOLVED, (0, 0), reproduced_moving
-        if first_class == second_class == OBSERVATION_CURRENT_HEADROOM:
-            return RUNG_CURRENT_HEADROOM, (0, 0), reproduced_moving
-        if any(
-            OBSERVATION_FAULT_MIN <= value <= OBSERVATION_FAULT_MAX
-            for value in (first_class, second_class)
-        ):
-            return RUNG_FAULT, (0, 0), reproduced_moving
-        if all(
-            OBSERVATION_STATIONARITY_MIN <= value <= OBSERVATION_STATIONARITY_MAX
-            for value in (first_class, second_class)
-        ):
-            return RUNG_EXCLUDED, (0, 0), reproduced_moving
-        return RUNG_AMBIGUOUS, (0, 0), reproduced_moving
 
     def _finish_stage_b_terminal(self, parts: list[dict]) -> None:
         core, identity, forward, reverse = parts
@@ -1149,29 +1262,6 @@ class VelocitySweepAssembler:
             self._hash(fmt, item)
 
     def _hash_rung(self, value: dict) -> None:
-        fields = (
-            ("B", 3),
-            ("I", value["run_sequence"]),
-            ("H", value["evidence_sequence"]),
-            ("B", value["rung_index"]),
-            ("H", value["velocity_p"]),
-            ("i", value["forward_low_q16"]),
-            ("i", value["forward_high_q16"]),
-            ("i", value["reverse_low_q16"]),
-            ("i", value["reverse_high_q16"]),
-            ("H", value["forward_p_low"]),
-            ("H", value["forward_p_high"]),
-            ("H", value["reverse_p_low"]),
-            ("H", value["reverse_p_high"]),
-            ("B", value["forward_class"]),
-            ("B", value["reverse_class"]),
-            ("B", value["forward_closure"]),
-            ("B", value["reverse_closure"]),
-            ("B", value["flags"]),
-            ("B", value["forward_eligible_rungs"]),
-            ("B", value["reverse_eligible_rungs"]),
-            ("H", value["forward_eligible_observations"]),
-            ("H", value["reverse_eligible_observations"]),
-        )
-        for fmt, item in fields:
-            self._hash(fmt, item)
+        for byte in self._encode_rung(value):
+            self._digest ^= byte
+            self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF

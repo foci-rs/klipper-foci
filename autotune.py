@@ -109,11 +109,14 @@ class AutotuneWorkflow:
     def handle_velocity_observation_disturbance(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_observation_disturbance", params)
 
-    def handle_velocity_rung_verdict_band(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_rung_band", params)
+    def handle_velocity_rung_consensus_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_rung_consensus_core", params)
 
-    def handle_velocity_rung_verdict_quality(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_rung_quality", params)
+    def handle_velocity_rung_consensus_component(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_rung_consensus_component", params)
+
+    def handle_velocity_rung_consensus_pool(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_rung_consensus_pool", params)
 
     def handle_velocity_structured_boundary(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_structured_boundary", params)

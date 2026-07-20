@@ -84,12 +84,16 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_velocity_observation_disturbance",
         ),
         (
-            driver.autotune.handle_velocity_rung_verdict_band,
-            "foci_velocity_rung_verdict_band",
+            driver.autotune.handle_velocity_rung_consensus_core,
+            "foci_velocity_rung_consensus_core",
         ),
         (
-            driver.autotune.handle_velocity_rung_verdict_quality,
-            "foci_velocity_rung_verdict_quality",
+            driver.autotune.handle_velocity_rung_consensus_component,
+            "foci_velocity_rung_consensus_component",
+        ),
+        (
+            driver.autotune.handle_velocity_rung_consensus_pool,
+            "foci_velocity_rung_consensus_pool",
         ),
         (
             driver.autotune.handle_velocity_structured_boundary,
