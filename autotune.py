@@ -145,17 +145,23 @@ class AutotuneWorkflow:
     def handle_velocity_stage_b_directional_handoff(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_stage_b_directional_handoff", params)
 
-    def handle_velocity_stage_b_reproduction_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_core", params)
+    def handle_velocity_stage_b_reproduction_v3_core(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_v3_core", params)
 
-    def handle_velocity_stage_b_reproduction_membership(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_membership", params)
+    def handle_velocity_stage_b_reproduction_v3_membership(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_v3_membership", params)
 
-    def handle_velocity_stage_b_reproduction_interval(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_interval", params)
+    def handle_velocity_stage_b_reproduction_v3_pooled(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_v3_pooled", params)
 
-    def handle_velocity_stage_b_reproduction_digest(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_digest", params)
+    def handle_velocity_stage_b_reproduction_v3_common(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_v3_common", params)
+
+    def handle_velocity_stage_b_reproduction_v3_coverage(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_v3_coverage", params)
+
+    def handle_velocity_stage_b_reproduction_v3_digest(self, params: dict) -> None:
+        self._handle_velocity_sweep("handle_stage_b_reproduction_v3_digest", params)
 
     def handle_velocity_stage_b_terminal_core(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_stage_b_terminal_core", params)

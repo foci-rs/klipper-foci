@@ -170,6 +170,20 @@ def test_commissioning_registers_timing_reply():
     assert ("foci_commission_timing", driver.oid) in response_names(serial)
 
 
+def test_commissioning_registers_stage_b_schema3_reproduction_group():
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_commissioning_responses(serial, driver, driver.oid)
+
+    registrations = response_names(serial)
+    for suffix in ("core", "membership", "pooled", "common", "coverage", "digest"):
+        assert (
+            f"foci_velocity_stage_b_reproduction_v3_{suffix}",
+            driver.oid,
+        ) in registrations
+
+
 def test_inductance_replies_are_not_active_diagnostic_responses():
     driver = make_driver()
     serial = MockSerial()
