@@ -1306,7 +1306,39 @@ class VelocitySweepAssembler:
             (int(forward["pooled_low_q16"]), int(forward["pooled_high_q16"])),
             (int(reverse["pooled_low_q16"]), int(reverse["pooled_high_q16"])),
         )
-        if self.handoff is not None:
+        if outcome_code == 1:
+            if (
+                self.reproduction is None
+                or int(self.reproduction.get("schema_revision", 0)) != 3
+            ):
+                raise VelocitySweepProtocolError(
+                    "stage b Complete terminal arrived without schema-3 reproduction"
+                )
+            if int(self.reproduction["outcome"]) != 1:
+                raise VelocitySweepProtocolError(
+                    "stage b Complete terminal disagrees with reproduction outcome"
+                )
+            expected_memberships = tuple(
+                int(item["core"]) for item in self.reproduction["memberships"]
+            )
+            expected_nomination = int(self.reproduction["final_p"])
+            expected_intervals = tuple(
+                tuple(int(bound) for bound in item["overlap"])
+                for item in self.reproduction["pooled"]
+            )
+            if memberships != expected_memberships:
+                raise VelocitySweepProtocolError(
+                    "stage b Complete memberships disagree with reproduction"
+                )
+            if int(identity["nominated_p"]) != expected_nomination:
+                raise VelocitySweepProtocolError(
+                    "stage b Complete nomination disagrees with reproduction"
+                )
+            if intervals != expected_intervals:
+                raise VelocitySweepProtocolError(
+                    "stage b Complete intervals disagree with reproduction"
+                )
+        elif self.handoff is not None:
             expected_memberships = (
                 int(self.handoff["forward_member_mask"]),
                 int(self.handoff["reverse_member_mask"]),

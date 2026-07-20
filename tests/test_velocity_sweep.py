@@ -228,6 +228,7 @@ def stage_b_reproduction_v3_fragments(
     *,
     sequence,
     member_mask=0x0038_0000,
+    final_p=1448,
     previous_digest=0x0102_0304_0506_0708,
     current_digest=0,
 ):
@@ -241,7 +242,7 @@ def stage_b_reproduction_v3_fragments(
                 "reason_mask": 0,
                 "previous_provisional_p": 1448,
                 "current_provisional_p": 1024,
-                "final_p": 1448,
+                "final_p": final_p,
                 "reduced_margin": 0,
                 "schema_revision": 3,
             },
@@ -340,6 +341,7 @@ def feed_stage_b_terminal(
     cause=0,
     member_mask=0b11100,
     nominated_p=724,
+    intervals=((104, 116), (104, 116)),
     digest=0,
     plan_digest_value=0,
 ):
@@ -377,13 +379,14 @@ def feed_stage_b_terminal(
         }
     )
     for direction in range(2):
+        pooled_low_q16, pooled_high_q16 = intervals[direction]
         assembler.handle_stage_b_terminal_interval(
             {
                 **common,
                 "fragment": direction + 2,
                 "direction": direction,
-                "pooled_low_q16": 104,
-                "pooled_high_q16": 116,
+                "pooled_low_q16": pooled_low_q16,
+                "pooled_high_q16": pooled_high_q16,
                 "started_low": 10,
                 "started_high": 0,
                 "completed_low": 20,
@@ -705,6 +708,9 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
         assembler,
         sequence=6,
         outcome=1,
+        member_mask=0x0038_0000,
+        nominated_p=1448,
+        intervals=((108, 116), (108, 116)),
         digest=final_digest,
         plan_digest_value=plan_identity,
     )
@@ -723,6 +729,51 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
     }
     assert assembler.reproduction["final_p"] == 1448
     assert assembler.reproduction["common"][1]["nonempty"] is False
+
+
+def test_stage_b_complete_terminal_uses_reproduced_pooled_overlap():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    feed_stage_b_region(assembler, sequence=1, direction=0)
+    feed_stage_b_region(assembler, sequence=2, direction=1)
+    assembler.handle_joint_region(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 3,
+            "member_mask": 0b11100,
+            "rung_bounds": 2 | (4 << 8),
+            "member_count": 3,
+            "p_low": 512,
+            "p_high": 1024,
+            "closure": 1,
+        }
+    )
+    feed_stage_b_handoff(assembler, sequence=4)
+    plan_identity = 0x1111_2222_3333_4444
+    pre_reproduction_digest = assembler._stage_b_digest(plan_identity)
+    feed_stage_b_reproduction(
+        assembler,
+        sequence=5,
+        member_mask=0b11100,
+        final_p=724,
+        current_digest=pre_reproduction_digest,
+    )
+    final_digest = assembler._stage_b_digest(plan_identity)
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=6,
+        outcome=1,
+        member_mask=0b11100,
+        nominated_p=724,
+        intervals=((108, 116), (108, 116)),
+        digest=final_digest,
+        plan_digest_value=plan_identity,
+    )
+
+    assert assembler.outcome == "complete"
+    assert assembler.terminal["selected_intervals"] == ((108, 116), (108, 116))
 
 
 def test_stage_b_reproduction_v3_rejects_missing_duplicate_and_reordered_parts():
