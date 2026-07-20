@@ -219,6 +219,39 @@ class VelocitySweepAssembler:
     def handle_stage_b_reproduction_digest(self, params: dict) -> None:
         self._accept_unframed("stage b reproduction", 4, params)
 
+    def handle_stage_b_reproduction_v3_core(self, params: dict) -> None:
+        if int(params.get("schema_revision", -1)) != 3:
+            raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
+        self._accept_unframed("stage b reproduction v3", 0, params)
+
+    def handle_stage_b_reproduction_v3_membership(self, params: dict) -> None:
+        object_index = int(params.get("object", -1))
+        if object_index not in (0, 1, 2):
+            raise VelocitySweepProtocolError("invalid reproduction membership object")
+        self._accept_unframed("stage b reproduction v3", 1 + object_index, params)
+
+    def handle_stage_b_reproduction_v3_pooled(self, params: dict) -> None:
+        direction = self._reproduction_direction(params)
+        self._accept_unframed("stage b reproduction v3", 4 + direction, params)
+
+    def handle_stage_b_reproduction_v3_common(self, params: dict) -> None:
+        direction = self._reproduction_direction(params)
+        self._accept_unframed("stage b reproduction v3", 6 + direction, params)
+
+    def handle_stage_b_reproduction_v3_coverage(self, params: dict) -> None:
+        direction = self._reproduction_direction(params)
+        self._accept_unframed("stage b reproduction v3", 8 + direction, params)
+
+    def handle_stage_b_reproduction_v3_digest(self, params: dict) -> None:
+        self._accept_unframed("stage b reproduction v3", 10, params)
+
+    @staticmethod
+    def _reproduction_direction(params: dict) -> int:
+        direction = int(params.get("direction", -1))
+        if direction not in (0, 1):
+            raise VelocitySweepProtocolError("invalid reproduction direction")
+        return direction
+
     def handle_stage_b_terminal_core(self, params: dict) -> None:
         self._accept_group_fragment("stage b terminal", 4, 0, params)
 
@@ -263,6 +296,10 @@ class VelocitySweepAssembler:
         expected_fragment: int,
         params: dict,
     ) -> None:
+        if self._unframed_kind is not None:
+            raise VelocitySweepProtocolError(
+                "%s interrupted %s" % (kind, self._unframed_kind)
+            )
         fragment = int(params.get("fragment", -1))
         if fragment != expected_fragment:
             raise VelocitySweepProtocolError(
@@ -410,6 +447,7 @@ class VelocitySweepAssembler:
             "joint region": 1,
             "stage b handoff": 4,
             "stage b reproduction": 5,
+            "stage b reproduction v3": 11,
         }
         if self._group_kind is not None:
             raise VelocitySweepProtocolError(
@@ -473,6 +511,8 @@ class VelocitySweepAssembler:
             self._finish_stage_b_handoff(parts)
         elif kind == "stage b reproduction":
             self._finish_stage_b_reproduction(parts)
+        elif kind == "stage b reproduction v3":
+            self._finish_stage_b_reproduction_v3(parts)
         else:
             raise VelocitySweepProtocolError("unknown unframed record")
         self._next_evidence_sequence += 1
@@ -721,6 +761,108 @@ class VelocitySweepAssembler:
         )
         self.reproduction = reproduction
         self._canonical_events.append(self._encode_reproduction(reproduction))
+
+    def _finish_stage_b_reproduction_v3(self, parts: list[dict]) -> None:
+        core = parts[0]
+        memberships = parts[1:4]
+        pooled = parts[4:6]
+        common = parts[6:8]
+        coverage = parts[8:10]
+        digest = parts[10]
+        if [int(item["object"]) for item in memberships] != [0, 1, 2]:
+            raise VelocitySweepProtocolError("reproduction membership order mismatch")
+        for label, values in (
+            ("pooled", pooled),
+            ("common", common),
+            ("coverage", coverage),
+        ):
+            if [int(item["direction"]) for item in values] != [0, 1]:
+                raise VelocitySweepProtocolError(
+                    "stage b reproduction %s direction order mismatch" % label
+                )
+        if int(core["reduced_margin"]) not in (0, 1):
+            raise VelocitySweepProtocolError("invalid reproduction reduced-margin flag")
+        if int(core["outcome"]) not in (1, 2):
+            raise VelocitySweepProtocolError("invalid reproduction outcome")
+        if int(core["reason_mask"]) & ~0x1F:
+            raise VelocitySweepProtocolError("invalid reproduction reason mask")
+        for item in memberships:
+            if (
+                not -128 <= int(item["low_delta"]) <= 127
+                or not -128 <= int(item["high_delta"]) <= 127
+            ):
+                raise VelocitySweepProtocolError("reproduction edge delta exceeds i8")
+        for item in common:
+            if int(item["nonempty"]) not in (0, 1):
+                raise VelocitySweepProtocolError("invalid common nonempty flag")
+        for item in coverage:
+            if int(item["coverage"]) not in (0, 1):
+                raise VelocitySweepProtocolError("invalid reproduction coverage")
+        reproduction = dict(core)
+        reproduction["memberships"] = [
+            {
+                "previous": int(item["previous_mask"]),
+                "current": int(item["current_mask"]),
+                "core": int(item["core_mask"]),
+                "previous_only": int(item["previous_only_mask"]),
+                "current_only": int(item["current_only_mask"]),
+                "low_delta": int(item["low_delta"]),
+                "high_delta": int(item["high_delta"]),
+            }
+            for item in memberships
+        ]
+        reproduction["pooled"] = [
+            {
+                "previous": [
+                    int(item["previous_low_q16"]),
+                    int(item["previous_high_q16"]),
+                ],
+                "current": [
+                    int(item["current_low_q16"]),
+                    int(item["current_high_q16"]),
+                ],
+                "overlap": [
+                    int(item["overlap_low_q16"]),
+                    int(item["overlap_high_q16"]),
+                ],
+            }
+            for item in pooled
+        ]
+        reproduction["common"] = [
+            {
+                "previous": [
+                    int(item["previous_low_q16"]),
+                    int(item["previous_high_q16"]),
+                ],
+                "current": [
+                    int(item["current_low_q16"]),
+                    int(item["current_high_q16"]),
+                ],
+                "conservative": [
+                    int(item["conservative_low_q16"]),
+                    int(item["conservative_high_q16"]),
+                ],
+                "nonempty": bool(int(item["nonempty"])),
+            }
+            for item in common
+        ]
+        reproduction["coverage"] = [
+            {
+                "kind": int(item["coverage"]),
+                "signed_rung_distance": int(item["signed_rung_distance"]),
+                "gain_ratio_num": int(item["gain_ratio_num"]),
+                "gain_ratio_den": int(item["gain_ratio_den"]),
+            }
+            for item in coverage
+        ]
+        reproduction["previous_digest"] = int(digest["previous_digest_low"]) | (
+            int(digest["previous_digest_high"]) << 32
+        )
+        reproduction["current_digest"] = int(digest["current_digest_low"]) | (
+            int(digest["current_digest_high"]) << 32
+        )
+        self.reproduction = reproduction
+        self._canonical_events.extend(self._encode_reproduction_v3(reproduction))
 
     @staticmethod
     def _record(fields: tuple[tuple[str, int], ...]) -> bytes:
@@ -986,6 +1128,109 @@ class VelocitySweepAssembler:
             )
         )
         return self._record(tuple(fields))
+
+    def _encode_reproduction_v3(self, value: dict) -> tuple[bytes, ...]:
+        def header(kind: int) -> list[tuple[str, int]]:
+            return [
+                ("B", kind),
+                ("I", value["run_sequence"]),
+                ("H", value["evidence_sequence"]),
+            ]
+
+        records = [
+            self._record(
+                tuple(
+                    header(10)
+                    + [
+                        ("B", value["outcome"]),
+                        ("B", value["reason_mask"]),
+                        ("H", value["previous_provisional_p"]),
+                        ("H", value["current_provisional_p"]),
+                        ("H", value["final_p"]),
+                        ("B", value["reduced_margin"]),
+                        ("H", value["schema_revision"]),
+                    ]
+                )
+            )
+        ]
+        for object_index, item in enumerate(value["memberships"]):
+            records.append(
+                self._record(
+                    tuple(
+                        header(11 + object_index)
+                        + [("B", object_index)]
+                        + [
+                            ("I", item[key])
+                            for key in (
+                                "previous",
+                                "current",
+                                "core",
+                                "previous_only",
+                                "current_only",
+                            )
+                        ]
+                        + [("b", item["low_delta"]), ("b", item["high_delta"])]
+                    )
+                )
+            )
+        for direction, item in enumerate(value["pooled"]):
+            records.append(
+                self._record(
+                    tuple(
+                        header(14 + direction)
+                        + [("B", direction)]
+                        + [
+                            ("i", bound)
+                            for key in ("previous", "current", "overlap")
+                            for bound in item[key]
+                        ]
+                    )
+                )
+            )
+        for direction, item in enumerate(value["common"]):
+            records.append(
+                self._record(
+                    tuple(
+                        header(16 + direction)
+                        + [("B", direction)]
+                        + [
+                            ("i", bound)
+                            for key in ("previous", "current", "conservative")
+                            for bound in item[key]
+                        ]
+                        + [("B", int(item["nonempty"]))]
+                    )
+                )
+            )
+        for direction, item in enumerate(value["coverage"]):
+            records.append(
+                self._record(
+                    tuple(
+                        header(18 + direction)
+                        + [
+                            ("B", direction),
+                            ("B", item["kind"]),
+                            ("i", item["signed_rung_distance"]),
+                            ("H", item["gain_ratio_num"]),
+                            ("H", item["gain_ratio_den"]),
+                        ]
+                    )
+                )
+            )
+        records.append(
+            self._record(
+                tuple(
+                    header(20)
+                    + [
+                        ("I", value["previous_digest"] & 0xFFFF_FFFF),
+                        ("I", value["previous_digest"] >> 32),
+                        ("I", value["current_digest"] & 0xFFFF_FFFF),
+                        ("I", value["current_digest"] >> 32),
+                    ]
+                )
+            )
+        )
+        return tuple(records)
 
     def _stage_b_digest(self, plan_digest: int) -> int:
         digest = FNV1A64_OFFSET

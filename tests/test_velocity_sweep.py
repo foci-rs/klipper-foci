@@ -224,54 +224,112 @@ def feed_stage_b_handoff(assembler, *, sequence=3, member_mask=0b11100):
         )
 
 
-def feed_stage_b_reproduction(
-    assembler,
+def stage_b_reproduction_v3_fragments(
     *,
     sequence,
-    member_mask=0b11100,
+    member_mask=0x0038_0000,
     previous_digest=0x0102_0304_0506_0708,
     current_digest=0,
 ):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
-    assembler.handle_stage_b_reproduction_core(
-        {
-            **common,
-            "outcome": 1,
-            "previous_nominated_p": 724,
-            "current_nominated_p": 724,
-        }
-    )
-    assembler.handle_stage_b_reproduction_membership(
-        {
-            **common,
-            "previous_forward_mask": member_mask,
-            "previous_reverse_mask": member_mask,
-            "previous_joint_mask": member_mask,
-            "current_forward_mask": member_mask,
-            "current_reverse_mask": member_mask,
-            "current_joint_mask": member_mask,
-        }
-    )
-    for direction in range(2):
-        assembler.handle_stage_b_reproduction_interval(
+    fragments = [
+        (
+            "handle_stage_b_reproduction_v3_core",
             {
                 **common,
-                "direction": direction,
-                "previous_low_q16": 104,
-                "previous_high_q16": 116,
-                "current_low_q16": 104,
-                "current_high_q16": 116,
-            }
+                "outcome": 1,
+                "reason_mask": 0,
+                "previous_provisional_p": 1448,
+                "current_provisional_p": 1024,
+                "final_p": 1448,
+                "reduced_margin": 0,
+                "schema_revision": 3,
+            },
         )
-    assembler.handle_stage_b_reproduction_digest(
-        {
-            **common,
-            "previous_digest_low": previous_digest & 0xFFFF_FFFF,
-            "previous_digest_high": previous_digest >> 32,
-            "current_digest_low": current_digest & 0xFFFF_FFFF,
-            "current_digest_high": current_digest >> 32,
-        }
+    ]
+    for object_index in range(3):
+        current_mask = member_mask | (0x0004_0000 if object_index == 0 else 0)
+        fragments.append(
+            (
+                "handle_stage_b_reproduction_v3_membership",
+                {
+                    **common,
+                    "object": object_index,
+                    "previous_mask": member_mask,
+                    "current_mask": current_mask,
+                    "core_mask": member_mask,
+                    "previous_only_mask": 0,
+                    "current_only_mask": current_mask & ~member_mask,
+                    "low_delta": -1 if object_index == 0 else 0,
+                    "high_delta": 0,
+                },
+            )
+        )
+    for direction in range(2):
+        fragments.append(
+            (
+                "handle_stage_b_reproduction_v3_pooled",
+                {
+                    **common,
+                    "direction": direction,
+                    "previous_low_q16": 104,
+                    "previous_high_q16": 116,
+                    "current_low_q16": 108,
+                    "current_high_q16": 120,
+                    "overlap_low_q16": 108,
+                    "overlap_high_q16": 116,
+                },
+            )
+        )
+    for direction in range(2):
+        fragments.append(
+            (
+                "handle_stage_b_reproduction_v3_common",
+                {
+                    **common,
+                    "direction": direction,
+                    "previous_low_q16": 104,
+                    "previous_high_q16": 116,
+                    "current_low_q16": 108 if direction == 0 else 120,
+                    "current_high_q16": 120 if direction == 0 else 130,
+                    "conservative_low_q16": 108 if direction == 0 else 120,
+                    "conservative_high_q16": 116,
+                    "nonempty": 1 if direction == 0 else 0,
+                },
+            )
+        )
+    for direction in range(2):
+        fragments.append(
+            (
+                "handle_stage_b_reproduction_v3_coverage",
+                {
+                    **common,
+                    "direction": direction,
+                    "coverage": direction,
+                    "signed_rung_distance": direction,
+                    "gain_ratio_num": 1 if direction == 0 else 1448,
+                    "gain_ratio_den": 1 if direction == 0 else 1024,
+                },
+            )
+        )
+    fragments.append(
+        (
+            "handle_stage_b_reproduction_v3_digest",
+            {
+                **common,
+                "previous_digest_low": previous_digest & 0xFFFF_FFFF,
+                "previous_digest_high": previous_digest >> 32,
+                "current_digest_low": current_digest & 0xFFFF_FFFF,
+                "current_digest_high": current_digest >> 32,
+            },
+        )
     )
+    return fragments
+
+
+def feed_stage_b_reproduction(assembler, **kwargs):
+    for method, params in stage_b_reproduction_v3_fragments(**kwargs):
+        getattr(assembler, method)(params)
 
 
 def feed_stage_b_terminal(
@@ -653,6 +711,108 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
 
     assert assembler.outcome == "complete"
     assert assembler.reproduction["current_digest"] == pre_reproduction_digest
+    assert assembler.reproduction["schema_revision"] == 3
+    assert assembler.reproduction["memberships"][0] == {
+        "previous": 0x0038_0000,
+        "current": 0x003C_0000,
+        "core": 0x0038_0000,
+        "previous_only": 0,
+        "current_only": 0x0004_0000,
+        "low_delta": -1,
+        "high_delta": 0,
+    }
+    assert assembler.reproduction["final_p"] == 1448
+    assert assembler.reproduction["common"][1]["nonempty"] is False
+
+
+def test_stage_b_reproduction_v3_rejects_missing_duplicate_and_reordered_parts():
+    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    getattr(assembler, fragments[0][0])(fragments[0][1])
+    with pytest.raises(VelocitySweepProtocolError, match="reordered"):
+        getattr(assembler, fragments[-1][0])(fragments[-1][1])
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    for method, params in fragments[:2]:
+        getattr(assembler, method)(params)
+    with pytest.raises(VelocitySweepProtocolError, match="reordered"):
+        getattr(assembler, fragments[1][0])(fragments[1][1])
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    getattr(assembler, fragments[0][0])(fragments[0][1])
+    with pytest.raises(VelocitySweepProtocolError, match="reordered"):
+        getattr(assembler, fragments[2][0])(fragments[2][1])
+
+
+def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
+    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    getattr(assembler, fragments[0][0])(fragments[0][1])
+    changed_identity = dict(fragments[1][1], evidence_sequence=2)
+    with pytest.raises(VelocitySweepProtocolError, match="evidence sequence"):
+        getattr(assembler, fragments[1][0])(changed_identity)
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    unknown_schema = dict(fragments[0][1], schema_revision=4)
+    with pytest.raises(VelocitySweepProtocolError, match="unsupported"):
+        getattr(assembler, fragments[0][0])(unknown_schema)
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    for method, params in fragments[:-1]:
+        getattr(assembler, method)(params)
+    with pytest.raises(VelocitySweepProtocolError, match="interrupted"):
+        feed_stage_b_terminal(assembler, sequence=2)
+
+
+def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    feed_stage_b_reproduction(
+        assembler,
+        sequence=1,
+        current_digest=0xFEDC_BA98_7654_3210,
+    )
+
+    expected = tuple(
+        bytes.fromhex(value)
+        for value in (
+            "0a0700000001000100a8050004a805000300",
+            "0b070000000100000000380000003c00000038000000000000000400ff00",
+            "0c0700000001000100003800000038000000380000000000000000000000",
+            "0d0700000001000200003800000038000000380000000000000000000000",
+            "0e0700000001000068000000740000006c000000780000006c00000074000000",
+            "0f0700000001000168000000740000006c000000780000006c00000074000000",
+            "100700000001000068000000740000006c000000780000006c0000007400000001",
+            "110700000001000168000000740000007800000082000000780000007400000000",
+            "1207000000010000000000000001000100",
+            "13070000000100010101000000a8050004",
+            "1407000000010008070605040302011032547698badcfe",
+        )
+    )
+    assert tuple(assembler._canonical_events[-11:]) == expected
+    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x91AD_2379_2AA5_C738
+
+
+def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
+    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+    fragments[0][1]["outcome"] = 2
+    fragments[1][1]["core_mask"] = 0x0010_0000
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    for method, params in fragments:
+        getattr(assembler, method)(params)
+
+    assert assembler.reproduction["outcome"] == 2
+    assert assembler.reproduction["memberships"][0]["core"] == 0x0010_0000
 
 
 def test_reordered_or_duplicate_fragment_is_rejected():
