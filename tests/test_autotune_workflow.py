@@ -4,6 +4,7 @@ import unittest
 
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.registers import REGISTERS
+from klipper_foci.velocity_integral import VelocityIntegralAssembler
 
 from tests.mocks import (
     CommandError,
@@ -219,15 +220,24 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertIn("timed out waiting for plan", str(ctx.exception))
 
-    def test_firmware_plan_replaces_short_timeout_with_reported_maximum(self):
+    def test_firmware_workflow_replaces_short_timeout_with_reported_maximum(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
 
         def pause_with_plan(deadline):
             reactor._time = deadline
-            if d.autotune.velocity_sweep.plan is None:
-                d.autotune.velocity_sweep.plan = {"maximum_workflow_ms": 10_000}
+            if d.autotune.velocity_integral.workflow_plan is None:
+                params = {
+                    "run_sequence": 7,
+                    "shape": 0,
+                    "nominal_workflow_ms": 8_000,
+                    "maximum_workflow_ms": 10_000,
+                }
+                low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+                d.autotune.handle_commissioning_workflow_plan(
+                    {**params, "digest_low": low, "digest_high": high}
+                )
             if reactor._time >= 6.0:
                 d.autotune.handle_tune_result({"status": 2})
             return reactor._time
@@ -237,6 +247,85 @@ class TestAutotuneGates(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         self.assertGreaterEqual(reactor._time, 6.0)
+
+    def test_composite_workflow_waits_for_integral_terminal(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        pauses = 0
+
+        d.autotune._format_velocity_sweep_result = lambda: "proportional response"
+        d.autotune._format_velocity_integral_result = lambda: "integral response"
+
+        def pause_with_composite_results(deadline):
+            nonlocal pauses
+            pauses += 1
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                params = {
+                    "run_sequence": 9,
+                    "shape": 1,
+                    "nominal_workflow_ms": 250_000,
+                    "maximum_workflow_ms": 300_000,
+                }
+                low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+                d.autotune.handle_commissioning_workflow_plan(
+                    {**params, "digest_low": low, "digest_high": high}
+                )
+                d.autotune.velocity_sweep.outcome = "complete"
+                d.autotune.velocity_sweep.terminal = {"cause": 0}
+                d.autotune.velocity_sweep.done = True
+            elif pauses == 2:
+                d.autotune.velocity_integral.outcome = "complete_candidate"
+                d.autotune.velocity_integral.terminal = {"cause": 0}
+                d.autotune.velocity_integral.done = True
+            return reactor._time
+
+        reactor.pause = pause_with_composite_results
+
+        d.autotune.autotune(gcmd)
+
+        self.assertGreaterEqual(pauses, 2)
+        self.assertTrue(
+            any("proportional response" in message for message in gcmd._responses)
+        )
+        self.assertTrue(
+            any("integral response" in message for message in gcmd._responses)
+        )
+
+    def test_composite_rejects_integral_plan_before_proportional_handoff(self):
+        d = self._commissioned_driver()
+        params = {
+            "run_sequence": 13,
+            "shape": 1,
+            "nominal_workflow_ms": 250_000,
+            "maximum_workflow_ms": 300_000,
+        }
+        low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+        d.autotune.handle_commissioning_workflow_plan(
+            {**params, "digest_low": low, "digest_high": high}
+        )
+
+        d.autotune.handle_velocity_integral_plan_core(
+            {
+                "run_sequence": 13,
+                "evidence_sequence": 0,
+                "fragment": 0,
+                "plan_digest_low": 1,
+                "plan_digest_high": 0,
+                "stage_b_digest_low": 2,
+                "stage_b_digest_high": 0,
+                "build_revision": 1,
+                "schema_revision": 1,
+                "channel": 0,
+                "final_p": 1448,
+            }
+        )
+
+        self.assertIn(
+            "before proportional handoff",
+            str(d.autotune.velocity_integral_error),
+        )
 
     def test_hard_fault_inhibits_future_raw_enable(self):
         d = self._commissioned_driver()
@@ -315,6 +404,16 @@ class TestAutotuneGates(unittest.TestCase):
 
         def pause_and_report_sweep_fault(deadline):
             reactor._time = deadline
+            params = {
+                "run_sequence": 11,
+                "shape": 0,
+                "nominal_workflow_ms": 45_000,
+                "maximum_workflow_ms": 49_728,
+            }
+            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+            d.autotune.handle_commissioning_workflow_plan(
+                {**params, "digest_low": low, "digest_high": high}
+            )
             d.autotune.handle_outer_safety_fault(
                 {
                     "reason": 7,

@@ -14,6 +14,10 @@ from .autotune_budget import (
     format_safe_pose_move,
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
+from .velocity_integral import (
+    VelocityIntegralAssembler,
+    VelocityIntegralProtocolError,
+)
 from .velocity_sweep import VelocitySweepAssembler, VelocitySweepProtocolError
 
 MODE_MAP: dict[str, int] = {
@@ -23,8 +27,8 @@ MODE_MAP: dict[str, int] = {
 }
 
 IDLE_PRINT_STATES = frozenset(("standby", "complete", "cancelled"))
-VELOCITY_SWEEP_PLAN_TIMEOUT_S = 5.0
-VELOCITY_SWEEP_COMMS_MARGIN_S = 5.0
+COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S = 5.0
+COMMISSIONING_WORKFLOW_COMMS_MARGIN_S = 5.0
 
 OUTER_SAFETY_FAULT_NAMES = {
     1: "invalid_budget",
@@ -48,6 +52,8 @@ class AutotuneWorkflow:
         self.outer_safety_fault: dict | None = None
         self.velocity_sweep = VelocitySweepAssembler()
         self.velocity_sweep_error: VelocitySweepProtocolError | None = None
+        self.velocity_integral = VelocityIntegralAssembler()
+        self.velocity_integral_error: VelocityIntegralProtocolError | None = None
         self._stage_b_candidate_request: dict | None = None
         self.done = False
 
@@ -63,10 +69,46 @@ class AutotuneWorkflow:
     def _handle_velocity_sweep(self, method_name: str, params: dict) -> None:
         if self.velocity_sweep_error is not None:
             return
+        workflow = self.velocity_integral.workflow_plan
+        if workflow is None:
+            self.velocity_sweep_error = VelocitySweepProtocolError(
+                "velocity sweep preceded commissioning workflow plan"
+            )
+            return
+        if int(workflow["shape"]) == 2:
+            self.velocity_sweep_error = VelocitySweepProtocolError(
+                "integral-response resume emitted velocity-sweep evidence"
+            )
+            return
         try:
             getattr(self.velocity_sweep, method_name)(params)
         except VelocitySweepProtocolError as err:
             self.velocity_sweep_error = err
+
+    def _handle_velocity_integral(self, method_name: str, params: dict) -> None:
+        if self.velocity_integral_error is not None:
+            return
+        workflow = self.velocity_integral.workflow_plan
+        if (
+            method_name == "handle_plan_core"
+            and workflow is not None
+            and int(workflow["shape"]) == 1
+            and (
+                not self.velocity_sweep.done
+                or self.velocity_sweep.outcome != "complete"
+            )
+        ):
+            self.velocity_integral_error = VelocityIntegralProtocolError(
+                "integral-response plan arrived before proportional handoff"
+            )
+            return
+        try:
+            getattr(self.velocity_integral, method_name)(params)
+        except VelocityIntegralProtocolError as err:
+            self.velocity_integral_error = err
+
+    def handle_commissioning_workflow_plan(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_workflow_plan", params)
 
     def _request_for_stage_b_dispatch(self, request_fields: dict) -> dict:
         """Reuse the exact retained encoding when the explicit request matches."""
@@ -87,6 +129,33 @@ class AutotuneWorkflow:
             self._stage_b_candidate_request = dict(request_fields)
         elif outcome != "rejected_plan_mismatch":
             self._stage_b_candidate_request = None
+
+    def _retain_request_from_terminal(self, request_fields: dict) -> None:
+        """Mirror firmware's retained authority/evidence request identity."""
+        if self.velocity_integral.done:
+            outcome = self.velocity_integral.outcome
+            if outcome in ("complete_candidate", "inconclusive"):
+                self._stage_b_candidate_request = dict(request_fields)
+            elif outcome != "rejected_plan_mismatch":
+                self._stage_b_candidate_request = None
+            return
+        self._retain_stage_b_request_from_terminal(request_fields)
+
+    def _workflow_finished(self) -> bool:
+        """Whether the disclosed firmware workflow reached its terminal stage."""
+        workflow = self.velocity_integral.workflow_plan
+        if workflow is None:
+            return False
+        shape = int(workflow["shape"])
+        if shape == 0:
+            return self.velocity_sweep.done
+        if shape == 2:
+            return self.velocity_integral.done
+        if not self.velocity_sweep.done:
+            return False
+        if self.velocity_sweep.outcome != "complete":
+            return True
+        return self.velocity_integral.done
 
     def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_plan_limits", params)
@@ -181,6 +250,72 @@ class AutotuneWorkflow:
     def handle_outer_inconclusive(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_outer_inconclusive", params)
 
+    def handle_velocity_integral_plan_core(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_plan_core", params)
+
+    def handle_velocity_integral_plan_geometry(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_plan_geometry", params)
+
+    def handle_velocity_integral_plan_authority(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_plan_authority", params)
+
+    def handle_velocity_integral_plan_timing(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_plan_timing", params)
+
+    def handle_velocity_integral_plan_travel(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_plan_travel", params)
+
+    def handle_velocity_integral_plan_rung(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_plan_rung", params)
+
+    def handle_velocity_integral_observation_core(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_observation_core", params)
+
+    def handle_velocity_integral_observation_rate(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_observation_rate", params)
+
+    def handle_velocity_integral_observation_quality(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_observation_quality", params)
+
+    def handle_velocity_integral_rung_core(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_rung_core", params)
+
+    def handle_velocity_integral_rung_component(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_rung_component", params)
+
+    def handle_velocity_integral_run_summary(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_run_summary", params)
+
+    def handle_velocity_integral_curve_interval(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_curve_interval", params)
+
+    def handle_velocity_integral_drift(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_drift", params)
+
+    def handle_velocity_integral_stage_b_comparison(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_stage_b_comparison", params)
+
+    def handle_velocity_integral_reproduction_core(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_reproduction_core", params)
+
+    def handle_velocity_integral_reproduction_mask(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_reproduction_mask", params)
+
+    def handle_velocity_integral_reproduction_interval(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_reproduction_interval", params)
+
+    def handle_velocity_integral_reproduction_digest(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_reproduction_digest", params)
+
+    def handle_velocity_integral_terminal_core(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_terminal_core", params)
+
+    def handle_velocity_integral_terminal_identity(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_terminal_identity", params)
+
+    def handle_velocity_integral_terminal_timing(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_terminal_timing", params)
+
     def _format_velocity_sweep_result(self) -> str:
         sweep = self.velocity_sweep
         plan = sweep.plan or {}
@@ -266,6 +401,42 @@ class AutotuneWorkflow:
         )
         if sweep.remediation:
             message += "; remediation: %s" % sweep.remediation
+        return message
+
+    def _format_velocity_integral_result(self) -> str:
+        response = self.velocity_integral
+        plan = response.plan or {}
+        summary = response.summary or {}
+        message = (
+            "velocity integral response %s: P=%d velocity=%dmrev/s "
+            "positive_rungs=%d eligible=0x%08x/0x%08x "
+            "bookend=0x%02x current_terminus=%d cause=%d"
+            % (
+                response.outcome,
+                plan.get("final_p", 0),
+                plan.get("planned_velocity_mrev_s", 0),
+                plan.get("positive_rung_count", 0),
+                summary.get("forward_eligible_mask", 0),
+                summary.get("reverse_eligible_mask", 0),
+                summary.get("bookend_available_mask", 0),
+                summary.get("current_terminus_plus_one", 0),
+                (response.terminal or {}).get("cause", 0),
+            )
+        )
+        if response.reproduction is not None:
+            masks = response.reproduction.get("masks", {})
+            mask_text = []
+            for direction, name in ((0, "forward"), (1, "reverse")):
+                values = masks.get(direction, {})
+                mask_text.append(
+                    "%s reproduced=0x%08x divergent=0x%08x"
+                    % (
+                        name,
+                        values.get("reproduced_mask", 0),
+                        values.get("divergent_mask", 0),
+                    )
+                )
+            message += "; " + "; ".join(mask_text)
         return message
 
     def _format_outer_safety_fault(self) -> str:
@@ -428,6 +599,8 @@ class AutotuneWorkflow:
             self.outer_safety_fault = None
             self.velocity_sweep = VelocitySweepAssembler()
             self.velocity_sweep_error = None
+            self.velocity_integral = VelocityIntegralAssembler()
+            self.velocity_integral_error = None
             self.driver.commissioning.error_code = 0
 
             request_fields = self._request_for_stage_b_dispatch(
@@ -465,24 +638,32 @@ class AutotuneWorkflow:
 
             reactor = self.driver.printer.get_reactor()
             eventtime = reactor.monotonic()
-            timeout = eventtime + VELOCITY_SWEEP_PLAN_TIMEOUT_S
-            plan_timeout_armed = False
-            while not self.done and not self.velocity_sweep.done:
+            timeout = eventtime + COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S
+            workflow_timeout_armed = False
+            while not self.done and not self._workflow_finished():
                 eventtime = reactor.pause(eventtime + 0.1)
                 if self.velocity_sweep_error is not None:
                     raise gcmd.error(
                         "FOCI %s: velocity sweep transport failure: %s"
                         % (self.driver.name, self.velocity_sweep_error)
                     )
-                if self.velocity_sweep.plan_ready and not plan_timeout_armed:
+                if self.velocity_integral_error is not None:
+                    raise gcmd.error(
+                        "FOCI %s: velocity integral transport failure: %s"
+                        % (self.driver.name, self.velocity_integral_error)
+                    )
+                if (
+                    self.velocity_integral.workflow_plan is not None
+                    and not workflow_timeout_armed
+                ):
                     timeout = (
                         eventtime
-                        + self.velocity_sweep.maximum_duration_s
-                        + VELOCITY_SWEEP_COMMS_MARGIN_S
+                        + self.velocity_integral.maximum_duration_s
+                        + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
                     )
-                    plan_timeout_armed = True
+                    workflow_timeout_armed = True
                 if eventtime > timeout:
-                    phase = "run" if plan_timeout_armed else "waiting for plan"
+                    phase = "run" if workflow_timeout_armed else "waiting for plan"
                     raise gcmd.error(
                         "FOCI %s: FOCI_AUTOTUNE timed out %s"
                         % (self.driver.name, phase)
@@ -500,24 +681,45 @@ class AutotuneWorkflow:
                         % (self.driver.name, error_name)
                     )
 
-            if self.velocity_sweep.done:
-                self._retain_stage_b_request_from_terminal(request_fields)
-                gcmd.respond_info(
-                    "FOCI %s: %s"
-                    % (self.driver.name, self._format_velocity_sweep_result())
-                )
-                if self.velocity_sweep.outcome == "fault":
-                    safety_detail = self._format_outer_safety_fault()
-                    detail_suffix = "; %s" % safety_detail if safety_detail else ""
-                    raise gcmd.error(
-                        "FOCI %s: velocity sweep fault (cause=%d)%s"
-                        % (
-                            self.driver.name,
-                            self.velocity_sweep.integrity.get("cause", 0),
-                            detail_suffix,
-                        )
+            if self._workflow_finished():
+                self._retain_request_from_terminal(request_fields)
+                workflow = self.velocity_integral.workflow_plan or {}
+                shape = int(workflow.get("shape", 0))
+                if self.velocity_sweep.done:
+                    gcmd.respond_info(
+                        "FOCI %s: %s"
+                        % (self.driver.name, self._format_velocity_sweep_result())
                     )
-                return
+                    if self.velocity_sweep.outcome == "fault":
+                        safety_detail = self._format_outer_safety_fault()
+                        detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                        raise gcmd.error(
+                            "FOCI %s: velocity sweep fault (cause=%d)%s"
+                            % (
+                                self.driver.name,
+                                self.velocity_sweep.integrity.get("cause", 0),
+                                detail_suffix,
+                            )
+                        )
+                    if shape == 0 or self.velocity_sweep.outcome != "complete":
+                        return
+                if self.velocity_integral.done:
+                    gcmd.respond_info(
+                        "FOCI %s: %s"
+                        % (self.driver.name, self._format_velocity_integral_result())
+                    )
+                    if self.velocity_integral.outcome == "fault":
+                        safety_detail = self._format_outer_safety_fault()
+                        detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                        raise gcmd.error(
+                            "FOCI %s: velocity integral response fault (cause=%d)%s"
+                            % (
+                                self.driver.name,
+                                self.velocity_integral.terminal.get("cause", 0),
+                                detail_suffix,
+                            )
+                        )
+                    return
 
             result = self.result
             status = result.get("status", 255)
