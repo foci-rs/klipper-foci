@@ -42,6 +42,7 @@ class VelocitySweepAssembler:
         self.plan: dict | None = None
         self.observations: dict[tuple[int, int], dict] = {}
         self.rungs: dict[int, dict] = {}
+        self.recoveries: dict[int, dict] = {}
         self.structured_boundaries: list[dict] = []
         self.directional_regions: list[dict] = []
         self.joint_regions: list[dict] = []
@@ -66,10 +67,12 @@ class VelocitySweepAssembler:
         self._canonical_events: list[bytes] = []
         self._unframed_kind: str | None = None
         self._unframed_parts: list[dict] = []
+        self._recovery_parts: list[dict] = []
+        self._last_evidence: tuple[str, int] | None = None
 
     @property
     def plan_ready(self) -> bool:
-        """Whether all three pre-motion plan fragments arrived."""
+        """Whether every pre-motion plan fragment arrived."""
         return self.plan is not None
 
     @property
@@ -94,13 +97,68 @@ class VelocitySweepAssembler:
         return ""
 
     def handle_plan_limits(self, params: dict) -> None:
-        self._accept_group_fragment("plan", 3, 0, params)
+        self._accept_group_fragment("plan", 4, 0, params)
 
     def handle_plan_geometry(self, params: dict) -> None:
-        self._accept_group_fragment("plan", 3, 1, params)
+        self._accept_group_fragment("plan", 4, 1, params)
 
     def handle_plan_timing(self, params: dict) -> None:
-        self._accept_group_fragment("plan", 3, 2, params)
+        self._accept_group_fragment("plan", 4, 2, params)
+
+    def handle_plan_recovery(self, params: dict) -> None:
+        recovery = dict(params)
+        recovery["fragment"] = 3
+        self._accept_group_fragment("plan", 4, 3, recovery)
+
+    def handle_recovery_core(self, params: dict) -> None:
+        if self._recovery_parts:
+            raise VelocitySweepProtocolError("duplicate recovery core")
+        if int(params.get("stage", -1)) != 0:
+            raise VelocitySweepProtocolError("Stage-B recovery named the wrong stage")
+        self._validate_run(params)
+        if int(params["evidence_sequence"]) != self._next_evidence_sequence:
+            raise VelocitySweepProtocolError("recovery evidence sequence gap")
+        rung_index = int(params.get("rung_index", -1))
+        if self._last_evidence != ("rung", rung_index):
+            raise VelocitySweepProtocolError(
+                "recovery did not immediately follow its rung"
+            )
+        if rung_index in self.recoveries:
+            raise VelocitySweepProtocolError("duplicate rung recovery")
+        self._recovery_parts.append(dict(params))
+
+    def handle_recovery_position(self, params: dict) -> None:
+        self._accept_recovery_part(params, 1)
+
+    def handle_recovery_timing(self, params: dict) -> None:
+        self._accept_recovery_part(params, 2)
+
+    def handle_recovery_limits(self, params: dict) -> None:
+        self._accept_recovery_part(params, 3)
+        core, position, timing, limits = self._recovery_parts
+        recovery = self._merge([core, position, timing, limits])
+        recovery["lower_rate_q"] = int(limits["lower_rate_low"]) | (
+            int(limits["lower_rate_high"]) << 32
+        )
+        rung_index = int(core["rung_index"])
+        self.recoveries[rung_index] = recovery
+        encoded = self._encode_recovery(recovery)
+        self._canonical_events.append(encoded)
+        for byte in encoded:
+            self._digest ^= byte
+            self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
+        self._next_evidence_sequence += 1
+        self._last_evidence = ("recovery", rung_index)
+        self._recovery_parts = []
+
+    def _accept_recovery_part(self, params: dict, expected: int) -> None:
+        if len(self._recovery_parts) != expected:
+            raise VelocitySweepProtocolError("missing or reordered recovery fragment")
+        core = self._recovery_parts[0]
+        self._validate_run(params)
+        if int(params["evidence_sequence"]) != int(core["evidence_sequence"]):
+            raise VelocitySweepProtocolError("recovery fragment identity changed")
+        self._recovery_parts.append(dict(params))
 
     def handle_observation_core(self, params: dict) -> None:
         self._accept_group_fragment("observation", 4, 0, params)
@@ -220,7 +278,7 @@ class VelocitySweepAssembler:
         self._accept_unframed("stage b reproduction", 4, params)
 
     def handle_stage_b_reproduction_v3_core(self, params: dict) -> None:
-        if int(params.get("schema_revision", -1)) != 3:
+        if int(params.get("schema_revision", -1)) != 4:
             raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
         self._accept_unframed("stage b reproduction v3", 0, params)
 
@@ -603,6 +661,7 @@ class VelocitySweepAssembler:
         self.observations[key] = observation
         self._hash_observation(observation)
         self._canonical_events.append(self._encode_observation(observation))
+        self._last_evidence = ("observation", key[0])
 
     def _finish_rung_consensus(self, parts: list[dict]) -> None:
         core = dict(parts[0])
@@ -624,6 +683,7 @@ class VelocitySweepAssembler:
         self.rungs[rung_index] = rung
         self._hash_rung(rung)
         self._canonical_events.append(self._encode_rung(rung))
+        self._last_evidence = ("rung", rung_index)
 
     def _finish_directional_region(self, parts: list[dict]) -> None:
         core, model, rates, boundary = parts
@@ -894,12 +954,41 @@ class VelocitySweepAssembler:
                 ("I", plan["zero_settle_us"]),
                 ("I", plan["nominal_workflow_ms"]),
                 ("I", plan["maximum_workflow_ms"]),
+                ("I", plan["origin_band_counts"]),
+                ("I", plan["nominal_slot_us"]),
+                ("I", plan["maximum_slot_us"]),
+                ("B", plan["slot_count"]),
                 ("I", plan["max_stroke_travel_mrev"]),
                 ("I", plan["settle_travel_reserve_mrev"]),
                 ("I", plan["negative_position_headroom_mrev"]),
                 ("I", plan["positive_position_headroom_mrev"]),
                 ("H", plan["hard_torque_limit"]),
                 ("H", plan["usable_torque_limit"]),
+            )
+        )
+
+    def _encode_recovery(self, value: dict) -> bytes:
+        return self._record(
+            (
+                ("B", 9),
+                ("I", value["run_sequence"]),
+                ("H", value["evidence_sequence"]),
+                ("B", value["stage"]),
+                ("B", value["rung_index"]),
+                ("H", value["p_raw"]),
+                ("I", value["planned_velocity_mrev_s"]),
+                ("i", value["start_offset_counts"]),
+                ("i", value["closest_offset_counts"]),
+                ("i", value["final_offset_counts"]),
+                ("I", value["origin_band_counts"]),
+                ("I", value["lower_rate_q"] & 0xFFFF_FFFF),
+                ("I", value["lower_rate_q"] >> 32),
+                ("I", value["moving_duration_us"]),
+                ("I", value["settle_duration_us"]),
+                ("I", value["total_duration_us"]),
+                ("H", value["peak_torque_target_abs"]),
+                ("B", value["binding_source"]),
+                ("B", value["outcome"]),
             )
         )
 
@@ -1240,6 +1329,7 @@ class VelocitySweepAssembler:
         return digest
 
     def _finish_stage_b_terminal(self, parts: list[dict]) -> None:
+        self._validate_recovery_completeness()
         core, identity, forward, reverse = parts
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
             raise VelocitySweepProtocolError(
@@ -1309,7 +1399,7 @@ class VelocitySweepAssembler:
         if outcome_code == 1:
             if (
                 self.reproduction is None
-                or int(self.reproduction.get("schema_revision", 0)) != 3
+                or int(self.reproduction.get("schema_revision", 0)) != 4
             ):
                 raise VelocitySweepProtocolError(
                     "stage b Complete terminal arrived without schema-3 reproduction"
@@ -1403,6 +1493,7 @@ class VelocitySweepAssembler:
         self.done = True
 
     def _finish_terminal(self, parts: list[dict]) -> None:
+        self._validate_recovery_completeness()
         directions = [dict(parts[0]), dict(parts[1])]
         integrity = dict(parts[2])
         expected_observations = int(integrity["expected_observations"])
@@ -1457,6 +1548,21 @@ class VelocitySweepAssembler:
         if self.outcome != "inconclusive":
             self.done = True
 
+    def _validate_recovery_completeness(self) -> None:
+        if self.plan is None or "recovery_slot_count" not in self.plan:
+            return
+        observations_per_rung = 2 * int(self.plan["observations_per_direction"])
+        required = {
+            rung_index
+            for rung_index in self.rungs
+            if sum(key[0] == rung_index for key in self.observations)
+            == observations_per_rung
+        }
+        if set(self.recoveries) != required:
+            raise VelocitySweepProtocolError(
+                "recovery records do not match fully acquired rungs"
+            )
+
     def _hash(self, fmt: str, value: int) -> None:
         for byte in struct.pack("<" + fmt, int(value)):
             self._digest ^= byte
@@ -1482,6 +1588,10 @@ class VelocitySweepAssembler:
             ("I", plan["zero_settle_us"]),
             ("I", plan["nominal_workflow_ms"]),
             ("I", plan["maximum_workflow_ms"]),
+            ("I", plan["origin_band_counts"]),
+            ("I", plan["nominal_slot_us"]),
+            ("I", plan["maximum_slot_us"]),
+            ("B", plan["slot_count"]),
             ("I", plan["max_stroke_travel_mrev"]),
             ("I", plan["settle_travel_reserve_mrev"]),
             ("I", plan["negative_position_headroom_mrev"]),

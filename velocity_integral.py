@@ -52,6 +52,7 @@ class VelocityIntegralAssembler:
         self.plan: dict | None = None
         self.observations: dict[tuple[int, int], dict] = {}
         self.rungs: dict[int, dict] = {}
+        self.recoveries: dict[int, dict] = {}
         self.curves = [self._new_curve(), self._new_curve()]
         self.drift: list[dict | None] = [None, None]
         self.stage_b_comparison: list[dict | None] = [None, None]
@@ -65,6 +66,8 @@ class VelocityIntegralAssembler:
         self._observation_parts: list[dict] = []
         self._rung_parts: list[dict] = []
         self._terminal_parts: list[dict] = []
+        self._recovery_parts: list[dict] = []
+        self._last_evidence: tuple[str, int] | None = None
         self._summary: dict | None = None
         self._run_sequence: int | None = None
         self._next_evidence_sequence = 1
@@ -103,6 +106,7 @@ class VelocityIntegralAssembler:
             "workflow_plan": self.workflow_plan,
             "plan": self.plan,
             "absolute_curves": self.curves,
+            "recoveries": self.recoveries,
             "drift": self.drift,
             "stage_b_comparison": self.stage_b_comparison,
             "reproduction": self.reproduction,
@@ -148,6 +152,8 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_stage_c_workflow(params)
+        if int(params.get("schema_revision", -1)) != 2:
+            raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
 
@@ -190,12 +196,67 @@ class VelocityIntegralAssembler:
         self._require_plan_identity(params)
         self._plan_parts.append(dict(params))
 
+    def handle_plan_recovery(self, params: dict) -> None:
+        self._require_plan_step("plan travel", 4)
+        self._require_plan_identity(params)
+        self._plan_parts.append(dict(params))
+
+    def handle_recovery_core(self, params: dict) -> None:
+        if self._recovery_parts:
+            raise VelocityIntegralProtocolError("duplicate recovery core")
+        if int(params.get("stage", -1)) != 1:
+            raise VelocityIntegralProtocolError(
+                "Stage-C recovery named the wrong stage"
+            )
+        self._require_event_identity(params)
+        rung_index = int(params.get("rung_index", -1))
+        if self._last_evidence != ("rung", rung_index):
+            raise VelocityIntegralProtocolError(
+                "recovery did not immediately follow its rung"
+            )
+        if rung_index in self.recoveries:
+            raise VelocityIntegralProtocolError("duplicate rung recovery")
+        self._recovery_parts.append(dict(params))
+
+    def handle_recovery_position(self, params: dict) -> None:
+        self._accept_recovery_part(params, 1)
+
+    def handle_recovery_timing(self, params: dict) -> None:
+        self._accept_recovery_part(params, 2)
+
+    def handle_recovery_limits(self, params: dict) -> None:
+        self._accept_recovery_part(params, 3)
+        core, position, timing, limits = self._recovery_parts
+        recovery = self._merge((core, position, timing, limits))
+        recovery["lower_rate_q"] = _u64(
+            limits["lower_rate_low"], limits["lower_rate_high"]
+        )
+        rung_index = int(core["rung_index"])
+        self.recoveries[rung_index] = recovery
+        self._evidence_digest = _fnv1a(
+            self._encode_recovery(recovery), self._evidence_digest
+        )
+        self._next_evidence_sequence += 1
+        self._last_evidence = ("recovery", rung_index)
+        self._recovery_parts = []
+
+    def _accept_recovery_part(self, params: dict, expected: int) -> None:
+        if len(self._recovery_parts) != expected:
+            raise VelocityIntegralProtocolError(
+                "missing or reordered recovery fragment"
+            )
+        core = self._recovery_parts[0]
+        self._require_event_identity(params)
+        if int(params["evidence_sequence"]) != int(core["evidence_sequence"]):
+            raise VelocityIntegralProtocolError("recovery fragment identity changed")
+        self._recovery_parts.append(dict(params))
+
     def handle_plan_rung(self, params: dict) -> None:
         if self.plan is not None:
             raise VelocityIntegralProtocolError(
                 "duplicate plan rung after complete plan"
             )
-        self._require_plan_step("plan travel", 4)
+        self._require_plan_step("plan recovery", 5)
         self._require_plan_identity(params)
         rung_index = int(params.get("rung_index", -1))
         if rung_index != len(self._plan_rungs):
@@ -420,6 +481,15 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("terminal rung plan changed")
         if int(self.terminal["emitted_rungs"]) != len(self.rungs):
             raise VelocityIntegralProtocolError("terminal rung count mismatch")
+        required_recoveries = {
+            rung_index
+            for rung_index in self.rungs
+            if sum(key[0] == rung_index for key in self.observations) == 8
+        }
+        if set(self.recoveries) != required_recoveries:
+            raise VelocityIntegralProtocolError(
+                "recovery records do not match fully acquired rungs"
+            )
         for direction, curve in enumerate(self.curves):
             if curve["opening"] is None or self.drift[direction] is None:
                 raise VelocityIntegralProtocolError("missing anchor or drift evidence")
@@ -452,8 +522,8 @@ class VelocityIntegralAssembler:
             )
 
     def _finish_plan(self) -> None:
-        core, geometry, timing, travel = self._plan_parts
-        plan = self._merge((core, geometry, timing, travel))
+        core, geometry, timing, travel, recovery = self._plan_parts
+        plan = self._merge((core, geometry, timing, travel, recovery))
         plan["plan_digest"] = self._reported_plan_digest(core)
         plan["stage_b_plan_digest"] = _u64(
             core["stage_b_digest_low"], core["stage_b_digest_high"]
@@ -479,6 +549,7 @@ class VelocityIntegralAssembler:
             self._encode_observation(observation), self._evidence_digest
         )
         self._next_evidence_sequence += 1
+        self._last_evidence = ("observation", key[0])
         self._observation_parts = []
 
     def _finish_rung_if_complete(self) -> None:
@@ -511,6 +582,7 @@ class VelocityIntegralAssembler:
         self.rungs[rung_index] = rung
         self._evidence_digest = _fnv1a(self._encode_rung(rung), self._evidence_digest)
         self._next_evidence_sequence += 1
+        self._last_evidence = ("rung", rung_index)
         self._rung_parts = []
 
     def _rung_direction_complete(self, direction: int) -> bool:
@@ -680,8 +752,38 @@ class VelocityIntegralAssembler:
                 ("I", plan["zero_settle_us"]),
                 ("I", plan["analysis_budget_us"]),
                 ("I", plan["maximum_workflow_ms"]),
+                ("I", plan["origin_band_counts"]),
+                ("I", plan["nominal_slot_us"]),
+                ("I", plan["maximum_slot_us"]),
+                ("B", plan["slot_count"]),
                 ("H", plan["hard_torque_limit"]),
                 ("H", plan["usable_torque_limit"]),
+            )
+        )
+
+    @staticmethod
+    def _encode_recovery(value: dict) -> bytes:
+        return _pack(
+            (
+                ("B", 9),
+                ("I", value["run_sequence"]),
+                ("H", value["evidence_sequence"]),
+                ("B", value["stage"]),
+                ("B", value["rung_index"]),
+                ("H", value["p_raw"]),
+                ("I", value["planned_velocity_mrev_s"]),
+                ("i", value["start_offset_counts"]),
+                ("i", value["closest_offset_counts"]),
+                ("i", value["final_offset_counts"]),
+                ("I", value["origin_band_counts"]),
+                ("I", value["lower_rate_q"] & 0xFFFF_FFFF),
+                ("I", value["lower_rate_q"] >> 32),
+                ("I", value["moving_duration_us"]),
+                ("I", value["settle_duration_us"]),
+                ("I", value["total_duration_us"]),
+                ("H", value["peak_torque_target_abs"]),
+                ("B", value["binding_source"]),
+                ("B", value["outcome"]),
             )
         )
 

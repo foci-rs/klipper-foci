@@ -316,7 +316,7 @@ class TestAutotuneGates(unittest.TestCase):
                 "stage_b_digest_low": 2,
                 "stage_b_digest_high": 0,
                 "build_revision": 1,
-                "schema_revision": 1,
+                "schema_revision": 2,
                 "channel": 0,
                 "final_p": 1448,
             }

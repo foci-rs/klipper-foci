@@ -40,7 +40,7 @@ def feed_plan(assembler):
             "stage_b_digest_low": STAGE_B_DIGEST & 0xFFFF_FFFF,
             "stage_b_digest_high": STAGE_B_DIGEST >> 32,
             "build_revision": 7,
-            "schema_revision": 1,
+            "schema_revision": 2,
             "channel": 0,
             "final_p": 1448,
         }
@@ -94,6 +94,15 @@ def feed_plan(assembler):
             "settle_travel_reserve_mrev": 100,
             "negative_position_headroom_mrev": 20_000,
             "positive_position_headroom_mrev": 20_000,
+        }
+    )
+    assembler.handle_plan_recovery(
+        {
+            **common,
+            "origin_band_counts": 1000,
+            "nominal_slot_us": 1_816_958,
+            "maximum_slot_us": 3_000_000,
+            "slot_count": len(POSITIVE_I) + 2,
         }
     )
     for rung_index, i_raw in enumerate(POSITIVE_I):
@@ -196,6 +205,50 @@ def feed_rung(assembler, sequence, rung_index, i_raw, kind):
         )
 
 
+def feed_recovery(assembler, sequence, rung_index):
+    common = {
+        "oid": 0,
+        "run_sequence": RUN_SEQUENCE,
+        "evidence_sequence": sequence,
+    }
+    assembler.handle_recovery_core(
+        {
+            **common,
+            "stage": 1,
+            "rung_index": rung_index,
+            "p_raw": 1448,
+            "binding_source": 0,
+            "outcome": 0,
+        }
+    )
+    assembler.handle_recovery_position(
+        {
+            **common,
+            "start_offset_counts": 8458,
+            "closest_offset_counts": 999,
+            "final_offset_counts": 500,
+            "origin_band_counts": 1000,
+        }
+    )
+    assembler.handle_recovery_timing(
+        {
+            **common,
+            "moving_duration_us": 600000,
+            "settle_duration_us": 500000,
+            "total_duration_us": 1100000,
+        }
+    )
+    assembler.handle_recovery_limits(
+        {
+            **common,
+            "planned_velocity_mrev_s": 4394,
+            "lower_rate_low": 0x89ABCDEF,
+            "lower_rate_high": 0x01234567,
+            "peak_torque_target_abs": 2533,
+        }
+    )
+
+
 def feed_full_evidence(assembler):
     sequence = 1
     rung_values = (0, *POSITIVE_I, 0)
@@ -210,6 +263,8 @@ def feed_full_evidence(assembler):
             i_raw,
             0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
         )
+        sequence += 1
+        feed_recovery(assembler, sequence, rung_index)
         sequence += 1
     return sequence
 
@@ -336,6 +391,7 @@ def feed_terminal(assembler, sequence, *, reproduction=True):
             "fragment": 0,
             "outcome": 1 if reproduction else 0,
             "cause": 0,
+            "recovery_unavailable": 0,
             "expected_observations": 40,
             "emitted_observations": 40,
             "expected_rungs": 5,
@@ -375,6 +431,14 @@ def test_workflow_shapes_preserve_exact_digest_and_duration(shape):
     assert assembler.maximum_duration_s == (300_000 + shape) / 1000
 
 
+def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
+    assembler = VelocityIntegralAssembler()
+
+    feed_workflow(assembler, shape=1, maximum_ms=389_520)
+
+    assert assembler.maximum_duration_s == 389.52
+
+
 def test_plan_marker_digest_matches_firmware_fixture():
     plan = {
         "run_sequence": 7,
@@ -390,13 +454,17 @@ def test_plan_marker_digest_matches_firmware_fixture():
         "zero_settle_us": 500_000,
         "analysis_budget_us": 236_000,
         "maximum_workflow_ms": 69_888,
+        "origin_band_counts": 1000,
+        "nominal_slot_us": 1_816_958,
+        "maximum_slot_us": 3_000_000,
+        "slot_count": 7,
         "hard_torque_limit": 2816,
         "usable_torque_limit": 2534,
     }
 
     digest = _fnv1a(VelocityIntegralAssembler._encode_plan_marker(plan))
 
-    assert digest == 0x271E_1A4F_8F00_23C7
+    assert digest == 0xABBE_8F32_FAA4_A140
 
 
 def test_assembles_exact_curves_sparse_masks_and_divergence_records():
@@ -418,6 +486,9 @@ def test_assembles_exact_curves_sparse_masks_and_divergence_records():
     assert assembler.reproduction["current_digest"] == 0xFEDC_BA98_7654_3210
     assert assembler.terminal["run_started_us"] == 0x0000_0001_FFFF_FFFE
     assert assembler.terminal["run_completed_us"] == 0x0000_0002_0000_0004
+    assert len(assembler.recoveries) == 5
+    assert assembler.recoveries[0]["lower_rate_q"] == 0x0123_4567_89AB_CDEF
+    assert assembler.terminal["recovery_unavailable"] == 0
     assert "absolute_curves" in assembler.report
     assert "reproduction" in assembler.report
 

@@ -46,6 +46,13 @@ def plan_fragments(rung_count=5, observations_per_direction=2):
             "nominal_workflow_ms": 9120,
             "maximum_workflow_ms": 10000,
         },
+        {
+            **common,
+            "origin_band_counts": 1000,
+            "nominal_slot_us": 1_816_958,
+            "maximum_slot_us": 3_000_000,
+            "slot_count": rung_count,
+        },
     )
 
 
@@ -59,7 +66,7 @@ def _fnv1a(values):
 
 
 def plan_digest(rung_count=5):
-    limits, geometry, timing = plan_fragments(rung_count)
+    limits, geometry, timing, recovery = plan_fragments(rung_count)
     return _fnv1a(
         [
             ("B", 1),
@@ -80,6 +87,10 @@ def plan_digest(rung_count=5):
             ("I", timing["zero_settle_us"]),
             ("I", timing["nominal_workflow_ms"]),
             ("I", timing["maximum_workflow_ms"]),
+            ("I", recovery["origin_band_counts"]),
+            ("I", recovery["nominal_slot_us"]),
+            ("I", recovery["maximum_slot_us"]),
+            ("B", recovery["slot_count"]),
             ("I", geometry["max_stroke_travel_mrev"]),
             ("I", geometry["settle_travel_reserve_mrev"]),
             ("I", geometry["negative_position_headroom_mrev"]),
@@ -96,7 +107,7 @@ def test_stage_b_plan_canonical_record_matches_firmware_schema():
 
     encoded = assembler._encode_plan(plan_digest())
 
-    assert len(encoded) == 78
+    assert len(encoded) == 91
     assert encoded == b"".join(
         struct.pack("<" + fmt, value)
         for fmt, value in (
@@ -121,6 +132,10 @@ def test_stage_b_plan_canonical_record_matches_firmware_schema():
             ("I", 9120),
             ("I", 10000),
             ("I", 1000),
+            ("I", 1_816_958),
+            ("I", 3_000_000),
+            ("B", 5),
+            ("I", 1000),
             ("I", 250),
             ("I", 1250),
             ("I", 1250),
@@ -131,10 +146,13 @@ def test_stage_b_plan_canonical_record_matches_firmware_schema():
 
 
 def feed_plan(assembler, rung_count=5, observations_per_direction=2):
-    limits, geometry, timing = plan_fragments(rung_count, observations_per_direction)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count, observations_per_direction
+    )
     assembler.handle_plan_limits(limits)
     assembler.handle_plan_geometry(geometry)
     assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
 
 
 def stage_b_region_fragments(*, sequence=1, direction=0, member_mask=0b11100):
@@ -244,7 +262,7 @@ def stage_b_reproduction_v3_fragments(
                 "current_provisional_p": 1024,
                 "final_p": final_p,
                 "reduced_margin": 0,
-                "schema_revision": 3,
+                "schema_revision": 4,
             },
         )
     ]
@@ -344,6 +362,7 @@ def feed_stage_b_terminal(
     intervals=((104, 116), (104, 116)),
     digest=0,
     plan_digest_value=0,
+    recovery_unavailable=0,
 ):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     assembler.handle_stage_b_terminal_core(
@@ -352,6 +371,7 @@ def feed_stage_b_terminal(
             "fragment": 0,
             "outcome": outcome,
             "cause": cause,
+            "recovery_unavailable": recovery_unavailable,
             "model_direction_mask": 3 if member_mask else 0,
             "coverage_mask": 3 if member_mask else 0,
             "forward_region_count": 1 if member_mask else 0,
@@ -537,7 +557,7 @@ def test_plan_is_timeout_authority_before_terminal():
 
 def test_plan_ignores_klipper_reply_name_metadata():
     assembler = VelocitySweepAssembler()
-    limits, geometry, timing = plan_fragments()
+    limits, geometry, timing, recovery = plan_fragments()
     limits["#name"] = "foci_velocity_sweep_plan_limits"
     geometry["#name"] = "foci_velocity_sweep_plan_geometry"
     timing["#name"] = "foci_velocity_sweep_plan_timing"
@@ -548,6 +568,8 @@ def test_plan_ignores_klipper_reply_name_metadata():
     assembler.handle_plan_limits(limits)
     assembler.handle_plan_geometry(geometry)
     assembler.handle_plan_timing(timing)
+    recovery["#name"] = "foci_velocity_sweep_plan_recovery"
+    assembler.handle_plan_recovery(recovery)
 
     assert assembler.plan_ready
     assert "#name" not in assembler.plan
@@ -717,7 +739,7 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
 
     assert assembler.outcome == "complete"
     assert assembler.reproduction["current_digest"] == pre_reproduction_digest
-    assert assembler.reproduction["schema_revision"] == 3
+    assert assembler.reproduction["schema_revision"] == 4
     assert assembler.reproduction["memberships"][0] == {
         "previous": 0x0038_0000,
         "current": 0x003C_0000,
@@ -811,7 +833,7 @@ def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
-    unknown_schema = dict(fragments[0][1], schema_revision=4)
+    unknown_schema = dict(fragments[0][1], schema_revision=3)
     with pytest.raises(VelocitySweepProtocolError, match="unsupported"):
         getattr(assembler, fragments[0][0])(unknown_schema)
 
@@ -835,7 +857,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
     expected = tuple(
         bytes.fromhex(value)
         for value in (
-            "0a0700000001000100a8050004a805000300",
+            "0a0700000001000100a8050004a805000400",
             "0b070000000100000000380000003c00000038000000000000000400ff00",
             "0c0700000001000100003800000038000000380000000000000000000000",
             "0d0700000001000200003800000038000000380000000000000000000000",
@@ -849,7 +871,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
         )
     )
     assert tuple(assembler._canonical_events[-11:]) == expected
-    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x91AD_2379_2AA5_C738
+    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x64BF_8C4A_1E7D_A51E
 
 
 def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
@@ -867,7 +889,7 @@ def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
 
 
 def test_reordered_or_duplicate_fragment_is_rejected():
-    limits, geometry, _timing = plan_fragments()
+    limits, geometry, _timing, _recovery = plan_fragments()
     assembler = VelocitySweepAssembler()
 
     with pytest.raises(VelocitySweepProtocolError, match="fragment"):
@@ -974,7 +996,7 @@ def test_compressed_observation_digest_matches_firmware_fixture():
         }
     )
 
-    assert assembler._digest == 0xA4D1_29E7_0765_6385
+    assert assembler._digest == 0x408A_DD56_F1C6_7350
 
 
 def consensus_core(*, sequence, forward_class=0, reverse_class=0):
@@ -1071,6 +1093,82 @@ def test_eight_observations_preserve_firmware_consensus_group():
     assert assembler.rungs[0]["forward_included_mask"] == 0b0111
     assert assembler.rungs[0]["reverse_operable_count"] == 3
     assert assembler.rungs[0]["components"][0] == [(145, 155)]
+
+
+def test_stage_b_recovery_is_exact_and_must_immediately_follow_its_rung():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    sequence = 9
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=145, high=155
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 10}
+    assembler.handle_recovery_core(
+        {
+            **common,
+            "stage": 0,
+            "rung_index": 0,
+            "p_raw": 512,
+            "binding_source": 0,
+            "outcome": 0,
+        }
+    )
+    assembler.handle_recovery_position(
+        {
+            **common,
+            "start_offset_counts": 8458,
+            "closest_offset_counts": 999,
+            "final_offset_counts": -500,
+            "origin_band_counts": 1000,
+        }
+    )
+    assembler.handle_recovery_timing(
+        {
+            **common,
+            "moving_duration_us": 600000,
+            "settle_duration_us": 500000,
+            "total_duration_us": 1100000,
+        }
+    )
+    assembler.handle_recovery_limits(
+        {
+            **common,
+            "planned_velocity_mrev_s": 4394,
+            "lower_rate_low": 0x89ABCDEF,
+            "lower_rate_high": 0x01234567,
+            "peak_torque_target_abs": 2533,
+        }
+    )
+
+    assert assembler.recoveries[0]["final_offset_counts"] == -500
+    assert assembler.recoveries[0]["lower_rate_q"] == 0x0123_4567_89AB_CDEF
+    assert len(assembler._canonical_events[-1]) == 55
+
+    reordered = VelocitySweepAssembler()
+    feed_plan(reordered, rung_count=1, observations_per_direction=4)
+    reordered_core = dict(common, evidence_sequence=1)
+    with pytest.raises(VelocitySweepProtocolError, match="immediately follow"):
+        reordered.handle_recovery_core(
+            {
+                **reordered_core,
+                "stage": 0,
+                "rung_index": 0,
+                "p_raw": 512,
+                "binding_source": 0,
+                "outcome": 0,
+            }
+        )
 
 
 @pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4), (0, 4)])
