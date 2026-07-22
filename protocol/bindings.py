@@ -72,6 +72,26 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_velocity_sweep_plan_timing",
         ),
         (
+            driver.autotune.handle_velocity_sweep_plan_recovery,
+            "foci_velocity_sweep_plan_recovery",
+        ),
+        (
+            driver.autotune.handle_rung_origin_recovery_core,
+            "foci_rung_origin_recovery_core",
+        ),
+        (
+            driver.autotune.handle_rung_origin_recovery_position,
+            "foci_rung_origin_recovery_position",
+        ),
+        (
+            driver.autotune.handle_rung_origin_recovery_timing,
+            "foci_rung_origin_recovery_timing",
+        ),
+        (
+            driver.autotune.handle_rung_origin_recovery_limits,
+            "foci_rung_origin_recovery_limits",
+        ),
+        (
             driver.autotune.handle_velocity_observation_core,
             "foci_velocity_observation_core",
         ),
@@ -196,6 +216,10 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         (
             driver.autotune.handle_velocity_integral_plan_travel,
             "foci_velocity_integral_plan_travel",
+        ),
+        (
+            driver.autotune.handle_velocity_integral_plan_recovery,
+            "foci_velocity_integral_plan_recovery",
         ),
         (
             driver.autotune.handle_velocity_integral_plan_rung,
