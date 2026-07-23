@@ -262,7 +262,7 @@ def stage_b_reproduction_v3_fragments(
                 "current_provisional_p": 1024,
                 "final_p": final_p,
                 "reduced_margin": 0,
-                "schema_revision": 5,
+                "schema_revision": 6,
             },
         )
     ]
@@ -739,7 +739,7 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
 
     assert assembler.outcome == "complete"
     assert assembler.reproduction["current_digest"] == pre_reproduction_digest
-    assert assembler.reproduction["schema_revision"] == 5
+    assert assembler.reproduction["schema_revision"] == 6
     assert assembler.reproduction["memberships"][0] == {
         "previous": 0x0038_0000,
         "current": 0x003C_0000,
@@ -845,19 +845,19 @@ def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
         feed_stage_b_terminal(assembler, sequence=2)
 
 
-def test_schema_five_is_required():
+def test_schema_six_is_required():
     fragments = stage_b_reproduction_v3_fragments(sequence=1)
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
-    schema_five = dict(fragments[0][1], schema_revision=5)
-    assembler.handle_stage_b_reproduction_v3_core(schema_five)
+    schema_six = dict(fragments[0][1], schema_revision=6)
+    assembler.handle_stage_b_reproduction_v3_core(schema_six)
 
     rejected = VelocitySweepAssembler()
     feed_plan(rejected)
-    schema_four = dict(fragments[0][1], schema_revision=4)
+    schema_five = dict(fragments[0][1], schema_revision=5)
     with pytest.raises(VelocitySweepProtocolError, match="unsupported"):
-        rejected.handle_stage_b_reproduction_v3_core(schema_four)
+        rejected.handle_stage_b_reproduction_v3_core(schema_five)
 
 
 def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
@@ -872,7 +872,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
     expected = tuple(
         bytes.fromhex(value)
         for value in (
-            "0a0700000001000100a8050004a805000500",
+            "0a0700000001000100a8050004a805000600",
             "0b070000000100000000380000003c00000038000000000000000400ff00",
             "0c0700000001000100003800000038000000380000000000000000000000",
             "0d0700000001000200003800000038000000380000000000000000000000",
@@ -886,7 +886,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
         )
     )
     assert tuple(assembler._canonical_events[-11:]) == expected
-    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x6663_5CC2_7FB6_7135
+    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x778A_ED0C_E1E0_10A0
 
 
 def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
@@ -1183,6 +1183,54 @@ def test_stage_b_recovery_is_exact_and_must_immediately_follow_its_rung():
                 "binding_source": 0,
                 "outcome": 0,
             }
+        )
+
+
+def recovery_cardinality_assembler(recovered_rungs):
+    assembler = VelocitySweepAssembler()
+    assembler.plan = {
+        "observations_per_direction": 4,
+        "recovery_slot_count": 2,
+    }
+    assembler.rungs = {0: {}, 1: {}}
+    assembler.observations = {
+        (rung_index, slot): {} for rung_index in range(2) for slot in range(8)
+    }
+    assembler.recoveries = {rung_index: {} for rung_index in recovered_rungs}
+    assembler._last_evidence = ("rung", 1)
+    return assembler
+
+
+def test_schema_six_current_headroom_allows_only_missing_final_recovery():
+    assembler = recovery_cardinality_assembler({0})
+
+    assembler._validate_recovery_completeness({"cause": 4, "recovery_unavailable": 1})
+
+
+def test_schema_six_ordinary_end_requires_every_complete_rung_recovery():
+    assembler = recovery_cardinality_assembler({0})
+
+    with pytest.raises(VelocitySweepProtocolError, match="fully acquired"):
+        assembler._validate_recovery_completeness(
+            {"cause": 0, "recovery_unavailable": 0}
+        )
+
+
+def test_schema_six_current_headroom_rejects_missing_nonterminal_recovery():
+    assembler = recovery_cardinality_assembler({1})
+
+    with pytest.raises(VelocitySweepProtocolError, match="fully acquired"):
+        assembler._validate_recovery_completeness(
+            {"cause": 4, "recovery_unavailable": 1}
+        )
+
+
+def test_schema_six_missing_final_recovery_requires_terminal_annotation():
+    assembler = recovery_cardinality_assembler({0})
+
+    with pytest.raises(VelocitySweepProtocolError, match="fully acquired"):
+        assembler._validate_recovery_completeness(
+            {"cause": 4, "recovery_unavailable": 0}
         )
 
 

@@ -7,6 +7,7 @@ import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
+STAGE_B_EVIDENCE_SCHEMA_REVISION = 6
 
 OUTCOME_NAMES = {
     0: "complete_candidate",
@@ -278,7 +279,7 @@ class VelocitySweepAssembler:
         self._accept_unframed("stage b reproduction", 4, params)
 
     def handle_stage_b_reproduction_v3_core(self, params: dict) -> None:
-        if int(params.get("schema_revision", -1)) != 5:
+        if int(params.get("schema_revision", -1)) != STAGE_B_EVIDENCE_SCHEMA_REVISION:
             raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
         self._accept_unframed("stage b reproduction v3", 0, params)
 
@@ -1329,8 +1330,8 @@ class VelocitySweepAssembler:
         return digest
 
     def _finish_stage_b_terminal(self, parts: list[dict]) -> None:
-        self._validate_recovery_completeness()
         core, identity, forward, reverse = parts
+        self._validate_recovery_completeness(core)
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
             raise VelocitySweepProtocolError(
                 "stage b terminal direction order mismatch"
@@ -1399,10 +1400,11 @@ class VelocitySweepAssembler:
         if outcome_code == 1:
             if (
                 self.reproduction is None
-                or int(self.reproduction.get("schema_revision", 0)) != 5
+                or int(self.reproduction.get("schema_revision", 0))
+                != STAGE_B_EVIDENCE_SCHEMA_REVISION
             ):
                 raise VelocitySweepProtocolError(
-                    "stage b Complete terminal arrived without schema-5 reproduction"
+                    "stage b Complete terminal arrived without schema-6 reproduction"
                 )
             if int(self.reproduction["outcome"]) != 1:
                 raise VelocitySweepProtocolError(
@@ -1548,7 +1550,7 @@ class VelocitySweepAssembler:
         if self.outcome != "inconclusive":
             self.done = True
 
-    def _validate_recovery_completeness(self) -> None:
+    def _validate_recovery_completeness(self, terminal: dict | None = None) -> None:
         if self.plan is None or "recovery_slot_count" not in self.plan:
             return
         observations_per_rung = 2 * int(self.plan["observations_per_direction"])
@@ -1558,6 +1560,21 @@ class VelocitySweepAssembler:
             if sum(key[0] == rung_index for key in self.observations)
             == observations_per_rung
         }
+        if (
+            terminal is not None
+            and int(terminal.get("cause", 0)) == 4
+            and int(terminal.get("recovery_unavailable", 0)) == 1
+            and self.rungs
+        ):
+            terminal_rung = max(self.rungs)
+            if terminal_rung not in self.recoveries and self._last_evidence != (
+                "rung",
+                terminal_rung,
+            ):
+                raise VelocitySweepProtocolError(
+                    "missing terminal recovery did not immediately follow its rung"
+                )
+            required.discard(terminal_rung)
         if set(self.recoveries) != required:
             raise VelocitySweepProtocolError(
                 "recovery records do not match fully acquired rungs"
