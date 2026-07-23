@@ -646,3 +646,88 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         out = d.printer.lookup_object("gcode")._responses[-1]
         self.assertIn("count_slope=1042", out)
         self.assertFalse(hasattr(d.diagnostics.active, "fit_resistance_axis"))
+
+
+class TestVelocityLimitLatchDiagnosticCommand(unittest.TestCase):
+    def test_sends_explicit_channel(self):
+        d = make_driver()
+        d.diagnostics.active.velocity_limit_latch_cache[d.oid] = {
+            "flags": {"active_status_flags": 0x80}
+        }
+
+        d.diagnostics.velocity_limit_latch_test(MockGCmd({}))
+
+        self.assertEqual(
+            d.protocol.commands.velocity_limit_latch_test.last_args,
+            [d.oid, d.channel],
+        )
+        self.assertNotIn(d.oid, d.diagnostics.active.velocity_limit_latch_cache)
+
+    def test_terminal_core_assembles_all_causal_fragments(self):
+        d = make_driver()
+        active = d.diagnostics.active
+        active.handle_velocity_limit_latch_flags(
+            {
+                "oid": d.oid,
+                "active_status_flags": 0x80,
+                "post_pulse_status_flags": 0x80,
+                "delayed_status_flags": 0x80,
+                "post_clear_status_flags": 0,
+            }
+        )
+        active.handle_velocity_limit_latch_motion(
+            {
+                "oid": d.oid,
+                "pulse_elapsed_us": 104,
+                "delayed_read_elapsed_us": 1008,
+                "encoder_before": 100,
+                "encoder_after": 101,
+                "encoder_delta": 1,
+            }
+        )
+        active.handle_velocity_limit_latch_restore(
+            {
+                "oid": d.oid,
+                "saved_limit": 2816,
+                "saved_gains": 0x01000002,
+                "saved_target": 0,
+                "saved_mode": 3,
+                "restored_limit_readback": 2816,
+                "restored_gains_readback": 0x01000002,
+                "restored_target_readback": 0,
+                "restored_mode_readback": 3,
+                "restore_verified_mask": 0x0F,
+            }
+        )
+
+        active.handle_velocity_limit_latch_core(
+            {
+                "oid": d.oid,
+                "status": 0,
+                "test_limit": 1,
+                "p_raw": 512,
+                "i_raw": 0,
+                "target_velocity_rpm": 1,
+                "limit_readback": 1,
+                "gains_readback": 0x02000000,
+                "target_readback": 1,
+                "power_stage_tripped": 1,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("status=0", out)
+        self.assertIn("active_status=0x00000080", out)
+        self.assertIn("delayed_status=0x00000080", out)
+        self.assertIn("post_clear_status=0x00000000", out)
+        self.assertIn("pulse_us=104", out)
+        self.assertIn("encoder_delta=1", out)
+        self.assertIn("saved_gains=0x01000002", out)
+        self.assertIn("restored_gains=0x01000002", out)
+        self.assertIn("saved_target=0", out)
+        self.assertIn("restored_target=0", out)
+        self.assertIn("saved_mode=0x00000003", out)
+        self.assertIn("restored_mode=0x00000003", out)
+        self.assertIn("restore_mask=0x0f", out)
+        self.assertIn("power_stage_tripped=1", out)
+        self.assertNotIn(d.oid, active.velocity_limit_latch_cache)

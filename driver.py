@@ -21,7 +21,12 @@ from .diagnostics import DiagnosticsWorkflow
 from .dump import RegisterDumpWorkflow
 from .homing import HomingWorkflow
 from .protocol import FociProtocol
-from .registry import DEV_GCODE_COMMANDS, mode_allows, register_gcode_commands
+from .registry import (
+    DEV_GCODE_COMMANDS,
+    TRACE_GCODE_COMMANDS,
+    mode_allows,
+    register_gcode_commands,
+)
 from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
 
@@ -60,6 +65,7 @@ class FociDriver:
         self.autotune = AutotuneWorkflow(self)
         self.diagnostics = DiagnosticsWorkflow(self)
         self._dev_gcode_registered = False
+        self._trace_gcode_registered = False
 
         # Two-stage commissioning volatile state (per-session, not persisted)
         # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
@@ -131,7 +137,26 @@ class FociDriver:
         self.stepper_oid = self._resolve_stepper_oid()
         self.oid = self.stepper_oid
         self.protocol.bind_mcu(self.mcu, self.oid)
+        self._register_trace_gcode_commands_if_available()
         self._register_dev_gcode_commands_if_available()
+
+    def _register_trace_gcode_commands_if_available(self) -> None:
+        """Register focused commands only when trace firmware publishes them."""
+        foci_mode = getattr(self, "foci_mode", "default")
+        if getattr(self, "_trace_gcode_registered", False) or not mode_allows(
+            foci_mode, "expert"
+        ):
+            return
+        if self.protocol.commands.velocity_limit_latch_test is None:
+            return
+        gcode = self.printer.lookup_object("gcode")
+        register_gcode_commands(
+            self,
+            gcode,
+            foci_mode,
+            command_specs=TRACE_GCODE_COMMANDS,
+        )
+        self._trace_gcode_registered = True
 
     def _register_dev_gcode_commands_if_available(self) -> None:
         """Register raw TMC developer commands only for dev firmware."""

@@ -55,12 +55,16 @@ DEVELOPER_COMMANDS = {
     "FOCI_TMC_WRITE_REGISTER",
 }
 
+TRACE_COMMANDS = {
+    "FOCI_VELOCITY_LIMIT_LATCH_TEST",
+}
+
 
 class ProductionMcu(MockMCU):
     """Mock MCU whose data dictionary does not expose dev TMC commands."""
 
     def lookup_command(self, fmt, cq=None):
-        if fmt.startswith("tmc_write_register "):
+        if fmt.startswith(("tmc_write_register ", "tmc_velocity_limit_latch_test ")):
             raise CommandError("unknown command")
         return super().lookup_command(fmt, cq=cq)
 
@@ -125,6 +129,25 @@ def test_expert_mode_registers_default_advanced_and_expert_commands():
     )
 
 
+def test_expert_mode_registers_trace_diagnostic_only_after_identification():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        },
+        foci_mode="expert",
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    assert TRACE_COMMANDS.isdisjoint(registered_command_names(printer))
+
+    driver._handle_mcu_identify()
+
+    assert TRACE_COMMANDS <= registered_command_names(printer)
+
+
 def test_developer_mode_defers_raw_tmc_commands_until_mcu_identify():
     printer = build_driver_with_mode("developer")
 
@@ -151,7 +174,11 @@ def test_developer_mode_registers_raw_tmc_commands_for_dev_firmware():
     driver._handle_mcu_identify()
 
     assert registered_command_names(printer) == (
-        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS | DEVELOPER_COMMANDS
+        DEFAULT_COMMANDS
+        | ADVANCED_COMMANDS
+        | EXPERT_COMMANDS
+        | DEVELOPER_COMMANDS
+        | TRACE_COMMANDS
     )
 
 

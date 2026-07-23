@@ -227,6 +227,16 @@ DEV_GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     ),
 )
 
+TRACE_GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
+    GcodeCommandSpec(
+        "FOCI_VELOCITY_LIMIT_LATCH_TEST",
+        "expert",
+        "diagnostics",
+        "velocity_limit_latch_test",
+        "Run the trace-only velocity-output-limit persistence diagnostic",
+    ),
+)
+
 
 def mode_allows(active_mode: str, min_mode: str) -> bool:
     """Return true when `active_mode` includes `min_mode`."""

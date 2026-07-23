@@ -87,3 +87,6 @@ class DiagnosticsWorkflow:
 
     def resistance_test(self, gcmd) -> None:
         return self.active.resistance_test(gcmd)
+
+    def velocity_limit_latch_test(self, gcmd) -> None:
+        return self.active.velocity_limit_latch_test(gcmd)
