@@ -278,7 +278,7 @@ class VelocitySweepAssembler:
         self._accept_unframed("stage b reproduction", 4, params)
 
     def handle_stage_b_reproduction_v3_core(self, params: dict) -> None:
-        if int(params.get("schema_revision", -1)) != 4:
+        if int(params.get("schema_revision", -1)) != 5:
             raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
         self._accept_unframed("stage b reproduction v3", 0, params)
 
@@ -1399,10 +1399,10 @@ class VelocitySweepAssembler:
         if outcome_code == 1:
             if (
                 self.reproduction is None
-                or int(self.reproduction.get("schema_revision", 0)) != 4
+                or int(self.reproduction.get("schema_revision", 0)) != 5
             ):
                 raise VelocitySweepProtocolError(
-                    "stage b Complete terminal arrived without schema-3 reproduction"
+                    "stage b Complete terminal arrived without schema-5 reproduction"
                 )
             if int(self.reproduction["outcome"]) != 1:
                 raise VelocitySweepProtocolError(

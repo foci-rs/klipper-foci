@@ -262,7 +262,7 @@ def stage_b_reproduction_v3_fragments(
                 "current_provisional_p": 1024,
                 "final_p": final_p,
                 "reduced_margin": 0,
-                "schema_revision": 4,
+                "schema_revision": 5,
             },
         )
     ]
@@ -739,7 +739,7 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
 
     assert assembler.outcome == "complete"
     assert assembler.reproduction["current_digest"] == pre_reproduction_digest
-    assert assembler.reproduction["schema_revision"] == 4
+    assert assembler.reproduction["schema_revision"] == 5
     assert assembler.reproduction["memberships"][0] == {
         "previous": 0x0038_0000,
         "current": 0x003C_0000,
@@ -845,6 +845,21 @@ def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
         feed_stage_b_terminal(assembler, sequence=2)
 
 
+def test_schema_five_is_required():
+    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    schema_five = dict(fragments[0][1], schema_revision=5)
+    assembler.handle_stage_b_reproduction_v3_core(schema_five)
+
+    rejected = VelocitySweepAssembler()
+    feed_plan(rejected)
+    schema_four = dict(fragments[0][1], schema_revision=4)
+    with pytest.raises(VelocitySweepProtocolError, match="unsupported"):
+        rejected.handle_stage_b_reproduction_v3_core(schema_four)
+
+
 def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
@@ -857,7 +872,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
     expected = tuple(
         bytes.fromhex(value)
         for value in (
-            "0a0700000001000100a8050004a805000400",
+            "0a0700000001000100a8050004a805000500",
             "0b070000000100000000380000003c00000038000000000000000400ff00",
             "0c0700000001000100003800000038000000380000000000000000000000",
             "0d0700000001000200003800000038000000380000000000000000000000",
@@ -871,7 +886,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
         )
     )
     assert tuple(assembler._canonical_events[-11:]) == expected
-    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x64BF_8C4A_1E7D_A51E
+    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x6663_5CC2_7FB6_7135
 
 
 def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
@@ -1169,6 +1184,66 @@ def test_stage_b_recovery_is_exact_and_must_immediately_follow_its_rung():
                 "outcome": 0,
             }
         )
+
+
+def test_structured_recovery_source_is_preserved():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    sequence = 9
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=145, high=155
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 10}
+    assembler.handle_recovery_core(
+        {
+            **common,
+            "stage": 0,
+            "rung_index": 0,
+            "p_raw": 512,
+            "binding_source": 5,
+            "outcome": 0,
+        }
+    )
+    assembler.handle_recovery_position(
+        {
+            **common,
+            "start_offset_counts": -1834,
+            "closest_offset_counts": -1000,
+            "final_offset_counts": -999,
+            "origin_band_counts": 1000,
+        }
+    )
+    assembler.handle_recovery_timing(
+        {
+            **common,
+            "moving_duration_us": 90_904,
+            "settle_duration_us": 500_000,
+            "total_duration_us": 590_904,
+        }
+    )
+    assembler.handle_recovery_limits(
+        {
+            **common,
+            "planned_velocity_mrev_s": 4394,
+            "lower_rate_low": 9_174_528,
+            "lower_rate_high": 0,
+            "peak_torque_target_abs": 2533,
+        }
+    )
+
+    assert assembler.recoveries[0]["binding_source"] == 5
+    assert assembler.recoveries[0]["lower_rate_q"] == 9_174_528
 
 
 @pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4), (0, 4)])
