@@ -79,6 +79,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         "foci_rung_origin_recovery_position",
         "foci_rung_origin_recovery_timing",
         "foci_rung_origin_recovery_limits",
+        "foci_velocity_primitive_current_evidence",
         "foci_velocity_observation_core",
         "foci_velocity_observation_rate",
         "foci_velocity_observation_stationarity",

@@ -262,7 +262,7 @@ def stage_b_reproduction_v3_fragments(
                 "current_provisional_p": 1024,
                 "final_p": final_p,
                 "reduced_margin": 0,
-                "schema_revision": 6,
+                "schema_revision": 7,
             },
         )
     ]
@@ -488,6 +488,40 @@ def feed_observation(
             "predicted_torque_target_abs": 200,
         }
     )
+
+
+def feed_current(assembler, *, sequence, slot, capability=0, contact=0):
+    assembler.handle_current_evidence(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": sequence,
+            "stage": 0,
+            "rung_index": 0,
+            "slot": slot,
+            "clamp_limit": 900,
+            "clamp_readback": 900,
+            "moving_pid_output_peak": 200,
+            "zero_pid_output_peak": 300,
+            "moving_status_flags": 0,
+            "zero_status_flags": 0,
+            "capability": capability,
+            "contact": contact,
+        }
+    )
+
+
+def test_stage_b_current_evidence_round_trips_into_the_run_digest():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    feed_observation(assembler, sequence=1, slot=0, low=100, high=110)
+    before = assembler._digest
+
+    feed_current(assembler, sequence=2, slot=0, capability=0, contact=2)
+
+    assert assembler._digest != before
+    assert assembler.current_evidence[(0, 0)]["contact"] == 2
+    assert assembler._canonical_events[-1][0] == 31
 
 
 def terminal_fragments(
@@ -739,7 +773,7 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
 
     assert assembler.outcome == "complete"
     assert assembler.reproduction["current_digest"] == pre_reproduction_digest
-    assert assembler.reproduction["schema_revision"] == 6
+    assert assembler.reproduction["schema_revision"] == 7
     assert assembler.reproduction["memberships"][0] == {
         "previous": 0x0038_0000,
         "current": 0x003C_0000,
@@ -845,19 +879,19 @@ def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
         feed_stage_b_terminal(assembler, sequence=2)
 
 
-def test_schema_six_is_required():
+def test_schema_seven_is_required():
     fragments = stage_b_reproduction_v3_fragments(sequence=1)
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
-    schema_six = dict(fragments[0][1], schema_revision=6)
-    assembler.handle_stage_b_reproduction_v3_core(schema_six)
+    schema_seven = dict(fragments[0][1], schema_revision=7)
+    assembler.handle_stage_b_reproduction_v3_core(schema_seven)
 
     rejected = VelocitySweepAssembler()
     feed_plan(rejected)
-    schema_five = dict(fragments[0][1], schema_revision=5)
+    schema_six = dict(fragments[0][1], schema_revision=6)
     with pytest.raises(VelocitySweepProtocolError, match="unsupported"):
-        rejected.handle_stage_b_reproduction_v3_core(schema_five)
+        rejected.handle_stage_b_reproduction_v3_core(schema_six)
 
 
 def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
@@ -872,7 +906,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
     expected = tuple(
         bytes.fromhex(value)
         for value in (
-            "0a0700000001000100a8050004a805000600",
+            "0a0700000001000100a8050004a805000700",
             "0b070000000100000000380000003c00000038000000000000000400ff00",
             "0c0700000001000100003800000038000000380000000000000000000000",
             "0d0700000001000200003800000038000000380000000000000000000000",
@@ -886,7 +920,7 @@ def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
         )
     )
     assert tuple(assembler._canonical_events[-11:]) == expected
-    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x778A_ED0C_E1E0_10A0
+    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x3057_D754_2739_082F
 
 
 def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():

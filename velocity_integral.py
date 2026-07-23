@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import struct
 
+from .velocity_sweep import encode_velocity_primitive_current_evidence
+
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
@@ -53,6 +55,7 @@ class VelocityIntegralAssembler:
         self.observations: dict[tuple[int, int], dict] = {}
         self.rungs: dict[int, dict] = {}
         self.recoveries: dict[int, dict] = {}
+        self.current_evidence: dict[tuple[int, int], dict] = {}
         self.curves = [self._new_curve(), self._new_curve()]
         self.drift: list[dict | None] = [None, None]
         self.stage_b_comparison: list[dict | None] = [None, None]
@@ -107,6 +110,7 @@ class VelocityIntegralAssembler:
             "plan": self.plan,
             "absolute_curves": self.curves,
             "recoveries": self.recoveries,
+            "current_evidence": self.current_evidence,
             "drift": self.drift,
             "stage_b_comparison": self.stage_b_comparison,
             "reproduction": self.reproduction,
@@ -152,7 +156,7 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_stage_c_workflow(params)
-        if int(params.get("schema_revision", -1)) != 2:
+        if int(params.get("schema_revision", -1)) not in (2, 3):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
@@ -217,6 +221,40 @@ class VelocityIntegralAssembler:
         if rung_index in self.recoveries:
             raise VelocityIntegralProtocolError("duplicate rung recovery")
         self._recovery_parts.append(dict(params))
+
+    def handle_current_evidence(self, params: dict) -> None:
+        """Accept one causal current record immediately after its observation."""
+        self._require_plan()
+        self._require_event_identity(params)
+        if int(params.get("stage", -1)) != 1:
+            raise VelocityIntegralProtocolError(
+                "Stage-C current evidence named the wrong stage"
+            )
+        key = (int(params.get("rung_index", -1)), int(params.get("slot", -1)))
+        if key not in self.observations or self._last_evidence != (
+            "observation",
+            key[0],
+        ):
+            raise VelocityIntegralProtocolError(
+                "current evidence did not immediately follow its observation"
+            )
+        if key in self.current_evidence:
+            raise VelocityIntegralProtocolError("duplicate current evidence")
+        evidence = _metadata_free(params)
+        if (
+            int(evidence["clamp_limit"]) == 0
+            or int(evidence["clamp_readback"]) != int(evidence["clamp_limit"])
+            or int(evidence["capability"]) not in (0, 1)
+            or int(evidence["contact"]) not in (0, 1, 2, 3)
+        ):
+            raise VelocityIntegralProtocolError("invalid current evidence")
+        self.current_evidence[key] = evidence
+        self._evidence_digest = _fnv1a(
+            encode_velocity_primitive_current_evidence(evidence),
+            self._evidence_digest,
+        )
+        self._next_evidence_sequence += 1
+        self._last_evidence = ("current", key[0])
 
     def handle_recovery_position(self, params: dict) -> None:
         self._accept_recovery_part(params, 1)

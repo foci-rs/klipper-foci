@@ -29,7 +29,7 @@ def feed_workflow(assembler, shape=2, maximum_ms=70_000):
     assembler.handle_workflow_plan(params)
 
 
-def feed_plan(assembler):
+def feed_plan(assembler, schema_revision=2):
     common = {"oid": 0, "run_sequence": RUN_SEQUENCE, "evidence_sequence": 0}
     assembler.handle_plan_core(
         {
@@ -40,7 +40,7 @@ def feed_plan(assembler):
             "stage_b_digest_low": STAGE_B_DIGEST & 0xFFFF_FFFF,
             "stage_b_digest_high": STAGE_B_DIGEST >> 32,
             "build_revision": 7,
-            "schema_revision": 2,
+            "schema_revision": schema_revision,
             "channel": 0,
             "final_p": 1448,
         }
@@ -169,6 +169,40 @@ def feed_observation(assembler, sequence, rung_index, slot, i_raw):
             "tested_suffixes": 3,
         }
     )
+
+
+def feed_current(assembler, sequence, rung_index, slot, capability=0, contact=0):
+    assembler.handle_current_evidence(
+        {
+            "oid": 0,
+            "run_sequence": RUN_SEQUENCE,
+            "evidence_sequence": sequence,
+            "stage": 1,
+            "rung_index": rung_index,
+            "slot": slot,
+            "clamp_limit": 2534,
+            "clamp_readback": 2534,
+            "moving_pid_output_peak": 1200,
+            "zero_pid_output_peak": 1400,
+            "moving_status_flags": 0,
+            "zero_status_flags": 0,
+            "capability": capability,
+            "contact": contact,
+        }
+    )
+
+
+def test_stage_c_current_evidence_round_trips_into_the_run_digest():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler, schema_revision=3)
+    feed_observation(assembler, 1, 0, 0, 0)
+    before = assembler.evidence_digest
+
+    feed_current(assembler, 2, 0, 0, capability=0, contact=2)
+
+    assert assembler.evidence_digest != before
+    assert assembler.current_evidence[(0, 0)]["contact"] == 2
 
 
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
