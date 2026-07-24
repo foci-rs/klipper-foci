@@ -29,7 +29,14 @@ def feed_workflow(assembler, shape=2, maximum_ms=70_000):
     assembler.handle_workflow_plan(params)
 
 
-def feed_plan(assembler, schema_revision=2):
+def feed_plan(
+    assembler,
+    schema_revision=2,
+    *,
+    positive_i=POSITIVE_I,
+    nominal_workflow_ms=49_920,
+    maximum_workflow_ms=49_920,
+):
     common = {"oid": 0, "run_sequence": RUN_SEQUENCE, "evidence_sequence": 0}
     assembler.handle_plan_core(
         {
@@ -53,11 +60,11 @@ def feed_plan(assembler, schema_revision=2):
             "target_velocity_rpm": 176,
             "pwm_hz": 25_000,
             "encoder_counts_per_rev": 4000,
-            "i_start": 5,
-            "positive_rung_count": len(POSITIVE_I),
-            "family_size": 4 * (len(POSITIVE_I) + 2),
-            "total_rung_count": len(POSITIVE_I) + 2,
-            "expected_observations": 8 * (len(POSITIVE_I) + 2),
+            "i_start": positive_i[0],
+            "positive_rung_count": len(positive_i),
+            "family_size": 4 * (len(positive_i) + 2),
+            "total_rung_count": len(positive_i) + 2,
+            "expected_observations": 8 * (len(positive_i) + 2),
             "hard_torque_limit": 2816,
             "usable_torque_limit": 2534,
         }
@@ -82,8 +89,8 @@ def feed_plan(assembler, schema_revision=2):
             "moving_stroke_us": 512_000,
             "zero_settle_us": 500_000,
             "analysis_budget_us": 236_000,
-            "nominal_workflow_ms": 49_920,
-            "maximum_workflow_ms": 49_920,
+            "nominal_workflow_ms": nominal_workflow_ms,
+            "maximum_workflow_ms": maximum_workflow_ms,
         }
     )
     assembler.handle_plan_travel(
@@ -102,10 +109,10 @@ def feed_plan(assembler, schema_revision=2):
             "origin_band_counts": 1000,
             "nominal_slot_us": 1_816_958,
             "maximum_slot_us": 3_000_000,
-            "slot_count": len(POSITIVE_I) + 2,
+            "slot_count": len(positive_i) + 2,
         }
     )
-    for rung_index, i_raw in enumerate(POSITIVE_I):
+    for rung_index, i_raw in enumerate(positive_i):
         assembler.handle_plan_rung(
             {
                 **common,
@@ -203,6 +210,39 @@ def test_stage_c_current_evidence_round_trips_into_the_run_digest():
 
     assert assembler.evidence_digest != before
     assert assembler.current_evidence[(0, 0)]["contact"] == 2
+
+
+def test_schema_four_assembles_minimum_positive_ladder_and_timeout():
+    assembler = VelocityIntegralAssembler()
+    positive_i = (1, 2, 4, 8, 16, 32, 64)
+    feed_workflow(assembler, maximum_ms=116_856)
+
+    feed_plan(
+        assembler,
+        schema_revision=4,
+        positive_i=positive_i,
+        nominal_workflow_ms=106_209,
+        maximum_workflow_ms=116_856,
+    )
+
+    assert assembler.plan["schema_revision"] == 4
+    assert assembler.plan["positive_i"] == list(positive_i)
+    assert assembler.plan["family_size"] == 36
+    assert assembler.plan["total_rung_count"] == 9
+    assert assembler.plan["expected_observations"] == 72
+    assert assembler.plan["slot_count"] == 9
+    assert assembler.maximum_duration_s == 116.856
+
+
+def test_schema_five_rejects_before_plan_assembly():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+
+    with pytest.raises(
+        VelocityIntegralProtocolError,
+        match="unsupported Stage-C evidence schema",
+    ):
+        feed_plan(assembler, schema_revision=5)
 
 
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
