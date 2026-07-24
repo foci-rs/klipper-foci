@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import struct
 
-
-FNV1A64_OFFSET = 0xCBF29CE484222325
-FNV1A64_PRIME = 0x100000001B3
 STAGE_B_EVIDENCE_SCHEMA_REVISION = 7
 
 OUTCOME_NAMES = {
@@ -37,7 +34,7 @@ class VelocitySweepProtocolError(Exception):
 
 
 def encode_velocity_primitive_current_evidence(value: dict) -> bytes:
-    """Encode the firmware-authoritative kind-31 current evidence."""
+    """Encode current evidence for the temporary Stage-C digest replica."""
     return struct.pack(
         "<BIHBBBHHHHIIBB",
         31,
@@ -86,8 +83,6 @@ class VelocitySweepAssembler:
         self._group_fragments = 0
         self._rung_expected_fragments: set[int] = set()
         self._rung_expected_order: list[int] = []
-        self._digest = FNV1A64_OFFSET
-        self._canonical_events: list[bytes] = []
         self._unframed_kind: str | None = None
         self._unframed_parts: list[dict] = []
         self._last_evidence: tuple[str, int] | None = None
@@ -189,12 +184,7 @@ class VelocitySweepAssembler:
             or int(evidence["contact"]) not in (0, 1, 2, 3)
         ):
             raise VelocitySweepProtocolError("invalid current evidence")
-        encoded = encode_velocity_primitive_current_evidence(evidence)
         self.current_evidence[key] = evidence
-        self._canonical_events.append(encoded)
-        for byte in encoded:
-            self._digest ^= byte
-            self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
         self._next_evidence_sequence += 1
         self._last_evidence = ("current", key[0])
 
@@ -275,7 +265,6 @@ class VelocitySweepAssembler:
         ):
             raise VelocitySweepProtocolError("duplicate structured boundary")
         self.structured_boundaries.append(self._strip_metadata(params))
-        self._canonical_events.append(self._encode_structured_boundary(params))
 
     def handle_directional_region_core(self, params: dict) -> None:
         self._accept_unframed("directional region", 0, params)
@@ -676,7 +665,6 @@ class VelocitySweepAssembler:
         if int(plan["maximum_workflow_ms"]) < int(plan["nominal_workflow_ms"]):
             raise VelocitySweepProtocolError("plan maximum is below nominal duration")
         self.plan = plan
-        self._hash_plan(plan)
 
     def _finish_observation(self, parts: list[dict]) -> None:
         renamed_parts = []
@@ -697,8 +685,6 @@ class VelocitySweepAssembler:
         if key[1] not in range(slot_count):
             raise VelocitySweepProtocolError("invalid observation slot")
         self.observations[key] = observation
-        self._hash_observation(observation)
-        self._canonical_events.append(self._encode_observation(observation))
         self._last_evidence = ("observation", key[0])
 
     def _finish_rung_consensus(self, parts: list[dict]) -> None:
@@ -719,8 +705,6 @@ class VelocitySweepAssembler:
         rung["pools"] = pools
         rung_index = int(rung["rung_index"])
         self.rungs[rung_index] = rung
-        self._hash_rung(rung)
-        self._canonical_events.append(self._encode_rung(rung))
         self._last_evidence = ("rung", rung_index)
 
     def _finish_directional_region(self, parts: list[dict]) -> None:
@@ -757,7 +741,6 @@ class VelocitySweepAssembler:
             }
         )
         self.directional_regions.append(region)
-        self._canonical_events.append(self._encode_directional_region(region))
 
     def _finish_joint_region(self, params: dict) -> None:
         membership = int(params["member_mask"])
@@ -768,7 +751,6 @@ class VelocitySweepAssembler:
         if membership == 0 or int(region["member_count"]) != membership.bit_count():
             raise VelocitySweepProtocolError("joint region membership is inconsistent")
         self.joint_regions.append(region)
-        self._canonical_events.append(self._encode_joint_region(region))
 
     def _find_region(self, direction: int, member_mask: int) -> dict:
         matches = [
@@ -824,7 +806,6 @@ class VelocitySweepAssembler:
             region["covers_nominated_p"] = bool(
                 int(region["member_mask"]) & (1 << nominated_rung)
             )
-        self._canonical_events.append(self._encode_handoff(handoff))
 
     def _finish_stage_b_reproduction(self, parts: list[dict]) -> None:
         core, memberships, forward, reverse, digest = parts
@@ -858,7 +839,6 @@ class VelocitySweepAssembler:
             int(digest["current_digest_high"]) << 32
         )
         self.reproduction = reproduction
-        self._canonical_events.append(self._encode_reproduction(reproduction))
 
     def _finish_stage_b_reproduction_v3(self, parts: list[dict]) -> None:
         core = parts[0]
@@ -1611,93 +1591,3 @@ class VelocitySweepAssembler:
             raise VelocitySweepProtocolError(
                 "recovery records do not match fully acquired rungs"
             )
-
-    def _hash(self, fmt: str, value: int) -> None:
-        for byte in struct.pack("<" + fmt, int(value)):
-            self._digest ^= byte
-            self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
-
-    def _hash_plan(self, plan: dict) -> None:
-        fields = (
-            ("B", 1),
-            ("I", plan["run_sequence"]),
-            ("H", plan["evidence_sequence"]),
-            ("I", plan["requested_velocity_mrev_s"]),
-            ("B", plan["requested_velocity_source"]),
-            ("I", plan["planned_velocity_mrev_s"]),
-            ("I", plan["effective_ceiling_mrev_s"]),
-            ("H", plan["clamp_flags"]),
-            ("B", plan["binding_source"]),
-            ("i", plan["target_velocity_rpm"]),
-            ("H", plan["p_start"]),
-            ("H", plan["p_top"]),
-            ("B", plan["rung_count"]),
-            ("H", plan["observations_per_direction"]),
-            ("I", plan["moving_stroke_us"]),
-            ("I", plan["zero_settle_us"]),
-            ("I", plan["nominal_workflow_ms"]),
-            ("I", plan["maximum_workflow_ms"]),
-            ("I", plan["origin_band_counts"]),
-            ("I", plan["nominal_slot_us"]),
-            ("I", plan["maximum_slot_us"]),
-            ("B", plan["slot_count"]),
-            ("I", plan["max_stroke_travel_mrev"]),
-            ("I", plan["settle_travel_reserve_mrev"]),
-            ("I", plan["negative_position_headroom_mrev"]),
-            ("I", plan["positive_position_headroom_mrev"]),
-            ("H", plan["hard_torque_limit"]),
-            ("H", plan["usable_torque_limit"]),
-        )
-        for fmt, value in fields:
-            self._hash(fmt, value)
-
-    def _hash_observation(self, value: dict) -> None:
-        fields = (
-            ("B", 2),
-            ("I", value["run_sequence"]),
-            ("H", value["evidence_sequence"]),
-            ("B", value["rung_index"]),
-            ("B", value["slot"]),
-            ("i", value["target_velocity_rpm"]),
-            ("B", value["classification"]),
-            ("B", value["flags"]),
-            ("B", value["delta_sign"]),
-            ("I", value["delta_mantissa"]),
-            ("B", value["delta_shift"]),
-            ("I", value["elapsed_mantissa"]),
-            ("B", value["elapsed_shift"]),
-            ("i", value["rate_low"]),
-            ("i", value["rate_mean"]),
-            ("i", value["rate_high"]),
-            ("i", value["deficit_low"]),
-            ("i", value["deficit_high"]),
-            ("B", value["rate_shift"]),
-            ("H", value["suffix_len"]),
-            ("B", value["selected_level"]),
-            ("I", value["selected_blocks"]),
-            ("I", value["rate_variance_mantissa"]),
-            ("B", value["rate_variance_shift"]),
-            ("i", value["slope_mantissa"]),
-            ("B", value["slope_shift"]),
-            ("I", value["slope_half_width_mantissa"]),
-            ("B", value["slope_half_width_shift"]),
-            ("i", value["lag_one_q"]),
-            ("I", value["lag_one_half_width_q"]),
-            ("I", value["residual_mantissa"]),
-            ("B", value["residual_shift"]),
-            ("B", value["tested_suffixes"]),
-            ("H", value["velocity_p"]),
-            ("i", value["disturbance_q16"]),
-            ("i", value["disturbance_low_q16"]),
-            ("i", value["disturbance_high_q16"]),
-            ("I", value["disturbance_variance_mantissa"]),
-            ("B", value["disturbance_variance_shift"]),
-            ("H", value["predicted_torque_target_abs"]),
-        )
-        for fmt, item in fields:
-            self._hash(fmt, item)
-
-    def _hash_rung(self, value: dict) -> None:
-        for byte in self._encode_rung(value):
-            self._digest ^= byte
-            self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF

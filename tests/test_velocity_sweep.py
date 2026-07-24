@@ -1,13 +1,13 @@
 """Velocity-sweep stream reassembly and integrity tests."""
 
-import struct
-
 import pytest
 
 from klipper_foci.velocity_sweep import (
     VelocitySweepAssembler,
     VelocitySweepProtocolError,
 )
+
+OPAQUE_DIGEST = 0xDEAD_BEEF_0123_4567
 
 
 def plan_fragments(rung_count=5, observations_per_direction=2):
@@ -53,95 +53,6 @@ def plan_fragments(rung_count=5, observations_per_direction=2):
             "maximum_slot_us": 3_000_000,
             "slot_count": rung_count,
         },
-    )
-
-
-def _fnv1a(values):
-    digest = 0xCBF29CE484222325
-    for fmt, value in values:
-        for byte in struct.pack("<" + fmt, value):
-            digest ^= byte
-            digest = (digest * 0x100000001B3) & 0xFFFF_FFFF_FFFF_FFFF
-    return digest
-
-
-def plan_digest(rung_count=5):
-    limits, geometry, timing, recovery = plan_fragments(rung_count)
-    return _fnv1a(
-        [
-            ("B", 1),
-            ("I", 7),
-            ("H", 0),
-            ("I", limits["requested_velocity_mrev_s"]),
-            ("B", limits["requested_velocity_source"]),
-            ("I", limits["planned_velocity_mrev_s"]),
-            ("I", limits["effective_ceiling_mrev_s"]),
-            ("H", limits["clamp_flags"]),
-            ("B", limits["binding_source"]),
-            ("i", geometry["target_velocity_rpm"]),
-            ("H", geometry["p_start"]),
-            ("H", geometry["p_top"]),
-            ("B", geometry["rung_count"]),
-            ("H", geometry["observations_per_direction"]),
-            ("I", timing["moving_stroke_us"]),
-            ("I", timing["zero_settle_us"]),
-            ("I", timing["nominal_workflow_ms"]),
-            ("I", timing["maximum_workflow_ms"]),
-            ("I", recovery["origin_band_counts"]),
-            ("I", recovery["nominal_slot_us"]),
-            ("I", recovery["maximum_slot_us"]),
-            ("B", recovery["slot_count"]),
-            ("I", geometry["max_stroke_travel_mrev"]),
-            ("I", geometry["settle_travel_reserve_mrev"]),
-            ("I", geometry["negative_position_headroom_mrev"]),
-            ("I", geometry["positive_position_headroom_mrev"]),
-            ("H", geometry["hard_torque_limit"]),
-            ("H", geometry["usable_torque_limit"]),
-        ]
-    )
-
-
-def test_stage_b_plan_canonical_record_matches_firmware_schema():
-    assembler = VelocitySweepAssembler()
-    feed_plan(assembler)
-
-    encoded = assembler._encode_plan(plan_digest())
-
-    assert len(encoded) == 91
-    assert encoded == b"".join(
-        struct.pack("<" + fmt, value)
-        for fmt, value in (
-            ("B", 1),
-            ("I", 7),
-            ("H", 0),
-            ("I", plan_digest() & 0xFFFF_FFFF),
-            ("I", plan_digest() >> 32),
-            ("I", 5000),
-            ("B", 1),
-            ("I", 4800),
-            ("I", 7500),
-            ("H", 1),
-            ("B", 0),
-            ("i", 3200),
-            ("H", 8),
-            ("H", 128),
-            ("B", 5),
-            ("H", 2),
-            ("I", 256000),
-            ("I", 200000),
-            ("I", 9120),
-            ("I", 10000),
-            ("I", 1000),
-            ("I", 1_816_958),
-            ("I", 3_000_000),
-            ("B", 5),
-            ("I", 1000),
-            ("I", 250),
-            ("I", 1250),
-            ("I", 1250),
-            ("H", 1000),
-            ("H", 900),
-        )
     )
 
 
@@ -511,17 +422,14 @@ def feed_current(assembler, *, sequence, slot, capability=0, contact=0):
     )
 
 
-def test_stage_b_current_evidence_round_trips_into_the_run_digest():
+def test_stage_b_current_evidence_is_retained_after_its_observation():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
     feed_observation(assembler, sequence=1, slot=0, low=100, high=110)
-    before = assembler._digest
 
     feed_current(assembler, sequence=2, slot=0, capability=0, contact=2)
 
-    assert assembler._digest != before
     assert assembler.current_evidence[(0, 0)]["contact"] == 2
-    assert assembler._canonical_events[-1][0] == 31
 
 
 def terminal_fragments(
@@ -536,7 +444,7 @@ def terminal_fragments(
     expected_rungs=0,
     emitted_rungs=0,
 ):
-    digest = plan_digest(0) if digest is None else digest
+    digest = OPAQUE_DIGEST if digest is None else digest
     if cause is None:
         cause = 1 if outcome == 1 and mask in (1, 2) else 2 if outcome == 1 else 0
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
@@ -681,7 +589,7 @@ def test_preflight_plan_mismatch_terminal_is_accepted_without_motion_plan():
     assert assembler.terminal["plan_digest"] == 123
 
 
-def test_stage_b_terminal_checks_selected_records_and_exact_digest():
+def test_stage_b_terminal_checks_selected_records_and_retains_digest():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=0)
     feed_stage_b_region(assembler, sequence=1, direction=0)
@@ -701,24 +609,24 @@ def test_stage_b_terminal_checks_selected_records_and_exact_digest():
     )
     feed_stage_b_handoff(assembler, sequence=4)
     plan_identity = 0x1111_2222_3333_4444
-    digest = assembler._stage_b_digest(plan_identity)
 
     feed_stage_b_terminal(
         assembler,
         sequence=5,
-        digest=digest,
+        digest=OPAQUE_DIGEST,
         plan_digest_value=plan_identity,
     )
 
     assert assembler.done
     assert assembler.outcome == "complete_candidate"
     assert assembler.terminal["nominated_p"] == 724
+    assert assembler.terminal["digest"] == OPAQUE_DIGEST
 
 
 def test_stage_b_terminal_retains_opaque_firmware_digest():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=0)
-    opaque_digest = 0xDEAD_BEEF_0123_4567
+    opaque_digest = OPAQUE_DIGEST
 
     feed_stage_b_terminal(
         assembler,
@@ -754,13 +662,12 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
     )
     feed_stage_b_handoff(assembler, sequence=4)
     plan_identity = 0x1111_2222_3333_4444
-    pre_reproduction_digest = assembler._stage_b_digest(plan_identity)
+    pre_reproduction_digest = 0x0102_0304_0506_0708
     feed_stage_b_reproduction(
         assembler,
         sequence=5,
         current_digest=pre_reproduction_digest,
     )
-    final_digest = assembler._stage_b_digest(plan_identity)
 
     feed_stage_b_terminal(
         assembler,
@@ -769,7 +676,7 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
         member_mask=0x0038_0000,
         nominated_p=1448,
         intervals=((108, 116), (108, 116)),
-        digest=final_digest,
+        digest=OPAQUE_DIGEST,
         plan_digest_value=plan_identity,
     )
 
@@ -809,7 +716,7 @@ def test_stage_b_complete_terminal_uses_reproduced_pooled_overlap():
     )
     feed_stage_b_handoff(assembler, sequence=4)
     plan_identity = 0x1111_2222_3333_4444
-    pre_reproduction_digest = assembler._stage_b_digest(plan_identity)
+    pre_reproduction_digest = 0x0102_0304_0506_0708
     feed_stage_b_reproduction(
         assembler,
         sequence=5,
@@ -817,8 +724,6 @@ def test_stage_b_complete_terminal_uses_reproduced_pooled_overlap():
         final_p=724,
         current_digest=pre_reproduction_digest,
     )
-    final_digest = assembler._stage_b_digest(plan_identity)
-
     feed_stage_b_terminal(
         assembler,
         sequence=6,
@@ -826,7 +731,7 @@ def test_stage_b_complete_terminal_uses_reproduced_pooled_overlap():
         member_mask=0b11100,
         nominated_p=724,
         intervals=((108, 116), (108, 116)),
-        digest=final_digest,
+        digest=OPAQUE_DIGEST,
         plan_digest_value=plan_identity,
     )
 
@@ -896,35 +801,6 @@ def test_schema_seven_is_required():
         rejected.handle_stage_b_reproduction_v3_core(schema_six)
 
 
-def test_stage_b_reproduction_v3_canonical_records_match_firmware_bytes():
-    assembler = VelocitySweepAssembler()
-    feed_plan(assembler)
-    feed_stage_b_reproduction(
-        assembler,
-        sequence=1,
-        current_digest=0xFEDC_BA98_7654_3210,
-    )
-
-    expected = tuple(
-        bytes.fromhex(value)
-        for value in (
-            "0a0700000001000100a8050004a805000700",
-            "0b070000000100000000380000003c00000038000000000000000400ff00",
-            "0c0700000001000100003800000038000000380000000000000000000000",
-            "0d0700000001000200003800000038000000380000000000000000000000",
-            "0e0700000001000068000000740000006c000000780000006c00000074000000",
-            "0f0700000001000168000000740000006c000000780000006c00000074000000",
-            "100700000001000068000000740000006c000000780000006c0000007400000001",
-            "110700000001000168000000740000007800000082000000780000007400000000",
-            "1207000000010000000000000001000100",
-            "13070000000100010101000000a8050004",
-            "1407000000010008070605040302011032547698badcfe",
-        )
-    )
-    assert tuple(assembler._canonical_events[-11:]) == expected
-    assert assembler._stage_b_digest(0x1111_2222_3333_4444) == 0x3057_D754_2739_082F
-
-
 def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
     fragments = stage_b_reproduction_v3_fragments(sequence=1)
     fragments[0][1]["outcome"] = 2
@@ -952,7 +828,7 @@ def test_reordered_or_duplicate_fragment_is_rejected():
         assembler.handle_plan_limits(limits)
 
 
-def test_complete_terminal_checks_counts_and_exact_digest():
+def test_complete_terminal_checks_counts_and_retains_digest():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=0)
     forward, reverse, integrity = terminal_fragments()
@@ -969,7 +845,7 @@ def test_complete_terminal_checks_counts_and_exact_digest():
 def test_legacy_terminal_retains_opaque_firmware_digest():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=0)
-    opaque_digest = 0xDEAD_BEEF_0123_4567
+    opaque_digest = OPAQUE_DIGEST
     forward, reverse, integrity = terminal_fragments(digest=opaque_digest)
     assembler.handle_terminal_direction(forward)
     assembler.handle_terminal_direction(reverse)
@@ -979,7 +855,7 @@ def test_legacy_terminal_retains_opaque_firmware_digest():
     assert assembler.integrity["digest"] == opaque_digest
 
 
-def test_compressed_observation_digest_matches_firmware_fixture():
+def test_compressed_observation_fields_are_retained_exactly():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
     common = {
@@ -1049,7 +925,8 @@ def test_compressed_observation_digest_matches_firmware_fixture():
         }
     )
 
-    assert assembler._digest == 0x408A_DD56_F1C6_7350
+    assert assembler.observations[(0, 0)]["delta_mantissa"] == 2_147_483_649
+    assert assembler.observations[(0, 0)]["disturbance_q16"] == 123_456
 
 
 def consensus_core(*, sequence, forward_class=0, reverse_class=0):
@@ -1309,7 +1186,7 @@ def test_terminal_accepts_digest_verified_evidence_prefix(outcome, cause):
     forward, reverse, integrity = terminal_fragments(
         outcome=outcome,
         mask=0,
-        digest=assembler._digest,
+        digest=OPAQUE_DIGEST,
         cause=cause,
         sequence=2,
         expected_observations=4,
@@ -1346,7 +1223,7 @@ def test_terminal_rejects_unexplained_incomplete_evidence(outcome, cause):
     forward, reverse, integrity = terminal_fragments(
         outcome=outcome,
         mask=0,
-        digest=assembler._digest,
+        digest=OPAQUE_DIGEST,
         cause=cause,
         sequence=2,
         expected_observations=4,
@@ -1500,8 +1377,8 @@ def test_inconclusive_requires_matching_generic_terminal():
             "phase": 10,
             "sufficient_direction_mask": 1,
             "cause": 1,
-            "digest_low": plan_digest(0) & 0xFFFF_FFFF,
-            "digest_high": plan_digest(0) >> 32,
+            "digest_low": OPAQUE_DIGEST & 0xFFFF_FFFF,
+            "digest_high": OPAQUE_DIGEST >> 32,
         }
     )
 
