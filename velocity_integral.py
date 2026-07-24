@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import struct
 
-from .velocity_sweep import encode_velocity_primitive_current_evidence
-
-
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
 
@@ -73,7 +70,6 @@ class VelocityIntegralAssembler:
         self._summary: dict | None = None
         self._run_sequence: int | None = None
         self._next_evidence_sequence = 1
-        self._evidence_digest = FNV1A64_OFFSET
 
     @staticmethod
     def _new_curve() -> dict:
@@ -95,11 +91,6 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is None:
             return None
         return int(self.workflow_plan["maximum_workflow_ms"]) / 1000.0
-
-    @property
-    def evidence_digest(self) -> int:
-        """Current firmware-equivalent digest over plan marker and events."""
-        return self._evidence_digest
 
     @property
     def report(self) -> dict:
@@ -257,10 +248,6 @@ class VelocityIntegralAssembler:
         ):
             raise VelocityIntegralProtocolError("invalid current evidence")
         self.current_evidence[key] = evidence
-        self._evidence_digest = _fnv1a(
-            encode_velocity_primitive_current_evidence(evidence),
-            self._evidence_digest,
-        )
         self._next_evidence_sequence += 1
         self._last_evidence = ("current", key[0])
 
@@ -541,7 +528,6 @@ class VelocityIntegralAssembler:
         plan["positive_i"] = [int(rung["i_raw"]) for rung in self._plan_rungs]
         plan["rungs"] = list(self._plan_rungs)
         self.plan = plan
-        self._evidence_digest = _fnv1a(self._encode_plan_marker(plan))
 
     def _finish_observation(self) -> None:
         core, rate, quality = self._observation_parts
@@ -554,9 +540,6 @@ class VelocityIntegralAssembler:
         if int(rate["deficit_low_q"]) > int(rate["deficit_high_q"]):
             raise VelocityIntegralProtocolError("reversed deficit interval")
         self.observations[key] = observation
-        self._evidence_digest = _fnv1a(
-            self._encode_observation(observation), self._evidence_digest
-        )
         self._next_evidence_sequence += 1
         self._last_evidence = ("observation", key[0])
         self._observation_parts = []
@@ -589,7 +572,6 @@ class VelocityIntegralAssembler:
             "directions": directions,
         }
         self.rungs[rung_index] = rung
-        self._evidence_digest = _fnv1a(self._encode_rung(rung), self._evidence_digest)
         self._next_evidence_sequence += 1
         self._last_evidence = ("rung", rung_index)
         self._rung_parts = []
@@ -728,147 +710,3 @@ class VelocityIntegralAssembler:
                     )
                 merged[key] = value
         return merged
-
-    @staticmethod
-    def _shift_bound(value: int, shift: int, lower: bool) -> int:
-        divisor = 1 << shift
-        quotient = abs(value) // divisor
-        remainder = abs(value) % divisor
-        if value < 0:
-            quotient = -quotient
-        if lower and value < 0 and remainder:
-            quotient -= 1
-        if not lower and value > 0 and remainder:
-            quotient += 1
-        return quotient
-
-    @staticmethod
-    def _encode_plan_marker(plan: dict) -> bytes:
-        return _pack(
-            (
-                ("B", 0),
-                ("I", plan["run_sequence"]),
-                ("I", plan["plan_digest"] & 0xFFFF_FFFF),
-                ("I", plan["plan_digest"] >> 32),
-                ("H", plan["final_p"]),
-                ("I", plan["planned_velocity_mrev_s"]),
-                ("i", plan["target_velocity_rpm"]),
-                ("I", plan["pwm_hz"]),
-                ("H", plan["i_start"]),
-                ("B", plan["positive_rung_count"]),
-                ("H", plan["family_size"]),
-                ("I", plan["moving_stroke_us"]),
-                ("I", plan["zero_settle_us"]),
-                ("I", plan["analysis_budget_us"]),
-                ("I", plan["maximum_workflow_ms"]),
-                ("I", plan["origin_band_counts"]),
-                ("I", plan["nominal_slot_us"]),
-                ("I", plan["maximum_slot_us"]),
-                ("B", plan["slot_count"]),
-                ("H", plan["hard_torque_limit"]),
-                ("H", plan["usable_torque_limit"]),
-            )
-        )
-
-    @staticmethod
-    def _encode_recovery(value: dict) -> bytes:
-        return _pack(
-            (
-                ("B", 9),
-                ("I", value["run_sequence"]),
-                ("H", value["evidence_sequence"]),
-                ("B", value["stage"]),
-                ("B", value["rung_index"]),
-                ("H", value["p_raw"]),
-                ("I", value["planned_velocity_mrev_s"]),
-                ("i", value["start_offset_counts"]),
-                ("i", value["closest_offset_counts"]),
-                ("i", value["final_offset_counts"]),
-                ("I", value["origin_band_counts"]),
-                ("I", value["lower_rate_q"] & 0xFFFF_FFFF),
-                ("I", value["lower_rate_q"] >> 32),
-                ("I", value["moving_duration_us"]),
-                ("I", value["settle_duration_us"]),
-                ("I", value["total_duration_us"]),
-                ("H", value["peak_torque_target_abs"]),
-                ("B", value["binding_source"]),
-                ("B", value["outcome"]),
-            )
-        )
-
-    def _encode_observation(self, value: dict) -> bytes:
-        shift = int(value["settled_shift"])
-        rates = (
-            int(value["settled_low"]),
-            int(value["settled_mean"]),
-            int(value["settled_high"]),
-            self._shift_bound(int(value["deficit_low_q"]), shift, True),
-            self._shift_bound(int(value["deficit_high_q"]), shift, False),
-        )
-        encoded = _pack(
-            (
-                ("B", 2),
-                ("I", value["run_sequence"]),
-                ("H", value["evidence_sequence"]),
-                ("I", value["plan_digest_low"]),
-                ("I", value["plan_digest_high"]),
-                ("B", value["rung_index"]),
-                ("B", value["slot"]),
-                ("H", value["i_raw"]),
-                ("B", value["direction"]),
-                ("B", value["classification"]),
-                ("B", value["initial_lead_in"]),
-                *(("i", item) for item in rates),
-                ("B", shift),
-                ("H", value["peak_torque_target_abs"]),
-            )
-        )
-        exclusion = int(value["level_or_exclusion"])
-        if exclusion & 0x80:
-            return encoded + _pack((("B", exclusion & 0x7F),))
-        return encoded + _pack(
-            (
-                ("B", 0),
-                ("H", value["suffix_len"]),
-                ("B", exclusion),
-                ("I", value["selected_blocks"]),
-                ("i", value["slope_mantissa"]),
-                ("B", value["slope_shift"]),
-                ("I", value["slope_half_width_mantissa"]),
-                ("B", value["slope_half_width_shift"]),
-                ("i", value["lag_one_q"]),
-                ("I", value["lag_one_half_width_q"]),
-                ("I", value["residual_mantissa"]),
-                ("B", value["residual_shift"]),
-                ("B", value["tested_suffixes"]),
-            )
-        )
-
-    def _encode_rung(self, rung: dict) -> bytes:
-        values = [
-            ("B", 3),
-            ("I", rung["run_sequence"]),
-            ("H", rung["evidence_sequence"]),
-            ("I", self.plan["plan_digest"] & 0xFFFF_FFFF),
-            ("I", self.plan["plan_digest"] >> 32),
-            ("B", rung["rung_index"]),
-            ("H", rung["i_raw"]),
-        ]
-        for direction in rung["directions"]:
-            values.extend(
-                (
-                    ("B", direction["direction"]),
-                    ("B", direction["kind"]),
-                    ("B", direction["classification"]),
-                    ("B", direction["component_count"]),
-                    ("B", direction["usable_mask"]),
-                    ("B", direction["included_mask"]),
-                )
-            )
-            packed = int(direction["observation_classes"])
-            values.extend(("B", (packed >> (index * 3)) & 0x7) for index in range(4))
-            components = list(direction["components"])
-            components.extend([(0, 0)] * (2 - len(components)))
-            for low, high in components[:2]:
-                values.extend((("i", low), ("i", high)))
-        return _pack(tuple(values))

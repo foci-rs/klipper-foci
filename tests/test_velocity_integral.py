@@ -5,7 +5,6 @@ import pytest
 from klipper_foci.velocity_integral import (
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
-    _fnv1a,
 )
 
 
@@ -13,6 +12,7 @@ PLAN_DIGEST = 0x0123_4567_89AB_CDEF
 STAGE_B_DIGEST = 0xFEDC_BA98_7654_3210
 RUN_SEQUENCE = 9
 POSITIVE_I = (5, 10, 20)
+OPAQUE_DIGEST = 0xDEAD_BEEF_0123_4567
 
 
 def feed_workflow(assembler, shape=2, maximum_ms=70_000):
@@ -199,16 +199,13 @@ def feed_current(assembler, sequence, rung_index, slot, capability=0, contact=0)
     )
 
 
-def test_stage_c_current_evidence_round_trips_into_the_run_digest():
+def test_stage_c_current_evidence_is_retained_after_its_observation():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler)
     feed_plan(assembler, schema_revision=3)
     feed_observation(assembler, 1, 0, 0, 0)
-    before = assembler.evidence_digest
-
     feed_current(assembler, 2, 0, 0, capability=0, contact=2)
 
-    assert assembler.evidence_digest != before
     assert assembler.current_evidence[(0, 0)]["contact"] == 2
 
 
@@ -499,7 +496,7 @@ def feed_terminal(assembler, sequence, *, reproduction=True, digest=None):
             "emitted_rungs": 5,
         }
     )
-    terminal_digest = assembler.evidence_digest if digest is None else digest
+    terminal_digest = OPAQUE_DIGEST if digest is None else digest
     assembler.handle_terminal_identity(
         {
             **common,
@@ -539,34 +536,6 @@ def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
     feed_workflow(assembler, shape=1, maximum_ms=389_520)
 
     assert assembler.maximum_duration_s == 389.52
-
-
-def test_plan_marker_digest_matches_firmware_fixture():
-    plan = {
-        "run_sequence": 7,
-        "plan_digest": PLAN_DIGEST,
-        "final_p": 1448,
-        "planned_velocity_mrev_s": 4394,
-        "target_velocity_rpm": 264,
-        "pwm_hz": 25_000,
-        "i_start": 5,
-        "positive_rung_count": 5,
-        "family_size": 28,
-        "moving_stroke_us": 512_000,
-        "zero_settle_us": 500_000,
-        "analysis_budget_us": 236_000,
-        "maximum_workflow_ms": 69_888,
-        "origin_band_counts": 1000,
-        "nominal_slot_us": 1_816_958,
-        "maximum_slot_us": 3_000_000,
-        "slot_count": 7,
-        "hard_torque_limit": 2816,
-        "usable_torque_limit": 2534,
-    }
-
-    digest = _fnv1a(VelocityIntegralAssembler._encode_plan_marker(plan))
-
-    assert digest == 0xABBE_8F32_FAA4_A140
 
 
 def test_assembles_exact_curves_sparse_masks_and_divergence_records():

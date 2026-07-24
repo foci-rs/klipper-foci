@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import struct
-
 STAGE_B_EVIDENCE_SCHEMA_REVISION = 7
 
 OUTCOME_NAMES = {
@@ -31,27 +29,6 @@ CONSENSUS_INCOMPLETE = 3
 
 class VelocitySweepProtocolError(Exception):
     """Raised when the streamed sweep evidence violates its wire contract."""
-
-
-def encode_velocity_primitive_current_evidence(value: dict) -> bytes:
-    """Encode current evidence for the temporary Stage-C digest replica."""
-    return struct.pack(
-        "<BIHBBBHHHHIIBB",
-        31,
-        int(value["run_sequence"]),
-        int(value["evidence_sequence"]),
-        int(value["stage"]),
-        int(value["rung_index"]),
-        int(value["slot"]),
-        int(value["clamp_limit"]),
-        int(value["clamp_readback"]),
-        int(value["moving_pid_output_peak"]),
-        int(value["zero_pid_output_peak"]),
-        int(value["moving_status_flags"]),
-        int(value["zero_status_flags"]),
-        int(value["capability"]),
-        int(value["contact"]),
-    )
 
 
 class VelocitySweepAssembler:
