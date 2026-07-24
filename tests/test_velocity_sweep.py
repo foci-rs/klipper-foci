@@ -1241,6 +1241,12 @@ def test_schema_six_current_headroom_allows_only_missing_final_recovery():
     assembler._validate_recovery_completeness({"cause": 4, "recovery_unavailable": 1})
 
 
+def test_reproduced_current_headroom_allows_only_missing_final_recovery():
+    assembler = recovery_cardinality_assembler({0})
+
+    assembler._validate_recovery_completeness({"cause": 0, "recovery_unavailable": 1})
+
+
 def test_schema_six_ordinary_end_requires_every_complete_rung_recovery():
     assembler = recovery_cardinality_assembler({0})
 

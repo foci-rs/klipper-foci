@@ -1622,7 +1622,6 @@ class VelocitySweepAssembler:
         }
         if (
             terminal is not None
-            and int(terminal.get("cause", 0)) == 4
             and int(terminal.get("recovery_unavailable", 0)) == 1
             and self.rungs
         ):

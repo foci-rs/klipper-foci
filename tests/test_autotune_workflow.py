@@ -293,6 +293,19 @@ class TestAutotuneGates(unittest.TestCase):
             any("integral response" in message for message in gcmd._responses)
         )
 
+    def test_composite_workflow_finishes_when_recovery_suppresses_continuation(self):
+        d = self._commissioned_driver()
+        d.autotune.velocity_integral.workflow_plan = {"shape": 1}
+        d.autotune.velocity_sweep.outcome = "complete"
+        d.autotune.velocity_sweep.terminal = {
+            "cause": 0,
+            "recovery_unavailable": 1,
+        }
+        d.autotune.velocity_sweep.done = True
+
+        self.assertTrue(d.autotune._workflow_finished())
+        self.assertFalse(d.autotune.velocity_integral.done)
+
     def test_composite_rejects_integral_plan_before_proportional_handoff(self):
         d = self._commissioned_driver()
         params = {

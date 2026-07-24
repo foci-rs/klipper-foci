@@ -193,6 +193,11 @@ class AutotuneWorkflow:
             return False
         if self.velocity_sweep.outcome != "complete":
             return True
+        if (
+            int((self.velocity_sweep.terminal or {}).get("recovery_unavailable", 0))
+            == 1
+        ):
+            return True
         return self.velocity_integral.done
 
     def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
