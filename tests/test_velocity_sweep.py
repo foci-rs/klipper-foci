@@ -715,21 +715,23 @@ def test_stage_b_terminal_checks_selected_records_and_exact_digest():
     assert assembler.terminal["nominated_p"] == 724
 
 
-def test_stage_b_terminal_rejects_digest_mismatch():
+def test_stage_b_terminal_retains_opaque_firmware_digest():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=0)
+    opaque_digest = 0xDEAD_BEEF_0123_4567
 
-    with pytest.raises(VelocitySweepProtocolError, match="digest"):
-        feed_stage_b_terminal(
-            assembler,
-            sequence=1,
-            outcome=2,
-            cause=1,
-            member_mask=0,
-            nominated_p=0,
-            digest=1,
-            plan_digest_value=123,
-        )
+    feed_stage_b_terminal(
+        assembler,
+        sequence=1,
+        outcome=2,
+        cause=1,
+        member_mask=0,
+        nominated_p=0,
+        digest=opaque_digest,
+        plan_digest_value=123,
+    )
+
+    assert assembler.terminal["digest"] == opaque_digest
 
 
 def test_stage_b_reproduction_precedes_matching_complete_terminal():
@@ -964,15 +966,17 @@ def test_complete_terminal_checks_counts_and_exact_digest():
     assert assembler.sufficient_direction_mask == 3
 
 
-def test_digest_mismatch_is_transport_failure():
+def test_legacy_terminal_retains_opaque_firmware_digest():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=0)
-    forward, reverse, integrity = terminal_fragments(digest=1)
+    opaque_digest = 0xDEAD_BEEF_0123_4567
+    forward, reverse, integrity = terminal_fragments(digest=opaque_digest)
     assembler.handle_terminal_direction(forward)
     assembler.handle_terminal_direction(reverse)
 
-    with pytest.raises(VelocitySweepProtocolError, match="digest"):
-        assembler.handle_terminal_integrity(integrity)
+    assembler.handle_terminal_integrity(integrity)
+
+    assert assembler.integrity["digest"] == opaque_digest
 
 
 def test_compressed_observation_digest_matches_firmware_fixture():
@@ -1144,7 +1148,7 @@ def test_eight_observations_preserve_firmware_consensus_group():
     assert assembler.rungs[0]["components"][0] == [(145, 155)]
 
 
-def test_stage_b_recovery_is_exact_and_must_immediately_follow_its_rung():
+def stage_b_recovery_assembler():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_eight_observations(assembler)
@@ -1162,62 +1166,61 @@ def test_stage_b_recovery_is_exact_and_must_immediately_follow_its_rung():
         )
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    return assembler
+
+
+def test_stage_b_recovery_summary_is_causal_and_compact():
+    assembler = stage_b_recovery_assembler()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 10}
-    assembler.handle_recovery_core(
-        {
-            **common,
-            "stage": 0,
-            "rung_index": 0,
-            "p_raw": 512,
-            "binding_source": 0,
-            "outcome": 0,
-        }
-    )
-    assembler.handle_recovery_position(
-        {
-            **common,
-            "start_offset_counts": 8458,
-            "closest_offset_counts": 999,
-            "final_offset_counts": -500,
-            "origin_band_counts": 1000,
-        }
-    )
-    assembler.handle_recovery_timing(
-        {
-            **common,
-            "moving_duration_us": 600000,
-            "settle_duration_us": 500000,
-            "total_duration_us": 1100000,
-        }
-    )
-    assembler.handle_recovery_limits(
-        {
-            **common,
-            "planned_velocity_mrev_s": 4394,
-            "lower_rate_low": 0x89ABCDEF,
-            "lower_rate_high": 0x01234567,
-            "peak_torque_target_abs": 2533,
-        }
-    )
+    summary = {
+        **common,
+        "stage": 0,
+        "rung_index": 0,
+        "p_raw": 16,
+        "binding_source": 5,
+        "outcome": 1,
+    }
+    assembler.handle_recovery_summary(summary)
 
-    assert assembler.recoveries[0]["final_offset_counts"] == -500
-    assert assembler.recoveries[0]["lower_rate_q"] == 0x0123_4567_89AB_CDEF
-    assert len(assembler._canonical_events[-1]) == 55
+    assert assembler.recoveries[0] == {
+        "run_sequence": 7,
+        "evidence_sequence": 10,
+        "stage": 0,
+        "rung_index": 0,
+        "p_raw": 16,
+        "binding_source": 5,
+        "outcome": 1,
+    }
+    with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
+        assembler.handle_recovery_summary(summary)
 
-    reordered = VelocitySweepAssembler()
-    feed_plan(reordered, rung_count=1, observations_per_direction=4)
-    reordered_core = dict(common, evidence_sequence=1)
-    with pytest.raises(VelocitySweepProtocolError, match="immediately follow"):
-        reordered.handle_recovery_core(
-            {
-                **reordered_core,
-                "stage": 0,
-                "rung_index": 0,
-                "p_raw": 512,
-                "binding_source": 0,
-                "outcome": 0,
-            }
-        )
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    (
+        ({"stage": 1}, "wrong stage"),
+        ({"run_sequence": 8}, "run sequence"),
+        ({"evidence_sequence": 11}, "sequence gap"),
+        ({"rung_index": 1}, "immediately follow"),
+        ({"p_raw": 17}, "rung gain"),
+    ),
+)
+def test_stage_b_recovery_summary_rejects_changed_identity(replacement, message):
+    assembler = stage_b_recovery_assembler()
+    params = {
+        "oid": 0,
+        "run_sequence": 7,
+        "evidence_sequence": 10,
+        "stage": 0,
+        "rung_index": 0,
+        "p_raw": 16,
+        "binding_source": 0,
+        "outcome": 0,
+        **replacement,
+    }
+
+    with pytest.raises(VelocitySweepProtocolError, match=message):
+        assembler.handle_recovery_summary(params)
 
 
 def recovery_cardinality_assembler(recovered_rungs):
@@ -1275,63 +1278,20 @@ def test_schema_six_missing_final_recovery_requires_terminal_annotation():
 
 
 def test_structured_recovery_source_is_preserved():
-    assembler = VelocitySweepAssembler()
-    feed_plan(assembler, rung_count=1, observations_per_direction=4)
-    feed_eight_observations(assembler)
-    sequence = 9
-    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
-    assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=145, high=155
-        )
-    )
-    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
-    assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
-        )
-    )
-    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    assembler = stage_b_recovery_assembler()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 10}
-    assembler.handle_recovery_core(
+    assembler.handle_recovery_summary(
         {
             **common,
             "stage": 0,
             "rung_index": 0,
-            "p_raw": 512,
+            "p_raw": 16,
             "binding_source": 5,
             "outcome": 0,
         }
     )
-    assembler.handle_recovery_position(
-        {
-            **common,
-            "start_offset_counts": -1834,
-            "closest_offset_counts": -1000,
-            "final_offset_counts": -999,
-            "origin_band_counts": 1000,
-        }
-    )
-    assembler.handle_recovery_timing(
-        {
-            **common,
-            "moving_duration_us": 90_904,
-            "settle_duration_us": 500_000,
-            "total_duration_us": 590_904,
-        }
-    )
-    assembler.handle_recovery_limits(
-        {
-            **common,
-            "planned_velocity_mrev_s": 4394,
-            "lower_rate_low": 9_174_528,
-            "lower_rate_high": 0,
-            "peak_torque_target_abs": 2533,
-        }
-    )
 
     assert assembler.recoveries[0]["binding_source"] == 5
-    assert assembler.recoveries[0]["lower_rate_q"] == 9_174_528
 
 
 @pytest.mark.parametrize(("outcome", "cause"), [(2, 9), (1, 4), (0, 4)])

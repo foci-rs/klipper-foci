@@ -55,7 +55,6 @@ class AutotuneWorkflow:
         self.velocity_integral = VelocityIntegralAssembler()
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
         self._stage_b_candidate_request: dict | None = None
-        self._recovery_stage: int | None = None
         self.done = False
 
     def handle_tune_result(self, params: dict) -> None:
@@ -108,42 +107,21 @@ class AutotuneWorkflow:
         except VelocityIntegralProtocolError as err:
             self.velocity_integral_error = err
 
-    def _handle_recovery(self, method_name: str, params: dict) -> None:
-        if method_name == "handle_recovery_core":
-            if self._recovery_stage is not None:
-                self.velocity_sweep_error = VelocitySweepProtocolError(
-                    "recovery core interrupted an incomplete recovery group"
-                )
-                return
-            stage = int(params.get("stage", -1))
-            if stage not in (0, 1):
-                self.velocity_sweep_error = VelocitySweepProtocolError(
-                    "recovery core named an invalid stage"
-                )
-                return
-            self._recovery_stage = stage
-        elif self._recovery_stage is None:
+    def _handle_recovery_summary(self, params: dict) -> None:
+        stage = int(params.get("stage", -1))
+        if stage not in (0, 1):
             self.velocity_sweep_error = VelocitySweepProtocolError(
-                "recovery fragment arrived without a core"
+                "recovery summary named an invalid stage"
             )
             return
-        target = (
-            self.velocity_sweep if self._recovery_stage == 0 else self.velocity_integral
-        )
-        error_attr = (
-            "velocity_sweep_error"
-            if self._recovery_stage == 0
-            else "velocity_integral_error"
-        )
+        target = self.velocity_sweep if stage == 0 else self.velocity_integral
+        error_attr = "velocity_sweep_error" if stage == 0 else "velocity_integral_error"
         if getattr(self, error_attr) is not None:
             return
         try:
-            getattr(target, method_name)(params)
+            target.handle_recovery_summary(params)
         except (VelocitySweepProtocolError, VelocityIntegralProtocolError) as err:
             setattr(self, error_attr, err)
-        finally:
-            if method_name == "handle_recovery_limits":
-                self._recovery_stage = None
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         self._handle_velocity_integral("handle_workflow_plan", params)
@@ -212,17 +190,8 @@ class AutotuneWorkflow:
     def handle_velocity_sweep_plan_recovery(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_plan_recovery", params)
 
-    def handle_rung_origin_recovery_core(self, params: dict) -> None:
-        self._handle_recovery("handle_recovery_core", params)
-
-    def handle_rung_origin_recovery_position(self, params: dict) -> None:
-        self._handle_recovery("handle_recovery_position", params)
-
-    def handle_rung_origin_recovery_timing(self, params: dict) -> None:
-        self._handle_recovery("handle_recovery_timing", params)
-
-    def handle_rung_origin_recovery_limits(self, params: dict) -> None:
-        self._handle_recovery("handle_recovery_limits", params)
+    def handle_rung_origin_recovery_summary(self, params: dict) -> None:
+        self._handle_recovery_summary(params)
 
     def handle_velocity_primitive_current_evidence(self, params: dict) -> None:
         stage = int(params.get("stage", -1))

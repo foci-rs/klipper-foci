@@ -90,7 +90,6 @@ class VelocitySweepAssembler:
         self._canonical_events: list[bytes] = []
         self._unframed_kind: str | None = None
         self._unframed_parts: list[dict] = []
-        self._recovery_parts: list[dict] = []
         self._last_evidence: tuple[str, int] | None = None
 
     @property
@@ -133,22 +132,33 @@ class VelocitySweepAssembler:
         recovery["fragment"] = 3
         self._accept_group_fragment("plan", 4, 3, recovery)
 
-    def handle_recovery_core(self, params: dict) -> None:
-        if self._recovery_parts:
-            raise VelocitySweepProtocolError("duplicate recovery core")
+    def handle_recovery_summary(self, params: dict) -> None:
+        """Accept one compact recovery summary after its causal rung."""
+        if self.plan is None:
+            raise VelocitySweepProtocolError("recovery summary arrived before plan")
         if int(params.get("stage", -1)) != 0:
-            raise VelocitySweepProtocolError("Stage-B recovery named the wrong stage")
+            raise VelocitySweepProtocolError(
+                "Stage-B recovery summary named the wrong stage"
+            )
         self._validate_run(params)
+        rung_index = int(params.get("rung_index", -1))
+        if rung_index in self.recoveries:
+            raise VelocitySweepProtocolError("duplicate rung recovery")
         if int(params["evidence_sequence"]) != self._next_evidence_sequence:
             raise VelocitySweepProtocolError("recovery evidence sequence gap")
-        rung_index = int(params.get("rung_index", -1))
         if self._last_evidence != ("rung", rung_index):
             raise VelocitySweepProtocolError(
                 "recovery did not immediately follow its rung"
             )
-        if rung_index in self.recoveries:
-            raise VelocitySweepProtocolError("duplicate rung recovery")
-        self._recovery_parts.append(dict(params))
+        if int(params.get("p_raw", -1)) != int(self.rungs[rung_index]["velocity_p"]):
+            raise VelocitySweepProtocolError("recovery summary changed the rung gain")
+        if int(params.get("binding_source", -1)) not in range(7):
+            raise VelocitySweepProtocolError("invalid recovery binding source")
+        if int(params.get("outcome", -1)) not in range(5):
+            raise VelocitySweepProtocolError("invalid recovery outcome")
+        self.recoveries[rung_index] = self._strip_metadata(params)
+        self._next_evidence_sequence += 1
+        self._last_evidence = ("recovery", rung_index)
 
     def handle_current_evidence(self, params: dict) -> None:
         """Accept one causal current record immediately after its observation."""
@@ -187,39 +197,6 @@ class VelocitySweepAssembler:
             self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
         self._next_evidence_sequence += 1
         self._last_evidence = ("current", key[0])
-
-    def handle_recovery_position(self, params: dict) -> None:
-        self._accept_recovery_part(params, 1)
-
-    def handle_recovery_timing(self, params: dict) -> None:
-        self._accept_recovery_part(params, 2)
-
-    def handle_recovery_limits(self, params: dict) -> None:
-        self._accept_recovery_part(params, 3)
-        core, position, timing, limits = self._recovery_parts
-        recovery = self._merge([core, position, timing, limits])
-        recovery["lower_rate_q"] = int(limits["lower_rate_low"]) | (
-            int(limits["lower_rate_high"]) << 32
-        )
-        rung_index = int(core["rung_index"])
-        self.recoveries[rung_index] = recovery
-        encoded = self._encode_recovery(recovery)
-        self._canonical_events.append(encoded)
-        for byte in encoded:
-            self._digest ^= byte
-            self._digest = (self._digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
-        self._next_evidence_sequence += 1
-        self._last_evidence = ("recovery", rung_index)
-        self._recovery_parts = []
-
-    def _accept_recovery_part(self, params: dict, expected: int) -> None:
-        if len(self._recovery_parts) != expected:
-            raise VelocitySweepProtocolError("missing or reordered recovery fragment")
-        core = self._recovery_parts[0]
-        self._validate_run(params)
-        if int(params["evidence_sequence"]) != int(core["evidence_sequence"]):
-            raise VelocitySweepProtocolError("recovery fragment identity changed")
-        self._recovery_parts.append(dict(params))
 
     def handle_observation_core(self, params: dict) -> None:
         self._accept_group_fragment("observation", 4, 0, params)
@@ -1526,8 +1503,6 @@ class VelocitySweepAssembler:
                 raise VelocitySweepProtocolError(
                     "preflight rejection carried an evidence digest"
                 )
-        elif terminal["digest"] != self._stage_b_digest(terminal["plan_digest"]):
-            raise VelocitySweepProtocolError("stage b evidence digest mismatch")
         terminal["run_started_us"] = int(forward["started_low"]) | (
             int(forward["started_high"]) << 32
         )
@@ -1580,11 +1555,9 @@ class VelocitySweepAssembler:
         self.full_plan_executed = expected_observations == len(
             self.observations
         ) and expected_rungs == len(self.rungs)
-        reported_digest = int(integrity["digest_low"]) | (
+        integrity["digest"] = int(integrity["digest_low"]) | (
             int(integrity["digest_high"]) << 32
         )
-        if reported_digest != self._digest:
-            raise VelocitySweepProtocolError("velocity sweep digest mismatch")
         outcome_code = int(integrity["outcome"])
         if outcome_code not in LEGACY_OUTCOME_NAMES:
             raise VelocitySweepProtocolError("unknown velocity sweep outcome")

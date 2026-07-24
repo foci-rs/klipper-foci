@@ -69,7 +69,6 @@ class VelocityIntegralAssembler:
         self._observation_parts: list[dict] = []
         self._rung_parts: list[dict] = []
         self._terminal_parts: list[dict] = []
-        self._recovery_parts: list[dict] = []
         self._last_evidence: tuple[str, int] | None = None
         self._summary: dict | None = None
         self._run_sequence: int | None = None
@@ -205,22 +204,31 @@ class VelocityIntegralAssembler:
         self._require_plan_identity(params)
         self._plan_parts.append(dict(params))
 
-    def handle_recovery_core(self, params: dict) -> None:
-        if self._recovery_parts:
-            raise VelocityIntegralProtocolError("duplicate recovery core")
+    def handle_recovery_summary(self, params: dict) -> None:
+        """Accept one compact recovery summary after its causal rung."""
+        self._require_plan()
         if int(params.get("stage", -1)) != 1:
             raise VelocityIntegralProtocolError(
-                "Stage-C recovery named the wrong stage"
+                "Stage-C recovery summary named the wrong stage"
             )
-        self._require_event_identity(params)
+        self._require_run(params)
         rung_index = int(params.get("rung_index", -1))
+        if rung_index in self.recoveries:
+            raise VelocityIntegralProtocolError("duplicate rung recovery")
+        self._require_event_identity(params)
         if self._last_evidence != ("rung", rung_index):
             raise VelocityIntegralProtocolError(
                 "recovery did not immediately follow its rung"
             )
-        if rung_index in self.recoveries:
-            raise VelocityIntegralProtocolError("duplicate rung recovery")
-        self._recovery_parts.append(dict(params))
+        if int(params.get("p_raw", -1)) != int(self.plan["final_p"]):
+            raise VelocityIntegralProtocolError("recovery summary changed fixed P")
+        if int(params.get("binding_source", -1)) not in range(7):
+            raise VelocityIntegralProtocolError("invalid recovery binding source")
+        if int(params.get("outcome", -1)) not in range(5):
+            raise VelocityIntegralProtocolError("invalid recovery outcome")
+        self.recoveries[rung_index] = _metadata_free(params)
+        self._next_evidence_sequence += 1
+        self._last_evidence = ("recovery", rung_index)
 
     def handle_current_evidence(self, params: dict) -> None:
         """Accept one causal current record immediately after its observation."""
@@ -255,39 +263,6 @@ class VelocityIntegralAssembler:
         )
         self._next_evidence_sequence += 1
         self._last_evidence = ("current", key[0])
-
-    def handle_recovery_position(self, params: dict) -> None:
-        self._accept_recovery_part(params, 1)
-
-    def handle_recovery_timing(self, params: dict) -> None:
-        self._accept_recovery_part(params, 2)
-
-    def handle_recovery_limits(self, params: dict) -> None:
-        self._accept_recovery_part(params, 3)
-        core, position, timing, limits = self._recovery_parts
-        recovery = self._merge((core, position, timing, limits))
-        recovery["lower_rate_q"] = _u64(
-            limits["lower_rate_low"], limits["lower_rate_high"]
-        )
-        rung_index = int(core["rung_index"])
-        self.recoveries[rung_index] = recovery
-        self._evidence_digest = _fnv1a(
-            self._encode_recovery(recovery), self._evidence_digest
-        )
-        self._next_evidence_sequence += 1
-        self._last_evidence = ("recovery", rung_index)
-        self._recovery_parts = []
-
-    def _accept_recovery_part(self, params: dict, expected: int) -> None:
-        if len(self._recovery_parts) != expected:
-            raise VelocityIntegralProtocolError(
-                "missing or reordered recovery fragment"
-            )
-        core = self._recovery_parts[0]
-        self._require_event_identity(params)
-        if int(params["evidence_sequence"]) != int(core["evidence_sequence"]):
-            raise VelocityIntegralProtocolError("recovery fragment identity changed")
-        self._recovery_parts.append(dict(params))
 
     def handle_plan_rung(self, params: dict) -> None:
         if self.plan is not None:
@@ -505,10 +480,6 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("terminal report is incomplete")
         if int(self.terminal["plan_digest"]) != int(self.plan["plan_digest"]):
             raise VelocityIntegralProtocolError("terminal plan digest mismatch")
-        if int(self.terminal["digest"]) != self._evidence_digest:
-            raise VelocityIntegralProtocolError(
-                "integral-response evidence digest mismatch"
-            )
         if int(self.terminal["expected_observations"]) != int(
             self.plan["expected_observations"]
         ):

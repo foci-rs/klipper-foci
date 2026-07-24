@@ -280,14 +280,11 @@ def feed_rung(assembler, sequence, rung_index, i_raw, kind):
 
 
 def feed_recovery(assembler, sequence, rung_index):
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": sequence,
-    }
-    assembler.handle_recovery_core(
+    assembler.handle_recovery_summary(
         {
-            **common,
+            "oid": 0,
+            "run_sequence": RUN_SEQUENCE,
+            "evidence_sequence": sequence,
             "stage": 1,
             "rung_index": rung_index,
             "p_raw": 1448,
@@ -295,32 +292,62 @@ def feed_recovery(assembler, sequence, rung_index):
             "outcome": 0,
         }
     )
-    assembler.handle_recovery_position(
-        {
-            **common,
-            "start_offset_counts": 8458,
-            "closest_offset_counts": 999,
-            "final_offset_counts": 500,
-            "origin_band_counts": 1000,
-        }
-    )
-    assembler.handle_recovery_timing(
-        {
-            **common,
-            "moving_duration_us": 600000,
-            "settle_duration_us": 500000,
-            "total_duration_us": 1100000,
-        }
-    )
-    assembler.handle_recovery_limits(
-        {
-            **common,
-            "planned_velocity_mrev_s": 4394,
-            "lower_rate_low": 0x89ABCDEF,
-            "lower_rate_high": 0x01234567,
-            "peak_torque_target_abs": 2533,
-        }
-    )
+
+
+def stage_c_recovery_assembler():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+    for slot in range(8):
+        feed_observation(assembler, slot + 1, 0, slot, 0)
+    feed_rung(assembler, 9, 0, 0, 0)
+    return assembler
+
+
+def test_stage_c_recovery_summary_is_causal_and_compact():
+    assembler = stage_c_recovery_assembler()
+
+    feed_recovery(assembler, 10, 0)
+
+    assert assembler.recoveries[0] == {
+        "run_sequence": RUN_SEQUENCE,
+        "evidence_sequence": 10,
+        "stage": 1,
+        "rung_index": 0,
+        "p_raw": 1448,
+        "binding_source": 0,
+        "outcome": 0,
+    }
+    with pytest.raises(VelocityIntegralProtocolError, match="duplicate"):
+        feed_recovery(assembler, 10, 0)
+
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    (
+        ({"stage": 0}, "wrong stage"),
+        ({"run_sequence": RUN_SEQUENCE + 1}, "run sequence"),
+        ({"evidence_sequence": 11}, "sequence gap"),
+        ({"rung_index": 1}, "immediately follow"),
+        ({"p_raw": 1449}, "fixed P"),
+    ),
+)
+def test_stage_c_recovery_summary_rejects_changed_identity(replacement, message):
+    assembler = stage_c_recovery_assembler()
+    params = {
+        "oid": 0,
+        "run_sequence": RUN_SEQUENCE,
+        "evidence_sequence": 10,
+        "stage": 1,
+        "rung_index": 0,
+        "p_raw": 1448,
+        "binding_source": 5,
+        "outcome": 1,
+        **replacement,
+    }
+
+    with pytest.raises(VelocityIntegralProtocolError, match=message):
+        assembler.handle_recovery_summary(params)
 
 
 def feed_full_evidence(assembler):
@@ -343,7 +370,7 @@ def feed_full_evidence(assembler):
     return sequence
 
 
-def feed_terminal(assembler, sequence, *, reproduction=True):
+def feed_terminal(assembler, sequence, *, reproduction=True, digest=None):
     common = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
@@ -472,14 +499,15 @@ def feed_terminal(assembler, sequence, *, reproduction=True):
             "emitted_rungs": 5,
         }
     )
+    terminal_digest = assembler.evidence_digest if digest is None else digest
     assembler.handle_terminal_identity(
         {
             **common,
             "fragment": 1,
             "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
             "plan_digest_high": PLAN_DIGEST >> 32,
-            "digest_low": assembler.evidence_digest & 0xFFFF_FFFF,
-            "digest_high": assembler.evidence_digest >> 32,
+            "digest_low": terminal_digest & 0xFFFF_FFFF,
+            "digest_high": terminal_digest >> 32,
         }
     )
     assembler.handle_terminal_timing(
@@ -561,7 +589,7 @@ def test_assembles_exact_curves_sparse_masks_and_divergence_records():
     assert assembler.terminal["run_started_us"] == 0x0000_0001_FFFF_FFFE
     assert assembler.terminal["run_completed_us"] == 0x0000_0002_0000_0004
     assert len(assembler.recoveries) == 5
-    assert assembler.recoveries[0]["lower_rate_q"] == 0x0123_4567_89AB_CDEF
+    assert assembler.recoveries[0]["binding_source"] == 0
     assert assembler.terminal["recovery_unavailable"] == 0
     assert "absolute_curves" in assembler.report
     assert "reproduction" in assembler.report
@@ -601,15 +629,19 @@ def test_terminal_rejects_missing_reproduction_fragment():
         assembler.validate_complete()
 
 
-def test_wrong_terminal_digest_is_rejected():
+def test_terminal_digest_is_retained_as_opaque_firmware_identity():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler)
     feed_plan(assembler)
     sequence = feed_full_evidence(assembler)
+    opaque_digest = 0xDEAD_BEEF_0123_4567
 
-    original = assembler.evidence_digest
-    feed_terminal(assembler, sequence, reproduction=False)
-    assembler.terminal["digest"] = original ^ 1
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        digest=opaque_digest,
+    )
 
-    with pytest.raises(VelocityIntegralProtocolError, match="digest mismatch"):
-        assembler.validate_complete()
+    assembler.validate_complete()
+    assert assembler.terminal["digest"] == opaque_digest
