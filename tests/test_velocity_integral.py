@@ -190,6 +190,40 @@ def test_stage_c_observation_advances_over_trace_only_current_sequence():
     assert (0, 1) in assembler.observations
 
 
+def test_stage_c_terminal_can_follow_observation_without_current():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler, schema_revision=3)
+    feed_observation(assembler, 1, 0, 0, 0)
+
+    assembler.handle_run_summary(
+        {
+            "oid": 0,
+            "run_sequence": RUN_SEQUENCE,
+            "evidence_sequence": 2,
+            "fragment": 0,
+            "forward_eligible_mask": 0,
+            "reverse_eligible_mask": 0,
+            "opening_available_mask": 0,
+            "bookend_available_mask": 0,
+            "current_terminus_plus_one": 0,
+            "sufficient_direction_mask": 0,
+        }
+    )
+
+    assert assembler.summary is not None
+
+
+def test_stage_c_trace_only_current_hole_does_not_hide_larger_gap():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler, schema_revision=3)
+    feed_observation(assembler, 1, 0, 0, 0)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="sequence gap"):
+        feed_observation(assembler, 4, 0, 1, 1)
+
+
 def test_schema_four_assembles_minimum_positive_ladder_and_timeout():
     assembler = VelocityIntegralAssembler()
     positive_i = (1, 2, 4, 8, 16, 32, 64)

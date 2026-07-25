@@ -464,6 +464,54 @@ def test_structured_boundary_precedes_trace_only_current_sequence():
     assert (0, 1) in assembler.observations
 
 
+def test_stage_b_terminal_can_follow_observation_without_current():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=1)
+    feed_observation(
+        assembler,
+        sequence=1,
+        slot=0,
+        low=0,
+        high=0,
+        classification=9,
+    )
+    assembler.handle_structured_boundary(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 1,
+            "rung_index": 0,
+            "slot": 0,
+        }
+    )
+    forward, reverse, integrity = terminal_fragments(
+        outcome=2,
+        mask=0,
+        digest=OPAQUE_DIGEST,
+        cause=9,
+        sequence=2,
+        expected_observations=4,
+        emitted_observations=1,
+        expected_rungs=1,
+        emitted_rungs=0,
+    )
+
+    assembler.handle_terminal_direction(forward)
+    assembler.handle_terminal_direction(reverse)
+    assembler.handle_terminal_integrity(integrity)
+
+    assert assembler.outcome == "fault"
+
+
+def test_stage_b_trace_only_current_hole_does_not_hide_larger_gap():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    feed_observation(assembler, sequence=1, slot=0, low=100, high=110)
+
+    with pytest.raises(VelocitySweepProtocolError, match="sequence gap"):
+        feed_observation(assembler, sequence=4, slot=1, low=-110, high=-100)
+
+
 def terminal_fragments(
     *,
     outcome=0,

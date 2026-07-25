@@ -504,7 +504,7 @@ class VelocitySweepAssembler:
 
     def _start_unframed(self, kind: str, params: dict) -> None:
         self._validate_run(params)
-        self._advance_past_trace_only_current()
+        self._resolve_trace_only_current(int(params["evidence_sequence"]))
         if int(params["evidence_sequence"]) != self._next_evidence_sequence:
             raise VelocitySweepProtocolError("%s evidence sequence gap" % kind)
         self._unframed_kind = kind
@@ -556,7 +556,7 @@ class VelocitySweepAssembler:
             self._run_sequence = run_sequence
         elif run_sequence != self._run_sequence:
             raise VelocitySweepProtocolError("run sequence changed")
-        self._advance_past_trace_only_current()
+        self._resolve_trace_only_current(evidence_sequence)
         if evidence_sequence != self._next_evidence_sequence:
             raise VelocitySweepProtocolError(
                 "evidence sequence gap: got %d, expected %d"
@@ -593,8 +593,12 @@ class VelocitySweepAssembler:
         self._group_parts = []
         self._group_fragments = 0
 
-    def _advance_past_trace_only_current(self) -> None:
-        if self._trace_only_current_pending:
+    def _resolve_trace_only_current(self, evidence_sequence: int) -> None:
+        if not self._trace_only_current_pending:
+            return
+        if evidence_sequence == self._next_evidence_sequence:
+            self._trace_only_current_pending = False
+        elif evidence_sequence == self._next_evidence_sequence + 1:
             self._next_evidence_sequence += 1
             self._trace_only_current_pending = False
 

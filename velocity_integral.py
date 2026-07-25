@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import struct
 
-OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN = 2
-
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
 
@@ -71,6 +69,7 @@ class VelocityIntegralAssembler:
         self._summary: dict | None = None
         self._run_sequence: int | None = None
         self._next_evidence_sequence = 1
+        self._trace_only_current_pending = False
 
     @staticmethod
     def _new_curve() -> dict:
@@ -524,7 +523,8 @@ class VelocityIntegralAssembler:
         if int(rate["deficit_low_q"]) > int(rate["deficit_high_q"]):
             raise VelocityIntegralProtocolError("reversed deficit interval")
         self.observations[key] = observation
-        self._next_evidence_sequence += OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN
+        self._next_evidence_sequence += 1
+        self._trace_only_current_pending = True
         self._last_evidence = ("observation", key[0])
         self._observation_parts = []
 
@@ -615,10 +615,21 @@ class VelocityIntegralAssembler:
 
     def _require_event_identity(self, params: dict) -> None:
         self._require_run(params)
-        if int(params.get("evidence_sequence", -1)) != self._next_evidence_sequence:
+        evidence_sequence = int(params.get("evidence_sequence", -1))
+        self._resolve_trace_only_current(evidence_sequence)
+        if evidence_sequence != self._next_evidence_sequence:
             raise VelocityIntegralProtocolError(
                 "integral-response evidence sequence gap"
             )
+
+    def _resolve_trace_only_current(self, evidence_sequence: int) -> None:
+        if not self._trace_only_current_pending:
+            return
+        if evidence_sequence == self._next_evidence_sequence:
+            self._trace_only_current_pending = False
+        elif evidence_sequence == self._next_evidence_sequence + 1:
+            self._next_evidence_sequence += 1
+            self._trace_only_current_pending = False
 
     def _require_terminal_identity(self, params: dict) -> None:
         self._require_plan()
