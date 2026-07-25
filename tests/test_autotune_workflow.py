@@ -306,6 +306,41 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertTrue(d.autotune._workflow_finished())
         self.assertFalse(d.autotune.velocity_integral.done)
 
+    def test_suppressed_composite_continuation_returns_stage_b_result(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        d.autotune._format_velocity_sweep_result = lambda: "proportional response"
+
+        def pause_with_suppressed_continuation(deadline):
+            reactor._time = deadline
+            params = {
+                "run_sequence": 10,
+                "shape": 1,
+                "nominal_workflow_ms": 300_000,
+                "maximum_workflow_ms": 390_000,
+            }
+            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+            d.autotune.handle_commissioning_workflow_plan(
+                {**params, "digest_low": low, "digest_high": high}
+            )
+            d.autotune.velocity_sweep.outcome = "complete"
+            d.autotune.velocity_sweep.terminal = {
+                "cause": 0,
+                "recovery_unavailable": 1,
+            }
+            d.autotune.velocity_sweep.done = True
+            return reactor._time
+
+        reactor.pause = pause_with_suppressed_continuation
+
+        d.autotune.autotune(gcmd)
+
+        self.assertTrue(
+            any("proportional response" in message for message in gcmd._responses)
+        )
+        self.assertFalse(d.autotune.velocity_integral.done)
+
     def test_composite_rejects_integral_plan_before_proportional_handoff(self):
         d = self._commissioned_driver()
         params = {

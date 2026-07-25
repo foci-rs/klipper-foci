@@ -760,7 +760,7 @@ class AutotuneWorkflow:
                                 detail_suffix,
                             )
                         )
-                    return
+                return
 
             result = self.result
             status = result.get("status", 255)
