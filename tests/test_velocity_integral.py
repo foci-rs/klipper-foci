@@ -180,35 +180,14 @@ def feed_observation(assembler, sequence, rung_index, slot, i_raw):
     )
 
 
-def feed_current(assembler, sequence, rung_index, slot, capability=0, contact=0):
-    assembler.handle_current_evidence(
-        {
-            "oid": 0,
-            "run_sequence": RUN_SEQUENCE,
-            "evidence_sequence": sequence,
-            "stage": 1,
-            "rung_index": rung_index,
-            "slot": slot,
-            "clamp_limit": 2534,
-            "clamp_readback": 2534,
-            "moving_pid_output_peak": 1200,
-            "zero_pid_output_peak": 1400,
-            "moving_status_flags": 0,
-            "zero_status_flags": 0,
-            "capability": capability,
-            "contact": contact,
-        }
-    )
-
-
-def test_stage_c_current_evidence_is_retained_after_its_observation():
+def test_stage_c_observation_advances_over_trace_only_current_sequence():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler)
     feed_plan(assembler, schema_revision=3)
     feed_observation(assembler, 1, 0, 0, 0)
-    feed_current(assembler, 2, 0, 0, capability=0, contact=2)
+    feed_observation(assembler, 3, 0, 1, 1)
 
-    assert assembler.current_evidence[(0, 0)]["contact"] == 2
+    assert (0, 1) in assembler.observations
 
 
 def test_schema_four_assembles_minimum_positive_ladder_and_timeout():
@@ -298,19 +277,19 @@ def stage_c_recovery_assembler():
     feed_workflow(assembler)
     feed_plan(assembler)
     for slot in range(8):
-        feed_observation(assembler, slot + 1, 0, slot, 0)
-    feed_rung(assembler, 9, 0, 0, 0)
+        feed_observation(assembler, 2 * slot + 1, 0, slot, 0)
+    feed_rung(assembler, 17, 0, 0, 0)
     return assembler
 
 
 def test_stage_c_recovery_summary_is_causal_and_compact():
     assembler = stage_c_recovery_assembler()
 
-    feed_recovery(assembler, 10, 0)
+    feed_recovery(assembler, 18, 0)
 
     assert assembler.recoveries[0] == {
         "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": 10,
+        "evidence_sequence": 18,
         "stage": 1,
         "rung_index": 0,
         "p_raw": 1448,
@@ -318,7 +297,7 @@ def test_stage_c_recovery_summary_is_causal_and_compact():
         "outcome": 0,
     }
     with pytest.raises(VelocityIntegralProtocolError, match="duplicate"):
-        feed_recovery(assembler, 10, 0)
+        feed_recovery(assembler, 18, 0)
 
 
 @pytest.mark.parametrize(
@@ -326,7 +305,7 @@ def test_stage_c_recovery_summary_is_causal_and_compact():
     (
         ({"stage": 0}, "wrong stage"),
         ({"run_sequence": RUN_SEQUENCE + 1}, "run sequence"),
-        ({"evidence_sequence": 11}, "sequence gap"),
+        ({"evidence_sequence": 19}, "sequence gap"),
         ({"rung_index": 1}, "immediately follow"),
         ({"p_raw": 1449}, "fixed P"),
     ),
@@ -336,7 +315,7 @@ def test_stage_c_recovery_summary_rejects_changed_identity(replacement, message)
     params = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": 10,
+        "evidence_sequence": 18,
         "stage": 1,
         "rung_index": 0,
         "p_raw": 1448,
@@ -355,7 +334,7 @@ def feed_full_evidence(assembler):
     for rung_index, i_raw in enumerate(rung_values):
         for slot in range(8):
             feed_observation(assembler, sequence, rung_index, slot, i_raw)
-            sequence += 1
+            sequence += 2
         feed_rung(
             assembler,
             sequence,

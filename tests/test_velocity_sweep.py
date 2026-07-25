@@ -434,35 +434,14 @@ def feed_observation(
     )
 
 
-def feed_current(assembler, *, sequence, slot, capability=0, contact=0):
-    assembler.handle_current_evidence(
-        {
-            "oid": 0,
-            "run_sequence": 7,
-            "evidence_sequence": sequence,
-            "stage": 0,
-            "rung_index": 0,
-            "slot": slot,
-            "clamp_limit": 900,
-            "clamp_readback": 900,
-            "moving_pid_output_peak": 200,
-            "zero_pid_output_peak": 300,
-            "moving_status_flags": 0,
-            "zero_status_flags": 0,
-            "capability": capability,
-            "contact": contact,
-        }
-    )
-
-
-def test_stage_b_current_evidence_is_retained_after_its_observation():
+def test_stage_b_observation_advances_over_trace_only_current_sequence():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
     feed_observation(assembler, sequence=1, slot=0, low=100, high=110)
 
-    feed_current(assembler, sequence=2, slot=0, capability=0, contact=2)
+    feed_observation(assembler, sequence=3, slot=1, low=-110, high=-100)
 
-    assert assembler.current_evidence[(0, 0)]["contact"] == 2
+    assert (0, 1) in assembler.observations
 
 
 def terminal_fragments(
@@ -1121,7 +1100,7 @@ def feed_eight_observations(assembler):
         sign = 1 if slot % 2 == 0 else -1
         feed_observation(
             assembler,
-            sequence=slot + 1,
+            sequence=2 * slot + 1,
             slot=slot,
             low=sign * 100 if sign > 0 else sign * 200,
             high=sign * 200 if sign > 0 else sign * 100,
@@ -1132,7 +1111,7 @@ def test_eight_observations_preserve_firmware_consensus_group():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_eight_observations(assembler)
-    sequence = 9
+    sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
         consensus_component(
@@ -1157,7 +1136,7 @@ def stage_b_recovery_assembler():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_eight_observations(assembler)
-    sequence = 9
+    sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
         consensus_component(
@@ -1176,7 +1155,7 @@ def stage_b_recovery_assembler():
 
 def test_stage_b_recovery_summary_is_causal_and_compact():
     assembler = stage_b_recovery_assembler()
-    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 10}
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 18}
     summary = {
         **common,
         "stage": 0,
@@ -1189,7 +1168,7 @@ def test_stage_b_recovery_summary_is_causal_and_compact():
 
     assert assembler.recoveries[0] == {
         "run_sequence": 7,
-        "evidence_sequence": 10,
+        "evidence_sequence": 18,
         "stage": 0,
         "rung_index": 0,
         "p_raw": 16,
@@ -1205,7 +1184,7 @@ def test_stage_b_recovery_summary_is_causal_and_compact():
     (
         ({"stage": 1}, "wrong stage"),
         ({"run_sequence": 8}, "run sequence"),
-        ({"evidence_sequence": 11}, "sequence gap"),
+        ({"evidence_sequence": 19}, "sequence gap"),
         ({"rung_index": 1}, "immediately follow"),
         ({"p_raw": 17}, "rung gain"),
     ),
@@ -1215,7 +1194,7 @@ def test_stage_b_recovery_summary_rejects_changed_identity(replacement, message)
     params = {
         "oid": 0,
         "run_sequence": 7,
-        "evidence_sequence": 10,
+        "evidence_sequence": 18,
         "stage": 0,
         "rung_index": 0,
         "p_raw": 16,
@@ -1284,7 +1263,7 @@ def test_schema_six_missing_final_recovery_requires_terminal_annotation():
 
 def test_structured_recovery_source_is_preserved():
     assembler = stage_b_recovery_assembler()
-    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 10}
+    common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 18}
     assembler.handle_recovery_summary(
         {
             **common,
@@ -1316,7 +1295,7 @@ def test_terminal_accepts_digest_verified_evidence_prefix(outcome, cause):
         mask=0,
         digest=OPAQUE_DIGEST,
         cause=cause,
-        sequence=2,
+        sequence=3,
         expected_observations=4,
         emitted_observations=1,
         expected_rungs=1,
@@ -1353,7 +1332,7 @@ def test_terminal_rejects_unexplained_incomplete_evidence(outcome, cause):
         mask=0,
         digest=OPAQUE_DIGEST,
         cause=cause,
-        sequence=2,
+        sequence=3,
         expected_observations=4,
         emitted_observations=1,
         expected_rungs=1,
@@ -1370,7 +1349,7 @@ def test_host_does_not_recompute_a_structurally_valid_firmware_consensus():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_eight_observations(assembler)
-    sequence = 9
+    sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
         consensus_component(
@@ -1392,12 +1371,12 @@ def test_ambiguous_and_incomplete_groups_preserve_firmware_classes():
     ambiguous = VelocitySweepAssembler()
     feed_plan(ambiguous, rung_count=1, observations_per_direction=4)
     feed_eight_observations(ambiguous)
-    core = consensus_core(sequence=9, forward_class=1, reverse_class=3)
+    core = consensus_core(sequence=17, forward_class=1, reverse_class=3)
     ambiguous.handle_rung_consensus_core(core)
     for component_index, bounds in enumerate(((100, 120), (200, 220))):
         ambiguous.handle_rung_consensus_component(
             consensus_component(
-                sequence=9,
+                sequence=17,
                 direction=0,
                 component_index=component_index,
                 low=bounds[0],
@@ -1410,7 +1389,7 @@ def test_ambiguous_and_incomplete_groups_preserve_firmware_classes():
     incomplete = VelocitySweepAssembler()
     feed_plan(incomplete, rung_count=1, observations_per_direction=4)
     feed_eight_observations(incomplete)
-    core = consensus_core(sequence=9, forward_class=3, reverse_class=3)
+    core = consensus_core(sequence=17, forward_class=3, reverse_class=3)
     core["forward_collected_mask"] = 0b0111
     core["reverse_collected_mask"] = 0b0111
     core["forward_eligible_mask"] = 0b0111
@@ -1426,29 +1405,29 @@ def test_consensus_group_rejects_missing_duplicate_and_misidentified_parts():
     assembler = VelocitySweepAssembler()
     feed_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_eight_observations(assembler)
-    assembler.handle_rung_consensus_core(consensus_core(sequence=9))
+    assembler.handle_rung_consensus_core(consensus_core(sequence=17))
     forward = consensus_component(
-        sequence=9, direction=0, component_index=0, low=100, high=200
+        sequence=17, direction=0, component_index=0, low=100, high=200
     )
     assembler.handle_rung_consensus_component(forward)
     with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
         assembler.handle_rung_consensus_component(forward)
-    forward_pool = consensus_pool(sequence=9, direction=0)
+    forward_pool = consensus_pool(sequence=17, direction=0)
     assembler.handle_rung_consensus_pool(forward_pool)
     with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
         assembler.handle_rung_consensus_pool(forward_pool)
     assembler.handle_rung_consensus_component(
         consensus_component(
-            sequence=9, direction=1, component_index=0, low=-200, high=-100
+            sequence=17, direction=1, component_index=0, low=-200, high=-100
         )
     )
 
     wrong = VelocitySweepAssembler()
     feed_plan(wrong, rung_count=1, observations_per_direction=4)
     feed_eight_observations(wrong)
-    wrong.handle_rung_consensus_core(consensus_core(sequence=9))
+    wrong.handle_rung_consensus_core(consensus_core(sequence=17))
     component = consensus_component(
-        sequence=9, direction=0, component_index=0, low=100, high=200
+        sequence=17, direction=0, component_index=0, low=100, high=200
     )
     component["fragment"] = 2
     with pytest.raises(VelocitySweepProtocolError, match="identity"):
@@ -1457,7 +1436,7 @@ def test_consensus_group_rejects_missing_duplicate_and_misidentified_parts():
     missing = VelocitySweepAssembler()
     feed_plan(missing, rung_count=1, observations_per_direction=4)
     feed_eight_observations(missing)
-    missing.handle_rung_consensus_core(consensus_core(sequence=9))
+    missing.handle_rung_consensus_core(consensus_core(sequence=17))
     with pytest.raises(VelocitySweepProtocolError, match="fragment|interrupted"):
         missing.handle_plan_limits(plan_fragments(1, 4)[0])
 
@@ -1466,7 +1445,7 @@ def test_consensus_core_rejects_invalid_masks_gain_and_observation_order():
     masks = VelocitySweepAssembler()
     feed_plan(masks, rung_count=1, observations_per_direction=4)
     feed_eight_observations(masks)
-    core = consensus_core(sequence=9)
+    core = consensus_core(sequence=17)
     core["forward_included_mask"] = 0b1_0000
     with pytest.raises(VelocitySweepProtocolError, match="mask"):
         masks.handle_rung_consensus_core(core)
@@ -1474,7 +1453,7 @@ def test_consensus_core_rejects_invalid_masks_gain_and_observation_order():
     gain = VelocitySweepAssembler()
     feed_plan(gain, rung_count=1, observations_per_direction=4)
     feed_eight_observations(gain)
-    core = consensus_core(sequence=9)
+    core = consensus_core(sequence=17)
     core["velocity_p"] = 17
     with pytest.raises(VelocitySweepProtocolError, match="gain"):
         gain.handle_rung_consensus_core(core)

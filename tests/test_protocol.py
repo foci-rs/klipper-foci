@@ -77,7 +77,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         "foci_velocity_sweep_plan_timing",
         "foci_velocity_sweep_plan_recovery",
         "foci_rung_origin_recovery_summary",
-        "foci_velocity_primitive_current_evidence",
         "foci_velocity_observation_core",
         "foci_velocity_observation_rate",
         "foci_velocity_observation_stationarity",

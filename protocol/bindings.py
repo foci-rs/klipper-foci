@@ -80,10 +80,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_rung_origin_recovery_summary",
         ),
         (
-            driver.autotune.handle_velocity_primitive_current_evidence,
-            "foci_velocity_primitive_current_evidence",
-        ),
-        (
             driver.autotune.handle_velocity_observation_core,
             "foci_velocity_observation_core",
         ),

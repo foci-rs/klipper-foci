@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import struct
 
+OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN = 2
+
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
 
@@ -52,7 +54,6 @@ class VelocityIntegralAssembler:
         self.observations: dict[tuple[int, int], dict] = {}
         self.rungs: dict[int, dict] = {}
         self.recoveries: dict[int, dict] = {}
-        self.current_evidence: dict[tuple[int, int], dict] = {}
         self.curves = [self._new_curve(), self._new_curve()]
         self.drift: list[dict | None] = [None, None]
         self.stage_b_comparison: list[dict | None] = [None, None]
@@ -100,7 +101,6 @@ class VelocityIntegralAssembler:
             "plan": self.plan,
             "absolute_curves": self.curves,
             "recoveries": self.recoveries,
-            "current_evidence": self.current_evidence,
             "drift": self.drift,
             "stage_b_comparison": self.stage_b_comparison,
             "reproduction": self.reproduction,
@@ -224,36 +224,6 @@ class VelocityIntegralAssembler:
         self.recoveries[rung_index] = _metadata_free(params)
         self._next_evidence_sequence += 1
         self._last_evidence = ("recovery", rung_index)
-
-    def handle_current_evidence(self, params: dict) -> None:
-        """Accept one causal current record immediately after its observation."""
-        self._require_plan()
-        self._require_event_identity(params)
-        if int(params.get("stage", -1)) != 1:
-            raise VelocityIntegralProtocolError(
-                "Stage-C current evidence named the wrong stage"
-            )
-        key = (int(params.get("rung_index", -1)), int(params.get("slot", -1)))
-        if key not in self.observations or self._last_evidence != (
-            "observation",
-            key[0],
-        ):
-            raise VelocityIntegralProtocolError(
-                "current evidence did not immediately follow its observation"
-            )
-        if key in self.current_evidence:
-            raise VelocityIntegralProtocolError("duplicate current evidence")
-        evidence = _metadata_free(params)
-        if (
-            int(evidence["clamp_limit"]) == 0
-            or int(evidence["clamp_readback"]) != int(evidence["clamp_limit"])
-            or int(evidence["capability"]) not in (0, 1)
-            or int(evidence["contact"]) not in (0, 1, 2, 3)
-        ):
-            raise VelocityIntegralProtocolError("invalid current evidence")
-        self.current_evidence[key] = evidence
-        self._next_evidence_sequence += 1
-        self._last_evidence = ("current", key[0])
 
     def handle_plan_rung(self, params: dict) -> None:
         if self.plan is not None:
@@ -554,7 +524,7 @@ class VelocityIntegralAssembler:
         if int(rate["deficit_low_q"]) > int(rate["deficit_high_q"]):
             raise VelocityIntegralProtocolError("reversed deficit interval")
         self.observations[key] = observation
-        self._next_evidence_sequence += 1
+        self._next_evidence_sequence += OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN
         self._last_evidence = ("observation", key[0])
         self._observation_parts = []
 

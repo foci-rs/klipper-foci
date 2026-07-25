@@ -193,17 +193,6 @@ class AutotuneWorkflow:
     def handle_rung_origin_recovery_summary(self, params: dict) -> None:
         self._handle_recovery_summary(params)
 
-    def handle_velocity_primitive_current_evidence(self, params: dict) -> None:
-        stage = int(params.get("stage", -1))
-        if stage == 0:
-            self._handle_velocity_sweep("handle_current_evidence", params)
-        elif stage == 1:
-            self._handle_velocity_integral("handle_current_evidence", params)
-        else:
-            self.velocity_sweep_error = VelocitySweepProtocolError(
-                "current evidence named an invalid stage"
-            )
-
     def handle_velocity_observation_core(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_observation_core", params)
 

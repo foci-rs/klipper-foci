@@ -25,6 +25,7 @@ CONSENSUS_ELIGIBLE = 0
 CONSENSUS_AMBIGUOUS = 1
 CONSENSUS_INSUFFICIENT = 2
 CONSENSUS_INCOMPLETE = 3
+OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN = 2
 
 
 class VelocitySweepProtocolError(Exception):
@@ -39,7 +40,6 @@ class VelocitySweepAssembler:
         self.observations: dict[tuple[int, int], dict] = {}
         self.rungs: dict[int, dict] = {}
         self.recoveries: dict[int, dict] = {}
-        self.current_evidence: dict[tuple[int, int], dict] = {}
         self.structured_boundaries: list[dict] = []
         self.directional_regions: list[dict] = []
         self.joint_regions: list[dict] = []
@@ -131,39 +131,6 @@ class VelocitySweepAssembler:
         self.recoveries[rung_index] = self._strip_metadata(params)
         self._next_evidence_sequence += 1
         self._last_evidence = ("recovery", rung_index)
-
-    def handle_current_evidence(self, params: dict) -> None:
-        """Accept one causal current record immediately after its observation."""
-        if self.plan is None:
-            raise VelocitySweepProtocolError("current evidence arrived before plan")
-        self._validate_run(params)
-        if int(params["evidence_sequence"]) != self._next_evidence_sequence:
-            raise VelocitySweepProtocolError("current evidence sequence gap")
-        if int(params.get("stage", -1)) != 0:
-            raise VelocitySweepProtocolError(
-                "Stage-B current evidence named the wrong stage"
-            )
-        key = (int(params.get("rung_index", -1)), int(params.get("slot", -1)))
-        if key not in self.observations or self._last_evidence != (
-            "observation",
-            key[0],
-        ):
-            raise VelocitySweepProtocolError(
-                "current evidence did not immediately follow its observation"
-            )
-        if key in self.current_evidence:
-            raise VelocitySweepProtocolError("duplicate current evidence")
-        evidence = self._strip_metadata(params)
-        if (
-            int(evidence["clamp_limit"]) == 0
-            or int(evidence["clamp_readback"]) != int(evidence["clamp_limit"])
-            or int(evidence["capability"]) not in (0, 1)
-            or int(evidence["contact"]) not in (0, 1, 2, 3)
-        ):
-            raise VelocitySweepProtocolError("invalid current evidence")
-        self.current_evidence[key] = evidence
-        self._next_evidence_sequence += 1
-        self._last_evidence = ("current", key[0])
 
     def handle_observation_core(self, params: dict) -> None:
         self._accept_group_fragment("observation", 4, 0, params)
@@ -612,7 +579,9 @@ class VelocitySweepAssembler:
             self._next_evidence_sequence += 1
         elif kind == "observation":
             self._finish_observation(parts)
-            self._next_evidence_sequence += 1
+            self._next_evidence_sequence += (
+                OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN
+            )
         elif kind == "terminal":
             self._finish_terminal(parts)
         elif kind == "stage b terminal":
