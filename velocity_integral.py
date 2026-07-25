@@ -15,6 +15,8 @@ OUTCOME_NAMES = {
     4: "rejected_plan_mismatch",
 }
 
+SCHEMA_FIVE_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
+
 
 class VelocityIntegralProtocolError(Exception):
     """Raised when integral-response records violate their causal wire contract."""
@@ -145,7 +147,7 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_stage_c_workflow(params)
-        if int(params.get("schema_revision", -1)) not in (2, 3, 4):
+        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
@@ -420,6 +422,23 @@ class VelocityIntegralAssembler:
         if self._terminal_parts:
             raise VelocityIntegralProtocolError("duplicate terminal core")
         self._require_fragment(params, 0)
+        schema_revision = int(self.plan["schema_revision"])
+        if schema_revision >= 5 and (
+            "rest_boundary_rung_plus_one" not in params
+            or "rest_boundary_slot_plus_one" not in params
+        ):
+            raise VelocityIntegralProtocolError(
+                "schema-5 terminal omitted rest-boundary reference"
+            )
+        rung = int(params.get("rest_boundary_rung_plus_one", 0))
+        slot = int(params.get("rest_boundary_slot_plus_one", 0))
+        if (rung == 0) != (slot == 0):
+            raise VelocityIntegralProtocolError("partial rest-boundary reference")
+        if rung and (
+            rung not in range(1, int(self.plan["positive_rung_count"]) + 1)
+            or slot not in range(1, 9)
+        ):
+            raise VelocityIntegralProtocolError("invalid rest-boundary reference")
         self._terminal_parts.append(dict(params))
 
     def handle_terminal_identity(self, params: dict) -> None:
@@ -434,6 +453,11 @@ class VelocityIntegralAssembler:
         terminal["run_started_us"] = _u64(timing["started_low"], timing["started_high"])
         terminal["run_completed_us"] = _u64(
             timing["completed_low"], timing["completed_high"]
+        )
+        rung = int(core.get("rest_boundary_rung_plus_one", 0))
+        slot = int(core.get("rest_boundary_slot_plus_one", 0))
+        terminal["rest_boundary"] = (
+            None if rung == 0 else {"positive_rung_index": rung - 1, "slot": slot - 1}
         )
         self.terminal = terminal
         self.outcome = OUTCOME_NAMES.get(int(core["outcome"]))
@@ -510,6 +534,31 @@ class VelocityIntegralAssembler:
         plan["authorities"] = list(self._authorities)
         plan["positive_i"] = [int(rung["i_raw"]) for rung in self._plan_rungs]
         plan["rungs"] = list(self._plan_rungs)
+        if int(plan["schema_revision"]) >= 5:
+            expected = {
+                "i_start": 1,
+                "family_size": 56,
+                "total_rung_count": 14,
+                "expected_observations": 112,
+                "nominal_workflow_ms": 165_950,
+                "maximum_workflow_ms": 182_512,
+                "slot_count": 14,
+            }
+            if tuple(plan["positive_i"]) != SCHEMA_FIVE_POSITIVE_I:
+                raise VelocityIntegralProtocolError("invalid schema-5 integral ladder")
+            for field, value in expected.items():
+                if int(plan[field]) != value:
+                    raise VelocityIntegralProtocolError(
+                        f"invalid schema-5 integral {field}"
+                    )
+            if (
+                int(self.workflow_plan["shape"]) == 2
+                and int(self.workflow_plan["maximum_workflow_ms"])
+                != expected["maximum_workflow_ms"]
+            ):
+                raise VelocityIntegralProtocolError(
+                    "direct Stage-C workflow maximum changed"
+                )
         self.plan = plan
 
     def _finish_observation(self) -> None:

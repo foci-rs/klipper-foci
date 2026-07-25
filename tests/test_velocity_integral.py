@@ -246,15 +246,23 @@ def test_schema_four_assembles_minimum_positive_ladder_and_timeout():
     assert assembler.maximum_duration_s == 116.856
 
 
-def test_schema_five_rejects_before_plan_assembly():
+def test_schema_five_assembles_exact_native_q4_12_plan():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
+    positive_i = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=5,
+        positive_i=positive_i,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+    )
 
-    with pytest.raises(
-        VelocityIntegralProtocolError,
-        match="unsupported Stage-C evidence schema",
-    ):
-        feed_plan(assembler, schema_revision=5)
+    assert assembler.plan["positive_i"] == list(positive_i)
+    assert assembler.plan["family_size"] == 56
+    assert assembler.plan["expected_observations"] == 112
+    assert assembler.plan["slot_count"] == 14
+    assert assembler.maximum_duration_s == 182.512
 
 
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
@@ -382,7 +390,15 @@ def feed_full_evidence(assembler):
     return sequence
 
 
-def feed_terminal(assembler, sequence, *, reproduction=True, digest=None):
+def feed_terminal(
+    assembler,
+    sequence,
+    *,
+    reproduction=True,
+    digest=None,
+    cause=0,
+    rest_boundary=(0, 0),
+):
     common = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
@@ -505,8 +521,10 @@ def feed_terminal(assembler, sequence, *, reproduction=True, digest=None):
             **common,
             "fragment": 0,
             "outcome": 1 if reproduction else 0,
-            "cause": 0,
+            "cause": cause,
             "recovery_unavailable": 0,
+            "rest_boundary_rung_plus_one": rest_boundary[0],
+            "rest_boundary_slot_plus_one": rest_boundary[1],
             "expected_observations": 40,
             "emitted_observations": 40,
             "expected_rungs": 5,
@@ -637,3 +655,23 @@ def test_terminal_digest_is_retained_as_opaque_firmware_identity():
 
     assembler.validate_complete()
     assert assembler.terminal["digest"] == opaque_digest
+
+
+def test_terminal_exposes_compact_rest_boundary_without_reconstructing_it():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+    sequence = feed_full_evidence(assembler)
+
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        cause=10,
+        rest_boundary=(3, 6),
+    )
+
+    assert assembler.terminal["rest_boundary"] == {
+        "positive_rung_index": 2,
+        "slot": 5,
+    }
