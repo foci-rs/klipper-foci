@@ -78,6 +78,8 @@ def feed_plan(
                 "direction": direction,
                 "directional_membership": 0x0038_0000,
                 "joint_membership": 0x0038_0000,
+                "directional_validity": (2, 1)[direction],
+                "reduced_margin": 1,
                 "pooled_low_q16": interval[0],
                 "pooled_high_q16": interval[1],
             }
@@ -379,6 +381,7 @@ def feed_terminal(assembler, sequence, *, reproduction=True, digest=None):
             "fragment": 0,
             "forward_eligible_mask": 0b111,
             "reverse_eligible_mask": 0b101,
+            "opening_available_mask": 0b11,
             "bookend_available_mask": 0b11,
             "current_terminus_plus_one": 0,
             "sufficient_direction_mask": 0b01,
@@ -433,6 +436,7 @@ def feed_terminal(assembler, sequence, *, reproduction=True, digest=None):
             {
                 **common,
                 "direction": direction,
+                "available": 1 if direction == 0 else 0,
                 "stage_b_low_q16": -200,
                 "stage_b_high_q16": 200,
                 "expected_low_q": -20,
@@ -550,11 +554,17 @@ def test_assembles_exact_curves_sparse_masks_and_divergence_records():
     assert assembler.outcome == "complete"
     assert assembler.plan["plan_digest"] == PLAN_DIGEST
     assert assembler.plan["stage_b_plan_digest"] == STAGE_B_DIGEST
+    assert assembler.plan["authorities"][0]["directional_validity"] == 2
+    assert assembler.plan["authorities"][1]["directional_validity"] == 1
+    assert assembler.plan["authorities"][0]["reduced_margin"] == 1
     assert assembler.curves[1]["eligible_mask"] == 0b101
     assert set(assembler.curves[1]["positive"]) == {0, 2}
     assert assembler.reproduction["divergent"][0][1]["signed_gap_q"] == 7
     assert assembler.reproduction["previous_digest"] == 0x0123_4567_89AB_CDEF
     assert assembler.reproduction["current_digest"] == 0xFEDC_BA98_7654_3210
+    assert assembler.summary["opening_available_mask"] == 0b11
+    assert assembler.stage_b_comparison[0]["available"] == 1
+    assert assembler.stage_b_comparison[1]["available"] == 0
     assert assembler.terminal["run_started_us"] == 0x0000_0001_FFFF_FFFE
     assert assembler.terminal["run_completed_us"] == 0x0000_0002_0000_0004
     assert len(assembler.recoveries) == 5

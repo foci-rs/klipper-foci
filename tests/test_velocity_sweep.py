@@ -115,13 +115,22 @@ def feed_stage_b_region(assembler, **kwargs):
     assembler.handle_directional_region_boundary(boundary)
 
 
-def feed_stage_b_handoff(assembler, *, sequence=3, member_mask=0b11100):
+def feed_stage_b_handoff(
+    assembler,
+    *,
+    sequence=3,
+    member_mask=0b11100,
+    joint_union_mask=None,
+    region_class=1,
+):
+    if joint_union_mask is None:
+        joint_union_mask = member_mask
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     assembler.handle_stage_b_handoff_core(
         {
             **common,
             "nominated_p": 724,
-            "joint_member_mask": member_mask,
+            "joint_member_mask": joint_union_mask,
             "forward_member_mask": member_mask,
             "reverse_member_mask": member_mask,
             "flags": 0b11,
@@ -132,6 +141,7 @@ def feed_stage_b_handoff(assembler, *, sequence=3, member_mask=0b11100):
             **common,
             "nominated_rung": 3,
             "nominated_p": 724,
+            "selected_joint_mask": member_mask,
             "distance_to_start_q16": 4 << 16,
             "distance_to_top_q16": 2 << 16,
             "flags": 0,
@@ -143,6 +153,7 @@ def feed_stage_b_handoff(assembler, *, sequence=3, member_mask=0b11100):
                 **common,
                 "direction": direction,
                 "member_mask": member_mask,
+                "region_class": region_class,
                 "coverage": 0,
                 "signed_rung_distance": 0,
                 "gain_ratio_num": 1,
@@ -153,18 +164,32 @@ def feed_stage_b_handoff(assembler, *, sequence=3, member_mask=0b11100):
         )
 
 
-def stage_b_reproduction_v3_fragments(
+def stage_b_reproduction_v4_fragments(
     *,
     sequence,
     member_mask=0x0038_0000,
+    selected_joint_mask=None,
     final_p=1448,
+    selected_first_rung=None,
+    selected_member_count=None,
+    forward_validity=2,
+    reverse_validity=3,
+    reduced_margin=0,
     previous_digest=0x0102_0304_0506_0708,
     current_digest=0,
 ):
+    if selected_joint_mask is None:
+        selected_joint_mask = member_mask
+    if selected_first_rung is None:
+        selected_first_rung = (
+            selected_joint_mask & -selected_joint_mask
+        ).bit_length() - 1
+    if selected_member_count is None:
+        selected_member_count = selected_joint_mask.bit_count()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     fragments = [
         (
-            "handle_stage_b_reproduction_v3_core",
+            "handle_stage_b_reproduction_v4_core",
             {
                 **common,
                 "outcome": 1,
@@ -172,8 +197,13 @@ def stage_b_reproduction_v3_fragments(
                 "previous_provisional_p": 1448,
                 "current_provisional_p": 1024,
                 "final_p": final_p,
-                "reduced_margin": 0,
-                "schema_revision": 7,
+                "selected_joint_mask": selected_joint_mask,
+                "selected_first_rung": selected_first_rung,
+                "selected_member_count": selected_member_count,
+                "forward_validity": forward_validity,
+                "reverse_validity": reverse_validity,
+                "reduced_margin": reduced_margin,
+                "schema_revision": 8,
             },
         )
     ]
@@ -181,7 +211,7 @@ def stage_b_reproduction_v3_fragments(
         current_mask = member_mask | (0x0004_0000 if object_index == 0 else 0)
         fragments.append(
             (
-                "handle_stage_b_reproduction_v3_membership",
+                "handle_stage_b_reproduction_v4_membership",
                 {
                     **common,
                     "object": object_index,
@@ -198,7 +228,7 @@ def stage_b_reproduction_v3_fragments(
     for direction in range(2):
         fragments.append(
             (
-                "handle_stage_b_reproduction_v3_pooled",
+                "handle_stage_b_reproduction_v4_pooled",
                 {
                     **common,
                     "direction": direction,
@@ -214,7 +244,7 @@ def stage_b_reproduction_v3_fragments(
     for direction in range(2):
         fragments.append(
             (
-                "handle_stage_b_reproduction_v3_common",
+                "handle_stage_b_reproduction_v4_common",
                 {
                     **common,
                     "direction": direction,
@@ -231,7 +261,7 @@ def stage_b_reproduction_v3_fragments(
     for direction in range(2):
         fragments.append(
             (
-                "handle_stage_b_reproduction_v3_coverage",
+                "handle_stage_b_reproduction_v4_coverage",
                 {
                     **common,
                     "direction": direction,
@@ -244,7 +274,7 @@ def stage_b_reproduction_v3_fragments(
         )
     fragments.append(
         (
-            "handle_stage_b_reproduction_v3_digest",
+            "handle_stage_b_reproduction_v4_digest",
             {
                 **common,
                 "previous_digest_low": previous_digest & 0xFFFF_FFFF,
@@ -258,7 +288,7 @@ def stage_b_reproduction_v3_fragments(
 
 
 def feed_stage_b_reproduction(assembler, **kwargs):
-    for method, params in stage_b_reproduction_v3_fragments(**kwargs):
+    for method, params in stage_b_reproduction_v4_fragments(**kwargs):
         getattr(assembler, method)(params)
 
 
@@ -570,6 +600,40 @@ def test_stage_b_handoff_uses_firmware_nomination_and_annotates_membership():
     assert assembler.directional_regions[1]["covers_nominated_p"] is True
 
 
+def test_stage_b_handoff_preserves_union_and_selected_component_separately():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    feed_stage_b_region(assembler, sequence=1, direction=0)
+    feed_stage_b_region(assembler, sequence=2, direction=1)
+    for sequence, member_mask, bounds in (
+        (3, 0b00011, 0 | (1 << 8)),
+        (4, 0b11100, 2 | (4 << 8)),
+    ):
+        assembler.handle_joint_region(
+            {
+                "oid": 0,
+                "run_sequence": 7,
+                "evidence_sequence": sequence,
+                "member_mask": member_mask,
+                "rung_bounds": bounds,
+                "member_count": member_mask.bit_count(),
+                "p_low": 256,
+                "p_high": 1024,
+                "closure": 1,
+            }
+        )
+    feed_stage_b_handoff(
+        assembler,
+        sequence=5,
+        member_mask=0b11100,
+        joint_union_mask=0b11111,
+    )
+
+    assert assembler.handoff["joint_union_mask"] == 0b11111
+    assert assembler.handoff["selected_joint_mask"] == 0b11100
+    assert assembler.handoff["directions"][0]["region_class"] == 1
+
+
 def test_preflight_plan_mismatch_terminal_is_accepted_without_motion_plan():
     assembler = VelocitySweepAssembler()
 
@@ -682,7 +746,7 @@ def test_stage_b_reproduction_precedes_matching_complete_terminal():
 
     assert assembler.outcome == "complete"
     assert assembler.reproduction["current_digest"] == pre_reproduction_digest
-    assert assembler.reproduction["schema_revision"] == 7
+    assert assembler.reproduction["schema_revision"] == 8
     assert assembler.reproduction["memberships"][0] == {
         "previous": 0x0038_0000,
         "current": 0x003C_0000,
@@ -739,8 +803,8 @@ def test_stage_b_complete_terminal_uses_reproduced_pooled_overlap():
     assert assembler.terminal["selected_intervals"] == ((108, 116), (108, 116))
 
 
-def test_stage_b_reproduction_v3_rejects_missing_duplicate_and_reordered_parts():
-    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+def test_stage_b_reproduction_v4_rejects_missing_duplicate_and_reordered_parts():
+    fragments = stage_b_reproduction_v4_fragments(sequence=1)
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
@@ -762,8 +826,8 @@ def test_stage_b_reproduction_v3_rejects_missing_duplicate_and_reordered_parts()
         getattr(assembler, fragments[2][0])(fragments[2][1])
 
 
-def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
-    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+def test_stage_b_reproduction_v4_rejects_identity_schema_and_early_terminal():
+    fragments = stage_b_reproduction_v4_fragments(sequence=1)
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
@@ -786,23 +850,33 @@ def test_stage_b_reproduction_v3_rejects_identity_schema_and_early_terminal():
         feed_stage_b_terminal(assembler, sequence=2)
 
 
-def test_schema_seven_is_required():
-    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+def test_schema_eight_is_required():
+    fragments = stage_b_reproduction_v4_fragments(sequence=1)
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
-    schema_seven = dict(fragments[0][1], schema_revision=7)
-    assembler.handle_stage_b_reproduction_v3_core(schema_seven)
+    schema_eight = dict(fragments[0][1], schema_revision=8)
+    assembler.handle_stage_b_reproduction_v4_core(schema_eight)
 
     rejected = VelocitySweepAssembler()
     feed_plan(rejected)
-    schema_six = dict(fragments[0][1], schema_revision=6)
+    schema_seven = dict(fragments[0][1], schema_revision=7)
     with pytest.raises(VelocitySweepProtocolError, match="unsupported"):
-        rejected.handle_stage_b_reproduction_v3_core(schema_six)
+        rejected.handle_stage_b_reproduction_v4_core(schema_seven)
 
 
-def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
-    fragments = stage_b_reproduction_v3_fragments(sequence=1)
+def test_stage_b_reproduction_v4_preserves_firmware_values_without_correction():
+    fragments = stage_b_reproduction_v4_fragments(
+        sequence=1,
+        member_mask=0x003C_0000,
+        selected_joint_mask=0x0018_0000,
+        final_p=1024,
+        selected_first_rung=19,
+        selected_member_count=2,
+        forward_validity=2,
+        reverse_validity=1,
+        reduced_margin=1,
+    )
     fragments[0][1]["outcome"] = 2
     fragments[1][1]["core_mask"] = 0x0010_0000
 
@@ -813,6 +887,13 @@ def test_stage_b_reproduction_v3_preserves_firmware_values_without_correction():
 
     assert assembler.reproduction["outcome"] == 2
     assert assembler.reproduction["memberships"][0]["core"] == 0x0010_0000
+    assert assembler.reproduction["selected_joint_mask"] == 0x0018_0000
+    assert assembler.reproduction["selected_first_rung"] == 19
+    assert assembler.reproduction["selected_member_count"] == 2
+    assert assembler.reproduction["final_p"] == 1024
+    assert assembler.reproduction["forward_validity"] == 2
+    assert assembler.reproduction["reverse_validity"] == 1
+    assert assembler.reproduction["reduced_margin"] == 1
 
 
 def test_reordered_or_duplicate_fragment_is_rejected():

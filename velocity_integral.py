@@ -170,6 +170,10 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("reordered plan authority")
         if int(params["pooled_low_q16"]) > int(params["pooled_high_q16"]):
             raise VelocityIntegralProtocolError("reversed Stage-B authority interval")
+        if int(params.get("directional_validity", -1)) not in range(5):
+            raise VelocityIntegralProtocolError("invalid Stage-B directional validity")
+        if int(params.get("reduced_margin", -1)) not in (0, 1):
+            raise VelocityIntegralProtocolError("invalid Stage-B reduced-margin flag")
         self._authorities.append(_metadata_free(params))
 
     def handle_plan_timing(self, params: dict) -> None:
@@ -326,6 +330,10 @@ class VelocityIntegralAssembler:
         if self._summary is not None:
             raise VelocityIntegralProtocolError("duplicate run summary")
         self._require_fragment(params, 0)
+        if int(params.get("opening_available_mask", -1)) & ~0b11:
+            raise VelocityIntegralProtocolError("invalid opening availability mask")
+        if int(params.get("bookend_available_mask", -1)) & ~0b11:
+            raise VelocityIntegralProtocolError("invalid bookend availability mask")
         self._summary = _metadata_free(params)
         for direction, key in enumerate(
             ("forward_eligible_mask", "reverse_eligible_mask")
@@ -373,6 +381,10 @@ class VelocityIntegralAssembler:
         direction = self._direction(params)
         if self.stage_b_comparison[direction] is not None:
             raise VelocityIntegralProtocolError("duplicate Stage-B comparison")
+        if int(params.get("available", -1)) not in (0, 1):
+            raise VelocityIntegralProtocolError(
+                "invalid Stage-B comparison availability"
+            )
         self.stage_b_comparison[direction] = _metadata_free(params)
 
     def handle_reproduction_core(self, params: dict) -> None:
@@ -498,6 +510,8 @@ class VelocityIntegralAssembler:
             )
             if (curve["bookend"] is not None) != bookend_expected:
                 raise VelocityIntegralProtocolError("bookend availability mismatch")
+            if self.stage_b_comparison[direction] is None:
+                raise VelocityIntegralProtocolError("missing Stage-B comparison")
         if self.reproduction is not None:
             if set(self.reproduction["masks"]) != {0, 1}:
                 raise VelocityIntegralProtocolError("missing reproduction masks")

@@ -145,28 +145,28 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_velocity_stage_b_directional_handoff",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_reproduction_v3_core,
-            "foci_velocity_stage_b_reproduction_v3_core",
+            driver.autotune.handle_velocity_stage_b_reproduction_v4_core,
+            "foci_velocity_stage_b_reproduction_v4_core",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_reproduction_v3_membership,
-            "foci_velocity_stage_b_reproduction_v3_membership",
+            driver.autotune.handle_velocity_stage_b_reproduction_v4_membership,
+            "foci_velocity_stage_b_reproduction_v4_membership",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_reproduction_v3_pooled,
-            "foci_velocity_stage_b_reproduction_v3_pooled",
+            driver.autotune.handle_velocity_stage_b_reproduction_v4_pooled,
+            "foci_velocity_stage_b_reproduction_v4_pooled",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_reproduction_v3_common,
-            "foci_velocity_stage_b_reproduction_v3_common",
+            driver.autotune.handle_velocity_stage_b_reproduction_v4_common,
+            "foci_velocity_stage_b_reproduction_v4_common",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_reproduction_v3_coverage,
-            "foci_velocity_stage_b_reproduction_v3_coverage",
+            driver.autotune.handle_velocity_stage_b_reproduction_v4_coverage,
+            "foci_velocity_stage_b_reproduction_v4_coverage",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_reproduction_v3_digest,
-            "foci_velocity_stage_b_reproduction_v3_digest",
+            driver.autotune.handle_velocity_stage_b_reproduction_v4_digest,
+            "foci_velocity_stage_b_reproduction_v4_digest",
         ),
         (
             driver.autotune.handle_velocity_stage_b_terminal_core,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-STAGE_B_EVIDENCE_SCHEMA_REVISION = 7
+STAGE_B_EVIDENCE_SCHEMA_REVISION = 8
 
 OUTCOME_NAMES = {
     0: "complete_candidate",
@@ -281,31 +281,31 @@ class VelocitySweepAssembler:
     def handle_stage_b_reproduction_digest(self, params: dict) -> None:
         self._accept_unframed("stage b reproduction", 4, params)
 
-    def handle_stage_b_reproduction_v3_core(self, params: dict) -> None:
+    def handle_stage_b_reproduction_v4_core(self, params: dict) -> None:
         if int(params.get("schema_revision", -1)) != STAGE_B_EVIDENCE_SCHEMA_REVISION:
             raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
-        self._accept_unframed("stage b reproduction v3", 0, params)
+        self._accept_unframed("stage b reproduction v4", 0, params)
 
-    def handle_stage_b_reproduction_v3_membership(self, params: dict) -> None:
+    def handle_stage_b_reproduction_v4_membership(self, params: dict) -> None:
         object_index = int(params.get("object", -1))
         if object_index not in (0, 1, 2):
             raise VelocitySweepProtocolError("invalid reproduction membership object")
-        self._accept_unframed("stage b reproduction v3", 1 + object_index, params)
+        self._accept_unframed("stage b reproduction v4", 1 + object_index, params)
 
-    def handle_stage_b_reproduction_v3_pooled(self, params: dict) -> None:
+    def handle_stage_b_reproduction_v4_pooled(self, params: dict) -> None:
         direction = self._reproduction_direction(params)
-        self._accept_unframed("stage b reproduction v3", 4 + direction, params)
+        self._accept_unframed("stage b reproduction v4", 4 + direction, params)
 
-    def handle_stage_b_reproduction_v3_common(self, params: dict) -> None:
+    def handle_stage_b_reproduction_v4_common(self, params: dict) -> None:
         direction = self._reproduction_direction(params)
-        self._accept_unframed("stage b reproduction v3", 6 + direction, params)
+        self._accept_unframed("stage b reproduction v4", 6 + direction, params)
 
-    def handle_stage_b_reproduction_v3_coverage(self, params: dict) -> None:
+    def handle_stage_b_reproduction_v4_coverage(self, params: dict) -> None:
         direction = self._reproduction_direction(params)
-        self._accept_unframed("stage b reproduction v3", 8 + direction, params)
+        self._accept_unframed("stage b reproduction v4", 8 + direction, params)
 
-    def handle_stage_b_reproduction_v3_digest(self, params: dict) -> None:
-        self._accept_unframed("stage b reproduction v3", 10, params)
+    def handle_stage_b_reproduction_v4_digest(self, params: dict) -> None:
+        self._accept_unframed("stage b reproduction v4", 10, params)
 
     @staticmethod
     def _reproduction_direction(params: dict) -> int:
@@ -509,7 +509,7 @@ class VelocitySweepAssembler:
             "joint region": 1,
             "stage b handoff": 4,
             "stage b reproduction": 5,
-            "stage b reproduction v3": 11,
+            "stage b reproduction v4": 11,
         }
         if self._group_kind is not None:
             raise VelocitySweepProtocolError(
@@ -573,8 +573,8 @@ class VelocitySweepAssembler:
             self._finish_stage_b_handoff(parts)
         elif kind == "stage b reproduction":
             self._finish_stage_b_reproduction(parts)
-        elif kind == "stage b reproduction v3":
-            self._finish_stage_b_reproduction_v3(parts)
+        elif kind == "stage b reproduction v4":
+            self._finish_stage_b_reproduction_v4(parts)
         else:
             raise VelocitySweepProtocolError("unknown unframed record")
         self._next_evidence_sequence += 1
@@ -762,13 +762,23 @@ class VelocitySweepAssembler:
                     "stage b handoff membership changed between parts"
                 )
             region = self._find_region(direction, membership)
+            expected_class = 1 if region["kind"] == "valid" else 0
+            if int(part.get("region_class", -1)) != expected_class:
+                raise VelocitySweepProtocolError(
+                    "stage b handoff region class changed between records"
+                )
             selected.append(region)
+        selected_joint_mask = int(nomination["selected_joint_mask"])
+        if selected_joint_mask & ~int(core["joint_member_mask"]):
+            raise VelocitySweepProtocolError(
+                "selected joint component lies outside the reported union"
+            )
         if not any(
-            int(region["member_mask"]) == int(core["joint_member_mask"])
+            int(region["member_mask"]) == selected_joint_mask
             for region in self.joint_regions
         ):
             raise VelocitySweepProtocolError(
-                "stage b handoff names unknown joint region"
+                "stage b nomination names unknown joint component"
             )
         handoff = dict(core)
         for key, value in nomination.items():
@@ -776,6 +786,8 @@ class VelocitySweepAssembler:
                 handoff[key] = value
         handoff["nomination_flags"] = int(nomination["flags"])
         handoff["nominated_rung"] = nominated_rung
+        handoff["joint_union_mask"] = int(core["joint_member_mask"])
+        handoff["selected_joint_mask"] = selected_joint_mask
         handoff["selected_regions"] = selected
         handoff["directions"] = [forward, reverse]
         self.handoff = handoff
@@ -817,7 +829,7 @@ class VelocitySweepAssembler:
         )
         self.reproduction = reproduction
 
-    def _finish_stage_b_reproduction_v3(self, parts: list[dict]) -> None:
+    def _finish_stage_b_reproduction_v4(self, parts: list[dict]) -> None:
         core = parts[0]
         memberships = parts[1:4]
         pooled = parts[4:6]
@@ -837,6 +849,22 @@ class VelocitySweepAssembler:
                 )
         if int(core["reduced_margin"]) not in (0, 1):
             raise VelocitySweepProtocolError("invalid reproduction reduced-margin flag")
+        if int(core["selected_member_count"]) not in range(1, 33):
+            raise VelocitySweepProtocolError("invalid selected joint component count")
+        selected_joint_mask = int(core["selected_joint_mask"])
+        if selected_joint_mask.bit_count() != int(core["selected_member_count"]):
+            raise VelocitySweepProtocolError(
+                "selected joint component count disagrees with membership"
+            )
+        if selected_joint_mask & (1 << int(core["selected_first_rung"])) == 0:
+            raise VelocitySweepProtocolError(
+                "selected joint component does not contain its first rung"
+            )
+        for key in ("forward_validity", "reverse_validity"):
+            if int(core[key]) not in range(5):
+                raise VelocitySweepProtocolError(
+                    "invalid reproduction directional validity"
+                )
         if int(core["outcome"]) not in (1, 2):
             raise VelocitySweepProtocolError("invalid reproduction outcome")
         if int(core["reason_mask"]) & ~0x1F:
@@ -993,14 +1021,16 @@ class VelocitySweepAssembler:
                 != STAGE_B_EVIDENCE_SCHEMA_REVISION
             ):
                 raise VelocitySweepProtocolError(
-                    "stage b Complete terminal arrived without schema-6 reproduction"
+                    "stage b Complete terminal arrived without schema-8 reproduction"
                 )
             if int(self.reproduction["outcome"]) != 1:
                 raise VelocitySweepProtocolError(
                     "stage b Complete terminal disagrees with reproduction outcome"
                 )
-            expected_memberships = tuple(
-                int(item["core"]) for item in self.reproduction["memberships"]
+            expected_memberships = (
+                int(self.reproduction["memberships"][0]["core"]),
+                int(self.reproduction["memberships"][1]["core"]),
+                int(self.reproduction["selected_joint_mask"]),
             )
             expected_nomination = int(self.reproduction["final_p"])
             expected_intervals = tuple(
@@ -1023,7 +1053,7 @@ class VelocitySweepAssembler:
             expected_memberships = (
                 int(self.handoff["forward_member_mask"]),
                 int(self.handoff["reverse_member_mask"]),
-                int(self.handoff["joint_member_mask"]),
+                int(self.handoff["selected_joint_mask"]),
             )
             if memberships != expected_memberships:
                 raise VelocitySweepProtocolError(
