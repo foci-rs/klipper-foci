@@ -25,7 +25,6 @@ CONSENSUS_ELIGIBLE = 0
 CONSENSUS_AMBIGUOUS = 1
 CONSENSUS_INSUFFICIENT = 2
 CONSENSUS_INCOMPLETE = 3
-OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN = 2
 
 
 class VelocitySweepProtocolError(Exception):
@@ -63,6 +62,7 @@ class VelocitySweepAssembler:
         self._unframed_kind: str | None = None
         self._unframed_parts: list[dict] = []
         self._last_evidence: tuple[str, int] | None = None
+        self._trace_only_current_pending = False
 
     @property
     def plan_ready(self) -> bool:
@@ -504,6 +504,7 @@ class VelocitySweepAssembler:
 
     def _start_unframed(self, kind: str, params: dict) -> None:
         self._validate_run(params)
+        self._advance_past_trace_only_current()
         if int(params["evidence_sequence"]) != self._next_evidence_sequence:
             raise VelocitySweepProtocolError("%s evidence sequence gap" % kind)
         self._unframed_kind = kind
@@ -555,6 +556,7 @@ class VelocitySweepAssembler:
             self._run_sequence = run_sequence
         elif run_sequence != self._run_sequence:
             raise VelocitySweepProtocolError("run sequence changed")
+        self._advance_past_trace_only_current()
         if evidence_sequence != self._next_evidence_sequence:
             raise VelocitySweepProtocolError(
                 "evidence sequence gap: got %d, expected %d"
@@ -579,9 +581,8 @@ class VelocitySweepAssembler:
             self._next_evidence_sequence += 1
         elif kind == "observation":
             self._finish_observation(parts)
-            self._next_evidence_sequence += (
-                OBSERVATION_AND_TRACE_ONLY_CURRENT_SEQUENCE_SPAN
-            )
+            self._next_evidence_sequence += 1
+            self._trace_only_current_pending = True
         elif kind == "terminal":
             self._finish_terminal(parts)
         elif kind == "stage b terminal":
@@ -591,6 +592,11 @@ class VelocitySweepAssembler:
         self._group_kind = None
         self._group_parts = []
         self._group_fragments = 0
+
+    def _advance_past_trace_only_current(self) -> None:
+        if self._trace_only_current_pending:
+            self._next_evidence_sequence += 1
+            self._trace_only_current_pending = False
 
     @staticmethod
     def _merge(parts: list[dict]) -> dict:

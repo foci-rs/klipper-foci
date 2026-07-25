@@ -444,6 +444,26 @@ def test_stage_b_observation_advances_over_trace_only_current_sequence():
     assert (0, 1) in assembler.observations
 
 
+def test_structured_boundary_precedes_trace_only_current_sequence():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler)
+    feed_observation(assembler, sequence=1, slot=0, low=100, high=110)
+
+    assembler.handle_structured_boundary(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 1,
+            "rung_index": 0,
+            "slot": 0,
+        }
+    )
+    feed_observation(assembler, sequence=3, slot=1, low=-110, high=-100)
+
+    assert len(assembler.structured_boundaries) == 1
+    assert (0, 1) in assembler.observations
+
+
 def terminal_fragments(
     *,
     outcome=0,
