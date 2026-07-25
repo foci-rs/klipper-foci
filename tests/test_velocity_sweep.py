@@ -299,12 +299,15 @@ def feed_stage_b_terminal(
     outcome=0,
     cause=0,
     member_mask=0b11100,
+    joint_member_mask=None,
     nominated_p=724,
     intervals=((104, 116), (104, 116)),
     digest=0,
     plan_digest_value=0,
     recovery_unavailable=0,
 ):
+    if joint_member_mask is None:
+        joint_member_mask = member_mask
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     assembler.handle_stage_b_terminal_core(
         {
@@ -331,7 +334,7 @@ def feed_stage_b_terminal(
             "fragment": 1,
             "forward_member_mask": member_mask,
             "reverse_member_mask": member_mask,
-            "joint_member_mask": member_mask,
+            "joint_member_mask": joint_member_mask,
             "nominated_p": nominated_p,
             "plan_digest_low": plan_digest_value & 0xFFFF_FFFF,
             "plan_digest_high": plan_digest_value >> 32,
@@ -632,6 +635,50 @@ def test_stage_b_handoff_preserves_union_and_selected_component_separately():
     assert assembler.handoff["joint_union_mask"] == 0b11111
     assert assembler.handoff["selected_joint_mask"] == 0b11100
     assert assembler.handoff["directions"][0]["region_class"] == 1
+
+
+def test_stage_b_candidate_terminal_preserves_joint_union_from_handoff():
+    assembler = VelocitySweepAssembler()
+    feed_plan(assembler, rung_count=0)
+    feed_stage_b_region(assembler, sequence=1, direction=0)
+    feed_stage_b_region(assembler, sequence=2, direction=1)
+    for sequence, member_mask, bounds in (
+        (3, 0b00011, 0 | (1 << 8)),
+        (4, 0b11100, 2 | (4 << 8)),
+    ):
+        assembler.handle_joint_region(
+            {
+                "oid": 0,
+                "run_sequence": 7,
+                "evidence_sequence": sequence,
+                "member_mask": member_mask,
+                "rung_bounds": bounds,
+                "member_count": member_mask.bit_count(),
+                "p_low": 256,
+                "p_high": 1024,
+                "closure": 1,
+            }
+        )
+    feed_stage_b_handoff(
+        assembler,
+        sequence=5,
+        member_mask=0b11100,
+        joint_union_mask=0b11111,
+    )
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=6,
+        joint_member_mask=0b11111,
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "complete_candidate"
+    assert assembler.terminal["selected_memberships"] == (
+        0b11100,
+        0b11100,
+        0b11111,
+    )
 
 
 def test_preflight_plan_mismatch_terminal_is_accepted_without_motion_plan():

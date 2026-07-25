@@ -1053,7 +1053,7 @@ class VelocitySweepAssembler:
             expected_memberships = (
                 int(self.handoff["forward_member_mask"]),
                 int(self.handoff["reverse_member_mask"]),
-                int(self.handoff["selected_joint_mask"]),
+                int(self.handoff["joint_union_mask"]),
             )
             if memberships != expected_memberships:
                 raise VelocitySweepProtocolError(
