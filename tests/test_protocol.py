@@ -837,13 +837,13 @@ def test_preload_active_gains_sends_existing_payloads():
     driver = make_driver()
     gains = {
         "flux_p": 11,
-        "flux_i": 12,
+        "flux_i": 416,
         "torque_p": 13,
-        "torque_i": 14,
+        "torque_i": 2544,
         "velocity_p": 21,
-        "velocity_i": 22,
+        "velocity_i": 8192,
         "position_p": 23,
-        "position_i": 24,
+        "position_i": 2048,
         "velocity_limit": 25000,
         "velocity_filter_hz": 80,
         "torque_filter_hz": 90,
@@ -855,8 +855,14 @@ def test_preload_active_gains_sends_existing_payloads():
 
     commands = driver.protocol.commands
     assert commands.set_voltage_limit.last_args == [driver.oid, 29000]
-    assert commands.set_pid_gains.last_args == [driver.oid, 11, 12, 13, 14]
-    assert commands.set_position_gains.last_args == [driver.oid, 23, 24, 21, 22]
+    assert commands.set_pid_gains.last_args == [driver.oid, 11, 416, 13, 2544]
+    assert commands.set_position_gains.last_args == [
+        driver.oid,
+        23,
+        2048,
+        21,
+        8192,
+    ]
     assert commands.set_velocity_limit.last_args == [driver.oid, 25000]
     assert commands.set_velocity_filter.last_args == [driver.oid, 80]
     assert commands.set_torque_filter.last_args == [driver.oid, 90]

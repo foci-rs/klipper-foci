@@ -22,6 +22,8 @@ from klipper_foci.registers import (
     _fmt_motion_mode,
     _fmt_angle_source,
     _fmt_velocity_meter,
+    format_i_gain,
+    format_p_gain,
 )
 
 
@@ -207,11 +209,20 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertIn("flux_p=", out)
         self.assertIn("flux_i=", out)
 
+    def test_gain_formatters_distinguish_p_q8_8_from_i_q4_12(self):
+        self.assertEqual(format_p_gain(1152), "4.500000 Q8.8")
+        self.assertEqual(format_i_gain(416), "0.1015625 Q4.12")
+        self.assertEqual(format_i_gain(2544), "0.62109375 Q4.12")
+        self.assertEqual(format_i_gain(32767), "7.999755859375 Q4.12")
+
     def test_current_i_uses_advanced_pi_zero_scale(self):
-        out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x01000100)
+        out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x010001A0)
         self.assertIn("flux_p=1.000", out)
-        self.assertIn("flux_i=256(q8.8=1.000,zero=256/65536)", out)
-        self.assertNotIn("flux_i=1.000", out)
+        self.assertIn(
+            "flux_i=416(q4.12=0.1015625,zero=416/1048576)",
+            out,
+        )
+        self.assertNotIn("65536", out)
 
     def test_register_without_fields(self):
         fh = FieldHelper({}, [], {})

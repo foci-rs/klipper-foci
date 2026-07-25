@@ -42,12 +42,11 @@ class TestDebugGainsCommand(unittest.TestCase):
     def test_outer_gain_boundary_rejects_negative_register_encoding(self):
         d = make_driver()
         command = d.protocol.commands.set_position_gains
-        maximum_value = 32767.0 / 256.0
         maximum = {
-            "VELOCITY_P": maximum_value,
-            "VELOCITY_I": maximum_value,
-            "POSITION_P": maximum_value,
-            "POSITION_I": maximum_value,
+            "VELOCITY_P": 32767.0 / 256.0,
+            "VELOCITY_I": 32767.0 / 4096.0,
+            "POSITION_P": 32767.0 / 256.0,
+            "POSITION_I": 32767.0 / 4096.0,
         }
 
         d.controls.set_gains(MockGCmd(maximum))
@@ -58,7 +57,7 @@ class TestDebugGainsCommand(unittest.TestCase):
         for key in maximum:
             with self.subTest(key=key):
                 params = dict(maximum)
-                params[key] = 128.0
+                params[key] = 128.0 if key.endswith("_P") else 8.0
                 previous_args = list(command.last_args)
                 previous_count = command.call_count
 
@@ -102,16 +101,16 @@ class TestDebugGainsCommand(unittest.TestCase):
         gcmd = MockGCmd(
             {
                 "VELOCITY_P": "2.0",
-                "VELOCITY_I": "0.0",
+                "VELOCITY_I": "0.1015625",
                 "POSITION_P": "1.0",
-                "POSITION_I": "0.0",
+                "POSITION_I": "0.62109375",
             }
         )
         d.controls.set_gains(gcmd)
 
         self.assertEqual(
             d.protocol.commands.set_position_gains.last_args,
-            [d.oid, 256, 0, 512, 0],
+            [d.oid, 256, 2544, 512, 416],
         )
         self.assertEqual(d.settings.pid_velocity_p, 101)
         self.assertEqual(d.settings.pid_velocity_i, 102)
@@ -138,16 +137,16 @@ class TestDebugGainsCommand(unittest.TestCase):
         gcmd = MockGCmd(
             {
                 "FLUX_P": 706,
-                "FLUX_I": 162,
+                "FLUX_I": 2592,
                 "TORQUE_P": 706,
-                "TORQUE_I": 162,
+                "TORQUE_I": 2592,
             }
         )
         d.controls.set_inner_gains(gcmd)
 
         self.assertEqual(
             d.protocol.commands.set_pid_gains.last_args,
-            [d.oid, 706, 162, 706, 162],
+            [d.oid, 706, 2592, 706, 2592],
         )
         self.assertEqual(d.settings.pid_flux_p, 201)
         self.assertEqual(d.settings.pid_flux_i, 202)

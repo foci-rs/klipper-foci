@@ -19,8 +19,10 @@ from tests.mocks import (
     CommandError,
     MockConfig,
     MockMCU,
+    complete_commission_result,
     make_config_driver,
     make_config_printer,
+    make_driver,
 )
 
 
@@ -406,24 +408,24 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     _printer, _chips, _sections, config = make_foci_config(
         foci_values={
             "pid_flux_p": 256,
-            "pid_flux_i": 26,
+            "pid_flux_i": 416,
             "pid_torque_p": 257,
-            "pid_torque_i": 27,
+            "pid_torque_i": 432,
             "velocity_filter_hz": 200,
             "torque_filter_hz": 100,
             "position_filter_hz": 300,
             "flux_filter_hz": 400,
             "pid_position_p": 640,
-            "pid_position_i": 1,
+            "pid_position_i": 16,
             "pid_velocity_p": 1152,
-            "pid_velocity_i": 2,
+            "pid_velocity_i": 32,
             "velocity_feedforward": True,
             "velocity_feedforward_multiplier": 7,
             "pid_velocity_limit": 500000,
             "commissioned_velocity_p": 1100,
-            "commissioned_velocity_i": 3,
+            "commissioned_velocity_i": 48,
             "commissioned_position_p": 600,
-            "commissioned_position_i": 4,
+            "commissioned_position_i": 64,
             "commissioned_velocity_limit": 300000,
             "identified_r_count_milli": 1700,
             "identified_l_count_micro": 3300,
@@ -461,9 +463,9 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_current_axis_split_clamped": 1,
             "identified_current_candidate_axis_split_clamped": 1,
             "identified_current_candidate_flux_p": 711,
-            "identified_current_candidate_flux_i": 26,
+            "identified_current_candidate_flux_i": 416,
             "identified_current_candidate_torque_p": 650,
-            "identified_current_candidate_torque_i": 21,
+            "identified_current_candidate_torque_i": 336,
             "identified_current_candidate_attempt": 1,
             "identified_current_validation_axes": 3,
             "identified_current_flux_validation_sample_count": 4,
@@ -483,11 +485,11 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     parsed = parse_driver_config(config)
 
     assert parsed.pid_flux_p == 256
-    assert parsed.pid_torque_i == 27
+    assert parsed.pid_torque_i == 432
     assert parsed.velocity_filter_hz == 200
     assert parsed.flux_filter_hz == 400
     assert parsed.pid_position_p == 640
-    assert parsed.pid_velocity_i == 2
+    assert parsed.pid_velocity_i == 32
     assert parsed.velocity_feedforward is True
     assert parsed.velocity_feedforward_multiplier == 7
     assert parsed.velocity_transient_feedforward is False
@@ -514,7 +516,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.phase_advance_deadband == 16
     assert parsed.pid_velocity_limit == 500000
     assert parsed.commissioned_velocity_p == 1100
-    assert parsed.commissioned_position_i == 4
+    assert parsed.commissioned_position_i == 64
     assert parsed.identified_r_count_milli == 1700
     assert parsed.identified_l_count_micro == 3300
     assert parsed.identified_tau_e_us == 730
@@ -547,9 +549,9 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_current_axis_split_clamped == 1
     assert parsed.identified_current_candidate_axis_split_clamped == 1
     assert parsed.identified_current_candidate_flux_p == 711
-    assert parsed.identified_current_candidate_flux_i == 26
+    assert parsed.identified_current_candidate_flux_i == 416
     assert parsed.identified_current_candidate_torque_p == 650
-    assert parsed.identified_current_candidate_torque_i == 21
+    assert parsed.identified_current_candidate_torque_i == 336
     assert parsed.identified_current_candidate_attempt == 1
     assert parsed.identified_current_validation_axes == 3
     assert parsed.identified_current_flux_validation_sample_count == 4
@@ -769,17 +771,17 @@ def test_validate_runtime_config_returns_commissioned_active_gains():
             {
                 "autotune_status": "commissioned",
                 "pid_flux_p": 256,
-                "pid_flux_i": 26,
+                "pid_flux_i": 416,
                 "pid_torque_p": 257,
-                "pid_torque_i": 27,
+                "pid_torque_i": 432,
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
                 "identified_ringing_count": 7,
                 "identified_bandwidth_hz": 1600,
                 "commissioned_velocity_p": 1100,
-                "commissioned_velocity_i": 3,
+                "commissioned_velocity_i": 48,
                 "commissioned_position_p": 600,
-                "commissioned_position_i": 4,
+                "commissioned_position_i": 64,
                 "commissioned_velocity_limit": 300000,
                 "position_filter_hz": 200,
             }
@@ -789,13 +791,13 @@ def test_validate_runtime_config_returns_commissioned_active_gains():
     assert result.runtime_status == "commissioned"
     assert result.active_gains == {
         "flux_p": 256,
-        "flux_i": 26,
+        "flux_i": 416,
         "torque_p": 257,
-        "torque_i": 27,
+        "torque_i": 432,
         "velocity_p": 1100,
-        "velocity_i": 3,
+        "velocity_i": 48,
         "position_p": 600,
-        "position_i": 4,
+        "position_i": 64,
         "velocity_limit": 300000,
         "velocity_filter_hz": None,
         "torque_filter_hz": None,
@@ -804,23 +806,100 @@ def test_validate_runtime_config_returns_commissioned_active_gains():
     }
 
 
+def test_q4_12_i_values_remain_exact_through_host_lifecycle():
+    configured_i = {
+        "flux_i": 416,
+        "torque_i": 2544,
+        "velocity_i": 8192,
+        "position_i": 2048,
+    }
+    parsed = parsed_config_with(
+        {
+            "autotune_status": "commissioned",
+            "pid_flux_p": 256,
+            "pid_flux_i": configured_i["flux_i"],
+            "pid_torque_p": 257,
+            "pid_torque_i": configured_i["torque_i"],
+            "identified_lambda_us": 12,
+            "identified_theta_e_us": 160,
+            "identified_ringing_count": 7,
+            "identified_bandwidth_hz": 1600,
+            "commissioned_velocity_p": 1100,
+            "commissioned_velocity_i": configured_i["velocity_i"],
+            "commissioned_position_p": 600,
+            "commissioned_position_i": configured_i["position_i"],
+            "commissioned_velocity_limit": 300000,
+        }
+    )
+    validation = validate_runtime_config(parsed)
+    active = validation.active_gains
+    assert active is not None
+
+    driver = make_driver()
+    driver.protocol.preload_active_gains(active, voltage_limit=29000)
+    assert driver.protocol.commands.set_pid_gains.last_args == [
+        driver.oid,
+        256,
+        configured_i["flux_i"],
+        257,
+        configured_i["torque_i"],
+    ]
+    assert driver.protocol.commands.set_position_gains.last_args == [
+        driver.oid,
+        600,
+        configured_i["position_i"],
+        1100,
+        configured_i["velocity_i"],
+    ]
+    driver.state.active_gains = dict(active)
+    assert {
+        name: driver.state.active_gains[name] for name in configured_i
+    } == configured_i
+
+    class ConfigSink:
+        def __init__(self):
+            self.values = {}
+
+        def set(self, section, key, value):
+            self.values[(section, key)] = value
+
+    sink = ConfigSink()
+    driver.printer._objects["configfile"] = sink
+    reply = complete_commission_result()
+    reply.update(
+        flux_i=configured_i["flux_i"],
+        torque_i=configured_i["torque_i"],
+        fallback_velocity_i=configured_i["velocity_i"],
+        fallback_position_i=configured_i["position_i"],
+    )
+    driver.commissioning.persist_commission_results(reply, "balanced")
+    assert sink.values[(driver.name, "pid_flux_i")] == str(configured_i["flux_i"])
+    assert sink.values[(driver.name, "pid_torque_i")] == str(configured_i["torque_i"])
+    assert sink.values[(driver.name, "commissioned_velocity_i")] == str(
+        configured_i["velocity_i"]
+    )
+    assert sink.values[(driver.name, "commissioned_position_i")] == str(
+        configured_i["position_i"]
+    )
+
+
 def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable():
     result = validate_runtime_config(
         parsed_config_with(
             {
                 "autotune_status": "commissioned",
                 "pid_flux_p": 256,
-                "pid_flux_i": 26,
+                "pid_flux_i": 416,
                 "pid_torque_p": 257,
-                "pid_torque_i": 27,
+                "pid_torque_i": 432,
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
                 "identified_ringing_count": 7,
                 "identified_bandwidth_hz": 1600,
                 "commissioned_velocity_p": 1100,
-                "commissioned_velocity_i": 3,
+                "commissioned_velocity_i": 48,
                 "commissioned_position_p": 600,
-                "commissioned_position_i": 4,
+                "commissioned_position_i": 64,
                 "commissioned_velocity_limit": 300000,
                 "torque_filter_hz": 0,
                 "flux_filter_hz": 0,
@@ -839,17 +918,17 @@ def test_validate_runtime_config_returns_tuned_active_gains():
             {
                 "autotune_status": "tuned_conservative",
                 "pid_flux_p": 256,
-                "pid_flux_i": 26,
+                "pid_flux_i": 416,
                 "pid_torque_p": 257,
-                "pid_torque_i": 27,
+                "pid_torque_i": 432,
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
                 "identified_ringing_count": 7,
                 "identified_bandwidth_hz": 1600,
                 "pid_velocity_p": 1100,
-                "pid_velocity_i": 3,
+                "pid_velocity_i": 48,
                 "pid_position_p": 600,
-                "pid_position_i": 4,
+                "pid_position_i": 64,
                 "pid_velocity_limit": 300000,
                 "flux_filter_hz": 100,
             }
@@ -859,13 +938,13 @@ def test_validate_runtime_config_returns_tuned_active_gains():
     assert result.runtime_status == "tuned_conservative"
     assert result.active_gains == {
         "flux_p": 256,
-        "flux_i": 26,
+        "flux_i": 416,
         "torque_p": 257,
-        "torque_i": 27,
+        "torque_i": 432,
         "velocity_p": 1100,
-        "velocity_i": 3,
+        "velocity_i": 48,
         "position_p": 600,
-        "position_i": 4,
+        "position_i": 64,
         "velocity_limit": 300000,
         "velocity_filter_hz": None,
         "torque_filter_hz": None,
@@ -887,9 +966,9 @@ def test_validate_runtime_config_warns_for_missing_required_fields(caplog):
             {
                 "autotune_status": "commissioned",
                 "pid_flux_p": 256,
-                "pid_flux_i": 26,
+                "pid_flux_i": 416,
                 "pid_torque_p": 257,
-                "pid_torque_i": 27,
+                "pid_torque_i": 432,
             }
         )
     )
@@ -905,17 +984,17 @@ def test_handle_connect_installs_validation_result():
         foci_values={
             "autotune_status": "commissioned",
             "pid_flux_p": 256,
-            "pid_flux_i": 26,
+            "pid_flux_i": 416,
             "pid_torque_p": 257,
-            "pid_torque_i": 27,
+            "pid_torque_i": 432,
             "identified_lambda_us": 12,
             "identified_theta_e_us": 160,
             "identified_ringing_count": 7,
             "identified_bandwidth_hz": 25,
             "commissioned_velocity_p": 1100,
-            "commissioned_velocity_i": 3,
+            "commissioned_velocity_i": 48,
             "commissioned_position_p": 600,
-            "commissioned_position_i": 4,
+            "commissioned_position_i": 64,
             "commissioned_velocity_limit": 300000,
         }
     )

@@ -9,6 +9,7 @@ from .constants import (
     MIN_RAW_VOLTAGE_LIMIT,
     PID_GAIN_MAX_RAW,
 )
+from .registers import format_i_gain, format_p_gain
 
 
 class ControlsWorkflow:
@@ -25,10 +26,10 @@ class ControlsWorkflow:
         The command is asynchronous and does not update host applied-state
         caches because firmware application is not confirmed.
         """
-        velocity_p = self._get_outer_gain(gcmd, "VELOCITY_P")
-        velocity_i = self._get_outer_gain(gcmd, "VELOCITY_I")
-        position_p = self._get_outer_gain(gcmd, "POSITION_P")
-        position_i = self._get_outer_gain(gcmd, "POSITION_I")
+        velocity_p = self._get_p_gain(gcmd, "VELOCITY_P")
+        velocity_i = self._get_i_gain(gcmd, "VELOCITY_I")
+        position_p = self._get_p_gain(gcmd, "POSITION_P")
+        position_i = self._get_i_gain(gcmd, "POSITION_I")
 
         self.driver.protocol.set_position_gains(
             position_p,
@@ -38,18 +39,27 @@ class ControlsWorkflow:
         )
 
         gcmd.respond_info(
-            "FOCI %s debug gain update requested: vel_p=%d/256 vel_i=%d/256"
-            " pos_p=%d/256 pos_i=%d/256"
-            % (self.driver.name, velocity_p, velocity_i, position_p, position_i)
+            "FOCI %s debug gain update requested: vel_p=%d(%s) vel_i=%d(%s)"
+            " pos_p=%d(%s) pos_i=%d(%s)"
+            % (
+                self.driver.name,
+                velocity_p,
+                format_p_gain(velocity_p),
+                velocity_i,
+                format_i_gain(velocity_i),
+                position_p,
+                format_p_gain(position_p),
+                position_i,
+                format_i_gain(position_i),
+            )
         )
 
     def set_inner_gains(self, gcmd) -> None:
         """Set inner current-loop gains for live bringup debugging.
 
-        Parameters are raw TMC4671 register values. P gains are Q8.8
-        numerators. Current I gains are also Q8.8 while
-        CONFIG_ADVANCED_PI_REPRESENT remains at its default 0; in advanced PI
-        mode their effective zero factor is raw/65536 per PWM sample. The
+        Parameters are raw TMC4671 register values. P gains are Q8.8 and I
+        gains are Q4.12. In advanced PI mode, the current-I effective zero
+        factor is raw/1048576 per PWM sample. The
         command is asynchronous and does not update host applied-state caches
         because firmware application is not confirmed.
         """
@@ -61,18 +71,20 @@ class ControlsWorkflow:
         self.driver.protocol.set_pid_gains(flux_p, flux_i, torque_p, torque_i)
 
         gcmd.respond_info(
-            "FOCI %s inner gain update requested: flux_p=%d/256"
-            " flux_i=%d(q8.8=%.3f zero=%d/65536)"
-            " torque_p=%d/256 torque_i=%d(q8.8=%.3f zero=%d/65536)"
+            "FOCI %s inner gain update requested: flux_p=%d(%s)"
+            " flux_i=%d(%s zero=%d/1048576)"
+            " torque_p=%d(%s) torque_i=%d(%s zero=%d/1048576)"
             % (
                 self.driver.name,
                 flux_p,
+                format_p_gain(flux_p),
                 flux_i,
-                flux_i * 2**-8,
+                format_i_gain(flux_i),
                 flux_i,
                 torque_p,
+                format_p_gain(torque_p),
                 torque_i,
-                torque_i * 2**-8,
+                format_i_gain(torque_i),
                 torque_i,
             )
         )
@@ -453,10 +465,15 @@ class ControlsWorkflow:
             % (self.driver.name, voltage_limit)
         )
 
-    def _get_outer_gain(self, gcmd, key: str) -> int:
-        """Read a floating-point gain parameter and convert it to raw Q8.8."""
+    def _get_p_gain(self, gcmd, key: str) -> int:
+        """Read a floating-point proportional gain and encode raw Q8.8."""
         value = gcmd.get_float(key, minval=0.0, maxval=PID_GAIN_MAX_RAW / 256.0)
         return min(PID_GAIN_MAX_RAW, int(value * 256.0 + 0.5))
+
+    def _get_i_gain(self, gcmd, key: str) -> int:
+        """Read a floating-point integral gain and encode raw Q4.12."""
+        value = gcmd.get_float(key, minval=0.0, maxval=PID_GAIN_MAX_RAW / 4096.0)
+        return min(PID_GAIN_MAX_RAW, int(value * 4096.0 + 0.5))
 
     def _get_filter_hz(self, gcmd, key: str, max_hz: int) -> int | None:
         """Read an optional filter cutoff parameter in Hz."""

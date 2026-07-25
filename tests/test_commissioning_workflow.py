@@ -55,9 +55,9 @@ def test_current_loop_failure_summary_decodes_gate_sample_status():
         "failure_reason": 4,
         "candidate_attempt": 0,
         "candidate_flux_p": 3564,
-        "candidate_flux_i": 220,
+        "candidate_flux_i": 3520,
         "candidate_torque_p": 3564,
-        "candidate_torque_i": 220,
+        "candidate_torque_i": 3520,
         "retry_budget_exhausted": 0,
     }
     samples = {
@@ -85,7 +85,7 @@ def test_current_loop_failure_summary_decodes_gate_sample_status():
     assert "cross-axis coupling" in text
     assert "delay=100ms" in text
     assert "cross=156 permille" in text
-    assert "candidate_flux=3564/220" in text
+    assert "candidate_flux=3564/3520" in text
 
 
 def timing_reply(method=0, status=1, **overrides):
@@ -1153,9 +1153,9 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         "axis_split_clamped": 1,
         "candidate_axis_split_clamped": 1,
         "candidate_flux_p": 711,
-        "candidate_flux_i": 26,
+        "candidate_flux_i": 416,
         "candidate_torque_p": 650,
-        "candidate_torque_i": 21,
+        "candidate_torque_i": 336,
         "candidate_attempt": 1,
         "current_validation_axes": 3,
         "flux_validation_sample_count": 4,
@@ -1177,9 +1177,9 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         "identified_current_axis_split_clamped": "1",
         "identified_current_candidate_axis_split_clamped": "1",
         "identified_current_candidate_flux_p": "711",
-        "identified_current_candidate_flux_i": "26",
+        "identified_current_candidate_flux_i": "416",
         "identified_current_candidate_torque_p": "650",
-        "identified_current_candidate_torque_i": "21",
+        "identified_current_candidate_torque_i": "336",
         "identified_current_candidate_attempt": "1",
         "identified_current_validation_axes": "3",
         "identified_current_flux_validation_sample_count": "4",

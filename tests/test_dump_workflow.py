@@ -16,8 +16,8 @@ from tests.mocks import (
 
 
 DEFAULT_DUMP_VALUES = {
-    REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
-    REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+    REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
+    REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
     REGISTERS["PID_VELOCITY_P_VELOCITY_I"]: (1152 << 16) | 0,
     REGISTERS["PID_POSITION_P_POSITION_I"]: (640 << 16) | 0,
     REGISTERS["PID_VELOCITY_LIMIT"]: 500000,
@@ -73,9 +73,9 @@ def _seed_tuning_state(driver):
     driver.config.autotune_mode = "outer"
 
     driver.config.pid_flux_p = 256
-    driver.config.pid_flux_i = 26
+    driver.config.pid_flux_i = 416
     driver.config.pid_torque_p = 256
-    driver.config.pid_torque_i = 26
+    driver.config.pid_torque_i = 416
     driver.config.pid_velocity_p = 1152
     driver.config.pid_velocity_i = 0
     driver.config.pid_position_p = 640
@@ -124,9 +124,9 @@ def _seed_tuning_state(driver):
     driver.config.identified_current_axis_split_clamped = 1
     driver.config.identified_current_candidate_axis_split_clamped = 1
     driver.config.identified_current_candidate_flux_p = 711
-    driver.config.identified_current_candidate_flux_i = 26
+    driver.config.identified_current_candidate_flux_i = 416
     driver.config.identified_current_candidate_torque_p = 650
-    driver.config.identified_current_candidate_torque_i = 21
+    driver.config.identified_current_candidate_torque_i = 336
     driver.config.identified_current_candidate_attempt = 1
     driver.config.identified_current_validation_axes = 3
     driver.config.identified_current_flux_validation_sample_count = 4
@@ -306,7 +306,7 @@ def test_tuning_readiness_blocks_live_current_gain_mismatch():
     _seed_tuning_state(driver)
     driver.config.identified_bandwidth_hz = 1600
     values = {
-        REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 26,
+        REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 416,
     }
 
     output, _calls = _run_dump(driver, {"TUNING": "1"}, values)
@@ -341,7 +341,7 @@ def test_read_live_current_gains_returns_missing_fields_as_none():
     protocol = DumpOnlyProtocol(
         driver,
         {
-            REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+            REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
         },
     )
     driver.protocol = protocol
@@ -351,7 +351,7 @@ def test_read_live_current_gains_returns_missing_fields_as_none():
     assert protocol.calls == ["dump_registers"]
     assert live_gains == {
         "flux_p": 256,
-        "flux_i": 26,
+        "flux_i": 416,
         "torque_p": None,
         "torque_i": None,
     }
@@ -532,9 +532,9 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
             "axis_split_clamped": 0,
             "candidate_axis_split_clamped": 0,
             "candidate_flux_p": 711,
-            "candidate_flux_i": 26,
+            "candidate_flux_i": 416,
             "candidate_torque_p": 711,
-            "candidate_torque_i": 26,
+            "candidate_torque_i": 416,
             "candidate_attempt": 1,
             "current_validation_axes": 0,
             "flux_validation_sample_count": 4,
@@ -584,9 +584,9 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.candidate_gains_source        = measured" in output
     assert "last.candidate_gains_tier          = measured_symmetric" in output
     assert "last.candidate_flux_p              = 711" in output
-    assert "last.candidate_flux_i              = 26" in output
+    assert "last.candidate_flux_i              = 416" in output
     assert "last.candidate_torque_p            = 711" in output
-    assert "last.candidate_torque_i            = 26" in output
+    assert "last.candidate_torque_i            = 416" in output
     assert "last.candidate_attempt             = 1" in output
     assert "last.current_validation            = flux=fail torque=not_run" in output
     assert "last.failure_reason                = retry_exhausted" in output
@@ -716,9 +716,9 @@ def test_tuning_flag_labels_last_current_validation_gate_samples():
             "axis_split_clamped": 0,
             "candidate_axis_split_clamped": 0,
             "candidate_flux_p": 711,
-            "candidate_flux_i": 153,
+            "candidate_flux_i": 2448,
             "candidate_torque_p": 711,
-            "candidate_torque_i": 153,
+            "candidate_torque_i": 2448,
             "candidate_attempt": 0,
             "current_validation_axes": 3,
             "flux_validation_sample_count": 4,
@@ -772,7 +772,7 @@ def test_tuning_mismatch_warning_includes_live_and_host_values():
     driver = make_driver()
     _seed_tuning_state(driver)
     values = {
-        REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 26,
+        REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 416,
     }
 
     output, _calls = _run_dump(driver, {"TUNING": "1"}, values)

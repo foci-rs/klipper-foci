@@ -23,9 +23,9 @@ from klipper_foci.state import FociRuntimeState
 
 SAMPLE_ACTIVE_GAINS = {
     "flux_p": 256,
-    "flux_i": 26,
+    "flux_i": 416,
     "torque_p": 256,
-    "torque_i": 26,
+    "torque_i": 416,
     "velocity_p": 1152,
     "velocity_i": 0,
     "position_p": 640,
@@ -40,9 +40,9 @@ SAMPLE_ACTIVE_GAINS = {
 SAMPLE_COMMISSION_RESULT = {
     "status": 0,
     "flux_p": 256,
-    "flux_i": 26,
+    "flux_i": 416,
     "torque_p": 256,
-    "torque_i": 26,
+    "torque_i": 416,
     "r_count_milli": 1706,
     "l_count_micro": 1245,
     "lambda_us": 0,

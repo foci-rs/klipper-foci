@@ -245,13 +245,13 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.state.is_calibrated = False
         d.state.active_gains = {
             "flux_p": 711,
-            "flux_i": 159,
+            "flux_i": 2544,
             "torque_p": 711,
-            "torque_i": 159,
+            "torque_i": 2544,
             "velocity_p": 1434,
-            "velocity_i": 2,
+            "velocity_i": 32,
             "position_p": 627,
-            "position_i": 1,
+            "position_i": 16,
             "velocity_limit": 500000,
         }
         d.printer.get_reactor().completion_result = {
@@ -426,13 +426,13 @@ class TestCommandHomingInvalidation(unittest.TestCase):
             driver.dump.handle_dump_value(
                 {
                     "addr": REGISTERS["PID_FLUX_P_FLUX_I"],
-                    "value": (256 << 16) | 26,
+                    "value": (256 << 16) | 416,
                 }
             )
             driver.dump.handle_dump_value(
                 {
                     "addr": REGISTERS["PID_TORQUE_P_TORQUE_I"],
-                    "value": (256 << 16) | 26,
+                    "value": (256 << 16) | 416,
                 }
             )
             driver.dump.handle_dump_done({})

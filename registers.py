@@ -72,10 +72,26 @@ def _fmt_q8_8(val: int) -> str:
     return "%.3f" % (val * 2**-8)
 
 
+def format_p_gain(raw: int) -> str:
+    """Format one raw Q8.8 proportional gain without changing its value."""
+    return "%.6f Q8.8" % (raw * 2**-8)
+
+
+def format_i_gain(raw: int) -> str:
+    """Format one raw Q4.12 integral gain without changing its value."""
+    decimal = ("%.12f" % (raw * 2**-12)).rstrip("0").rstrip(".")
+    return "%s Q4.12" % decimal
+
+
+def _fmt_i_gain(val: int) -> str:
+    return format_i_gain(val).removesuffix(" Q4.12")
+
+
 def _fmt_advanced_pi_current_i(val: int) -> str:
     if val == 0:
         return "0"
-    return "%d(q8.8=%.3f,zero=%d/65536)" % (val, val * 2**-8, val)
+    q4_12 = format_i_gain(val).removesuffix(" Q4.12")
+    return "%d(q4.12=%s,zero=%d/1048576)" % (val, q4_12, val)
 
 
 VM_MODEL_CONSTANTS: tuple[str, ...] = (
@@ -417,15 +433,15 @@ FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "abn_direction": _fmt_direction,
     "pwm_sv": _fmt_on_off,
     "flux_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    # Raw current-I is Q8.8 with CONFIG_ADVANCED_PI_REPRESENT at its default 0.
-    # The advanced PI integrator makes the effective zero factor raw/65536.
+    # Current I is Q4.12 under the firmware-owned fixed representation. The
+    # advanced PI integrator makes the effective zero factor raw/1048576.
     "flux_i": _fmt_advanced_pi_current_i,
     "torque_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
     "torque_i": _fmt_advanced_pi_current_i,
     "velocity_p": _fmt_q8_8,
-    "velocity_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
+    "velocity_i": _fmt_i_gain,
     "position_p": _fmt_q8_8,
-    "position_i": _fmt_q8_8,  # Q8.8 in advanced PID mode (ADVANCED_PI_REPRESENT default)
+    "position_i": _fmt_i_gain,
 }
 
 DUMP_GROUPS: list[tuple[str, list[str]]] = [

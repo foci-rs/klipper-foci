@@ -28,8 +28,8 @@ class MockConfigFile:
 
 def install_live_dump(driver, dump_values=None):
     values = {
-        REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
-        REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+        REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
+        REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
     }
     if dump_values is not None:
         values.update(dump_values)
@@ -669,8 +669,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self._install_live_dump(
             d,
             {
-                REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 26,
-                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 416,
+                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
             },
         )
 
@@ -691,7 +691,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self._install_live_dump(
             d,
             {
-                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
             },
         )
 
@@ -714,8 +714,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self._install_live_dump(
             d,
             {
-                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
-                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
+                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
             },
         )
 
@@ -738,8 +738,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self._install_live_dump(
             d,
             {
-                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 26,
-                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 26,
+                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
+                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
             },
         )
 
