@@ -461,11 +461,13 @@ def feed_terminal(
     *,
     reproduction=True,
     outcome=None,
+    emitted_observations=None,
     emitted_rungs=None,
     digest=None,
     cause=0,
     rest_boundary=(0, 0),
     recovery_flags=None,
+    current_terminus_plus_one=0,
 ):
     common = {
         "oid": 0,
@@ -480,7 +482,7 @@ def feed_terminal(
             "reverse_eligible_mask": 0b101,
             "opening_available_mask": 0b11,
             "bookend_available_mask": 0b11,
-            "current_terminus_plus_one": 0,
+            "current_terminus_plus_one": current_terminus_plus_one,
             "sufficient_direction_mask": 0b01,
         }
     )
@@ -586,6 +588,9 @@ def feed_terminal(
         )
     total_rungs = int(assembler.plan["total_rung_count"])
     emitted_rungs = total_rungs if emitted_rungs is None else emitted_rungs
+    emitted_observations = (
+        8 * emitted_rungs if emitted_observations is None else emitted_observations
+    )
     terminal_outcome = (1 if reproduction else 0) if outcome is None else outcome
     terminal_core = {
         **common,
@@ -595,7 +600,7 @@ def feed_terminal(
         "rest_boundary_rung_plus_one": rest_boundary[0],
         "rest_boundary_slot_plus_one": rest_boundary[1],
         "expected_observations": 8 * total_rungs,
-        "emitted_observations": 8 * emitted_rungs,
+        "emitted_observations": emitted_observations,
         "expected_rungs": total_rungs,
         "emitted_rungs": emitted_rungs,
     }
@@ -750,6 +755,74 @@ def test_terminal_exposes_compact_rest_boundary_without_reconstructing_it():
         "positive_rung_index": 2,
         "slot": 5,
     }
+
+
+@pytest.mark.parametrize(
+    ("cause", "rest_boundary", "current_terminus_plus_one", "accepted"),
+    (
+        (10, (4, 1), 0, True),
+        (3, (0, 0), 4, True),
+        (0, (0, 0), 0, False),
+    ),
+)
+def test_partial_rung_recovery_requires_post_sufficiency_terminal(
+    cause,
+    rest_boundary,
+    current_terminus_plus_one,
+    accepted,
+):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=2,
+    )
+    sequence = feed_full_evidence(assembler, rung_count=4)
+    boundary_rung = 4
+    feed_observation(
+        assembler,
+        sequence,
+        boundary_rung,
+        0,
+        assembler.plan["positive_i"][boundary_rung - 1],
+    )
+    sequence += 2
+    feed_recovery(assembler, sequence, boundary_rung)
+    sequence += 1
+    bookend_rung = int(assembler.plan["total_rung_count"]) - 1
+    for slot in range(8):
+        feed_observation(assembler, sequence, bookend_rung, slot, 0)
+        sequence += 2
+    feed_rung(assembler, sequence, bookend_rung, 0, 2)
+    sequence += 1
+    feed_recovery(assembler, sequence, bookend_rung)
+    sequence += 1
+
+    terminal = {
+        "reproduction": False,
+        "emitted_observations": 41,
+        "emitted_rungs": 5,
+        "cause": cause,
+        "rest_boundary": rest_boundary,
+        "recovery_flags": 8,
+        "current_terminus_plus_one": current_terminus_plus_one,
+    }
+    if not accepted:
+        with pytest.raises(
+            VelocityIntegralProtocolError,
+            match="recovery records do not match fully acquired rungs",
+        ):
+            feed_terminal(assembler, sequence, **terminal)
+        return
+
+    feed_terminal(assembler, sequence, **terminal)
+
+    assert assembler.outcome == "complete_candidate"
+    assert set(assembler.recoveries) == {0, 1, 2, 3, boundary_rung, bookend_rung}
 
 
 def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):

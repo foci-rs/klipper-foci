@@ -23,6 +23,9 @@ TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
 TERMINAL_PROBE_CONSTRAINED_TEST_POINT = 1 << 3
+INTEGRAL_CAUSE_CURRENT_AFTER_SUFFICIENCY = 3
+INTEGRAL_CAUSE_BOOKEND_UNAVAILABLE = 8
+INTEGRAL_CAUSE_REST_BOUNDARY_AFTER_SUFFICIENCY = 10
 
 
 class VelocityIntegralProtocolError(Exception):
@@ -216,7 +219,7 @@ class VelocityIntegralAssembler:
         self._plan_parts.append(dict(params))
 
     def handle_recovery_summary(self, params: dict) -> None:
-        """Accept one compact recovery summary after its causal rung."""
+        """Accept one compact recovery summary after its causal evidence."""
         self._require_plan()
         if int(params.get("stage", -1)) != 1:
             raise VelocityIntegralProtocolError(
@@ -227,9 +230,20 @@ class VelocityIntegralAssembler:
         if rung_index in self.recoveries:
             raise VelocityIntegralProtocolError("duplicate rung recovery")
         self._require_event_identity(params)
-        if self._last_evidence != ("rung", rung_index):
+        follows_rung = self._last_evidence == ("rung", rung_index)
+        observation_count = sum(
+            observation_rung == rung_index
+            for observation_rung, _slot in self.observations
+        )
+        follows_partial_positive = (
+            int(self.plan["schema_revision"]) >= 5
+            and self._last_evidence == ("observation", rung_index)
+            and rung_index in range(1, int(self.plan["positive_rung_count"]) + 1)
+            and observation_count in range(1, 8)
+        )
+        if not follows_rung and not follows_partial_positive:
             raise VelocityIntegralProtocolError(
-                "recovery did not immediately follow its rung"
+                "recovery did not immediately follow its causal evidence"
             )
         if int(params.get("p_raw", -1)) != int(self.plan["final_p"]):
             raise VelocityIntegralProtocolError("recovery summary changed fixed P")
@@ -539,6 +553,18 @@ class VelocityIntegralAssembler:
             for rung_index in self.rungs
             if sum(key[0] == rung_index for key in self.observations) == 8
         }
+        cause = int(self.terminal["cause"])
+        if cause in (
+            INTEGRAL_CAUSE_CURRENT_AFTER_SUFFICIENCY,
+            INTEGRAL_CAUSE_BOOKEND_UNAVAILABLE,
+            INTEGRAL_CAUSE_REST_BOUNDARY_AFTER_SUFFICIENCY,
+        ):
+            rest_boundary = self.terminal["rest_boundary"]
+            if rest_boundary is not None:
+                required_recoveries.add(int(rest_boundary["positive_rung_index"]) + 1)
+            current_terminus = int(self._summary["current_terminus_plus_one"])
+            if current_terminus:
+                required_recoveries.add(current_terminus)
         if self.outcome == "fault" and required_recoveries:
             terminal_rung = max(required_recoveries)
             if terminal_rung not in self.recoveries:
