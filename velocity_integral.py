@@ -23,6 +23,7 @@ TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
 TERMINAL_PROBE_CONSTRAINED_TEST_POINT = 1 << 3
+INTEGRAL_CAUSE_TOO_FEW_RUNGS = 1
 INTEGRAL_CAUSE_CURRENT_AFTER_SUFFICIENCY = 3
 INTEGRAL_CAUSE_BOOKEND_UNAVAILABLE = 8
 INTEGRAL_CAUSE_REST_BOUNDARY_AFTER_SUFFICIENCY = 10
@@ -573,6 +574,14 @@ class VelocityIntegralAssembler:
                         "missing terminal recovery did not immediately follow its rung"
                     )
                 required_recoveries.remove(terminal_rung)
+        opening_anchor_failed = (
+            self.outcome == "inconclusive"
+            and cause == INTEGRAL_CAUSE_TOO_FEW_RUNGS
+            and required_recoveries == {0}
+            and self._last_evidence == ("rung", 0)
+        )
+        if opening_anchor_failed:
+            required_recoveries.remove(0)
         if set(self.recoveries) != required_recoveries:
             raise VelocityIntegralProtocolError(
                 "recovery records do not match fully acquired rungs"

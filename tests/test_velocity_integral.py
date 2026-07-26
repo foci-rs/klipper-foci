@@ -427,6 +427,24 @@ def test_stage_c_recovery_summary_rejects_changed_identity(replacement, message)
         assembler.handle_recovery_summary(params)
 
 
+def test_ineligible_opening_anchor_may_terminate_without_recovery():
+    assembler = stage_c_recovery_assembler()
+
+    feed_terminal(
+        assembler,
+        18,
+        reproduction=False,
+        outcome=2,
+        emitted_observations=8,
+        emitted_rungs=1,
+        cause=1,
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "inconclusive"
+    assert assembler.recoveries == {}
+
+
 def feed_full_evidence(assembler, recovery_outcomes=None, *, rung_count=None):
     sequence = 1
     rung_values = (0, *assembler.plan["positive_i"], 0)
