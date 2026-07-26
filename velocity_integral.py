@@ -517,6 +517,14 @@ class VelocityIntegralAssembler:
             for rung_index in self.rungs
             if sum(key[0] == rung_index for key in self.observations) == 8
         }
+        if self.outcome == "fault" and required_recoveries:
+            terminal_rung = max(required_recoveries)
+            if terminal_rung not in self.recoveries:
+                if self._last_evidence != ("rung", terminal_rung):
+                    raise VelocityIntegralProtocolError(
+                        "missing terminal recovery did not immediately follow its rung"
+                    )
+                required_recoveries.remove(terminal_rung)
         if set(self.recoveries) != required_recoveries:
             raise VelocityIntegralProtocolError(
                 "recovery records do not match fully acquired rungs"

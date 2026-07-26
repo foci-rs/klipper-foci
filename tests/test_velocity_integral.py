@@ -405,9 +405,11 @@ def test_stage_c_recovery_summary_rejects_changed_identity(replacement, message)
         assembler.handle_recovery_summary(params)
 
 
-def feed_full_evidence(assembler, recovery_outcomes=None):
+def feed_full_evidence(assembler, recovery_outcomes=None, *, rung_count=None):
     sequence = 1
     rung_values = (0, *assembler.plan["positive_i"], 0)
+    if rung_count is not None:
+        rung_values = rung_values[:rung_count]
     recovery_outcomes = recovery_outcomes or {}
     for rung_index, i_raw in enumerate(rung_values):
         for slot in range(8):
@@ -436,6 +438,8 @@ def feed_terminal(
     sequence,
     *,
     reproduction=True,
+    outcome=None,
+    emitted_rungs=None,
     digest=None,
     cause=0,
     rest_boundary=(0, 0),
@@ -559,17 +563,19 @@ def feed_terminal(
             }
         )
     total_rungs = int(assembler.plan["total_rung_count"])
+    emitted_rungs = total_rungs if emitted_rungs is None else emitted_rungs
+    terminal_outcome = (1 if reproduction else 0) if outcome is None else outcome
     terminal_core = {
         **common,
         "fragment": 0,
-        "outcome": 1 if reproduction else 0,
+        "outcome": terminal_outcome,
         "cause": cause,
         "rest_boundary_rung_plus_one": rest_boundary[0],
         "rest_boundary_slot_plus_one": rest_boundary[1],
         "expected_observations": 8 * total_rungs,
-        "emitted_observations": 8 * total_rungs,
+        "emitted_observations": 8 * emitted_rungs,
         "expected_rungs": total_rungs,
-        "emitted_rungs": total_rungs,
+        "emitted_rungs": emitted_rungs,
     }
     if int(assembler.plan["schema_revision"]) >= 6:
         if recovery_flags is None:
@@ -742,6 +748,62 @@ def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
     )
     feed_terminal(assembler, sequence, recovery_flags=terminal_flags)
     return assembler
+
+
+def schema_six_recovery_fault_prefix(*, outcome=3, missing_recoveries=(6,)):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=6,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=1,
+    )
+    emitted_rungs = 7
+    sequence = feed_full_evidence(assembler, rung_count=emitted_rungs)
+    for rung_index in missing_recoveries:
+        assembler.recoveries.pop(rung_index)
+    final_rung = emitted_rungs - 1
+    assembler._last_evidence = (
+        ("rung", final_rung)
+        if final_rung in missing_recoveries
+        else ("recovery", final_rung)
+    )
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        outcome=outcome,
+        emitted_rungs=emitted_rungs,
+        cause=11 if outcome == 3 else 0,
+        recovery_flags=4,
+    )
+    return assembler
+
+
+def test_stage_c_fault_accepts_one_missing_final_recovery():
+    assembler = schema_six_recovery_fault_prefix()
+
+    assert assembler.outcome == "fault"
+    assert assembler.terminal["cause"] == 11
+    assert set(assembler.recoveries) == set(range(6))
+
+
+def test_stage_c_non_fault_rejects_one_missing_final_recovery():
+    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
+        schema_six_recovery_fault_prefix(outcome=2)
+
+
+def test_stage_c_fault_rejects_two_missing_recovery_records():
+    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
+        schema_six_recovery_fault_prefix(missing_recoveries=(5, 6))
+
+
+def test_stage_c_fault_rejects_missing_intermediate_recovery():
+    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
+        schema_six_recovery_fault_prefix(missing_recoveries=(5,))
 
 
 def test_schema_six_requires_causal_recovery_outcome_for_recovered_flag():

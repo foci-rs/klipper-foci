@@ -1275,7 +1275,7 @@ def test_stage_b_recovery_summary_rejects_changed_identity(replacement, message)
         assembler.handle_recovery_summary(params)
 
 
-def recovery_cardinality_assembler(recovered_rungs):
+def recovery_cardinality_assembler(recovered_rungs, *, last_evidence=("rung", 1)):
     assembler = VelocitySweepAssembler()
     assembler.plan = {
         "observations_per_direction": 4,
@@ -1286,8 +1286,35 @@ def recovery_cardinality_assembler(recovered_rungs):
         (rung_index, slot): {} for rung_index in range(2) for slot in range(8)
     }
     assembler.recoveries = {rung_index: {} for rung_index in recovered_rungs}
-    assembler._last_evidence = ("rung", 1)
+    assembler._last_evidence = last_evidence
     return assembler
+
+
+def test_stage_b_fault_accepts_one_missing_final_recovery():
+    assembler = recovery_cardinality_assembler({0})
+
+    assembler._validate_recovery_completeness({"outcome": 3})
+
+
+def test_stage_b_non_fault_rejects_one_missing_final_recovery():
+    assembler = recovery_cardinality_assembler({0})
+
+    with pytest.raises(VelocitySweepProtocolError, match="fully acquired rungs"):
+        assembler._validate_recovery_completeness({"outcome": 2})
+
+
+def test_stage_b_fault_rejects_two_missing_recovery_records():
+    assembler = recovery_cardinality_assembler(set())
+
+    with pytest.raises(VelocitySweepProtocolError, match="fully acquired rungs"):
+        assembler._validate_recovery_completeness({"outcome": 3})
+
+
+def test_stage_b_fault_rejects_missing_intermediate_recovery():
+    assembler = recovery_cardinality_assembler({1}, last_evidence=("recovery", 1))
+
+    with pytest.raises(VelocitySweepProtocolError, match="fully acquired rungs"):
+        assembler._validate_recovery_completeness({"outcome": 3})
 
 
 def test_schema_six_current_headroom_allows_only_missing_final_recovery():

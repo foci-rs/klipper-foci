@@ -1154,11 +1154,11 @@ class VelocitySweepAssembler:
             if sum(key[0] == rung_index for key in self.observations)
             == observations_per_rung
         }
-        if (
-            terminal is not None
-            and int(terminal.get("recovery_unavailable", 0)) == 1
-            and self.rungs
-        ):
+        missing_terminal_recovery_allowed = terminal is not None and (
+            int(terminal.get("recovery_unavailable", 0)) == 1
+            or int(terminal.get("outcome", -1)) == 3
+        )
+        if missing_terminal_recovery_allowed and self.rungs:
             terminal_rung = max(self.rungs)
             if terminal_rung not in self.recoveries and self._last_evidence != (
                 "rung",
