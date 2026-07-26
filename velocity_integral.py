@@ -13,13 +13,16 @@ OUTCOME_NAMES = {
     2: "inconclusive",
     3: "fault",
     4: "rejected_plan_mismatch",
+    5: "failed",
 }
 
 SCHEMA_FIVE_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
 PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
+PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
 TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
+TERMINAL_PROBE_CONSTRAINED_TEST_POINT = 1 << 3
 
 
 class VelocityIntegralProtocolError(Exception):
@@ -151,7 +154,7 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_stage_c_workflow(params)
-        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5, 6):
+        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5, 6, 7):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
@@ -205,7 +208,10 @@ class VelocityIntegralAssembler:
         schema_revision = int(self._plan_parts[0]["schema_revision"])
         if schema_revision >= 6:
             flags = int(params.get("flags", -1))
-            if flags < 0 or flags & ~PLAN_RECOVERY_QUANTIZATION_EXPOSED:
+            known_flags = PLAN_RECOVERY_QUANTIZATION_EXPOSED
+            if schema_revision >= 7:
+                known_flags |= PLAN_PROBE_CONSTRAINED_TEST_POINT
+            if flags < 0 or flags & ~known_flags:
                 raise VelocityIntegralProtocolError("invalid plan recovery flags")
         self._plan_parts.append(dict(params))
 
@@ -428,6 +434,9 @@ class VelocityIntegralAssembler:
         )
 
     def handle_terminal_core(self, params: dict) -> None:
+        if self.plan is None:
+            self._accept_failed_admission_core(params)
+            return
         self._require_summary(params)
         if self._terminal_parts:
             raise VelocityIntegralProtocolError("duplicate terminal core")
@@ -447,6 +456,8 @@ class VelocityIntegralAssembler:
                 | TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM
                 | TERMINAL_RECOVERY_QUANTIZATION_EXPOSED
             )
+            if schema_revision >= 7:
+                known_flags |= TERMINAL_PROBE_CONSTRAINED_TEST_POINT
             if flags < 0 or flags & ~known_flags:
                 raise VelocityIntegralProtocolError("invalid terminal recovery flags")
         rung = int(params.get("rest_boundary_rung_plus_one", 0))
@@ -478,7 +489,12 @@ class VelocityIntegralAssembler:
         terminal["rest_boundary"] = (
             None if rung == 0 else {"positive_rung_index": rung - 1, "slot": slot - 1}
         )
-        if int(self.plan["schema_revision"]) >= 6:
+        if self.plan is None:
+            terminal["recovery_unavailable"] = 0
+            terminal["recovered_with_current_headroom"] = False
+            terminal["recovery_quantization_exposed"] = False
+            terminal["probe_constrained_test_point"] = True
+        elif int(self.plan["schema_revision"]) >= 6:
             flags = int(terminal["recovery_flags"])
             terminal["recovery_unavailable"] = int(
                 bool(flags & TERMINAL_RECOVERY_UNAVAILABLE)
@@ -489,6 +505,9 @@ class VelocityIntegralAssembler:
             terminal["recovery_quantization_exposed"] = bool(
                 flags & TERMINAL_RECOVERY_QUANTIZATION_EXPOSED
             )
+            terminal["probe_constrained_test_point"] = bool(
+                flags & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
+            )
         self.terminal = terminal
         self.outcome = OUTCOME_NAMES.get(int(core["outcome"]))
         if self.outcome is None:
@@ -498,6 +517,9 @@ class VelocityIntegralAssembler:
 
     def validate_complete(self) -> None:
         """Revalidate every completeness and exact-identity invariant."""
+        if self.plan is None:
+            self._validate_failed_admission()
+            return
         if self.plan is None or self._summary is None or self.terminal is None:
             raise VelocityIntegralProtocolError("terminal report is incomplete")
         if int(self.terminal["plan_digest"]) != int(self.plan["plan_digest"]):
@@ -575,6 +597,13 @@ class VelocityIntegralAssembler:
                 raise VelocityIntegralProtocolError(
                     "recovered terminal flag lacks causal recovery outcome"
                 )
+        if int(self.plan["schema_revision"]) >= 7:
+            if bool(self.terminal["probe_constrained_test_point"]) != bool(
+                self.plan["probe_constrained_test_point"]
+            ):
+                raise VelocityIntegralProtocolError(
+                    "plan and terminal probe constraint differ"
+                )
 
     def _finish_plan(self) -> None:
         core, geometry, timing, travel, recovery = self._plan_parts
@@ -589,6 +618,10 @@ class VelocityIntegralAssembler:
         if int(plan["schema_revision"]) >= 6:
             plan["recovery_quantization_exposed"] = bool(
                 int(plan["flags"]) & PLAN_RECOVERY_QUANTIZATION_EXPOSED
+            )
+        if int(plan["schema_revision"]) >= 7:
+            plan["probe_constrained_test_point"] = bool(
+                int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
             )
         if int(plan["schema_revision"]) >= 5:
             expected = {
@@ -694,9 +727,56 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "missing or reordered terminal fragment"
             )
-        self._require_terminal_identity(params)
+        if self.plan is None:
+            self._require_run(params)
+            if int(params.get("evidence_sequence", -1)) != 0:
+                raise VelocityIntegralProtocolError(
+                    "failed admission terminal sequence is not zero"
+                )
+        else:
+            self._require_terminal_identity(params)
         self._require_fragment(params, fragment)
         self._terminal_parts.append(dict(params))
+
+    def _accept_failed_admission_core(self, params: dict) -> None:
+        if self.workflow_plan is None:
+            raise VelocityIntegralProtocolError(
+                "terminal preceded commissioning workflow plan"
+            )
+        if int(self.workflow_plan["shape"]) == 0 or self._plan_parts:
+            raise VelocityIntegralProtocolError("terminal preceded exact plan")
+        self._require_run(params)
+        expected = {
+            "evidence_sequence": 0,
+            "fragment": 0,
+            "outcome": 5,
+            "cause": 11,
+            "recovery_flags": TERMINAL_PROBE_CONSTRAINED_TEST_POINT,
+            "rest_boundary_rung_plus_one": 0,
+            "rest_boundary_slot_plus_one": 0,
+            "expected_observations": 0,
+            "emitted_observations": 0,
+            "expected_rungs": 0,
+            "emitted_rungs": 0,
+        }
+        if self._terminal_parts or any(
+            int(params.get(field, -1)) != value for field, value in expected.items()
+        ):
+            raise VelocityIntegralProtocolError("terminal preceded exact plan")
+        self._terminal_parts.append(dict(params))
+
+    def _validate_failed_admission(self) -> None:
+        terminal = self.terminal
+        if terminal is None:
+            raise VelocityIntegralProtocolError("terminal report is incomplete")
+        if self._summary is not None or self.observations or self.rungs:
+            raise VelocityIntegralProtocolError(
+                "failed admission carried motion evidence"
+            )
+        if int(terminal["plan_digest"]) == 0 or int(terminal["digest"]) != 0:
+            raise VelocityIntegralProtocolError(
+                "failed admission terminal identity is invalid"
+            )
 
     def _require_stage_c_workflow(self, params: dict) -> None:
         if self.workflow_plan is None:

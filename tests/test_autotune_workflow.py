@@ -42,6 +42,48 @@ def install_live_dump(driver, dump_values=None):
     driver.protocol.dump_registers = dump_registers
 
 
+def feed_no_transition_terminal(workflow, run_sequence):
+    common = {
+        "run_sequence": run_sequence,
+        "evidence_sequence": 0,
+    }
+    workflow.handle_velocity_integral_terminal_core(
+        {
+            **common,
+            "fragment": 0,
+            "outcome": 5,
+            "cause": 11,
+            "recovery_flags": 0b1000,
+            "rest_boundary_rung_plus_one": 0,
+            "rest_boundary_slot_plus_one": 0,
+            "expected_observations": 0,
+            "emitted_observations": 0,
+            "expected_rungs": 0,
+            "emitted_rungs": 0,
+        }
+    )
+    workflow.handle_velocity_integral_terminal_identity(
+        {
+            **common,
+            "fragment": 1,
+            "plan_digest_low": 0x89AB_CDEF,
+            "plan_digest_high": 0x0123_4567,
+            "digest_low": 0,
+            "digest_high": 0,
+        }
+    )
+    workflow.handle_velocity_integral_terminal_timing(
+        {
+            **common,
+            "fragment": 2,
+            "started_low": 0,
+            "started_high": 0,
+            "completed_low": 0,
+            "completed_high": 0,
+        }
+    )
+
+
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(
@@ -291,6 +333,77 @@ class TestAutotuneGates(unittest.TestCase):
         )
         self.assertTrue(
             any("integral response" in message for message in gcmd._responses)
+        )
+
+    def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        pauses = 0
+
+        def pause_with_failed_resume(deadline):
+            nonlocal pauses
+            pauses += 1
+            reactor._time = deadline
+            params = {
+                "run_sequence": 17,
+                "shape": 2,
+                "nominal_workflow_ms": 182_512,
+                "maximum_workflow_ms": 182_512,
+            }
+            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+            d.autotune.handle_commissioning_workflow_plan(
+                {**params, "digest_low": low, "digest_high": high}
+            )
+            feed_no_transition_terminal(d.autotune, 17)
+            return reactor._time
+
+        reactor.pause = pause_with_failed_resume
+
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(pauses, 1)
+        self.assertIsNone(d.autotune.velocity_integral.plan)
+        self.assertEqual(d.autotune.velocity_integral.outcome, "failed")
+        self.assertTrue(
+            any("response failed" in message for message in gcmd._responses)
+        )
+
+    def test_no_transition_continuation_relays_both_ordered_terminals(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        d.autotune._format_velocity_sweep_result = lambda: "proportional complete"
+
+        def pause_with_failed_continuation(deadline):
+            reactor._time = deadline
+            params = {
+                "run_sequence": 18,
+                "shape": 1,
+                "nominal_workflow_ms": 400_000,
+                "maximum_workflow_ms": 400_000,
+            }
+            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+            d.autotune.handle_commissioning_workflow_plan(
+                {**params, "digest_low": low, "digest_high": high}
+            )
+            d.autotune.velocity_sweep.outcome = "complete"
+            d.autotune.velocity_sweep.terminal = {"cause": 0}
+            d.autotune.velocity_sweep.done = True
+            feed_no_transition_terminal(d.autotune, 18)
+            return reactor._time
+
+        reactor.pause = pause_with_failed_continuation
+
+        d.autotune.autotune(gcmd)
+
+        self.assertIsNone(d.autotune.velocity_integral.plan)
+        self.assertEqual(d.autotune.velocity_integral.outcome, "failed")
+        self.assertTrue(
+            any("proportional complete" in message for message in gcmd._responses)
+        )
+        self.assertTrue(
+            any("response failed" in message for message in gcmd._responses)
         )
 
     def test_composite_workflow_finishes_when_recovery_suppresses_continuation(self):

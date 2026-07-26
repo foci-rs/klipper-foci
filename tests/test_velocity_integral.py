@@ -38,6 +38,8 @@ def feed_plan(
     nominal_workflow_ms=49_920,
     maximum_workflow_ms=49_920,
     recovery_flags=0,
+    final_p=1448,
+    joint_membership=0x0038_0000,
 ):
     common = {"oid": 0, "run_sequence": RUN_SEQUENCE, "evidence_sequence": 0}
     assembler.handle_plan_core(
@@ -51,7 +53,7 @@ def feed_plan(
             "build_revision": 7,
             "schema_revision": schema_revision,
             "channel": 0,
-            "final_p": 1448,
+            "final_p": final_p,
         }
     )
     assembler.handle_plan_geometry(
@@ -79,7 +81,7 @@ def feed_plan(
                 **common,
                 "direction": direction,
                 "directional_membership": 0x0038_0000,
-                "joint_membership": 0x0038_0000,
+                "joint_membership": joint_membership,
                 "directional_validity": (2, 1)[direction],
                 "reduced_margin": 1,
                 "pooled_low_q16": interval[0],
@@ -300,6 +302,26 @@ def test_schema_six_rejects_reserved_plan_recovery_flags():
         )
 
 
+def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0b11,
+        final_p=724,
+        joint_membership=0x000E_0000,
+    )
+
+    assert assembler.plan["schema_revision"] == 7
+    assert assembler.plan["final_p"] == 724
+    assert assembler.plan["authorities"][0]["joint_membership"] == 0x000E_0000
+    assert assembler.plan["probe_constrained_test_point"] is True
+
+
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
     common = {
         "oid": 0,
@@ -342,7 +364,7 @@ def feed_recovery(assembler, sequence, rung_index, outcome=0):
             "evidence_sequence": sequence,
             "stage": 1,
             "rung_index": rung_index,
-            "p_raw": 1448,
+            "p_raw": assembler.plan["final_p"],
             "binding_source": 0,
             "outcome": outcome,
         }
@@ -832,3 +854,121 @@ def test_schema_six_preserves_recovery_unavailable_as_a_named_flag():
     assert assembler.terminal["recovery_unavailable"] == 1
     assert assembler.terminal["recovered_with_current_headroom"] is False
     assert assembler.terminal["recovery_quantization_exposed"] is True
+
+
+def test_schema_seven_requires_matching_probe_constrained_terminal_flag():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0b11,
+        final_p=724,
+        joint_membership=0x000E_0000,
+    )
+    sequence = feed_full_evidence(assembler)
+    feed_terminal(assembler, sequence, recovery_flags=0b1100)
+
+    assert assembler.terminal["probe_constrained_test_point"] is True
+    assert assembler.report["plan"]["probe_constrained_test_point"] is True
+
+    with pytest.raises(VelocityIntegralProtocolError, match="probe constraint differ"):
+        assembler = VelocityIntegralAssembler()
+        feed_workflow(assembler, maximum_ms=182_512)
+        feed_plan(
+            assembler,
+            schema_revision=7,
+            positive_i=NATIVE_Q4_12_POSITIVE_I,
+            nominal_workflow_ms=165_950,
+            maximum_workflow_ms=182_512,
+            recovery_flags=0b11,
+            final_p=724,
+            joint_membership=0x000E_0000,
+        )
+        sequence = feed_full_evidence(assembler)
+        feed_terminal(assembler, sequence, recovery_flags=0b0100)
+
+
+def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000):
+    common = {
+        "oid": 0,
+        "run_sequence": RUN_SEQUENCE,
+        "evidence_sequence": 0,
+    }
+    assembler.handle_terminal_core(
+        {
+            **common,
+            "fragment": 0,
+            "outcome": outcome,
+            "cause": cause,
+            "recovery_flags": flags,
+            "rest_boundary_rung_plus_one": 0,
+            "rest_boundary_slot_plus_one": 0,
+            "expected_observations": 0,
+            "emitted_observations": 0,
+            "expected_rungs": 0,
+            "emitted_rungs": 0,
+        }
+    )
+    assembler.handle_terminal_identity(
+        {
+            **common,
+            "fragment": 1,
+            "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
+            "plan_digest_high": PLAN_DIGEST >> 32,
+            "digest_low": 0,
+            "digest_high": 0,
+        }
+    )
+    assembler.handle_terminal_timing(
+        {
+            **common,
+            "fragment": 2,
+            "started_low": 0,
+            "started_high": 0,
+            "completed_low": 0,
+            "completed_high": 0,
+        }
+    )
+
+
+def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=2, maximum_ms=182_512)
+
+    feed_no_transition_terminal(assembler)
+
+    assert assembler.plan is None
+    assert assembler.summary is None
+    assert assembler.done is True
+    assert assembler.outcome == "failed"
+    assert assembler.terminal["cause"] == 11
+    assert assembler.terminal["plan_digest"] == PLAN_DIGEST
+    assert assembler.terminal["digest"] == 0
+    assert assembler.terminal["probe_constrained_test_point"] is True
+
+
+@pytest.mark.parametrize(
+    ("outcome", "cause", "flags", "message"),
+    (
+        (4, 11, 0b1000, "terminal preceded exact plan"),
+        (5, 10, 0b1000, "terminal preceded exact plan"),
+        (5, 11, 0, "terminal preceded exact plan"),
+    ),
+)
+def test_no_transition_rejects_any_other_terminal_only_shape(
+    outcome, cause, flags, message
+):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=2, maximum_ms=182_512)
+
+    with pytest.raises(VelocityIntegralProtocolError, match=message):
+        feed_no_transition_terminal(
+            assembler,
+            outcome=outcome,
+            cause=cause,
+            flags=flags,
+        )
