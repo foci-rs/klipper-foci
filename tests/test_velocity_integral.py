@@ -12,6 +12,7 @@ PLAN_DIGEST = 0x0123_4567_89AB_CDEF
 STAGE_B_DIGEST = 0xFEDC_BA98_7654_3210
 RUN_SEQUENCE = 9
 POSITIVE_I = (5, 10, 20)
+NATIVE_Q4_12_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
 OPAQUE_DIGEST = 0xDEAD_BEEF_0123_4567
 
 
@@ -36,6 +37,7 @@ def feed_plan(
     positive_i=POSITIVE_I,
     nominal_workflow_ms=49_920,
     maximum_workflow_ms=49_920,
+    recovery_flags=0,
 ):
     common = {"oid": 0, "run_sequence": RUN_SEQUENCE, "evidence_sequence": 0}
     assembler.handle_plan_core(
@@ -105,15 +107,16 @@ def feed_plan(
             "positive_position_headroom_mrev": 20_000,
         }
     )
-    assembler.handle_plan_recovery(
-        {
-            **common,
-            "origin_band_counts": 1000,
-            "nominal_slot_us": 1_816_958,
-            "maximum_slot_us": 3_000_000,
-            "slot_count": len(positive_i) + 2,
-        }
-    )
+    recovery = {
+        **common,
+        "origin_band_counts": 1000,
+        "nominal_slot_us": 1_816_958,
+        "maximum_slot_us": 3_000_000,
+        "slot_count": len(positive_i) + 2,
+    }
+    if schema_revision >= 6:
+        recovery["flags"] = recovery_flags
+    assembler.handle_plan_recovery(recovery)
     for rung_index, i_raw in enumerate(positive_i):
         assembler.handle_plan_rung(
             {
@@ -265,6 +268,38 @@ def test_schema_five_assembles_exact_native_q4_12_plan():
     assert assembler.maximum_duration_s == 182.512
 
 
+def test_schema_six_assembles_firmware_recovery_flags():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+
+    feed_plan(
+        assembler,
+        schema_revision=6,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=1,
+    )
+
+    assert assembler.plan["schema_revision"] == 6
+    assert assembler.plan["recovery_quantization_exposed"] is True
+
+
+def test_schema_six_rejects_reserved_plan_recovery_flags():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="plan recovery flags"):
+        feed_plan(
+            assembler,
+            schema_revision=6,
+            positive_i=NATIVE_Q4_12_POSITIVE_I,
+            nominal_workflow_ms=165_950,
+            maximum_workflow_ms=182_512,
+            recovery_flags=2,
+        )
+
+
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
     common = {
         "oid": 0,
@@ -299,7 +334,7 @@ def feed_rung(assembler, sequence, rung_index, i_raw, kind):
         )
 
 
-def feed_recovery(assembler, sequence, rung_index):
+def feed_recovery(assembler, sequence, rung_index, outcome=0):
     assembler.handle_recovery_summary(
         {
             "oid": 0,
@@ -309,7 +344,7 @@ def feed_recovery(assembler, sequence, rung_index):
             "rung_index": rung_index,
             "p_raw": 1448,
             "binding_source": 0,
-            "outcome": 0,
+            "outcome": outcome,
         }
     )
 
@@ -370,9 +405,10 @@ def test_stage_c_recovery_summary_rejects_changed_identity(replacement, message)
         assembler.handle_recovery_summary(params)
 
 
-def feed_full_evidence(assembler):
+def feed_full_evidence(assembler, recovery_outcomes=None):
     sequence = 1
-    rung_values = (0, *POSITIVE_I, 0)
+    rung_values = (0, *assembler.plan["positive_i"], 0)
+    recovery_outcomes = recovery_outcomes or {}
     for rung_index, i_raw in enumerate(rung_values):
         for slot in range(8):
             feed_observation(assembler, sequence, rung_index, slot, i_raw)
@@ -385,7 +421,12 @@ def feed_full_evidence(assembler):
             0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
         )
         sequence += 1
-        feed_recovery(assembler, sequence, rung_index)
+        feed_recovery(
+            assembler,
+            sequence,
+            rung_index,
+            outcome=recovery_outcomes.get(rung_index, 0),
+        )
         sequence += 1
     return sequence
 
@@ -398,6 +439,7 @@ def feed_terminal(
     digest=None,
     cause=0,
     rest_boundary=(0, 0),
+    recovery_flags=None,
 ):
     common = {
         "oid": 0,
@@ -516,21 +558,26 @@ def feed_terminal(
                 "current_digest_high": 0xFEDC_BA98,
             }
         )
-    assembler.handle_terminal_core(
-        {
-            **common,
-            "fragment": 0,
-            "outcome": 1 if reproduction else 0,
-            "cause": cause,
-            "recovery_unavailable": 0,
-            "rest_boundary_rung_plus_one": rest_boundary[0],
-            "rest_boundary_slot_plus_one": rest_boundary[1],
-            "expected_observations": 40,
-            "emitted_observations": 40,
-            "expected_rungs": 5,
-            "emitted_rungs": 5,
-        }
-    )
+    total_rungs = int(assembler.plan["total_rung_count"])
+    terminal_core = {
+        **common,
+        "fragment": 0,
+        "outcome": 1 if reproduction else 0,
+        "cause": cause,
+        "rest_boundary_rung_plus_one": rest_boundary[0],
+        "rest_boundary_slot_plus_one": rest_boundary[1],
+        "expected_observations": 8 * total_rungs,
+        "emitted_observations": 8 * total_rungs,
+        "expected_rungs": total_rungs,
+        "emitted_rungs": total_rungs,
+    }
+    if int(assembler.plan["schema_revision"]) >= 6:
+        if recovery_flags is None:
+            recovery_flags = 4 if assembler.plan["recovery_quantization_exposed"] else 0
+        terminal_core["recovery_flags"] = recovery_flags
+    else:
+        terminal_core["recovery_unavailable"] = 0
+    assembler.handle_terminal_core(terminal_core)
     terminal_digest = OPAQUE_DIGEST if digest is None else digest
     assembler.handle_terminal_identity(
         {
@@ -675,3 +722,51 @@ def test_terminal_exposes_compact_rest_boundary_without_reconstructing_it():
         "positive_rung_index": 2,
         "slot": 5,
     }
+
+
+def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=6,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=1,
+    )
+    final_rung = int(assembler.plan["total_rung_count"]) - 1
+    sequence = feed_full_evidence(
+        assembler,
+        recovery_outcomes={final_rung: recovery_outcome},
+    )
+    feed_terminal(assembler, sequence, recovery_flags=terminal_flags)
+    return assembler
+
+
+def test_schema_six_requires_causal_recovery_outcome_for_recovered_flag():
+    assembler = schema_six_full_report(recovery_outcome=5, terminal_flags=6)
+
+    assert assembler.terminal["recovery_unavailable"] == 0
+    assert assembler.terminal["recovered_with_current_headroom"] is True
+    assert assembler.terminal["recovery_quantization_exposed"] is True
+    assert assembler.recoveries[13]["outcome"] == 5
+
+    with pytest.raises(VelocityIntegralProtocolError, match="causal recovery"):
+        schema_six_full_report(recovery_outcome=0, terminal_flags=6)
+
+
+def test_schema_six_rejects_reserved_or_inconsistent_terminal_flags():
+    with pytest.raises(VelocityIntegralProtocolError, match="terminal recovery flags"):
+        schema_six_full_report(terminal_flags=8)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="exposure differ"):
+        schema_six_full_report(terminal_flags=0)
+
+
+def test_schema_six_preserves_recovery_unavailable_as_a_named_flag():
+    assembler = schema_six_full_report(terminal_flags=5)
+
+    assert assembler.terminal["recovery_unavailable"] == 1
+    assert assembler.terminal["recovered_with_current_headroom"] is False
+    assert assembler.terminal["recovery_quantization_exposed"] is True

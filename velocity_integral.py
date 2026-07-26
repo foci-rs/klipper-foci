@@ -16,6 +16,10 @@ OUTCOME_NAMES = {
 }
 
 SCHEMA_FIVE_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
+PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
+TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
+TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
+TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
 
 
 class VelocityIntegralProtocolError(Exception):
@@ -147,7 +151,7 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_stage_c_workflow(params)
-        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5):
+        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5, 6):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
@@ -198,6 +202,11 @@ class VelocityIntegralAssembler:
     def handle_plan_recovery(self, params: dict) -> None:
         self._require_plan_step("plan travel", 4)
         self._require_plan_identity(params)
+        schema_revision = int(self._plan_parts[0]["schema_revision"])
+        if schema_revision >= 6:
+            flags = int(params.get("flags", -1))
+            if flags < 0 or flags & ~PLAN_RECOVERY_QUANTIZATION_EXPOSED:
+                raise VelocityIntegralProtocolError("invalid plan recovery flags")
         self._plan_parts.append(dict(params))
 
     def handle_recovery_summary(self, params: dict) -> None:
@@ -220,7 +229,8 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("recovery summary changed fixed P")
         if int(params.get("binding_source", -1)) not in range(7):
             raise VelocityIntegralProtocolError("invalid recovery binding source")
-        if int(params.get("outcome", -1)) not in range(5):
+        maximum_outcome = 5 if int(self.plan["schema_revision"]) >= 6 else 4
+        if int(params.get("outcome", -1)) not in range(maximum_outcome + 1):
             raise VelocityIntegralProtocolError("invalid recovery outcome")
         self.recoveries[rung_index] = _metadata_free(params)
         self._next_evidence_sequence += 1
@@ -430,6 +440,15 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "schema-5 terminal omitted rest-boundary reference"
             )
+        if schema_revision >= 6:
+            flags = int(params.get("recovery_flags", -1))
+            known_flags = (
+                TERMINAL_RECOVERY_UNAVAILABLE
+                | TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM
+                | TERMINAL_RECOVERY_QUANTIZATION_EXPOSED
+            )
+            if flags < 0 or flags & ~known_flags:
+                raise VelocityIntegralProtocolError("invalid terminal recovery flags")
         rung = int(params.get("rest_boundary_rung_plus_one", 0))
         slot = int(params.get("rest_boundary_slot_plus_one", 0))
         if (rung == 0) != (slot == 0):
@@ -459,6 +478,17 @@ class VelocityIntegralAssembler:
         terminal["rest_boundary"] = (
             None if rung == 0 else {"positive_rung_index": rung - 1, "slot": slot - 1}
         )
+        if int(self.plan["schema_revision"]) >= 6:
+            flags = int(terminal["recovery_flags"])
+            terminal["recovery_unavailable"] = int(
+                bool(flags & TERMINAL_RECOVERY_UNAVAILABLE)
+            )
+            terminal["recovered_with_current_headroom"] = bool(
+                flags & TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM
+            )
+            terminal["recovery_quantization_exposed"] = bool(
+                flags & TERMINAL_RECOVERY_QUANTIZATION_EXPOSED
+            )
         self.terminal = terminal
         self.outcome = OUTCOME_NAMES.get(int(core["outcome"]))
         if self.outcome is None:
@@ -523,6 +553,20 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "complete integral response omitted reproduction evidence"
             )
+        if int(self.plan["schema_revision"]) >= 6:
+            if bool(self.terminal["recovery_quantization_exposed"]) != bool(
+                self.plan["recovery_quantization_exposed"]
+            ):
+                raise VelocityIntegralProtocolError(
+                    "plan and terminal recovery exposure differ"
+                )
+            recovered = any(
+                int(recovery["outcome"]) == 5 for recovery in self.recoveries.values()
+            )
+            if bool(self.terminal["recovered_with_current_headroom"]) != recovered:
+                raise VelocityIntegralProtocolError(
+                    "recovered terminal flag lacks causal recovery outcome"
+                )
 
     def _finish_plan(self) -> None:
         core, geometry, timing, travel, recovery = self._plan_parts
@@ -534,6 +578,10 @@ class VelocityIntegralAssembler:
         plan["authorities"] = list(self._authorities)
         plan["positive_i"] = [int(rung["i_raw"]) for rung in self._plan_rungs]
         plan["rungs"] = list(self._plan_rungs)
+        if int(plan["schema_revision"]) >= 6:
+            plan["recovery_quantization_exposed"] = bool(
+                int(plan["flags"]) & PLAN_RECOVERY_QUANTIZATION_EXPOSED
+            )
         if int(plan["schema_revision"]) >= 5:
             expected = {
                 "i_start": 1,
