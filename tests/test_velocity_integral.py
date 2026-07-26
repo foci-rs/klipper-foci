@@ -311,7 +311,7 @@ def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
         positive_i=NATIVE_Q4_12_POSITIVE_I,
         nominal_workflow_ms=165_950,
         maximum_workflow_ms=182_512,
-        recovery_flags=0b11,
+        recovery_flags=0b10,
         final_p=724,
         joint_membership=0x000E_0000,
     )
@@ -865,12 +865,12 @@ def test_schema_seven_requires_matching_probe_constrained_terminal_flag():
         positive_i=NATIVE_Q4_12_POSITIVE_I,
         nominal_workflow_ms=165_950,
         maximum_workflow_ms=182_512,
-        recovery_flags=0b11,
+        recovery_flags=0b10,
         final_p=724,
         joint_membership=0x000E_0000,
     )
     sequence = feed_full_evidence(assembler)
-    feed_terminal(assembler, sequence, recovery_flags=0b1100)
+    feed_terminal(assembler, sequence, recovery_flags=0b1000)
 
     assert assembler.terminal["probe_constrained_test_point"] is True
     assert assembler.report["plan"]["probe_constrained_test_point"] is True
@@ -884,12 +884,12 @@ def test_schema_seven_requires_matching_probe_constrained_terminal_flag():
             positive_i=NATIVE_Q4_12_POSITIVE_I,
             nominal_workflow_ms=165_950,
             maximum_workflow_ms=182_512,
-            recovery_flags=0b11,
+            recovery_flags=0b10,
             final_p=724,
             joint_membership=0x000E_0000,
         )
         sequence = feed_full_evidence(assembler)
-        feed_terminal(assembler, sequence, recovery_flags=0b0100)
+        feed_terminal(assembler, sequence, recovery_flags=0)
 
 
 def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000):
