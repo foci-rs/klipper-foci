@@ -13,15 +13,18 @@ STAGE_B_DIGEST = 0xFEDC_BA98_7654_3210
 RUN_SEQUENCE = 9
 POSITIVE_I = (5, 10, 20)
 NATIVE_Q4_12_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
+COMBINED_Q4_12_POSITIVE_I = (*NATIVE_Q4_12_POSITIVE_I, 1310)
 OPAQUE_DIGEST = 0xDEAD_BEEF_0123_4567
 
 
-def feed_workflow(assembler, shape=2, maximum_ms=70_000):
+def feed_workflow(assembler, shape=2, maximum_ms=70_000, nominal_ms=None):
+    if nominal_ms is None:
+        nominal_ms = maximum_ms
     params = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
         "shape": shape,
-        "nominal_workflow_ms": maximum_ms,
+        "nominal_workflow_ms": nominal_ms,
         "maximum_workflow_ms": maximum_ms,
     }
     params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
@@ -320,6 +323,26 @@ def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
     assert assembler.plan["final_p"] == 724
     assert assembler.plan["authorities"][0]["joint_membership"] == 0x000E_0000
     assert assembler.plan["probe_constrained_test_point"] is True
+
+
+def test_schema_eight_assembles_the_combined_response_plan():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
+    feed_plan(
+        assembler,
+        schema_revision=8,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=177_751,
+        maximum_workflow_ms=195_496,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["positive_i"] == list(COMBINED_Q4_12_POSITIVE_I)
+    assert assembler.plan["family_size"] == 60
+    assert assembler.plan["expected_observations"] == 120
+    assert assembler.plan["slot_count"] == 15
+    assert assembler.maximum_duration_s == 494.128
 
 
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
@@ -652,15 +675,17 @@ def feed_terminal(
     )
 
 
-@pytest.mark.parametrize("shape", [0, 1, 2])
+@pytest.mark.parametrize("shape", [0, 1, 2, 3])
 def test_workflow_shapes_preserve_exact_digest_and_duration(shape):
     assembler = VelocityIntegralAssembler()
+    maximum_ms = 494_128 if shape == 3 else 300_000 + shape
+    nominal_ms = 449_173 if shape == 3 else maximum_ms
 
-    feed_workflow(assembler, shape=shape, maximum_ms=300_000 + shape)
+    feed_workflow(assembler, shape=shape, nominal_ms=nominal_ms, maximum_ms=maximum_ms)
 
     assert assembler.workflow_plan["shape"] == shape
     assert assembler.workflow_plan["digest"] > 0xFFFF_FFFF
-    assert assembler.maximum_duration_s == (300_000 + shape) / 1000
+    assert assembler.maximum_duration_s == maximum_ms / 1000
 
 
 def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
@@ -669,6 +694,36 @@ def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
     feed_workflow(assembler, shape=1, maximum_ms=389_520)
 
     assert assembler.maximum_duration_s == 389.52
+
+
+def test_combined_complete_reports_target_without_reproduction():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
+    feed_plan(
+        assembler,
+        schema_revision=8,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=177_751,
+        maximum_workflow_ms=195_496,
+        final_p=1024,
+        joint_membership=0,
+    )
+    sequence = feed_full_evidence(assembler)
+
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        outcome=1,
+        recovery_flags=0xC0,
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "complete"
+    assert assembler.reproduction is None
+    assert assembler.terminal["combined_workflow"] is True
+    assert assembler.terminal["target_status"] == "target_not_reached_at_cap"
+    assert assembler.terminal["target_terminus"] is None
 
 
 def test_assembles_exact_curves_sparse_masks_and_divergence_records():

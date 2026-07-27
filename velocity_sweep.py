@@ -63,6 +63,23 @@ class VelocitySweepAssembler:
         self._unframed_parts: list[dict] = []
         self._last_evidence: tuple[str, int] | None = None
         self._trace_only_current_pending = False
+        self._workflow_shape: int | None = None
+
+    def configure_workflow_shape(self, shape: int) -> None:
+        """Bind terminal interpretation to the firmware-disclosed workflow."""
+        if shape not in (0, 1, 2, 3):
+            raise VelocitySweepProtocolError("invalid workflow shape")
+        if (
+            self.plan is not None
+            or self._group_parts
+            or self._last_evidence is not None
+        ):
+            raise VelocitySweepProtocolError(
+                "workflow shape arrived after sweep evidence"
+            )
+        if self._workflow_shape is not None:
+            raise VelocitySweepProtocolError("duplicate workflow shape")
+        self._workflow_shape = shape
 
     @property
     def plan_ready(self) -> bool:
@@ -993,7 +1010,19 @@ class VelocitySweepAssembler:
             (int(forward["pooled_low_q16"]), int(forward["pooled_high_q16"])),
             (int(reverse["pooled_low_q16"]), int(reverse["pooled_high_q16"])),
         )
-        if outcome_code == 1:
+        combined_response = self._workflow_shape == 3
+        if outcome_code == 1 and combined_response:
+            if self.reproduction is not None:
+                raise VelocitySweepProtocolError(
+                    "combined Stage B carried reproduction evidence"
+                )
+            if int(identity["nominated_p"]) == 0 or any(
+                interval[0] > interval[1] for interval in intervals
+            ):
+                raise VelocitySweepProtocolError(
+                    "combined Stage B selected response is invalid"
+                )
+        elif outcome_code == 1:
             if (
                 self.reproduction is None
                 or int(self.reproduction.get("schema_revision", 0))
@@ -1053,6 +1082,8 @@ class VelocitySweepAssembler:
         terminal = self._merge([core, identity])
         terminal["selected_memberships"] = memberships
         terminal["selected_intervals"] = intervals
+        if combined_response:
+            terminal["selected_response_intervals"] = intervals
         terminal["plan_digest"] = int(identity["plan_digest_low"]) | (
             int(identity["plan_digest_high"]) << 32
         )

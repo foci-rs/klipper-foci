@@ -897,6 +897,27 @@ def test_stage_b_complete_terminal_uses_reproduced_pooled_overlap():
     assert assembler.terminal["selected_intervals"] == ((108, 116), (108, 116))
 
 
+def test_combined_stage_b_complete_carries_selected_response_without_reproduction():
+    assembler = VelocitySweepAssembler()
+    assembler.configure_workflow_shape(3)
+    feed_plan(assembler, rung_count=0)
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=1,
+        outcome=1,
+        member_mask=0,
+        nominated_p=1024,
+        intervals=((13_359_104, 13_492_224), (-12_968_960, -12_921_856)),
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "complete"
+    assert assembler.reproduction is None
+    assert assembler.terminal["nominated_p"] == 1024
+    assert assembler.terminal["selected_intervals"][0] == (13_359_104, 13_492_224)
+
+
 def test_stage_b_reproduction_v4_rejects_missing_duplicate_and_reordered_parts():
     fragments = stage_b_reproduction_v4_fragments(sequence=1)
 

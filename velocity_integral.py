@@ -17,12 +17,22 @@ OUTCOME_NAMES = {
 }
 
 SCHEMA_FIVE_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
+SCHEMA_EIGHT_POSITIVE_I = (*SCHEMA_FIVE_POSITIVE_I, 1310)
 PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
 PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
 TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
 TERMINAL_PROBE_CONSTRAINED_TEST_POINT = 1 << 3
+TERMINAL_COMBINED_TARGET_SHIFT = 4
+TERMINAL_COMBINED_TARGET_MASK = 0b111 << TERMINAL_COMBINED_TARGET_SHIFT
+TERMINAL_COMBINED_WORKFLOW = 1 << 7
+COMBINED_TARGET_NAMES = {
+    0: "target_reached",
+    1: "target_reached_sparse",
+    2: "current_headroom",
+    3: "target_not_reached_at_cap",
+}
 INTEGRAL_CAUSE_TOO_FEW_RUNGS = 1
 INTEGRAL_CAUSE_CURRENT_AFTER_SUFFICIENCY = 3
 INTEGRAL_CAUSE_BOOKEND_UNAVAILABLE = 8
@@ -142,10 +152,15 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is not None:
             raise VelocityIntegralProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (0, 1, 2):
+        if shape not in (0, 1, 2, 3):
             raise VelocityIntegralProtocolError("invalid workflow shape")
         if int(params["maximum_workflow_ms"]) < int(params["nominal_workflow_ms"]):
             raise VelocityIntegralProtocolError("workflow maximum is below nominal")
+        if shape == 3 and (
+            int(params["nominal_workflow_ms"]) != 449_173
+            or int(params["maximum_workflow_ms"]) != 494_128
+        ):
+            raise VelocityIntegralProtocolError("combined workflow duration changed")
         expected = self.workflow_digest_halves(params)
         reported = (int(params["digest_low"]), int(params["digest_high"]))
         if reported != expected:
@@ -158,7 +173,7 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_stage_c_workflow(params)
-        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5, 6, 7):
+        if int(params.get("schema_revision", -1)) not in (2, 3, 4, 5, 6, 7, 8):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
@@ -473,17 +488,40 @@ class VelocityIntegralAssembler:
             )
             if schema_revision >= 7:
                 known_flags |= TERMINAL_PROBE_CONSTRAINED_TEST_POINT
+            if schema_revision >= 8:
+                known_flags |= (
+                    TERMINAL_COMBINED_TARGET_MASK | TERMINAL_COMBINED_WORKFLOW
+                )
             if flags < 0 or flags & ~known_flags:
                 raise VelocityIntegralProtocolError("invalid terminal recovery flags")
         rung = int(params.get("rest_boundary_rung_plus_one", 0))
         slot = int(params.get("rest_boundary_slot_plus_one", 0))
-        if (rung == 0) != (slot == 0):
+        combined = schema_revision >= 8 and bool(
+            int(params.get("recovery_flags", 0)) & TERMINAL_COMBINED_WORKFLOW
+        )
+        target_code = (
+            int(params.get("recovery_flags", 0)) & TERMINAL_COMBINED_TARGET_MASK
+        ) >> TERMINAL_COMBINED_TARGET_SHIFT
+        target_reference = (
+            combined and target_code in (1, 2) and rung != 0 and slot == 0
+        )
+        if (rung == 0) != (slot == 0) and not target_reference:
             raise VelocityIntegralProtocolError("partial rest-boundary reference")
-        if rung and (
+        if slot and (
             rung not in range(1, int(self.plan["positive_rung_count"]) + 1)
             or slot not in range(1, 9)
         ):
             raise VelocityIntegralProtocolError("invalid rest-boundary reference")
+        if combined and target_code not in range(5):
+            raise VelocityIntegralProtocolError("invalid combined target status")
+        if combined and int(params["outcome"]) == 1 and target_code == 0:
+            raise VelocityIntegralProtocolError(
+                "combined Complete terminal omitted target status"
+            )
+        if schema_revision >= 8 and not combined:
+            raise VelocityIntegralProtocolError(
+                "schema-8 terminal omitted combined workflow marker"
+            )
         self._terminal_parts.append(dict(params))
 
     def handle_terminal_identity(self, params: dict) -> None:
@@ -502,7 +540,7 @@ class VelocityIntegralAssembler:
         rung = int(core.get("rest_boundary_rung_plus_one", 0))
         slot = int(core.get("rest_boundary_slot_plus_one", 0))
         terminal["rest_boundary"] = (
-            None if rung == 0 else {"positive_rung_index": rung - 1, "slot": slot - 1}
+            None if slot == 0 else {"positive_rung_index": rung - 1, "slot": slot - 1}
         )
         if self.plan is None:
             terminal["recovery_unavailable"] = 0
@@ -522,6 +560,14 @@ class VelocityIntegralAssembler:
             )
             terminal["probe_constrained_test_point"] = bool(
                 flags & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
+            )
+            terminal["combined_workflow"] = bool(flags & TERMINAL_COMBINED_WORKFLOW)
+            target_code = (
+                flags & TERMINAL_COMBINED_TARGET_MASK
+            ) >> TERMINAL_COMBINED_TARGET_SHIFT
+            terminal["target_status"] = COMBINED_TARGET_NAMES.get(target_code - 1)
+            terminal["target_terminus"] = (
+                rung - 1 if target_code in (1, 2) and rung != 0 and slot == 0 else None
             )
         self.terminal = terminal
         self.outcome = OUTCOME_NAMES.get(int(core["outcome"]))
@@ -614,7 +660,11 @@ class VelocityIntegralAssembler:
                     int(masks["divergent_mask"])
                 ):
                     raise VelocityIntegralProtocolError("missing divergent intervals")
-        if self.outcome == "complete" and self.reproduction is None:
+        combined = (
+            int(self.plan["schema_revision"]) >= 8
+            and int(self.workflow_plan["shape"]) == 3
+        )
+        if self.outcome == "complete" and self.reproduction is None and not combined:
             raise VelocityIntegralProtocolError(
                 "complete integral response omitted reproduction evidence"
             )
@@ -658,7 +708,30 @@ class VelocityIntegralAssembler:
             plan["probe_constrained_test_point"] = bool(
                 int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
             )
-        if int(plan["schema_revision"]) >= 5:
+        if int(plan["schema_revision"]) >= 8:
+            expected = {
+                "i_start": 1,
+                "family_size": 60,
+                "total_rung_count": 15,
+                "expected_observations": 120,
+                "nominal_workflow_ms": 177_751,
+                "maximum_workflow_ms": 195_496,
+                "slot_count": 15,
+            }
+            if int(self.workflow_plan["shape"]) != 3:
+                raise VelocityIntegralProtocolError(
+                    "schema-8 plan requires combined workflow"
+                )
+            if tuple(plan["positive_i"]) != SCHEMA_EIGHT_POSITIVE_I:
+                raise VelocityIntegralProtocolError("invalid schema-8 integral ladder")
+            for field, value in expected.items():
+                if int(plan[field]) != value:
+                    raise VelocityIntegralProtocolError(
+                        f"invalid schema-8 integral {field}"
+                    )
+            if int(self.workflow_plan["maximum_workflow_ms"]) != 494_128:
+                raise VelocityIntegralProtocolError("combined workflow maximum changed")
+        elif int(plan["schema_revision"]) >= 5:
             expected = {
                 "i_start": 1,
                 "family_size": 56,

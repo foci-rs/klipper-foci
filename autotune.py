@@ -92,7 +92,7 @@ class AutotuneWorkflow:
         if (
             method_name == "handle_plan_core"
             and workflow is not None
-            and int(workflow["shape"]) == 1
+            and int(workflow["shape"]) in (1, 3)
             and (
                 not self.velocity_sweep.done
                 or self.velocity_sweep.outcome != "complete"
@@ -125,6 +125,11 @@ class AutotuneWorkflow:
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         self._handle_velocity_integral("handle_workflow_plan", params)
+        if self.velocity_integral_error is None:
+            try:
+                self.velocity_sweep.configure_workflow_shape(int(params["shape"]))
+            except VelocitySweepProtocolError as err:
+                self.velocity_sweep_error = err
 
     def _request_for_stage_b_dispatch(self, request_fields: dict) -> dict:
         """Reuse the exact retained encoding when the explicit request matches."""
