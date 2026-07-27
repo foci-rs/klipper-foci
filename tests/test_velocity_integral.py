@@ -726,6 +726,39 @@ def test_combined_complete_reports_target_without_reproduction():
     assert assembler.terminal["target_terminus"] is None
 
 
+def test_combined_complete_relays_firmware_terminal_without_target_status():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
+    feed_plan(
+        assembler,
+        schema_revision=8,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=177_751,
+        maximum_workflow_ms=195_496,
+        final_p=1_024,
+        joint_membership=0,
+    )
+    sequence = feed_full_evidence(assembler)
+
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        outcome=1,
+        cause=10,
+        rest_boundary=(9, 1),
+        recovery_flags=0x80,
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "complete"
+    assert assembler.terminal["target_status"] is None
+    assert assembler.terminal["rest_boundary"] == {
+        "positive_rung_index": 8,
+        "slot": 0,
+    }
+
+
 def test_assembles_exact_curves_sparse_masks_and_divergence_records():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler)

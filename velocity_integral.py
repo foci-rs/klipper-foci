@@ -514,10 +514,6 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("invalid rest-boundary reference")
         if combined and target_code not in range(5):
             raise VelocityIntegralProtocolError("invalid combined target status")
-        if combined and int(params["outcome"]) == 1 and target_code == 0:
-            raise VelocityIntegralProtocolError(
-                "combined Complete terminal omitted target status"
-            )
         if schema_revision >= 8 and not combined:
             raise VelocityIntegralProtocolError(
                 "schema-8 terminal omitted combined workflow marker"
