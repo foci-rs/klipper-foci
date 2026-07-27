@@ -216,6 +216,13 @@ class AutotuneWorkflow:
             return True
         return self.velocity_integral.done
 
+    def _synchronize_disarmed_workflow_terminal(self, toolhead) -> None:
+        """Mirror a firmware-owned terminal disarm into Klipper state."""
+        self.driver.state.is_calibrated = False
+        stepper_enable = self.driver.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
+        enable_line.motor_disable(toolhead.get_last_move_time())
+
     def _format_acceptance_matrix_result(self) -> str:
         terminal = self.acceptance_matrix.terminal or {}
         return "velocity confidence matrix: %s (cause=%s attempted=%s eligible=%s)" % (
@@ -776,6 +783,7 @@ class AutotuneWorkflow:
                     )
 
             if self._workflow_finished():
+                self._synchronize_disarmed_workflow_terminal(toolhead)
                 if self.acceptance_matrix.done:
                     gcmd.respond_info(
                         "FOCI %s: %s"

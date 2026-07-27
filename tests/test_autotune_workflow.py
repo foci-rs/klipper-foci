@@ -122,6 +122,19 @@ class TestAutotuneGates(unittest.TestCase):
             d.autotune.autotune(gcmd)
         self.assertIn("another FOCI operation", str(ctx.exception))
 
+    def test_terminal_disarm_synchronizes_host_enable_state(self):
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
+            d.stepper_name
+        )
+        enable_line.motor_enable(toolhead.get_last_move_time())
+
+        d.autotune._synchronize_disarmed_workflow_terminal(toolhead)
+
+        self.assertFalse(d.state.is_calibrated)
+        self.assertFalse(enable_line.is_motor_enabled())
+
     def test_stage_b_candidate_retains_and_reissues_exact_request_fields(self):
         d = self._commissioned_driver()
         request = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
@@ -339,6 +352,10 @@ class TestAutotuneGates(unittest.TestCase):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
+            d.stepper_name
+        )
+        enable_line.motor_enable(0.0)
         pauses = 0
 
         def pause_with_failed_resume(deadline):
@@ -368,6 +385,8 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertTrue(
             any("response failed" in message for message in gcmd._responses)
         )
+        self.assertFalse(d.state.is_calibrated)
+        self.assertFalse(enable_line.is_motor_enabled())
 
     def test_no_transition_continuation_relays_both_ordered_terminals(self):
         d = self._commissioned_driver()
