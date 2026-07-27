@@ -8,6 +8,11 @@ from .commissioning import (
     PROFILE_MAP,
     format_inner_warning_flags,
 )
+from .acceptance_matrix import (
+    AcceptanceMatrixAssembler,
+    AcceptanceMatrixProtocolError,
+    parse_autotune_action,
+)
 from .autotune_budget import (
     AutotuneBudgetError,
     compute_autotune_motion_budget,
@@ -54,6 +59,8 @@ class AutotuneWorkflow:
         self.velocity_sweep_error: VelocitySweepProtocolError | None = None
         self.velocity_integral = VelocityIntegralAssembler()
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
+        self.acceptance_matrix = AcceptanceMatrixAssembler()
+        self.acceptance_matrix_error: AcceptanceMatrixProtocolError | None = None
         self._stage_b_candidate_request: dict | None = None
         self.done = False
 
@@ -124,12 +131,36 @@ class AutotuneWorkflow:
             setattr(self, error_attr, err)
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
+        if int(params.get("shape", -1)) in (4, 5):
+            try:
+                self.acceptance_matrix.handle_workflow_plan(params)
+            except AcceptanceMatrixProtocolError as err:
+                self.acceptance_matrix_error = err
+            return
         self._handle_velocity_integral("handle_workflow_plan", params)
         if self.velocity_integral_error is None:
             try:
                 self.velocity_sweep.configure_workflow_shape(int(params["shape"]))
             except VelocitySweepProtocolError as err:
                 self.velocity_sweep_error = err
+
+    def handle_acceptance_matrix_plan(self, params: dict) -> None:
+        """Relay one compact firmware-authored matrix plan."""
+        if self.acceptance_matrix_error is not None:
+            return
+        try:
+            self.acceptance_matrix.handle_plan(params)
+        except AcceptanceMatrixProtocolError as err:
+            self.acceptance_matrix_error = err
+
+    def handle_acceptance_matrix_terminal(self, params: dict) -> None:
+        """Relay one compact firmware-authored matrix terminal."""
+        if self.acceptance_matrix_error is not None:
+            return
+        try:
+            self.acceptance_matrix.handle_terminal(params)
+        except AcceptanceMatrixProtocolError as err:
+            self.acceptance_matrix_error = err
 
     def _request_for_stage_b_dispatch(self, request_fields: dict) -> dict:
         """Reuse the exact retained encoding when the explicit request matches."""
@@ -164,6 +195,8 @@ class AutotuneWorkflow:
 
     def _workflow_finished(self) -> bool:
         """Whether the disclosed firmware workflow reached its terminal stage."""
+        if self.acceptance_matrix.done:
+            return True
         workflow = self.velocity_integral.workflow_plan
         if workflow is None:
             return False
@@ -182,6 +215,15 @@ class AutotuneWorkflow:
         ):
             return True
         return self.velocity_integral.done
+
+    def _format_acceptance_matrix_result(self) -> str:
+        terminal = self.acceptance_matrix.terminal or {}
+        return "velocity confidence matrix: %s (cause=%s attempted=%s eligible=%s)" % (
+            terminal.get("outcome_name", "unknown"),
+            terminal.get("cause_name", "unknown"),
+            terminal.get("attempted_masks", (0, 0)),
+            terminal.get("eligible_masks", (0, 0)),
+        )
 
     def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_plan_limits", params)
@@ -521,6 +563,10 @@ class AutotuneWorkflow:
 
     def autotune(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing."""
+        try:
+            action = parse_autotune_action(gcmd.get("ACTION", None))
+        except AcceptanceMatrixProtocolError as err:
+            raise gcmd.error("FOCI %s: %s" % (self.driver.name, err))
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
         if profile_name not in PROFILE_MAP:
@@ -636,10 +682,13 @@ class AutotuneWorkflow:
             self.velocity_sweep_error = None
             self.velocity_integral = VelocityIntegralAssembler()
             self.velocity_integral_error = None
+            self.acceptance_matrix = AcceptanceMatrixAssembler()
+            self.acceptance_matrix_error = None
             self.driver.commissioning.error_code = 0
 
             request_fields = self._request_for_stage_b_dispatch(
                 {
+                    "action": action,
                     "profile_code": PROFILE_MAP[profile_name],
                     "mode_code": MODE_MAP[mode_name],
                     "inner_lambda": inner_lambda,
@@ -687,13 +736,23 @@ class AutotuneWorkflow:
                         "FOCI %s: velocity integral transport failure: %s"
                         % (self.driver.name, self.velocity_integral_error)
                     )
+                if self.acceptance_matrix_error is not None:
+                    raise gcmd.error(
+                        "FOCI %s: velocity confidence transport failure: %s"
+                        % (self.driver.name, self.acceptance_matrix_error)
+                    )
                 if (
                     self.velocity_integral.workflow_plan is not None
-                    and not workflow_timeout_armed
-                ):
+                    or self.acceptance_matrix.workflow_plan is not None
+                ) and not workflow_timeout_armed:
+                    maximum_duration_s = (
+                        self.acceptance_matrix.maximum_duration_s
+                        if self.acceptance_matrix.workflow_plan is not None
+                        else self.velocity_integral.maximum_duration_s
+                    )
                     timeout = (
                         eventtime
-                        + self.velocity_integral.maximum_duration_s
+                        + maximum_duration_s
                         + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
                     )
                     workflow_timeout_armed = True
@@ -717,6 +776,17 @@ class AutotuneWorkflow:
                     )
 
             if self._workflow_finished():
+                if self.acceptance_matrix.done:
+                    gcmd.respond_info(
+                        "FOCI %s: %s"
+                        % (self.driver.name, self._format_acceptance_matrix_result())
+                    )
+                    if self.acceptance_matrix.outcome in ("fault", "failed"):
+                        raise gcmd.error(
+                            "FOCI %s: velocity confidence matrix %s"
+                            % (self.driver.name, self.acceptance_matrix.outcome)
+                        )
+                    return
                 self._retain_request_from_terminal(request_fields)
                 workflow = self.velocity_integral.workflow_plan or {}
                 shape = int(workflow.get("shape", 0))

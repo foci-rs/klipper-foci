@@ -277,6 +277,14 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             driver.autotune.handle_velocity_integral_terminal_timing,
             "foci_velocity_integral_terminal_timing",
         ),
+        (
+            driver.autotune.handle_acceptance_matrix_plan,
+            "foci_acceptance_matrix_plan",
+        ),
+        (
+            driver.autotune.handle_acceptance_matrix_terminal,
+            "foci_acceptance_matrix_terminal",
+        ),
     ):
         serial.register_response(callback, name, oid)
     serial.register_response(
