@@ -345,6 +345,67 @@ def test_schema_eight_assembles_the_combined_response_plan():
     assert assembler.maximum_duration_s == 494.128
 
 
+def test_schema_nine_accepts_the_corrected_combined_duration_envelope():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=451_573, maximum_ms=496_528)
+    feed_plan(
+        assembler,
+        schema_revision=9,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=180_151,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["schema_revision"] == 9
+    assert assembler.plan["nominal_workflow_ms"] == 180_151
+    assert assembler.plan["maximum_workflow_ms"] == 197_896
+    assert assembler.maximum_duration_s == 496.528
+
+
+@pytest.mark.parametrize(
+    (
+        "workflow_nominal",
+        "workflow_maximum",
+        "schema_revision",
+        "stage_nominal",
+        "stage_maximum",
+    ),
+    [
+        (449_173, 494_128, 9, 180_151, 197_896),
+        (451_573, 496_528, 8, 177_751, 195_496),
+    ],
+)
+def test_combined_schema_rejects_mixed_duration_envelopes(
+    workflow_nominal,
+    workflow_maximum,
+    schema_revision,
+    stage_nominal,
+    stage_maximum,
+):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(
+        assembler,
+        shape=3,
+        nominal_ms=workflow_nominal,
+        maximum_ms=workflow_maximum,
+    )
+
+    with pytest.raises(
+        VelocityIntegralProtocolError, match="does not match Stage-C schema"
+    ):
+        feed_plan(
+            assembler,
+            schema_revision=schema_revision,
+            positive_i=COMBINED_Q4_12_POSITIVE_I,
+            nominal_workflow_ms=stage_nominal,
+            maximum_workflow_ms=stage_maximum,
+            final_p=1024,
+            joint_membership=0,
+        )
+
+
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):
     common = {
         "oid": 0,
