@@ -75,7 +75,7 @@ def workflow(assembler, shape=4):
     assembler.handle_workflow_plan(params)
 
 
-def plan_payload(order=0, targets=TARGETS):
+def plan_payload(order=1, targets=TARGETS):
     return struct.pack(
         "<HIBQQHH5hHHBII",
         1,
@@ -160,11 +160,11 @@ def test_only_compact_matrix_replies_are_registered():
     }
 
 
-@pytest.mark.parametrize(("shape", "order"), ((4, 0), (5, 1)))
+@pytest.mark.parametrize(("shape", "order"), ((4, 1), (5, 2)))
 def test_exact_plan_and_terminal_close_one_matrix(shape, order):
     assembler = AcceptanceMatrixAssembler()
     workflow(assembler, shape)
-    targets = TARGETS if order == 0 else tuple(reversed(TARGETS))
+    targets = TARGETS if order == 1 else tuple(reversed(TARGETS))
     assembler.handle_plan({"oid": 1, "payload": plan_payload(order, targets)})
     assembler.handle_terminal({"oid": 1, "payload": terminal_payload()})
 
@@ -203,7 +203,7 @@ def test_matrix_workflow_rejects_wrong_shapes_and_mixed_durations(
 
 def test_plan_rejects_wrong_order_target_geometry_and_counts():
     cases = (
-        plan_payload(order=1),
+        plan_payload(order=2),
         plan_payload(targets=(16, 33, 66, 132, 132)),
         bytearray(plan_payload()),
     )

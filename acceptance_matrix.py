@@ -13,6 +13,13 @@ MATRIX_AMPLITUDE_COUNT = 5
 MATRIX_FAMILY_SIZE = 20
 MATRIX_EXPECTED_OBSERVATIONS = 40
 MATRIX_MASK = (1 << MATRIX_AMPLITUDE_COUNT) - 1
+MATRIX_ORDER_ASCENDING = 1
+MATRIX_ORDER_DESCENDING = 2
+
+WORKFLOW_SHAPE_TO_MATRIX_ORDER = {
+    4: MATRIX_ORDER_ASCENDING,
+    5: MATRIX_ORDER_DESCENDING,
+}
 
 ACTION_CODES = {
     "combined": 0,
@@ -153,7 +160,9 @@ class AcceptanceMatrixAssembler:
         family_size, observations, amplitude_count, nominal_ms, maximum_ms = tail[
             MATRIX_AMPLITUDE_COUNT:
         ]
-        expected_order = int(self.workflow_plan["shape"]) - 4
+        expected_order = WORKFLOW_SHAPE_TO_MATRIX_ORDER[
+            int(self.workflow_plan["shape"])
+        ]
         if schema != MATRIX_SCHEMA_REVISION:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if run_sequence != self.workflow_plan["run_sequence"]:
@@ -162,7 +171,7 @@ class AcceptanceMatrixAssembler:
             raise AcceptanceMatrixProtocolError("matrix order disagrees with workflow")
         ordered = (
             all(left < right for left, right in zip(targets, targets[1:]))
-            if order == 0
+            if order == MATRIX_ORDER_ASCENDING
             else all(left > right for left, right in zip(targets, targets[1:]))
         )
         if not ordered or any(target <= 0 for target in targets):
