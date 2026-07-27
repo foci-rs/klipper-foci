@@ -364,6 +364,23 @@ def test_schema_nine_accepts_the_corrected_combined_duration_envelope():
     assert assembler.maximum_duration_s == 496.528
 
 
+def test_schema_ten_preserves_the_corrected_combined_duration_envelope():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=451_573, maximum_ms=496_528)
+    feed_plan(
+        assembler,
+        schema_revision=10,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=180_151,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["schema_revision"] == 10
+    assert assembler.maximum_duration_s == 496.528
+
+
 @pytest.mark.parametrize(
     (
         "workflow_nominal",

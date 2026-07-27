@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-STAGE_B_EVIDENCE_SCHEMA_REVISION = 8
+STAGE_B_EVIDENCE_SCHEMA_REVISION = 10
+SUPPORTED_STAGE_B_REPRODUCTION_SCHEMAS = (8, 10)
 
 OUTCOME_NAMES = {
     0: "complete_candidate",
@@ -266,7 +267,10 @@ class VelocitySweepAssembler:
         self._accept_unframed("stage b reproduction", 4, params)
 
     def handle_stage_b_reproduction_v4_core(self, params: dict) -> None:
-        if int(params.get("schema_revision", -1)) != STAGE_B_EVIDENCE_SCHEMA_REVISION:
+        if (
+            int(params.get("schema_revision", -1))
+            not in SUPPORTED_STAGE_B_REPRODUCTION_SCHEMAS
+        ):
             raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
         self._accept_unframed("stage b reproduction v4", 0, params)
 
@@ -1026,7 +1030,7 @@ class VelocitySweepAssembler:
             if (
                 self.reproduction is None
                 or int(self.reproduction.get("schema_revision", 0))
-                != STAGE_B_EVIDENCE_SCHEMA_REVISION
+                not in SUPPORTED_STAGE_B_REPRODUCTION_SCHEMAS
             ):
                 raise VelocitySweepProtocolError(
                     "stage b Complete terminal arrived without schema-8 reproduction"

@@ -797,6 +797,7 @@ def test_run_tune_sends_velocity_sweep_planning_payload():
 
     assert driver.protocol.commands.tune.last_args == [
         driver.oid,
+        0,
         1,
         2,
         1200,
@@ -815,6 +816,32 @@ def test_run_tune_sends_velocity_sweep_planning_payload():
     ]
 
 
+def test_run_tune_forwards_only_the_explicit_action_selector():
+    driver = make_driver()
+
+    driver.protocol.run_tune(
+        action=2,
+        profile_code=1,
+        mode_code=2,
+        inner_lambda=1200,
+        theta_e=160,
+        current_ringing=7,
+        current_bw=500,
+        inner_warning_flags=8,
+        requested_velocity_mrev_s=5000,
+        machine_velocity_ceiling_mrev_s=7500,
+        requested_velocity_source=1,
+        max_stroke_travel_mrev=1000,
+        settle_travel_reserve_mrev=250,
+        negative_position_headroom_mrev=1250,
+        positive_position_headroom_mrev=1250,
+        max_duration_ms=3000,
+    )
+
+    assert driver.protocol.commands.tune.last_args[1] == 2
+    assert len(driver.protocol.commands.tune.last_args) == 17
+
+
 def test_tune_command_matches_firmware_field_order_without_legacy_budget():
     driver = make_driver()
 
@@ -823,7 +850,7 @@ def test_tune_command_matches_firmware_field_order_without_legacy_budget():
     ]
 
     assert formats == [
-        "foci_tune oid=%c profile=%c mode=%c"
+        "foci_tune oid=%c action=%c profile=%c mode=%c"
         " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
         " inner_warning_flags=%c requested_velocity_mrev_s=%u"
         " machine_velocity_ceiling_mrev_s=%u requested_velocity_source=%c"

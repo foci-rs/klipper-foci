@@ -757,7 +757,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
-        self.assertEqual(args[7], 0x40)
+        self.assertEqual(args[8], 0x40)
         self.assertIn("inner confidence", gcmd.last_info)
 
     def test_autotune_moves_to_safe_pose_and_sends_budget(self):
@@ -917,4 +917,4 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
-        self.assertEqual(args[7], 1 << 5)
+        self.assertEqual(args[8], 1 << 5)

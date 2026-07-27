@@ -965,13 +965,18 @@ def test_stage_b_reproduction_v4_rejects_identity_schema_and_early_terminal():
         feed_stage_b_terminal(assembler, sequence=2)
 
 
-def test_schema_eight_is_required():
+def test_schema_eight_and_ten_are_supported_without_admitting_older_reproduction():
     fragments = stage_b_reproduction_v4_fragments(sequence=1)
 
     assembler = VelocitySweepAssembler()
     feed_plan(assembler)
     schema_eight = dict(fragments[0][1], schema_revision=8)
     assembler.handle_stage_b_reproduction_v4_core(schema_eight)
+
+    current = VelocitySweepAssembler()
+    feed_plan(current)
+    schema_ten = dict(fragments[0][1], schema_revision=10)
+    current.handle_stage_b_reproduction_v4_core(schema_ten)
 
     rejected = VelocitySweepAssembler()
     feed_plan(rejected)

@@ -374,6 +374,7 @@ class FociProtocol:
     def run_tune(
         self,
         *,
+        action: int = 0,
         profile_code: int,
         mode_code: int,
         inner_lambda: int,
@@ -393,6 +394,7 @@ class FociProtocol:
         self.commands.tune.send(
             [
                 self.driver.oid,
+                action,
                 profile_code,
                 mode_code,
                 inner_lambda,
