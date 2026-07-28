@@ -73,6 +73,7 @@ class VelocitySweepAssembler:
         self._workflow_shape: int | None = None
         self._workflow_duration: tuple[int, int] | None = None
         self._combined_stage_b_schema: int | None = None
+        self._selected_rest_sequence_skipped = False
 
     def configure_workflow_shape(
         self,
@@ -159,8 +160,11 @@ class VelocitySweepAssembler:
         rung_index = int(params.get("rung_index", -1))
         if rung_index in self.recoveries:
             raise VelocitySweepProtocolError("duplicate rung recovery")
-        if int(params["evidence_sequence"]) != self._next_evidence_sequence:
-            raise VelocitySweepProtocolError("recovery evidence sequence gap")
+        self._selected_rest_sequence_skipped = (
+            self._accept_selected_rest_sequence_position(
+                "recovery", int(params["evidence_sequence"])
+            )
+        )
         if self._last_evidence != ("rung", rung_index):
             raise VelocitySweepProtocolError(
                 "recovery did not immediately follow its rung"
@@ -174,6 +178,7 @@ class VelocitySweepAssembler:
         self.recoveries[rung_index] = self._strip_metadata(params)
         self._next_evidence_sequence += 1
         self._last_evidence = ("recovery", rung_index)
+        self._selected_rest_sequence_skipped = False
 
     def handle_observation_core(self, params: dict) -> None:
         self._accept_group_fragment("observation", 4, 0, params)
@@ -603,7 +608,11 @@ class VelocitySweepAssembler:
         elif run_sequence != self._run_sequence:
             raise VelocitySweepProtocolError("run sequence changed")
         self._resolve_trace_only_current(evidence_sequence)
-        if evidence_sequence != self._next_evidence_sequence:
+        if kind == "stage b terminal":
+            self._selected_rest_sequence_skipped = (
+                self._accept_selected_rest_sequence_position(kind, evidence_sequence)
+            )
+        elif evidence_sequence != self._next_evidence_sequence:
             raise VelocitySweepProtocolError(
                 "evidence sequence gap: got %d, expected %d"
                 % (evidence_sequence, self._next_evidence_sequence)
@@ -647,6 +656,22 @@ class VelocitySweepAssembler:
         elif evidence_sequence == self._next_evidence_sequence + 1:
             self._next_evidence_sequence += 1
             self._trace_only_current_pending = False
+
+    def _accept_selected_rest_sequence_position(
+        self, kind: str, evidence_sequence: int
+    ) -> bool:
+        if evidence_sequence == self._next_evidence_sequence:
+            return False
+        if (
+            self._combined_stage_b_schema == 11
+            and evidence_sequence == self._next_evidence_sequence + 1
+            and self._last_evidence is not None
+            and self._last_evidence[0] == "rung"
+            and kind in ("recovery", "stage b terminal")
+        ):
+            self._next_evidence_sequence += 1
+            return True
+        raise VelocitySweepProtocolError(f"{kind} evidence sequence gap")
 
     @staticmethod
     def _merge(parts: list[dict]) -> dict:
@@ -988,6 +1013,15 @@ class VelocitySweepAssembler:
 
     def _finish_stage_b_terminal(self, parts: list[dict]) -> None:
         core, identity, forward, reverse = parts
+        if self._selected_rest_sequence_skipped and (
+            int(core["outcome"]) != 2
+            or int(core["cause"]) != 7
+            or not bool(int(core["recovery_unavailable"]))
+        ):
+            raise VelocitySweepProtocolError(
+                "hidden selected-rest sequence requires cause-7 terminal"
+            )
+        self._selected_rest_sequence_skipped = False
         self._validate_recovery_completeness(core)
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
             raise VelocitySweepProtocolError(

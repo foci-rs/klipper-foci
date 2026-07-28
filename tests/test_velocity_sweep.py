@@ -66,6 +66,24 @@ def feed_plan(assembler, rung_count=5, observations_per_direction=2):
     assembler.handle_plan_recovery(recovery)
 
 
+def feed_combined_stage_b_11_plan(
+    assembler, rung_count=5, observations_per_direction=2
+):
+    assembler.configure_workflow_shape(3, 452_073, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count, observations_per_direction
+    )
+    timing = {
+        **timing,
+        "nominal_workflow_ms": 271_423,
+        "maximum_workflow_ms": 298_632,
+    }
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+
 def stage_b_region_fragments(*, sequence=1, direction=0, member_mask=0b11100):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     return (
@@ -305,6 +323,10 @@ def feed_stage_b_terminal(
     digest=0,
     plan_digest_value=0,
     recovery_unavailable=0,
+    expected_observations=0,
+    emitted_observations=0,
+    expected_rungs=0,
+    emitted_rungs=0,
 ):
     if joint_member_mask is None:
         joint_member_mask = member_mask
@@ -322,10 +344,10 @@ def feed_stage_b_terminal(
             "reverse_region_count": 1 if member_mask else 0,
             "forward_fragment_count": 0,
             "reverse_fragment_count": 0,
-            "expected_observations": 0,
-            "emitted_observations": 0,
-            "expected_rungs": 0,
-            "emitted_rungs": 0,
+            "expected_observations": expected_observations,
+            "emitted_observations": emitted_observations,
+            "expected_rungs": expected_rungs,
+            "emitted_rungs": emitted_rungs,
         }
     )
     assembler.handle_stage_b_terminal_identity(
@@ -1276,6 +1298,27 @@ def stage_b_recovery_assembler():
     return assembler
 
 
+def stage_b_11_recovery_assembler():
+    assembler = VelocitySweepAssembler()
+    feed_combined_stage_b_11_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    sequence = 17
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=145, high=155
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    return assembler
+
+
 def test_stage_b_recovery_summary_is_causal_and_compact():
     assembler = stage_b_recovery_assembler()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 18}
@@ -1328,6 +1371,120 @@ def test_stage_b_recovery_summary_rejects_changed_identity(replacement, message)
 
     with pytest.raises(VelocitySweepProtocolError, match=message):
         assembler.handle_recovery_summary(params)
+
+
+def test_stage_b_11_recovery_accepts_hidden_selected_rest_sequence():
+    assembler = stage_b_11_recovery_assembler()
+
+    assembler.handle_recovery_summary(
+        {
+            "oid": 0,
+            "run_sequence": 7,
+            "evidence_sequence": 19,
+            "stage": 0,
+            "rung_index": 0,
+            "p_raw": 16,
+            "binding_source": 5,
+            "outcome": 1,
+        }
+    )
+
+    assert assembler.recoveries[0]["evidence_sequence"] == 19
+
+
+def test_stage_b_11_terminal_accepts_hidden_unconfirmed_rest_sequence():
+    assembler = stage_b_11_recovery_assembler()
+
+    feed_stage_b_terminal(
+        assembler,
+        sequence=19,
+        outcome=2,
+        cause=7,
+        member_mask=0,
+        nominated_p=0,
+        intervals=((0, 0), (0, 0)),
+        recovery_unavailable=1,
+        expected_observations=8,
+        emitted_observations=8,
+        expected_rungs=1,
+        emitted_rungs=1,
+    )
+
+    assert assembler.outcome == "inconclusive"
+
+
+@pytest.mark.parametrize(
+    ("schema_11", "sequence"),
+    (
+        (False, 19),
+        (True, 20),
+    ),
+)
+def test_selected_rest_sequence_does_not_relax_other_gaps(schema_11, sequence):
+    assembler = (
+        stage_b_11_recovery_assembler() if schema_11 else stage_b_recovery_assembler()
+    )
+
+    with pytest.raises(VelocitySweepProtocolError, match="sequence gap"):
+        assembler.handle_recovery_summary(
+            {
+                "oid": 0,
+                "run_sequence": 7,
+                "evidence_sequence": sequence,
+                "stage": 0,
+                "rung_index": 0,
+                "p_raw": 16,
+                "binding_source": 5,
+                "outcome": 1,
+            }
+        )
+
+
+def test_selected_rest_sequence_keeps_recovery_rung_causal():
+    assembler = stage_b_11_recovery_assembler()
+
+    with pytest.raises(VelocitySweepProtocolError, match="immediately follow"):
+        assembler.handle_recovery_summary(
+            {
+                "oid": 0,
+                "run_sequence": 7,
+                "evidence_sequence": 19,
+                "stage": 0,
+                "rung_index": 1,
+                "p_raw": 16,
+                "binding_source": 5,
+                "outcome": 1,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("cause", "recovery_unavailable"),
+    (
+        (4, 1),
+        (7, 0),
+    ),
+)
+def test_hidden_selected_rest_terminal_requires_cause_seven(
+    cause, recovery_unavailable
+):
+    assembler = stage_b_11_recovery_assembler()
+
+    with pytest.raises(VelocitySweepProtocolError, match="selected-rest"):
+        feed_stage_b_terminal(
+            assembler,
+            sequence=19,
+            outcome=2,
+            cause=cause,
+            member_mask=0,
+            nominated_p=0,
+            intervals=((0, 0), (0, 0)),
+            recovery_unavailable=recovery_unavailable,
+            expected_observations=8,
+            emitted_observations=8,
+            expected_rungs=1,
+            emitted_rungs=1,
+        )
 
 
 def recovery_cardinality_assembler(recovered_rungs, *, last_evidence=("rung", 1)):
