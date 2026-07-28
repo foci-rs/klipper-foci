@@ -367,6 +367,25 @@ def test_schema_nine_accepts_the_corrected_combined_duration_envelope():
 def test_schema_ten_preserves_the_corrected_combined_duration_envelope():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=451_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(10)
+    feed_plan(
+        assembler,
+        schema_revision=10,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=180_151,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["schema_revision"] == 10
+    assert assembler.maximum_duration_s == 496.528
+
+
+def test_schema_ten_accepts_the_selected_recovery_combined_duration_envelope():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=452_073, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(11)
     feed_plan(
         assembler,
         schema_revision=10,
@@ -385,18 +404,23 @@ def test_schema_ten_preserves_the_corrected_combined_duration_envelope():
     (
         "workflow_nominal",
         "workflow_maximum",
+        "stage_b_schema",
         "schema_revision",
         "stage_nominal",
         "stage_maximum",
     ),
     [
-        (449_173, 494_128, 9, 180_151, 197_896),
-        (451_573, 496_528, 8, 177_751, 195_496),
+        (449_173, 494_128, None, 9, 180_151, 197_896),
+        (451_573, 496_528, None, 8, 177_751, 195_496),
+        (451_573, 496_528, 11, 10, 180_151, 197_896),
+        (452_073, 496_528, 10, 10, 180_151, 197_896),
+        (452_073, 496_528, None, 9, 180_151, 197_896),
     ],
 )
 def test_combined_schema_rejects_mixed_duration_envelopes(
     workflow_nominal,
     workflow_maximum,
+    stage_b_schema,
     schema_revision,
     stage_nominal,
     stage_maximum,
@@ -408,6 +432,8 @@ def test_combined_schema_rejects_mixed_duration_envelopes(
         nominal_ms=workflow_nominal,
         maximum_ms=workflow_maximum,
     )
+    if stage_b_schema is not None:
+        assembler.bind_combined_stage_b_schema(stage_b_schema)
 
     with pytest.raises(
         VelocityIntegralProtocolError, match="does not match Stage-C schema"

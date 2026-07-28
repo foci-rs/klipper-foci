@@ -93,6 +93,7 @@ class VelocityIntegralAssembler:
         self._run_sequence: int | None = None
         self._next_evidence_sequence = 1
         self._trace_only_current_pending = False
+        self._combined_stage_b_schema: int | None = None
 
     @staticmethod
     def _new_curve() -> dict:
@@ -114,6 +115,26 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is None:
             return None
         return int(self.workflow_plan["maximum_workflow_ms"]) / 1000.0
+
+    @property
+    def combined_stage_b_schema(self) -> int | None:
+        """Return the Stage-B compatibility revision bound to this combined plan."""
+        return self._combined_stage_b_schema
+
+    def bind_combined_stage_b_schema(self, schema_revision: int) -> None:
+        """Bind a combined Stage-C plan to its already assembled Stage-B plan."""
+        if self._plan_parts or self.plan is not None:
+            raise VelocityIntegralProtocolError(
+                "combined Stage-B schema arrived after Stage-C evidence"
+            )
+        if schema_revision not in (8, 10, 11):
+            raise VelocityIntegralProtocolError("unsupported combined Stage-B schema")
+        if (
+            self._combined_stage_b_schema is not None
+            and self._combined_stage_b_schema != schema_revision
+        ):
+            raise VelocityIntegralProtocolError("combined Stage-B schema changed")
+        self._combined_stage_b_schema = schema_revision
 
     @property
     def report(self) -> dict:
@@ -163,6 +184,7 @@ class VelocityIntegralAssembler:
         if shape == 3 and combined_duration not in (
             (449_173, 494_128),
             (451_573, 496_528),
+            (452_073, 496_528),
         ):
             raise VelocityIntegralProtocolError("combined workflow duration changed")
         expected = self.workflow_digest_halves(params)
@@ -740,13 +762,24 @@ class VelocityIntegralAssembler:
                     raise VelocityIntegralProtocolError(
                         f"invalid combined integral {field}"
                     )
-            expected_workflow = (
-                (451_573, 496_528) if schema_nine else (449_173, 494_128)
-            )
             reported_workflow = (
                 int(self.workflow_plan["nominal_workflow_ms"]),
                 int(self.workflow_plan["maximum_workflow_ms"]),
             )
+            if int(plan["schema_revision"]) == 10:
+                expected_workflows = {
+                    10: (451_573, 496_528),
+                    11: (452_073, 496_528),
+                }
+                expected_workflow = expected_workflows.get(
+                    self._combined_stage_b_schema
+                )
+                if expected_workflow is None:
+                    expected_workflow = (451_573, 496_528)
+            else:
+                expected_workflow = (
+                    (451_573, 496_528) if schema_nine else (449_173, 494_128)
+                )
             if reported_workflow != expected_workflow:
                 raise VelocityIntegralProtocolError(
                     "combined workflow duration does not match Stage-C schema"

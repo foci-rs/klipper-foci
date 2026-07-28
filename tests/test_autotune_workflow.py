@@ -541,6 +541,40 @@ class TestAutotuneGates(unittest.TestCase):
             str(d.autotune.velocity_integral_error),
         )
 
+    def test_combined_stage_c_binds_the_selected_recovery_stage_b_plan(self):
+        d = self._commissioned_driver()
+        params = {
+            "run_sequence": 14,
+            "shape": 3,
+            "nominal_workflow_ms": 452_073,
+            "maximum_workflow_ms": 496_528,
+        }
+        low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+        d.autotune.handle_commissioning_workflow_plan(
+            {**params, "digest_low": low, "digest_high": high}
+        )
+        d.autotune.velocity_sweep._combined_stage_b_schema = 11
+        d.autotune.velocity_sweep.done = True
+        d.autotune.velocity_sweep.outcome = "complete"
+
+        d.autotune.handle_velocity_integral_plan_core(
+            {
+                "run_sequence": 14,
+                "evidence_sequence": 0,
+                "fragment": 0,
+                "plan_digest_low": 1,
+                "plan_digest_high": 0,
+                "stage_b_digest_low": 2,
+                "stage_b_digest_high": 0,
+                "build_revision": 1,
+                "schema_revision": 10,
+                "channel": 0,
+                "final_p": 1024,
+            }
+        )
+
+        self.assertEqual(d.autotune.velocity_integral.combined_stage_b_schema, 11)
+
     def test_hard_fault_inhibits_future_raw_enable(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})

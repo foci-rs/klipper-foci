@@ -918,6 +918,35 @@ def test_combined_stage_b_complete_carries_selected_response_without_reproductio
     assert assembler.terminal["selected_intervals"][0] == (13_359_104, 13_492_224)
 
 
+@pytest.mark.parametrize(
+    ("nominal_ms", "maximum_ms", "expected_schema"),
+    [
+        (451_573, 496_528, 10),
+        (452_073, 496_528, 11),
+    ],
+)
+def test_combined_stage_b_plan_binds_the_exact_workflow_duration(
+    nominal_ms, maximum_ms, expected_schema
+):
+    assembler = VelocitySweepAssembler()
+    assembler.configure_workflow_shape(3, nominal_ms, maximum_ms)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count=23, observations_per_direction=4
+    )
+    timing = dict(
+        timing,
+        nominal_workflow_ms=271_423,
+        maximum_workflow_ms=298_632,
+    )
+
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+    assert assembler.combined_stage_b_schema == expected_schema
+
+
 def test_stage_b_reproduction_v4_rejects_missing_duplicate_and_reordered_parts():
     fragments = stage_b_reproduction_v4_fragments(sequence=1)
 

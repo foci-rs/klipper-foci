@@ -109,6 +109,22 @@ class AutotuneWorkflow:
                 "integral-response plan arrived before proportional handoff"
             )
             return
+        if (
+            method_name == "handle_plan_core"
+            and workflow is not None
+            and int(workflow["shape"]) == 3
+        ):
+            stage_b_schema = self.velocity_sweep.combined_stage_b_schema
+            if stage_b_schema is None:
+                self.velocity_integral_error = VelocityIntegralProtocolError(
+                    "combined Stage-C plan has no Stage-B duration binding"
+                )
+                return
+            try:
+                self.velocity_integral.bind_combined_stage_b_schema(stage_b_schema)
+            except VelocityIntegralProtocolError as err:
+                self.velocity_integral_error = err
+                return
         try:
             getattr(self.velocity_integral, method_name)(params)
         except VelocityIntegralProtocolError as err:
@@ -140,7 +156,11 @@ class AutotuneWorkflow:
         self._handle_velocity_integral("handle_workflow_plan", params)
         if self.velocity_integral_error is None:
             try:
-                self.velocity_sweep.configure_workflow_shape(int(params["shape"]))
+                self.velocity_sweep.configure_workflow_shape(
+                    int(params["shape"]),
+                    int(params["nominal_workflow_ms"]),
+                    int(params["maximum_workflow_ms"]),
+                )
             except VelocitySweepProtocolError as err:
                 self.velocity_sweep_error = err
 

@@ -26,6 +26,12 @@ CONSENSUS_ELIGIBLE = 0
 CONSENSUS_AMBIGUOUS = 1
 CONSENSUS_INSUFFICIENT = 2
 CONSENSUS_INCOMPLETE = 3
+COMBINED_STAGE_B_WORKFLOW_SCHEMAS = {
+    (449_173, 494_128): 8,
+    (451_573, 496_528): 10,
+    (452_073, 496_528): 11,
+}
+COMBINED_STAGE_B_DURATION = (271_423, 298_632)
 
 
 class VelocitySweepProtocolError(Exception):
@@ -65,8 +71,15 @@ class VelocitySweepAssembler:
         self._last_evidence: tuple[str, int] | None = None
         self._trace_only_current_pending = False
         self._workflow_shape: int | None = None
+        self._workflow_duration: tuple[int, int] | None = None
+        self._combined_stage_b_schema: int | None = None
 
-    def configure_workflow_shape(self, shape: int) -> None:
+    def configure_workflow_shape(
+        self,
+        shape: int,
+        nominal_workflow_ms: int | None = None,
+        maximum_workflow_ms: int | None = None,
+    ) -> None:
         """Bind terminal interpretation to the firmware-disclosed workflow."""
         if shape not in (0, 1, 2, 3):
             raise VelocitySweepProtocolError("invalid workflow shape")
@@ -80,7 +93,19 @@ class VelocitySweepAssembler:
             )
         if self._workflow_shape is not None:
             raise VelocitySweepProtocolError("duplicate workflow shape")
+        if (nominal_workflow_ms is None) != (maximum_workflow_ms is None):
+            raise VelocitySweepProtocolError("incomplete workflow duration")
         self._workflow_shape = shape
+        if nominal_workflow_ms is not None:
+            self._workflow_duration = (
+                int(nominal_workflow_ms),
+                int(maximum_workflow_ms),
+            )
+
+    @property
+    def combined_stage_b_schema(self) -> int | None:
+        """Return the combined Stage-B compatibility revision bound by the workflow."""
+        return self._combined_stage_b_schema
 
     @property
     def plan_ready(self) -> bool:
@@ -641,6 +666,21 @@ class VelocitySweepAssembler:
         plan = self._merge(parts)
         if int(plan["maximum_workflow_ms"]) < int(plan["nominal_workflow_ms"]):
             raise VelocitySweepProtocolError("plan maximum is below nominal duration")
+        if self._workflow_shape == 3 and self._workflow_duration is not None:
+            schema_revision = COMBINED_STAGE_B_WORKFLOW_SCHEMAS.get(
+                self._workflow_duration
+            )
+            if schema_revision is None:
+                raise VelocitySweepProtocolError(
+                    "combined workflow duration has no Stage-B binding"
+                )
+            duration = (
+                int(plan["nominal_workflow_ms"]),
+                int(plan["maximum_workflow_ms"]),
+            )
+            if duration != COMBINED_STAGE_B_DURATION:
+                raise VelocitySweepProtocolError("combined Stage-B duration changed")
+            self._combined_stage_b_schema = schema_revision
         self.plan = plan
 
     def _finish_observation(self, parts: list[dict]) -> None:
