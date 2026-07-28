@@ -6,7 +6,8 @@ import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-MATRIX_SCHEMA_REVISION = 1
+MATRIX_SCHEMA_REVISION = 2
+MATRIX_SCHEMA_REVISIONS = (1, MATRIX_SCHEMA_REVISION)
 MATRIX_NOMINAL_WORKFLOW_MS = 60_541
 MATRIX_MAXIMUM_WORKFLOW_MS = 66_456
 MATRIX_AMPLITUDE_COUNT = 5
@@ -43,7 +44,8 @@ CAUSE_NAMES = {
     7: "evidence_integrity",
 }
 
-_PLAN = struct.Struct("<HIBQQHH5hHHBII")
+_PLAN_V1 = struct.Struct("<HIBQQHH5hHHBII")
+_PLAN_V2 = struct.Struct("<HIBQQHH5hHHBIIQQ")
 _TERMINAL = struct.Struct("<HIBBQQ8sHBH")
 
 
@@ -71,11 +73,15 @@ def _fnv1a(data: bytes) -> int:
     return digest
 
 
-def _payload(params: dict, size: int, kind: str) -> bytes:
+def _raw_payload(params: dict, kind: str) -> bytes:
     try:
-        payload = bytes(params["payload"])
+        return bytes(params["payload"])
     except (KeyError, TypeError, ValueError) as err:
         raise AcceptanceMatrixProtocolError("%s payload is missing" % kind) from err
+
+
+def _payload(params: dict, size: int, kind: str) -> bytes:
+    payload = _raw_payload(params, kind)
     if len(payload) != size:
         raise AcceptanceMatrixProtocolError(
             "%s payload has %d bytes, expected %d" % (kind, len(payload), size)
@@ -145,9 +151,21 @@ class AcceptanceMatrixAssembler:
             raise AcceptanceMatrixProtocolError("duplicate matrix plan")
         if self.workflow_plan is None:
             raise AcceptanceMatrixProtocolError("matrix plan arrived before workflow")
-        unpacked = _PLAN.unpack(_payload(params, _PLAN.size, "matrix plan"))
+        payload = _raw_payload(params, "matrix plan")
+        if len(payload) < 2:
+            raise AcceptanceMatrixProtocolError("matrix plan payload is truncated")
+        schema = struct.unpack_from("<H", payload)[0]
+        plan_struct = {1: _PLAN_V1, 2: _PLAN_V2}.get(schema)
+        if plan_struct is None:
+            raise AcceptanceMatrixProtocolError("unsupported matrix schema")
+        if len(payload) != plan_struct.size:
+            raise AcceptanceMatrixProtocolError(
+                "matrix plan payload has %d bytes, expected %d"
+                % (len(payload), plan_struct.size)
+            )
+        unpacked = plan_struct.unpack(payload)
         (
-            schema,
+            _schema,
             run_sequence,
             order,
             plan_digest,
@@ -158,13 +176,14 @@ class AcceptanceMatrixAssembler:
         ) = unpacked
         targets = tuple(tail[:MATRIX_AMPLITUDE_COUNT])
         family_size, observations, amplitude_count, nominal_ms, maximum_ms = tail[
-            MATRIX_AMPLITUDE_COUNT:
+            MATRIX_AMPLITUDE_COUNT : MATRIX_AMPLITUDE_COUNT + 5
         ]
+        recovery_lower_rate_q = (
+            None if schema == 1 else tuple(tail[MATRIX_AMPLITUDE_COUNT + 5 :])
+        )
         expected_order = WORKFLOW_SHAPE_TO_MATRIX_ORDER[
             int(self.workflow_plan["shape"])
         ]
-        if schema != MATRIX_SCHEMA_REVISION:
-            raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if run_sequence != self.workflow_plan["run_sequence"]:
             raise AcceptanceMatrixProtocolError("matrix plan run sequence changed")
         if order != expected_order:
@@ -191,6 +210,13 @@ class AcceptanceMatrixAssembler:
             or maximum_ms != MATRIX_MAXIMUM_WORKFLOW_MS
         ):
             raise AcceptanceMatrixProtocolError("matrix plan geometry changed")
+        if schema == 2 and (
+            recovery_lower_rate_q is None
+            or any(value == 0 for value in recovery_lower_rate_q)
+        ):
+            raise AcceptanceMatrixProtocolError(
+                "matrix recovery authority is incomplete"
+            )
         self.plan = {
             "schema_revision": schema,
             "run_sequence": run_sequence,
@@ -205,6 +231,7 @@ class AcceptanceMatrixAssembler:
             "amplitude_count": amplitude_count,
             "nominal_workflow_ms": nominal_ms,
             "maximum_workflow_ms": maximum_ms,
+            "recovery_lower_rate_q": recovery_lower_rate_q,
         }
 
     def handle_terminal(self, params: dict) -> None:
@@ -223,8 +250,12 @@ class AcceptanceMatrixAssembler:
             emitted_amplitudes,
             qualifier_bits,
         ) = unpacked
-        if schema != MATRIX_SCHEMA_REVISION:
+        if schema not in MATRIX_SCHEMA_REVISIONS:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
+        if self.plan is not None and schema != self.plan["schema_revision"]:
+            raise AcceptanceMatrixProtocolError(
+                "matrix terminal schema disagrees with plan"
+            )
         if outcome not in OUTCOME_NAMES or cause not in CAUSE_NAMES:
             raise AcceptanceMatrixProtocolError("invalid matrix terminal taxonomy")
         expected_causes = {

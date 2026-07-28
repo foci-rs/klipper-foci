@@ -23,6 +23,7 @@ PLAN_DIGEST = 0x0123_4567_89AB_CDEF
 ACCEPTANCE_DIGEST = 0xFEDC_BA98_7654_3210
 RUN_SEQUENCE = 17
 TARGETS = (16, 33, 66, 132, 263)
+RECOVERY_BOUNDS = (13_217_792, 12_827_648)
 
 
 def ready_driver():
@@ -75,10 +76,10 @@ def workflow(assembler, shape=4):
     assembler.handle_workflow_plan(params)
 
 
-def plan_payload(order=1, targets=TARGETS):
-    return struct.pack(
+def plan_payload(order=1, targets=TARGETS, schema=2, recovery_bounds=RECOVERY_BOUNDS):
+    prefix = struct.pack(
         "<HIBQQHH5hHHBII",
-        1,
+        schema,
         RUN_SEQUENCE,
         order,
         PLAN_DIGEST,
@@ -92,6 +93,9 @@ def plan_payload(order=1, targets=TARGETS):
         60_541,
         66_456,
     )
+    if schema == 1:
+        return prefix
+    return prefix + struct.pack("<QQ", *recovery_bounds)
 
 
 def terminal_payload(
@@ -106,10 +110,11 @@ def terminal_payload(
     unattempted=(0, 0),
     emitted_observations=40,
     emitted_amplitudes=5,
+    schema=2,
 ):
     return struct.pack(
         "<HIBBQQ8sHBH",
-        1,
+        schema,
         RUN_SEQUENCE,
         outcome,
         cause,
@@ -171,7 +176,41 @@ def test_exact_plan_and_terminal_close_one_matrix(shape, order):
     assert assembler.done
     assert assembler.outcome == "complete"
     assert assembler.plan["targets_rpm"] == targets
+    assert assembler.plan["recovery_lower_rate_q"] == RECOVERY_BOUNDS
     assert assembler.terminal["eligible_masks"] == (0x1F, 0x1F)
+
+
+def test_historical_schema_one_plan_and_terminal_remain_decodable():
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+
+    assembler.handle_plan({"oid": 1, "payload": plan_payload(schema=1)})
+    assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=1)})
+
+    assert assembler.done
+    assert assembler.plan["schema_revision"] == 1
+    assert assembler.plan["recovery_lower_rate_q"] is None
+
+
+def test_schema_two_requires_exact_nonzero_recovery_bounds_and_matching_terminal():
+    invalid_payloads = [
+        bytearray(plan_payload(schema=1)),
+        plan_payload(recovery_bounds=(0, RECOVERY_BOUNDS[1])),
+        plan_payload(recovery_bounds=(RECOVERY_BOUNDS[0], 0)),
+    ]
+    invalid_payloads[0][0:2] = (2).to_bytes(2, "little")
+
+    for payload in invalid_payloads:
+        assembler = AcceptanceMatrixAssembler()
+        workflow(assembler)
+        with pytest.raises(AcceptanceMatrixProtocolError):
+            assembler.handle_plan({"oid": 1, "payload": bytes(payload)})
+
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+    assembler.handle_plan({"oid": 1, "payload": plan_payload()})
+    with pytest.raises(AcceptanceMatrixProtocolError, match="schema"):
+        assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=1)})
 
 
 @pytest.mark.parametrize(
