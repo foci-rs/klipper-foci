@@ -84,6 +84,25 @@ def feed_combined_stage_b_11_plan(
     assembler.handle_plan_recovery(recovery)
 
 
+def feed_combined_stage_b_12_plan(
+    assembler, rung_count=5, observations_per_direction=2
+):
+    assembler.configure_workflow_shape(3, 470_573, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count, observations_per_direction
+    )
+    timing = {
+        **timing,
+        "nominal_workflow_ms": 282_923,
+        "maximum_workflow_ms": 298_632,
+    }
+    recovery = {**recovery, "nominal_slot_us": 2_316_958}
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+
 def stage_b_region_fragments(*, sequence=1, direction=0, member_mask=0b11100):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     return (
@@ -1319,6 +1338,27 @@ def stage_b_11_recovery_assembler():
     return assembler
 
 
+def stage_b_12_recovery_assembler():
+    assembler = VelocitySweepAssembler()
+    feed_combined_stage_b_12_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_eight_observations(assembler)
+    sequence = 17
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=145, high=155
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    return assembler
+
+
 def test_stage_b_recovery_summary_is_causal_and_compact():
     assembler = stage_b_recovery_assembler()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 18}
@@ -1390,6 +1430,37 @@ def test_stage_b_11_recovery_accepts_hidden_selected_rest_sequence():
     )
 
     assert assembler.recoveries[0]["evidence_sequence"] == 19
+
+
+@pytest.mark.parametrize(
+    ("sequence", "outcome", "error"),
+    (
+        (19, 1, None),
+        (18, 1, "hidden recovery-rest"),
+        (18, 0, None),
+        (20, 1, "sequence gap"),
+    ),
+)
+def test_stage_b_12_recovery_uses_one_causal_hidden_rest_position(
+    sequence, outcome, error
+):
+    assembler = stage_b_12_recovery_assembler()
+    params = {
+        "oid": 0,
+        "run_sequence": 7,
+        "evidence_sequence": sequence,
+        "stage": 0,
+        "rung_index": 0,
+        "p_raw": 16,
+        "binding_source": 5,
+        "outcome": outcome,
+    }
+    if error is not None:
+        with pytest.raises(VelocitySweepProtocolError, match=error):
+            assembler.handle_recovery_summary(params)
+    else:
+        assembler.handle_recovery_summary(params)
+        assert assembler.recoveries[0]["outcome"] == outcome
 
 
 def test_stage_b_11_terminal_accepts_hidden_unconfirmed_rest_sequence():

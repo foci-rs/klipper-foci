@@ -30,8 +30,14 @@ COMBINED_STAGE_B_WORKFLOW_SCHEMAS = {
     (449_173, 494_128): 8,
     (451_573, 496_528): 10,
     (452_073, 496_528): 11,
+    (470_573, 496_528): 12,
 }
-COMBINED_STAGE_B_DURATION = (271_423, 298_632)
+COMBINED_STAGE_B_DURATIONS = {
+    8: (271_423, 298_632),
+    10: (271_423, 298_632),
+    11: (271_423, 298_632),
+    12: (282_923, 298_632),
+}
 
 
 class VelocitySweepProtocolError(Exception):
@@ -73,7 +79,7 @@ class VelocitySweepAssembler:
         self._workflow_shape: int | None = None
         self._workflow_duration: tuple[int, int] | None = None
         self._combined_stage_b_schema: int | None = None
-        self._selected_rest_sequence_skipped = False
+        self._recovery_rest_pending: tuple[int, int, bool] | None = None
 
     def configure_workflow_shape(
         self,
@@ -160,10 +166,12 @@ class VelocitySweepAssembler:
         rung_index = int(params.get("rung_index", -1))
         if rung_index in self.recoveries:
             raise VelocitySweepProtocolError("duplicate rung recovery")
-        self._selected_rest_sequence_skipped = (
-            self._accept_selected_rest_sequence_position(
-                "recovery", int(params["evidence_sequence"])
-            )
+        outcome = int(params.get("outcome", -1))
+        self._accept_recovery_rest_sequence_position(
+            "recovery",
+            int(params["evidence_sequence"]),
+            rung_index=rung_index,
+            outcome=outcome,
         )
         if self._last_evidence != ("rung", rung_index):
             raise VelocitySweepProtocolError(
@@ -173,12 +181,12 @@ class VelocitySweepAssembler:
             raise VelocitySweepProtocolError("recovery summary changed the rung gain")
         if int(params.get("binding_source", -1)) not in range(7):
             raise VelocitySweepProtocolError("invalid recovery binding source")
-        if int(params.get("outcome", -1)) not in range(5):
+        if outcome not in range(5):
             raise VelocitySweepProtocolError("invalid recovery outcome")
         self.recoveries[rung_index] = self._strip_metadata(params)
         self._next_evidence_sequence += 1
         self._last_evidence = ("recovery", rung_index)
-        self._selected_rest_sequence_skipped = False
+        self._recovery_rest_pending = None
 
     def handle_observation_core(self, params: dict) -> None:
         self._accept_group_fragment("observation", 4, 0, params)
@@ -609,9 +617,7 @@ class VelocitySweepAssembler:
             raise VelocitySweepProtocolError("run sequence changed")
         self._resolve_trace_only_current(evidence_sequence)
         if kind == "stage b terminal":
-            self._selected_rest_sequence_skipped = (
-                self._accept_selected_rest_sequence_position(kind, evidence_sequence)
-            )
+            self._accept_recovery_rest_sequence_position(kind, evidence_sequence)
         elif evidence_sequence != self._next_evidence_sequence:
             raise VelocitySweepProtocolError(
                 "evidence sequence gap: got %d, expected %d"
@@ -657,20 +663,43 @@ class VelocitySweepAssembler:
             self._next_evidence_sequence += 1
             self._trace_only_current_pending = False
 
-    def _accept_selected_rest_sequence_position(
-        self, kind: str, evidence_sequence: int
-    ) -> bool:
+    def _accept_recovery_rest_sequence_position(
+        self,
+        kind: str,
+        evidence_sequence: int,
+        *,
+        rung_index: int | None = None,
+        outcome: int | None = None,
+    ) -> None:
         if evidence_sequence == self._next_evidence_sequence:
-            return False
+            if (
+                self._combined_stage_b_schema == 12
+                and kind == "recovery"
+                and outcome == 1
+            ):
+                raise VelocitySweepProtocolError(
+                    "moving recovery omitted hidden recovery-rest evidence"
+                )
+            return
+        pending = self._recovery_rest_pending
         if (
-            self._combined_stage_b_schema == 11
+            self._combined_stage_b_schema in (11, 12)
             and evidence_sequence == self._next_evidence_sequence + 1
-            and self._last_evidence is not None
-            and self._last_evidence[0] == "rung"
+            and pending is not None
+            and pending[0] == 0
             and kind in ("recovery", "stage b terminal")
         ):
+            if (
+                self._combined_stage_b_schema == 12
+                and kind == "recovery"
+                and (rung_index != pending[1] or outcome != 1)
+            ):
+                raise VelocitySweepProtocolError(
+                    "hidden recovery-rest evidence changed its causal rung"
+                )
             self._next_evidence_sequence += 1
-            return True
+            self._recovery_rest_pending = (pending[0], pending[1], True)
+            return
         raise VelocitySweepProtocolError(f"{kind} evidence sequence gap")
 
     @staticmethod
@@ -703,7 +732,7 @@ class VelocitySweepAssembler:
                 int(plan["nominal_workflow_ms"]),
                 int(plan["maximum_workflow_ms"]),
             )
-            if duration != COMBINED_STAGE_B_DURATION:
+            if duration != COMBINED_STAGE_B_DURATIONS[schema_revision]:
                 raise VelocitySweepProtocolError("combined Stage-B duration changed")
             self._combined_stage_b_schema = schema_revision
         self.plan = plan
@@ -748,6 +777,8 @@ class VelocitySweepAssembler:
         rung_index = int(rung["rung_index"])
         self.rungs[rung_index] = rung
         self._last_evidence = ("rung", rung_index)
+        if self._combined_stage_b_schema in (11, 12):
+            self._recovery_rest_pending = (0, rung_index, False)
 
     def _finish_directional_region(self, parts: list[dict]) -> None:
         core, model, rates, boundary = parts
@@ -1013,15 +1044,34 @@ class VelocitySweepAssembler:
 
     def _finish_stage_b_terminal(self, parts: list[dict]) -> None:
         core, identity, forward, reverse = parts
-        if self._selected_rest_sequence_skipped and (
-            int(core["outcome"]) != 2
-            or int(core["cause"]) != 7
-            or not bool(int(core["recovery_unavailable"]))
+        pending = self._recovery_rest_pending
+        hidden_rest = pending is not None and pending[2]
+        selected_rest = (
+            int(core["outcome"]) == 2
+            and int(core["cause"]) == 7
+            and bool(int(core["recovery_unavailable"]))
+        )
+        ordinary_rest = int(core["cause"]) == 53
+        if hidden_rest and not (
+            selected_rest or (self._combined_stage_b_schema == 12 and ordinary_rest)
+        ):
+            if self._combined_stage_b_schema == 11:
+                raise VelocitySweepProtocolError(
+                    "hidden selected-rest sequence requires cause-7 terminal"
+                )
+            raise VelocitySweepProtocolError(
+                "hidden recovery-rest sequence lacks a completed-rest terminal"
+            )
+        if (
+            self._combined_stage_b_schema == 12
+            and pending is not None
+            and not hidden_rest
+            and ordinary_rest
         ):
             raise VelocitySweepProtocolError(
-                "hidden selected-rest sequence requires cause-7 terminal"
+                "completed-rest terminal omitted hidden recovery-rest evidence"
             )
-        self._selected_rest_sequence_skipped = False
+        self._recovery_rest_pending = None
         self._validate_recovery_completeness(core)
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
             raise VelocitySweepProtocolError(

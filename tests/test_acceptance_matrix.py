@@ -76,7 +76,14 @@ def workflow(assembler, shape=4):
     assembler.handle_workflow_plan(params)
 
 
-def plan_payload(order=1, targets=TARGETS, schema=2, recovery_bounds=RECOVERY_BOUNDS):
+def plan_payload(
+    order=1,
+    targets=TARGETS,
+    schema=2,
+    recovery_bounds=RECOVERY_BOUNDS,
+    nominal_ms=60_541,
+    maximum_ms=66_456,
+):
     prefix = struct.pack(
         "<HIBQQHH5hHHBII",
         schema,
@@ -90,8 +97,8 @@ def plan_payload(order=1, targets=TARGETS, schema=2, recovery_bounds=RECOVERY_BO
         20,
         40,
         5,
-        60_541,
-        66_456,
+        nominal_ms,
+        maximum_ms,
     )
     if schema == 1:
         return prefix
@@ -211,6 +218,62 @@ def test_schema_two_requires_exact_nonzero_recovery_bounds_and_matching_terminal
     assembler.handle_plan({"oid": 1, "payload": plan_payload()})
     with pytest.raises(AcceptanceMatrixProtocolError, match="schema"):
         assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=1)})
+
+
+def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
+    assembler = AcceptanceMatrixAssembler()
+    params = {
+        "oid": 1,
+        "run_sequence": RUN_SEQUENCE,
+        "shape": 4,
+        "nominal_workflow_ms": 63_041,
+        "maximum_workflow_ms": 66_456,
+    }
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
+        params
+    )
+    assembler.handle_workflow_plan(params)
+    assembler.handle_plan(
+        {
+            "oid": 1,
+            "payload": plan_payload(schema=3, nominal_ms=63_041),
+        }
+    )
+
+    assert assembler.plan["schema_revision"] == 3
+    assert assembler.plan["nominal_workflow_ms"] == 63_041
+
+
+@pytest.mark.parametrize(
+    ("workflow_nominal", "schema", "plan_nominal"),
+    (
+        (60_541, 3, 63_041),
+        (63_041, 2, 60_541),
+    ),
+)
+def test_matrix_rejects_mixed_schema_duration_pairs(
+    workflow_nominal, schema, plan_nominal
+):
+    assembler = AcceptanceMatrixAssembler()
+    params = {
+        "oid": 1,
+        "run_sequence": RUN_SEQUENCE,
+        "shape": 4,
+        "nominal_workflow_ms": workflow_nominal,
+        "maximum_workflow_ms": 66_456,
+    }
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
+        params
+    )
+    assembler.handle_workflow_plan(params)
+
+    with pytest.raises(AcceptanceMatrixProtocolError, match="geometry"):
+        assembler.handle_plan(
+            {
+                "oid": 1,
+                "payload": plan_payload(schema=schema, nominal_ms=plan_nominal),
+            }
+        )
 
 
 @pytest.mark.parametrize(

@@ -50,6 +50,11 @@ def test_analysis_overrun_has_a_dedicated_operator_label():
     assert format_commission_error_name(52) == "velocity sweep analysis overrun"
 
 
+def test_unconfirmed_velocity_rest_has_a_dedicated_operator_label():
+    assert COMMISSION_ERROR_NAMES[53] == "velocity rest not confirmed"
+    assert format_commission_error_name(53) == "velocity rest not confirmed"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,

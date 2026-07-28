@@ -6,10 +6,15 @@ import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-MATRIX_SCHEMA_REVISION = 2
-MATRIX_SCHEMA_REVISIONS = (1, MATRIX_SCHEMA_REVISION)
-MATRIX_NOMINAL_WORKFLOW_MS = 60_541
+MATRIX_SCHEMA_REVISION = 3
+MATRIX_SCHEMA_REVISIONS = (1, 2, MATRIX_SCHEMA_REVISION)
+MATRIX_NOMINAL_WORKFLOW_MS = 63_041
 MATRIX_MAXIMUM_WORKFLOW_MS = 66_456
+MATRIX_SCHEMA_DURATIONS = {
+    1: (60_541, MATRIX_MAXIMUM_WORKFLOW_MS),
+    2: (60_541, MATRIX_MAXIMUM_WORKFLOW_MS),
+    3: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
+}
 MATRIX_AMPLITUDE_COUNT = 5
 MATRIX_FAMILY_SIZE = 20
 MATRIX_EXPECTED_OBSERVATIONS = 40
@@ -129,10 +134,7 @@ class AcceptanceMatrixAssembler:
             int(params["nominal_workflow_ms"]),
             int(params["maximum_workflow_ms"]),
         )
-        if duration != (
-            MATRIX_NOMINAL_WORKFLOW_MS,
-            MATRIX_MAXIMUM_WORKFLOW_MS,
-        ):
+        if duration not in set(MATRIX_SCHEMA_DURATIONS.values()):
             raise AcceptanceMatrixProtocolError("matrix workflow duration changed")
         expected = self.workflow_digest_halves(params)
         reported = (int(params["digest_low"]), int(params["digest_high"]))
@@ -155,7 +157,7 @@ class AcceptanceMatrixAssembler:
         if len(payload) < 2:
             raise AcceptanceMatrixProtocolError("matrix plan payload is truncated")
         schema = struct.unpack_from("<H", payload)[0]
-        plan_struct = {1: _PLAN_V1, 2: _PLAN_V2}.get(schema)
+        plan_struct = {1: _PLAN_V1, 2: _PLAN_V2, 3: _PLAN_V2}.get(schema)
         if plan_struct is None:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if len(payload) != plan_struct.size:
@@ -202,15 +204,20 @@ class AcceptanceMatrixAssembler:
             or selected_i == 0
         ):
             raise AcceptanceMatrixProtocolError("matrix authority is incomplete")
+        expected_duration = MATRIX_SCHEMA_DURATIONS[schema]
         if (
             family_size != MATRIX_FAMILY_SIZE
             or observations != MATRIX_EXPECTED_OBSERVATIONS
             or amplitude_count != MATRIX_AMPLITUDE_COUNT
-            or nominal_ms != MATRIX_NOMINAL_WORKFLOW_MS
-            or maximum_ms != MATRIX_MAXIMUM_WORKFLOW_MS
+            or (nominal_ms, maximum_ms) != expected_duration
+            or (
+                int(self.workflow_plan["nominal_workflow_ms"]),
+                int(self.workflow_plan["maximum_workflow_ms"]),
+            )
+            != expected_duration
         ):
             raise AcceptanceMatrixProtocolError("matrix plan geometry changed")
-        if schema == 2 and (
+        if schema >= 2 and (
             recovery_lower_rate_q is None
             or any(value == 0 for value in recovery_lower_rate_q)
         ):

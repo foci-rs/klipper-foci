@@ -94,6 +94,7 @@ class VelocityIntegralAssembler:
         self._next_evidence_sequence = 1
         self._trace_only_current_pending = False
         self._combined_stage_b_schema: int | None = None
+        self._recovery_rest_pending: tuple[int, int, bool] | None = None
 
     @staticmethod
     def _new_curve() -> dict:
@@ -127,7 +128,7 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "combined Stage-B schema arrived after Stage-C evidence"
             )
-        if schema_revision not in (8, 10, 11):
+        if schema_revision not in (8, 10, 11, 12):
             raise VelocityIntegralProtocolError("unsupported combined Stage-B schema")
         if (
             self._combined_stage_b_schema is not None
@@ -185,6 +186,7 @@ class VelocityIntegralAssembler:
             (449_173, 494_128),
             (451_573, 496_528),
             (452_073, 496_528),
+            (470_573, 496_528),
         ):
             raise VelocityIntegralProtocolError("combined workflow duration changed")
         expected = self.workflow_digest_halves(params)
@@ -209,6 +211,7 @@ class VelocityIntegralAssembler:
             8,
             9,
             10,
+            11,
         ):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
@@ -281,7 +284,8 @@ class VelocityIntegralAssembler:
         rung_index = int(params.get("rung_index", -1))
         if rung_index in self.recoveries:
             raise VelocityIntegralProtocolError("duplicate rung recovery")
-        self._require_event_identity(params)
+        outcome = int(params.get("outcome", -1))
+        self._require_recovery_identity(params, rung_index, outcome)
         follows_rung = self._last_evidence == ("rung", rung_index)
         observation_count = sum(
             observation_rung == rung_index
@@ -302,11 +306,12 @@ class VelocityIntegralAssembler:
         if int(params.get("binding_source", -1)) not in range(7):
             raise VelocityIntegralProtocolError("invalid recovery binding source")
         maximum_outcome = 5 if int(self.plan["schema_revision"]) >= 6 else 4
-        if int(params.get("outcome", -1)) not in range(maximum_outcome + 1):
+        if outcome not in range(maximum_outcome + 1):
             raise VelocityIntegralProtocolError("invalid recovery outcome")
         self.recoveries[rung_index] = _metadata_free(params)
         self._next_evidence_sequence += 1
         self._last_evidence = ("recovery", rung_index)
+        self._recovery_rest_pending = None
 
     def handle_plan_rung(self, params: dict) -> None:
         if self.plan is not None:
@@ -379,7 +384,7 @@ class VelocityIntegralAssembler:
         self._finish_rung_if_complete()
 
     def handle_run_summary(self, params: dict) -> None:
-        self._require_terminal_identity(params)
+        self._require_terminal_identity(params, allow_recovery_rest=True)
         if self._summary is not None:
             raise VelocityIntegralProtocolError("duplicate run summary")
         self._require_fragment(params, 0)
@@ -554,6 +559,17 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "schema-8 terminal omitted combined workflow marker"
             )
+        pending = self._recovery_rest_pending
+        hidden_rest = pending is not None and pending[2]
+        rest_not_confirmed = int(params.get("cause", -1)) == 53
+        if hidden_rest and not rest_not_confirmed:
+            raise VelocityIntegralProtocolError(
+                "hidden recovery-rest sequence lacks a completed-rest terminal"
+            )
+        if pending is not None and not hidden_rest and rest_not_confirmed:
+            raise VelocityIntegralProtocolError(
+                "completed-rest terminal omitted hidden recovery-rest evidence"
+            )
         self._terminal_parts.append(dict(params))
 
     def handle_terminal_identity(self, params: dict) -> None:
@@ -607,6 +623,7 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("invalid terminal outcome")
         self.validate_complete()
         self.done = True
+        self._recovery_rest_pending = None
 
     def validate_complete(self) -> None:
         """Revalidate every completeness and exact-identity invariant."""
@@ -742,12 +759,15 @@ class VelocityIntegralAssembler:
             )
         if int(plan["schema_revision"]) >= 8:
             schema_nine = int(plan["schema_revision"]) >= 9
+            schema_eleven = int(plan["schema_revision"]) >= 11
             expected = {
                 "i_start": 1,
                 "family_size": 60,
                 "total_rung_count": 15,
                 "expected_observations": 120,
-                "nominal_workflow_ms": 180_151 if schema_nine else 177_751,
+                "nominal_workflow_ms": (
+                    187_651 if schema_eleven else 180_151 if schema_nine else 177_751
+                ),
                 "maximum_workflow_ms": 197_896 if schema_nine else 195_496,
                 "slot_count": 15,
             }
@@ -766,7 +786,13 @@ class VelocityIntegralAssembler:
                 int(self.workflow_plan["nominal_workflow_ms"]),
                 int(self.workflow_plan["maximum_workflow_ms"]),
             )
-            if int(plan["schema_revision"]) == 10:
+            if int(plan["schema_revision"]) == 11:
+                if self._combined_stage_b_schema != 12:
+                    raise VelocityIntegralProtocolError(
+                        "combined workflow duration does not match Stage-C schema"
+                    )
+                expected_workflow = (470_573, 496_528)
+            elif int(plan["schema_revision"]) == 10:
                 expected_workflows = {
                     10: (451_573, 496_528),
                     11: (452_073, 496_528),
@@ -857,6 +883,8 @@ class VelocityIntegralAssembler:
         self.rungs[rung_index] = rung
         self._next_evidence_sequence += 1
         self._last_evidence = ("rung", rung_index)
+        if int(self.plan["schema_revision"]) >= 11:
+            self._recovery_rest_pending = (1, rung_index, False)
         self._rung_parts = []
 
     def _rung_direction_complete(self, direction: int) -> bool:
@@ -968,6 +996,35 @@ class VelocityIntegralAssembler:
                 "integral-response evidence sequence gap"
             )
 
+    def _require_recovery_identity(
+        self, params: dict, rung_index: int, outcome: int
+    ) -> None:
+        self._require_run(params)
+        evidence_sequence = int(params.get("evidence_sequence", -1))
+        self._resolve_trace_only_current(evidence_sequence)
+        pending = self._recovery_rest_pending
+        if evidence_sequence == self._next_evidence_sequence:
+            if (
+                int(self.plan["schema_revision"]) >= 11
+                and pending is not None
+                and outcome in (1, 5)
+            ):
+                raise VelocityIntegralProtocolError(
+                    "moving recovery omitted hidden recovery-rest evidence"
+                )
+            return
+        if (
+            int(self.plan["schema_revision"]) >= 11
+            and evidence_sequence == self._next_evidence_sequence + 1
+            and pending is not None
+            and pending[:2] == (1, rung_index)
+            and outcome in (1, 5)
+        ):
+            self._next_evidence_sequence += 1
+            self._recovery_rest_pending = (1, rung_index, True)
+            return
+        raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
+
     def _resolve_trace_only_current(self, evidence_sequence: int) -> None:
         if not self._trace_only_current_pending:
             return
@@ -977,9 +1034,28 @@ class VelocityIntegralAssembler:
             self._next_evidence_sequence += 1
             self._trace_only_current_pending = False
 
-    def _require_terminal_identity(self, params: dict) -> None:
+    def _require_terminal_identity(
+        self, params: dict, *, allow_recovery_rest: bool = False
+    ) -> None:
         self._require_plan()
-        self._require_event_identity(params)
+        if not allow_recovery_rest:
+            self._require_event_identity(params)
+            return
+        self._require_run(params)
+        evidence_sequence = int(params.get("evidence_sequence", -1))
+        self._resolve_trace_only_current(evidence_sequence)
+        pending = self._recovery_rest_pending
+        if evidence_sequence == self._next_evidence_sequence:
+            return
+        if (
+            int(self.plan["schema_revision"]) >= 11
+            and evidence_sequence == self._next_evidence_sequence + 1
+            and pending is not None
+        ):
+            self._next_evidence_sequence += 1
+            self._recovery_rest_pending = (pending[0], pending[1], True)
+            return
+        raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
 
     def _require_summary(self, params: dict) -> None:
         if self._summary is None:

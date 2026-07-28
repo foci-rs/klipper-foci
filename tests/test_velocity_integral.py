@@ -400,6 +400,24 @@ def test_schema_ten_accepts_the_selected_recovery_combined_duration_envelope():
     assert assembler.maximum_duration_s == 496.528
 
 
+def test_schema_eleven_accepts_recovery_wide_combined_duration_envelope():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(12)
+    feed_plan(
+        assembler,
+        schema_revision=11,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["schema_revision"] == 11
+    assert assembler.maximum_duration_s == 496.528
+
+
 @pytest.mark.parametrize(
     (
         "workflow_nominal",
@@ -415,6 +433,9 @@ def test_schema_ten_accepts_the_selected_recovery_combined_duration_envelope():
         (451_573, 496_528, 11, 10, 180_151, 197_896),
         (452_073, 496_528, 10, 10, 180_151, 197_896),
         (452_073, 496_528, None, 9, 180_151, 197_896),
+        (452_073, 496_528, 12, 11, 187_651, 197_896),
+        (470_573, 496_528, 11, 11, 187_651, 197_896),
+        (470_573, 496_528, 12, 10, 180_151, 197_896),
     ],
 )
 def test_combined_schema_rejects_mixed_duration_envelopes(
@@ -508,6 +529,25 @@ def stage_c_recovery_assembler():
     return assembler
 
 
+def stage_c_11_recovery_assembler():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(12)
+    feed_plan(
+        assembler,
+        schema_revision=11,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+    for slot in range(8):
+        feed_observation(assembler, 2 * slot + 1, 0, slot, 0)
+    feed_rung(assembler, 17, 0, 0, 0)
+    return assembler
+
+
 def test_stage_c_recovery_summary_is_causal_and_compact():
     assembler = stage_c_recovery_assembler()
 
@@ -524,6 +564,84 @@ def test_stage_c_recovery_summary_is_causal_and_compact():
     }
     with pytest.raises(VelocityIntegralProtocolError, match="duplicate"):
         feed_recovery(assembler, 18, 0)
+
+
+@pytest.mark.parametrize(
+    ("sequence", "outcome", "error"),
+    (
+        (19, 1, None),
+        (18, 1, "hidden recovery-rest"),
+        (18, 0, None),
+        (20, 1, "sequence gap"),
+    ),
+)
+def test_stage_c_11_recovery_uses_one_causal_hidden_rest_position(
+    sequence, outcome, error
+):
+    assembler = stage_c_11_recovery_assembler()
+    if error is not None:
+        with pytest.raises(VelocityIntegralProtocolError, match=error):
+            feed_recovery(assembler, sequence, 0, outcome=outcome)
+    else:
+        feed_recovery(assembler, sequence, 0, outcome=outcome)
+        assert assembler.recoveries[0]["outcome"] == outcome
+
+
+def feed_stage_c_terminal_start(assembler, sequence, cause):
+    common = {
+        "oid": 0,
+        "run_sequence": RUN_SEQUENCE,
+        "evidence_sequence": sequence,
+    }
+    assembler.handle_run_summary(
+        {
+            **common,
+            "fragment": 0,
+            "forward_eligible_mask": 0,
+            "reverse_eligible_mask": 0,
+            "opening_available_mask": 0,
+            "bookend_available_mask": 0,
+            "current_terminus_plus_one": 0,
+            "sufficient_direction_mask": 0,
+        }
+    )
+    assembler.handle_terminal_core(
+        {
+            **common,
+            "fragment": 0,
+            "outcome": 3,
+            "cause": cause,
+            "rest_boundary_rung_plus_one": 0,
+            "rest_boundary_slot_plus_one": 0,
+            "expected_observations": 120,
+            "emitted_observations": 8,
+            "expected_rungs": 15,
+            "emitted_rungs": 1,
+            "recovery_flags": 0x80,
+        }
+    )
+
+
+def test_stage_c_11_accepts_hidden_rest_before_completed_rest_terminal():
+    assembler = stage_c_11_recovery_assembler()
+
+    feed_stage_c_terminal_start(assembler, 19, cause=53)
+
+    assert len(assembler._terminal_parts) == 1
+
+
+def test_stage_c_11_rejects_completed_rest_terminal_without_hidden_sequence():
+    assembler = stage_c_11_recovery_assembler()
+
+    with pytest.raises(VelocityIntegralProtocolError, match="omitted hidden"):
+        feed_stage_c_terminal_start(assembler, 18, cause=53)
+
+
+def test_stage_c_11_rejects_hidden_rest_before_unrelated_fault():
+    assembler = stage_c_11_recovery_assembler()
+
+    with pytest.raises(VelocityIntegralProtocolError, match="completed-rest"):
+        feed_stage_c_terminal_start(assembler, 19, cause=11)
 
 
 @pytest.mark.parametrize(
