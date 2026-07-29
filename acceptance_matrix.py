@@ -16,6 +16,7 @@ MATRIX_SCHEMA_DURATIONS = {
     3: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
     4: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
 }
+PLAN_REPLY_FRAGMENTS = 2
 MATRIX_AMPLITUDE_COUNT = 5
 MATRIX_FAMILY_SIZE = 20
 MATRIX_EXPECTED_OBSERVATIONS = 40
@@ -102,6 +103,7 @@ class AcceptanceMatrixAssembler:
     def __init__(self) -> None:
         self.workflow_plan: dict | None = None
         self.plan: dict | None = None
+        self._plan_fragments: list[bytes] = []
         self.terminal: dict | None = None
         self.outcome: str | None = None
         self.done = False
@@ -150,12 +152,36 @@ class AcceptanceMatrixAssembler:
             "digest": reported[0] | (reported[1] << 32),
         }
 
+    def _collect_plan_payload(self, params: dict) -> bytes | None:
+        """Reassemble the fragmented plan reply, or pass a whole payload through.
+
+        The 66-byte plan exceeds the ordinary reply budget, so firmware ships it
+        as ``PLAN_REPLY_FRAGMENTS`` equal fragments. Retained single-message
+        captures predate fragmentation and carry no ``fragment`` field.
+        """
+        payload = _raw_payload(params, "matrix plan")
+        if "fragment" not in params:
+            self._plan_fragments = []
+            return payload
+        fragment = int(params["fragment"])
+        if fragment != len(self._plan_fragments):
+            self._plan_fragments = []
+            raise AcceptanceMatrixProtocolError("reordered matrix plan fragment")
+        self._plan_fragments.append(payload)
+        if len(self._plan_fragments) < PLAN_REPLY_FRAGMENTS:
+            return None
+        assembled = b"".join(self._plan_fragments)
+        self._plan_fragments = []
+        return assembled
+
     def handle_plan(self, params: dict) -> None:
         if self.plan is not None:
             raise AcceptanceMatrixProtocolError("duplicate matrix plan")
         if self.workflow_plan is None:
             raise AcceptanceMatrixProtocolError("matrix plan arrived before workflow")
-        payload = _raw_payload(params, "matrix plan")
+        payload = self._collect_plan_payload(params)
+        if payload is None:
+            return
         if len(payload) < 2:
             raise AcceptanceMatrixProtocolError("matrix plan payload is truncated")
         schema = struct.unpack_from("<H", payload)[0]

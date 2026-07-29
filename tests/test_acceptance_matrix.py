@@ -432,3 +432,51 @@ def test_autotune_relays_one_complete_matrix_without_host_decisions():
 
     assert driver.protocol.commands.tune.last_args[1] == 1
     assert "velocity confidence matrix: complete" in gcmd.last_info
+
+
+PLAN_FRAGMENT_BYTES = 33
+PLAN_FRAGMENTS = 2
+
+
+def feed_plan_fragments(assembler, payload: bytes, *, oid: int = 1) -> None:
+    """Deliver a plan the way firmware sends it: two equal fragments."""
+    for index in range(PLAN_FRAGMENTS):
+        chunk = payload[index * PLAN_FRAGMENT_BYTES : (index + 1) * PLAN_FRAGMENT_BYTES]
+        assembler.handle_plan({"oid": oid, "fragment": index, "payload": chunk})
+
+
+def test_plan_assembles_from_two_firmware_fragments():
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+    payload = plan_payload()
+
+    feed_plan_fragments(assembler, payload)
+
+    assert assembler.plan is not None
+    assert assembler.plan["schema_revision"] == 2
+    assert assembler.plan["targets_rpm"] == TARGETS
+
+
+def test_plan_is_incomplete_until_its_second_fragment():
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+    payload = plan_payload()
+
+    assembler.handle_plan(
+        {"oid": 1, "fragment": 0, "payload": payload[:PLAN_FRAGMENT_BYTES]}
+    )
+
+    assert assembler.plan is None
+
+
+def test_plan_rejects_a_reordered_fragment():
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+    payload = plan_payload()
+
+    with pytest.raises(
+        AcceptanceMatrixProtocolError, match="reordered matrix plan fragment"
+    ):
+        assembler.handle_plan(
+            {"oid": 1, "fragment": 1, "payload": payload[PLAN_FRAGMENT_BYTES:]}
+        )
