@@ -15,6 +15,9 @@ MATRIX_SCHEMA_DURATIONS = {
     2: (60_541, MATRIX_MAXIMUM_WORKFLOW_MS),
     3: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
     4: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
+    # Schema 5 records the slot order inside the existing order byte, so the
+    # schedule and its duration are unchanged.
+    5: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
 }
 PLAN_REPLY_FRAGMENTS = 2
 MATRIX_AMPLITUDE_COUNT = 5
@@ -23,16 +26,26 @@ MATRIX_EXPECTED_OBSERVATIONS = 40
 MATRIX_MASK = (1 << MATRIX_AMPLITUDE_COUNT) - 1
 MATRIX_ORDER_ASCENDING = 1
 MATRIX_ORDER_DESCENDING = 2
+SLOT_ORDER_FORWARD_FIRST = 0
+SLOT_ORDER_REVERSE_FIRST = 1
 
 WORKFLOW_SHAPE_TO_MATRIX_ORDER = {
     4: MATRIX_ORDER_ASCENDING,
     5: MATRIX_ORDER_DESCENDING,
 }
 
+# Firmware also defines mirrored matrix actions (wire 3 and 4). They are
+# deliberately not exposed here. A mirrored matrix run could produce a better
+# shared floor and would then function as a favourable re-roll of a spent
+# retention lifecycle, so leaving it unreachable from the host is a safety
+# boundary rather than a convention. Stage C carries the same slot-order
+# confound and is not lifecycle-limited, so combined_mirrored is the
+# measurement path.
 ACTION_CODES = {
     "combined": 0,
     "matrix_ascending": 1,
     "matrix_descending": 2,
+    "combined_mirrored": 5,
 }
 OUTCOME_NAMES = {
     0: "complete",
@@ -185,7 +198,13 @@ class AcceptanceMatrixAssembler:
         if len(payload) < 2:
             raise AcceptanceMatrixProtocolError("matrix plan payload is truncated")
         schema = struct.unpack_from("<H", payload)[0]
-        plan_struct = {1: _PLAN_V1, 2: _PLAN_V2, 3: _PLAN_V2, 4: _PLAN_V2}.get(schema)
+        plan_struct = {
+            1: _PLAN_V1,
+            2: _PLAN_V2,
+            3: _PLAN_V2,
+            4: _PLAN_V2,
+            5: _PLAN_V2,
+        }.get(schema)
         if plan_struct is None:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if len(payload) != plan_struct.size:
@@ -211,6 +230,16 @@ class AcceptanceMatrixAssembler:
         recovery_lower_rate_q = (
             None if schema == 1 else tuple(tail[MATRIX_AMPLITUDE_COUNT + 5 :])
         )
+        # From schema 5 the amplitude order occupies the low nibble and the slot
+        # order the high one. Forward-first encodes as zero, so earlier schemas
+        # decode unchanged.
+        amplitude_order = order & 0x0F
+        slot_order = order >> 4
+        if amplitude_order not in (MATRIX_ORDER_ASCENDING, MATRIX_ORDER_DESCENDING):
+            raise AcceptanceMatrixProtocolError("invalid matrix amplitude order")
+        if slot_order not in (SLOT_ORDER_FORWARD_FIRST, SLOT_ORDER_REVERSE_FIRST):
+            raise AcceptanceMatrixProtocolError("invalid matrix slot order")
+        order = amplitude_order
         expected_order = WORKFLOW_SHAPE_TO_MATRIX_ORDER[
             int(self.workflow_plan["shape"])
         ]
@@ -256,6 +285,7 @@ class AcceptanceMatrixAssembler:
             "schema_revision": schema,
             "run_sequence": run_sequence,
             "order": order,
+            "slot_order": slot_order,
             "plan_digest": plan_digest,
             "acceptance_plan_digest": acceptance_digest,
             "selected_p": selected_p,

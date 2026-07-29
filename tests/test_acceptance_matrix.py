@@ -5,6 +5,7 @@ import struct
 import pytest
 
 from klipper_foci.acceptance_matrix import (
+    MATRIX_ORDER_ASCENDING,
     AcceptanceMatrixAssembler,
     AcceptanceMatrixProtocolError,
     parse_autotune_action,
@@ -480,3 +481,71 @@ def test_plan_rejects_a_reordered_fragment():
         assembler.handle_plan(
             {"oid": 1, "fragment": 1, "payload": payload[PLAN_FRAGMENT_BYTES:]}
         )
+
+
+def recovery_wide_workflow(assembler, shape=4):
+    """Workflow envelope for schemas that use the recovery-wide duration."""
+    params = {
+        "oid": 1,
+        "run_sequence": RUN_SEQUENCE,
+        "shape": shape,
+        "nominal_workflow_ms": 63_041,
+        "maximum_workflow_ms": 66_456,
+    }
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
+        params
+    )
+    assembler.handle_workflow_plan(params)
+
+
+def test_combined_mirrored_is_requestable_but_a_mirrored_matrix_is_not():
+    """Stage C is where the mirrored slot order is measured.
+
+    Firmware also defines mirrored matrix actions, but the host deliberately does
+    not expose them: a mirrored matrix run could produce a better shared floor and
+    so would function as a favourable re-roll of a spent lifecycle. Leaving them
+    unexposed makes that unreachable rather than merely discouraged.
+    """
+    assert parse_autotune_action("combined_mirrored") == 5
+    assert parse_autotune_action("combined") == 0
+    for unreachable in ("matrix_ascending_mirrored", "matrix_descending_mirrored"):
+        with pytest.raises(AcceptanceMatrixProtocolError):
+            parse_autotune_action(unreachable)
+
+
+def test_schema_five_plan_unpacks_the_packed_schedule_order_byte():
+    """Slot order rides in the high nibble of the amplitude-order byte."""
+    assembler = AcceptanceMatrixAssembler()
+    recovery_wide_workflow(assembler)
+    assembler.handle_plan(
+        {"oid": 1, "payload": plan_payload(0x11, TARGETS, schema=5, nominal_ms=63_041)}
+    )
+
+    assert assembler.plan["order"] == MATRIX_ORDER_ASCENDING
+    assert assembler.plan["slot_order"] == 1
+
+
+def test_schema_five_plan_accepts_the_unmirrored_order():
+    assembler = AcceptanceMatrixAssembler()
+    recovery_wide_workflow(assembler)
+    assembler.handle_plan(
+        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=5, nominal_ms=63_041)}
+    )
+
+    assert assembler.plan["order"] == MATRIX_ORDER_ASCENDING
+    assert assembler.plan["slot_order"] == 0
+
+
+def test_plan_rejects_an_unusable_packed_schedule_order_byte():
+    for order_byte in (0x00, 0x03, 0x21):
+        assembler = AcceptanceMatrixAssembler()
+        recovery_wide_workflow(assembler)
+        with pytest.raises(AcceptanceMatrixProtocolError):
+            assembler.handle_plan(
+                {
+                    "oid": 1,
+                    "payload": plan_payload(
+                        order_byte, TARGETS, schema=5, nominal_ms=63_041
+                    ),
+                }
+            )
