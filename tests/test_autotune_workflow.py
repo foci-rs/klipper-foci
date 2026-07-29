@@ -971,3 +971,29 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
         self.assertEqual(args[8], 1 << 5)
+
+
+class TestVelocitySweepFirmwareSchemaBinding(unittest.TestCase):
+    """The sweep assembler must learn Stage-B revision from the connected MCU."""
+
+    def test_sweep_assembler_binds_stage_b_schema_published_by_firmware(self):
+        from tests.test_velocity_sweep import feed_firmware_combined_stage_b_plan
+
+        d = make_driver()
+        d.mcu.constants["STAGE_B_EVIDENCE_SCHEMA_REVISION"] = 13
+
+        assembler = d.autotune._new_velocity_sweep_assembler()
+        feed_firmware_combined_stage_b_plan(assembler)
+
+        self.assertEqual(assembler.combined_stage_b_schema, 13)
+
+    def test_sweep_assembler_falls_back_when_firmware_omits_revision(self):
+        from tests.test_velocity_sweep import feed_firmware_combined_stage_b_plan
+
+        d = make_driver()
+        d.mcu.constants.pop("STAGE_B_EVIDENCE_SCHEMA_REVISION", None)
+
+        assembler = d.autotune._new_velocity_sweep_assembler()
+        feed_firmware_combined_stage_b_plan(assembler)
+
+        self.assertEqual(assembler.combined_stage_b_schema, 12)

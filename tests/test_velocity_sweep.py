@@ -2006,3 +2006,68 @@ def test_inconclusive_requires_matching_generic_terminal():
     assert assembler.done
     assert assembler.outcome == "inconclusive"
     assert "one direction" in assembler.remediation
+
+
+def feed_firmware_combined_stage_b_plan(
+    assembler, rung_count=5, observations_per_direction=2
+):
+    """Feed a combined plan exactly as firmware sends it.
+
+    Real firmware omits ``schema_revision`` from the Stage-B plan fragments and
+    keeps the schema-12 workflow duration, so the connected firmware revision is
+    the only thing that distinguishes Stage-B 13 from 12.
+    """
+    assembler.configure_workflow_shape(3, 470_573, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count, observations_per_direction
+    )
+    timing = {
+        **timing,
+        "nominal_workflow_ms": 282_923,
+        "maximum_workflow_ms": 298_632,
+    }
+    recovery = {**recovery, "nominal_slot_us": 2_316_958}
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+
+def test_stage_b_13_binds_from_firmware_revision_without_plan_schema_field():
+    assembler = VelocitySweepAssembler()
+    assembler.bind_firmware_stage_b_schema(13)
+    feed_firmware_combined_stage_b_plan(assembler)
+
+    assert assembler.combined_stage_b_schema == 13
+
+
+def test_stage_b_13_ordinary_rest_advances_two_hidden_positions_from_firmware_plan():
+    assembler = VelocitySweepAssembler()
+    assembler.bind_firmware_stage_b_schema(13)
+    feed_firmware_combined_stage_b_plan(
+        assembler, rung_count=1, observations_per_direction=4
+    )
+    feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
+
+    feed_observation(assembler, sequence=4, slot=1, low=-200, high=-100)
+
+    assert len(assembler.observations) == 2
+
+
+def test_stage_b_12_firmware_revision_keeps_one_hidden_position():
+    assembler = VelocitySweepAssembler()
+    assembler.bind_firmware_stage_b_schema(12)
+    assembler.configure_workflow_shape(3, 470_573, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(1, 4)
+    timing = {
+        **timing,
+        "nominal_workflow_ms": 282_923,
+        "maximum_workflow_ms": 298_632,
+    }
+    recovery = {**recovery, "nominal_slot_us": 2_316_958}
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+    assert assembler.combined_stage_b_schema == 12

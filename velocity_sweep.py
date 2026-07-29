@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-STAGE_B_EVIDENCE_SCHEMA_REVISION = 13
 SUPPORTED_STAGE_B_REPRODUCTION_SCHEMAS = (8, 10, 13)
 
 OUTCOME_NAMES = {
@@ -80,7 +79,24 @@ class VelocitySweepAssembler:
         self._workflow_shape: int | None = None
         self._workflow_duration: tuple[int, int] | None = None
         self._combined_stage_b_schema: int | None = None
+        self._firmware_stage_b_schema: int | None = None
         self._recovery_rest_pending: tuple[int, int, bool] | None = None
+
+    def bind_firmware_stage_b_schema(self, schema_revision: int) -> None:
+        """Bind the Stage-B revision published by the connected firmware.
+
+        Stage-B plan records carry no ``schema_revision`` field, and revisions 12
+        and 13 share the combined workflow duration ``470,573 / 496,528`` ms, so
+        the duration alone cannot tell them apart. The firmware-published
+        revision is the authority whenever the plan omits its own field.
+        """
+        if self.plan is not None:
+            raise VelocitySweepProtocolError(
+                "firmware Stage-B revision arrived after the plan"
+            )
+        if schema_revision not in COMBINED_STAGE_B_DURATIONS:
+            raise VelocitySweepProtocolError("unknown firmware Stage-B revision")
+        self._firmware_stage_b_schema = schema_revision
 
     def configure_workflow_shape(
         self,
@@ -756,7 +772,12 @@ class VelocitySweepAssembler:
                 raise VelocitySweepProtocolError(
                     "combined workflow duration has no Stage-B binding"
                 )
-            schema_revision = int(plan.get("schema_revision", duration_schema))
+            inferred_schema = (
+                duration_schema
+                if self._firmware_stage_b_schema is None
+                else self._firmware_stage_b_schema
+            )
+            schema_revision = int(plan.get("schema_revision", inferred_schema))
             if schema_revision == 13:
                 if self._workflow_duration != (470_573, 496_528):
                     raise VelocitySweepProtocolError(
