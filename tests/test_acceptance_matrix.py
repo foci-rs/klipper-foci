@@ -244,6 +244,41 @@ def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
     assert assembler.plan["nominal_workflow_ms"] == 63_041
 
 
+def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
+    assembler = AcceptanceMatrixAssembler()
+    params = {
+        "oid": 1,
+        "run_sequence": RUN_SEQUENCE,
+        "shape": 4,
+        "nominal_workflow_ms": 63_041,
+        "maximum_workflow_ms": 66_456,
+    }
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
+        params
+    )
+    assembler.handle_workflow_plan(params)
+    assembler.handle_plan(
+        {"oid": 1, "payload": plan_payload(schema=4, nominal_ms=63_041)}
+    )
+    assembler.handle_terminal(
+        {
+            "oid": 1,
+            "payload": terminal_payload(
+                schema=4,
+                outcome=1,
+                cause=53,
+                emitted_observations=39,
+                emitted_amplitudes=5,
+            ),
+        }
+    )
+
+    assert assembler.outcome == "inconclusive"
+    assert assembler.terminal["outcome_name"] == "InconclusiveRest"
+    assert assembler.terminal["outcome_namespace"] == "acceptance_matrix"
+    assert assembler.terminal["cause_name"] == "velocity_rest_not_confirmed"
+
+
 @pytest.mark.parametrize(
     ("workflow_nominal", "schema", "plan_nominal"),
     (

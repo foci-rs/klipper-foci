@@ -245,11 +245,15 @@ class AutotuneWorkflow:
 
     def _format_acceptance_matrix_result(self) -> str:
         terminal = self.acceptance_matrix.terminal or {}
-        return "velocity confidence matrix: %s (cause=%s attempted=%s eligible=%s)" % (
-            terminal.get("outcome_name", "unknown"),
-            terminal.get("cause_name", "unknown"),
-            terminal.get("attempted_masks", (0, 0)),
-            terminal.get("eligible_masks", (0, 0)),
+        return (
+            "velocity confidence matrix: %s (namespace=%s cause=%s attempted=%s eligible=%s)"
+            % (
+                terminal.get("outcome_name", "unknown"),
+                terminal.get("outcome_namespace", "acceptance_matrix"),
+                terminal.get("cause_name", "unknown"),
+                terminal.get("attempted_masks", (0, 0)),
+                terminal.get("eligible_masks", (0, 0)),
+            )
         )
 
     def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
@@ -424,6 +428,8 @@ class AutotuneWorkflow:
         sweep = self.velocity_sweep
         plan = sweep.plan or {}
         if sweep.terminal is not None:
+            outcome_name = sweep.terminal.get("outcome_name", sweep.outcome)
+            outcome_namespace = sweep.terminal.get("outcome_namespace", "stage_b")
             valid_regions = [
                 region
                 for region in sweep.directional_regions
@@ -453,9 +459,9 @@ class AutotuneWorkflow:
                     )
             message = (
                 "stage b %s: nominated_P=%d model_mask=0x%02x "
-                "coverage=0x%02x regions=%d/%d fragments=%d/%d cause=%d"
+                "coverage=0x%02x regions=%d/%d fragments=%d/%d namespace=%s cause=%d"
                 % (
-                    sweep.outcome,
+                    outcome_name,
                     sweep.terminal["nominated_p"],
                     sweep.terminal["model_direction_mask"],
                     sweep.terminal["coverage_mask"],
@@ -463,6 +469,7 @@ class AutotuneWorkflow:
                     sweep.terminal["reverse_region_count"],
                     sweep.terminal["forward_fragment_count"],
                     sweep.terminal["reverse_fragment_count"],
+                    outcome_namespace,
                     sweep.terminal["cause"],
                 )
             )
@@ -511,12 +518,13 @@ class AutotuneWorkflow:
         response = self.velocity_integral
         plan = response.plan or {}
         summary = response.summary or {}
+        terminal = response.terminal or {}
         message = (
             "velocity integral response %s: P=%d velocity=%dmrev/s "
             "positive_rungs=%d eligible=0x%08x/0x%08x "
-            "bookend=0x%02x current_terminus=%d cause=%d"
+            "bookend=0x%02x current_terminus=%d namespace=%s cause=%d"
             % (
-                response.outcome,
+                terminal.get("outcome_name", response.outcome),
                 plan.get("final_p", 0),
                 plan.get("planned_velocity_mrev_s", 0),
                 plan.get("positive_rung_count", 0),
@@ -524,6 +532,7 @@ class AutotuneWorkflow:
                 summary.get("reverse_eligible_mask", 0),
                 summary.get("bookend_available_mask", 0),
                 summary.get("current_terminus_plus_one", 0),
+                terminal.get("outcome_namespace", "stage_c"),
                 (response.terminal or {}).get("cause", 0),
             )
         )

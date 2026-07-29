@@ -6,14 +6,15 @@ import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-MATRIX_SCHEMA_REVISION = 3
-MATRIX_SCHEMA_REVISIONS = (1, 2, MATRIX_SCHEMA_REVISION)
+MATRIX_SCHEMA_REVISION = 4
+MATRIX_SCHEMA_REVISIONS = (1, 2, 3, MATRIX_SCHEMA_REVISION)
 MATRIX_NOMINAL_WORKFLOW_MS = 63_041
 MATRIX_MAXIMUM_WORKFLOW_MS = 66_456
 MATRIX_SCHEMA_DURATIONS = {
     1: (60_541, MATRIX_MAXIMUM_WORKFLOW_MS),
     2: (60_541, MATRIX_MAXIMUM_WORKFLOW_MS),
     3: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
+    4: (MATRIX_NOMINAL_WORKFLOW_MS, MATRIX_MAXIMUM_WORKFLOW_MS),
 }
 MATRIX_AMPLITUDE_COUNT = 5
 MATRIX_FAMILY_SIZE = 20
@@ -47,6 +48,7 @@ CAUSE_NAMES = {
     5: "matrix_order_mismatch",
     6: "evidence_capacity",
     7: "evidence_integrity",
+    53: "velocity_rest_not_confirmed",
 }
 
 _PLAN_V1 = struct.Struct("<HIBQQHH5hHHBII")
@@ -157,7 +159,7 @@ class AcceptanceMatrixAssembler:
         if len(payload) < 2:
             raise AcceptanceMatrixProtocolError("matrix plan payload is truncated")
         schema = struct.unpack_from("<H", payload)[0]
-        plan_struct = {1: _PLAN_V1, 2: _PLAN_V2, 3: _PLAN_V2}.get(schema)
+        plan_struct = {1: _PLAN_V1, 2: _PLAN_V2, 3: _PLAN_V2, 4: _PLAN_V2}.get(schema)
         if plan_struct is None:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if len(payload) != plan_struct.size:
@@ -267,7 +269,7 @@ class AcceptanceMatrixAssembler:
             raise AcceptanceMatrixProtocolError("invalid matrix terminal taxonomy")
         expected_causes = {
             0: {0},
-            1: {1, 2},
+            1: {1, 2, 53},
             2: {6, 7},
             3: {3, 4, 5, 7},
         }
@@ -332,11 +334,17 @@ class AcceptanceMatrixAssembler:
                     "complete matrix lacks directional floor"
                 )
 
+        outcome_name = (
+            "InconclusiveRest"
+            if outcome == 1 and cause == 53
+            else OUTCOME_NAMES[outcome]
+        )
         self.terminal = {
             "schema_revision": schema,
             "run_sequence": run_sequence,
             "outcome": outcome,
-            "outcome_name": OUTCOME_NAMES[outcome],
+            "outcome_name": outcome_name,
+            "outcome_namespace": "acceptance_matrix",
             "cause": cause,
             "cause_name": CAUSE_NAMES[cause],
             "plan_digest": plan_digest,

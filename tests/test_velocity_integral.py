@@ -548,6 +548,61 @@ def stage_c_11_recovery_assembler():
     return assembler
 
 
+def stage_c_12_recovery_assembler():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(13)
+    feed_plan(
+        assembler,
+        schema_revision=12,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+    for slot in range(8):
+        feed_observation(assembler, 3 * slot + 1, 0, slot, 0)
+    feed_rung(assembler, 25, 0, 0, 0)
+    return assembler
+
+
+@pytest.mark.parametrize(
+    ("second_sequence", "error"),
+    (
+        (4, None),
+        (2, "sequence gap"),
+        (3, "sequence gap"),
+        (5, "sequence gap"),
+    ),
+)
+def test_stage_c_12_ordinary_rest_uses_exact_two_hidden_positions(
+    second_sequence, error
+):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(13)
+    feed_plan(
+        assembler,
+        schema_revision=12,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+    feed_observation(assembler, 1, 0, 0, 0)
+
+    def action():
+        feed_observation(assembler, second_sequence, 0, 1, 0)
+
+    if error is None:
+        action()
+    else:
+        with pytest.raises(VelocityIntegralProtocolError, match=error):
+            action()
+
+
 def test_stage_c_recovery_summary_is_causal_and_compact():
     assembler = stage_c_recovery_assembler()
 
@@ -587,7 +642,27 @@ def test_stage_c_11_recovery_uses_one_causal_hidden_rest_position(
         assert assembler.recoveries[0]["outcome"] == outcome
 
 
-def feed_stage_c_terminal_start(assembler, sequence, cause):
+@pytest.mark.parametrize(
+    ("sequence", "outcome", "error"),
+    (
+        (28, 1, None),
+        (26, 1, "hidden recovery-rest"),
+        (26, 0, None),
+        (27, 1, "sequence gap"),
+        (29, 1, "sequence gap"),
+    ),
+)
+def test_stage_c_12_recovery_uses_two_causal_hidden_positions(sequence, outcome, error):
+    assembler = stage_c_12_recovery_assembler()
+    if error is not None:
+        with pytest.raises(VelocityIntegralProtocolError, match=error):
+            feed_recovery(assembler, sequence, 0, outcome=outcome)
+    else:
+        feed_recovery(assembler, sequence, 0, outcome=outcome)
+        assert assembler.recoveries[0]["outcome"] == outcome
+
+
+def feed_stage_c_terminal_start(assembler, sequence, cause, outcome=3):
     common = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
@@ -609,7 +684,7 @@ def feed_stage_c_terminal_start(assembler, sequence, cause):
         {
             **common,
             "fragment": 0,
-            "outcome": 3,
+            "outcome": outcome,
             "cause": cause,
             "rest_boundary_rung_plus_one": 0,
             "rest_boundary_slot_plus_one": 0,
@@ -642,6 +717,39 @@ def test_stage_c_11_rejects_hidden_rest_before_unrelated_fault():
 
     with pytest.raises(VelocityIntegralProtocolError, match="completed-rest"):
         feed_stage_c_terminal_start(assembler, 19, cause=11)
+
+
+def test_stage_c_12_rest_terminal_requires_exact_hidden_positions():
+    accepted = VelocityIntegralAssembler()
+    feed_workflow(accepted, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    accepted.bind_combined_stage_b_schema(13)
+    feed_plan(
+        accepted,
+        schema_revision=12,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+    feed_observation(accepted, 1, 0, 0, 0)
+    feed_stage_c_terminal_start(accepted, 4, cause=53, outcome=2)
+
+    omitted = VelocityIntegralAssembler()
+    feed_workflow(omitted, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    omitted.bind_combined_stage_b_schema(13)
+    feed_plan(
+        omitted,
+        schema_revision=12,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+    feed_observation(omitted, 1, 0, 0, 0)
+    with pytest.raises(VelocityIntegralProtocolError, match="omitted hidden"):
+        feed_stage_c_terminal_start(omitted, 2, cause=53, outcome=2)
 
 
 @pytest.mark.parametrize(

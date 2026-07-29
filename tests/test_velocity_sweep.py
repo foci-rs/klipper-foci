@@ -10,19 +10,22 @@ from klipper_foci.velocity_sweep import (
 OPAQUE_DIGEST = 0xDEAD_BEEF_0123_4567
 
 
-def plan_fragments(rung_count=5, observations_per_direction=2):
+def plan_fragments(rung_count=5, observations_per_direction=2, *, schema_revision=None):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 0}
+    limits = {
+        **common,
+        "fragment": 0,
+        "requested_velocity_mrev_s": 5000,
+        "requested_velocity_source": 1,
+        "planned_velocity_mrev_s": 4800,
+        "effective_ceiling_mrev_s": 7500,
+        "clamp_flags": 1,
+        "binding_source": 0,
+    }
+    if schema_revision is not None:
+        limits["schema_revision"] = schema_revision
     return (
-        {
-            **common,
-            "fragment": 0,
-            "requested_velocity_mrev_s": 5000,
-            "requested_velocity_source": 1,
-            "planned_velocity_mrev_s": 4800,
-            "effective_ceiling_mrev_s": 7500,
-            "clamp_flags": 1,
-            "binding_source": 0,
-        },
+        limits,
         {
             **common,
             "fragment": 1,
@@ -90,6 +93,27 @@ def feed_combined_stage_b_12_plan(
     assembler.configure_workflow_shape(3, 470_573, 496_528)
     limits, geometry, timing, recovery = plan_fragments(
         rung_count, observations_per_direction
+    )
+    timing = {
+        **timing,
+        "nominal_workflow_ms": 282_923,
+        "maximum_workflow_ms": 298_632,
+    }
+    recovery = {**recovery, "nominal_slot_us": 2_316_958}
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+
+def feed_combined_stage_b_13_plan(
+    assembler, rung_count=5, observations_per_direction=2
+):
+    assembler.configure_workflow_shape(3, 470_573, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count,
+        observations_per_direction,
+        schema_revision=13,
     )
     timing = {
         **timing,
@@ -1359,6 +1383,67 @@ def stage_b_12_recovery_assembler():
     return assembler
 
 
+def stage_b_13_recovery_assembler():
+    assembler = VelocitySweepAssembler()
+    feed_combined_stage_b_13_plan(assembler, rung_count=1, observations_per_direction=4)
+    for slot in range(8):
+        sign = 1 if slot % 2 == 0 else -1
+        feed_observation(
+            assembler,
+            sequence=3 * slot + 1,
+            slot=slot,
+            low=sign * 100 if sign > 0 else sign * 200,
+            high=sign * 200 if sign > 0 else sign * 100,
+        )
+    sequence = 25
+    assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=0, component_index=0, low=145, high=155
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
+    assembler.handle_rung_consensus_component(
+        consensus_component(
+            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
+        )
+    )
+    assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
+    return assembler
+
+
+@pytest.mark.parametrize(
+    ("second_sequence", "error"),
+    (
+        (4, None),
+        (2, "sequence gap"),
+        (3, "sequence gap"),
+        (5, "sequence gap"),
+    ),
+)
+def test_stage_b_13_ordinary_rest_uses_exact_two_hidden_positions(
+    second_sequence, error
+):
+    assembler = VelocitySweepAssembler()
+    feed_combined_stage_b_13_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
+
+    def action():
+        feed_observation(
+            assembler,
+            sequence=second_sequence,
+            slot=1,
+            low=-200,
+            high=-100,
+        )
+
+    if error is None:
+        action()
+    else:
+        with pytest.raises(VelocitySweepProtocolError, match=error):
+            action()
+
+
 def test_stage_b_recovery_summary_is_causal_and_compact():
     assembler = stage_b_recovery_assembler()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": 18}
@@ -1461,6 +1546,57 @@ def test_stage_b_12_recovery_uses_one_causal_hidden_rest_position(
     else:
         assembler.handle_recovery_summary(params)
         assert assembler.recoveries[0]["outcome"] == outcome
+
+
+@pytest.mark.parametrize(
+    ("sequence", "outcome", "error"),
+    (
+        (28, 1, None),
+        (26, 1, "hidden recovery-rest"),
+        (26, 0, None),
+        (27, 1, "sequence gap"),
+        (29, 1, "sequence gap"),
+    ),
+)
+def test_stage_b_13_recovery_uses_two_causal_hidden_positions(sequence, outcome, error):
+    assembler = stage_b_13_recovery_assembler()
+    params = {
+        "oid": 0,
+        "run_sequence": 7,
+        "evidence_sequence": sequence,
+        "stage": 0,
+        "rung_index": 0,
+        "p_raw": 16,
+        "binding_source": 5,
+        "outcome": outcome,
+    }
+    if error is not None:
+        with pytest.raises(VelocitySweepProtocolError, match=error):
+            assembler.handle_recovery_summary(params)
+    else:
+        assembler.handle_recovery_summary(params)
+        assert assembler.recoveries[0]["outcome"] == outcome
+
+
+def test_stage_b_13_names_rest_terminal_without_changing_wire_outcome():
+    assembler = stage_b_13_recovery_assembler()
+    feed_stage_b_terminal(
+        assembler,
+        sequence=28,
+        outcome=2,
+        cause=53,
+        member_mask=0,
+        nominated_p=0,
+        intervals=((0, 0), (0, 0)),
+        expected_observations=8,
+        emitted_observations=8,
+        expected_rungs=1,
+        emitted_rungs=1,
+    )
+
+    assert assembler.outcome == "inconclusive"
+    assert assembler.terminal["outcome_name"] == "InconclusiveRest"
+    assert assembler.terminal["outcome_namespace"] == "stage_b"
 
 
 def test_stage_b_11_terminal_accepts_hidden_unconfirmed_rest_sequence():
