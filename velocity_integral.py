@@ -16,8 +16,6 @@ OUTCOME_NAMES = {
     5: "failed",
 }
 
-SCHEMA_FIVE_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
-SCHEMA_EIGHT_POSITIVE_I = (*SCHEMA_FIVE_POSITIVE_I, 1310)
 PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
 PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
 # Set when a combined run executed its forward and reverse observation slots in
@@ -815,6 +813,20 @@ class VelocityIntegralAssembler:
                 )
         self.plan = plan
 
+    @property
+    def slots_per_rung(self) -> int:
+        """Slots per rung, as the plan declares it.
+
+        Firmware owns the schedule geometry. Assuming eight here would reject a
+        plan that legitimately declares another count.
+        """
+        plan = self.plan or {}
+        rungs = int(plan.get("total_rung_count", 0))
+        observations = int(plan.get("expected_observations", 0))
+        if rungs <= 0 or observations <= 0 or observations % rungs:
+            return 8
+        return observations // rungs
+
     def _finish_observation(self) -> None:
         core, rate, quality = self._observation_parts
         observation = self._merge((core, rate, quality))
@@ -825,7 +837,9 @@ class VelocityIntegralAssembler:
         # does not, because the paired order is not a parity function.
         slot_order = int((self.plan or {}).get("slot_order", SLOT_ORDER_FORWARD_FIRST))
         expected_direction = slot_direction_index(slot_order, key[1])
-        if key[1] not in range(8) or int(core["direction"]) != expected_direction:
+        if key[1] not in range(self.slots_per_rung) or (
+            int(core["direction"]) != expected_direction
+        ):
             raise VelocityIntegralProtocolError("invalid observation slot or direction")
         if int(rate["deficit_low_q"]) > int(rate["deficit_high_q"]):
             raise VelocityIntegralProtocolError("reversed deficit interval")

@@ -537,7 +537,8 @@ class VelocitySweepAssembler:
                 raise VelocitySweepProtocolError(
                     "consensus collected mask disagrees with stream"
                 )
-        for slot in range(8):
+        # Slots per rung is firmware geometry; the plan declares it.
+        for slot in range(2 * int(self.plan["observations_per_direction"])):
             observation = self.observations.get((rung_index, slot))
             if observation is not None and int(observation["velocity_p"]) != int(
                 core["velocity_p"]

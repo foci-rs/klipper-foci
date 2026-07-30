@@ -1613,3 +1613,26 @@ def test_slot_direction_index_covers_all_three_orders():
         assert slot_direction_index(0, slot) == slot & 1
         assert slot_direction_index(1, slot) == (slot & 1) ^ 1
     assert [slot_direction_index(2, s) for s in range(8)] == [0, 1, 1, 0, 0, 1, 1, 0]
+
+
+def test_slot_range_follows_the_plan_not_a_hardcoded_eight():
+    """Slots per rung is firmware geometry, not a host constant.
+
+    A schedule with a different slot count would otherwise be rejected here even
+    though the plan declares it, which is the same shape of defect as the
+    hardcoded workflow durations.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+    )
+    rungs = int(assembler.plan["total_rung_count"])
+    observations = int(assembler.plan["expected_observations"])
+
+    assert observations % rungs == 0
+    assert assembler.slots_per_rung == observations // rungs
