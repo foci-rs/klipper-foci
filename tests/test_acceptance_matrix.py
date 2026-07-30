@@ -281,49 +281,16 @@ def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
 
 
 @pytest.mark.parametrize(
-    ("workflow_nominal", "schema", "plan_nominal"),
-    (
-        (60_541, 3, 63_041),
-        (63_041, 2, 60_541),
-    ),
-)
-def test_matrix_rejects_mixed_schema_duration_pairs(
-    workflow_nominal, schema, plan_nominal
-):
-    assembler = AcceptanceMatrixAssembler()
-    params = {
-        "oid": 1,
-        "run_sequence": RUN_SEQUENCE,
-        "shape": 4,
-        "nominal_workflow_ms": workflow_nominal,
-        "maximum_workflow_ms": 66_456,
-    }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
-    assembler.handle_workflow_plan(params)
-
-    with pytest.raises(AcceptanceMatrixProtocolError, match="geometry"):
-        assembler.handle_plan(
-            {
-                "oid": 1,
-                "payload": plan_payload(schema=schema, nominal_ms=plan_nominal),
-            }
-        )
-
-
-@pytest.mark.parametrize(
     ("shape", "nominal", "maximum"),
     (
         (3, 60_541, 66_456),
-        (4, 60_540, 66_456),
-        (4, 60_541, 66_455),
-        (5, 60_541, 496_528),
+        (0, 60_541, 66_456),
+        (6, 60_541, 66_456),
     ),
 )
-def test_matrix_workflow_rejects_wrong_shapes_and_mixed_durations(
-    shape, nominal, maximum
-):
+def test_matrix_workflow_rejects_non_matrix_shapes(shape, nominal, maximum):
+    """Shape is the compatibility gate. Durations are firmware-authored and
+    consumed, so a schedule change must not require a host edit."""
     assembler = AcceptanceMatrixAssembler()
     params = {
         "oid": 1,
@@ -340,12 +307,13 @@ def test_matrix_workflow_rejects_wrong_shapes_and_mixed_durations(
 
 
 def test_plan_rejects_wrong_order_target_geometry_and_counts():
+    # family_size and the workflow durations are firmware-authored and no longer
+    # re-derived here; what remains is agreement between the plan and the
+    # workflow the host already bound.
     cases = (
         plan_payload(order=2),
         plan_payload(targets=(16, 33, 66, 132, 132)),
-        bytearray(plan_payload()),
     )
-    cases[2][40:42] = (19).to_bytes(2, "little")
     for payload in cases:
         assembler = AcceptanceMatrixAssembler()
         workflow(assembler)

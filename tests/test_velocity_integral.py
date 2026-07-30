@@ -420,55 +420,61 @@ def test_schema_eleven_accepts_recovery_wide_combined_duration_envelope():
 
 
 @pytest.mark.parametrize(
-    (
-        "workflow_nominal",
-        "workflow_maximum",
-        "stage_b_schema",
-        "schema_revision",
-        "stage_nominal",
-        "stage_maximum",
-    ),
+    ("stage_b_schema", "schema_revision"),
     [
-        (449_173, 494_128, None, 9, 180_151, 197_896),
-        (451_573, 496_528, None, 8, 177_751, 195_496),
-        (451_573, 496_528, 11, 10, 180_151, 197_896),
-        (452_073, 496_528, 10, 10, 180_151, 197_896),
-        (452_073, 496_528, None, 9, 180_151, 197_896),
-        (452_073, 496_528, 12, 11, 187_651, 197_896),
-        (470_573, 496_528, 11, 11, 187_651, 197_896),
-        (470_573, 496_528, 12, 10, 180_151, 197_896),
+        (11, 11),  # Stage-C 11 pairs with Stage-B 12
+        (12, 12),  # Stage-C 12 pairs with Stage-B 13
+        (11, 12),
     ],
 )
-def test_combined_schema_rejects_mixed_duration_envelopes(
-    workflow_nominal,
-    workflow_maximum,
-    stage_b_schema,
-    schema_revision,
-    stage_nominal,
-    stage_maximum,
+def test_combined_schema_rejects_mismatched_stage_b_pairing(
+    stage_b_schema, schema_revision
 ):
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(
-        assembler,
-        shape=3,
-        nominal_ms=workflow_nominal,
-        maximum_ms=workflow_maximum,
-    )
-    if stage_b_schema is not None:
-        assembler.bind_combined_stage_b_schema(stage_b_schema)
+    """Stage-B and Stage-C revisions must be a matching pair.
 
-    with pytest.raises(
-        VelocityIntegralProtocolError, match="does not match Stage-C schema"
-    ):
+    This is a compatibility check on the protocol, not a re-derivation of
+    firmware's workflow arithmetic. Durations are firmware-authored and the host
+    consumes them; it no longer asserts them.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(stage_b_schema)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="matching pair"):
         feed_plan(
             assembler,
             schema_revision=schema_revision,
             positive_i=COMBINED_Q4_12_POSITIVE_I,
-            nominal_workflow_ms=stage_nominal,
-            maximum_workflow_ms=stage_maximum,
+            nominal_workflow_ms=187_651,
+            maximum_workflow_ms=197_896,
             final_p=1024,
             joint_membership=0,
         )
+
+
+def test_firmware_authored_durations_are_consumed_not_asserted():
+    """A schedule change must not require a host edit.
+
+    Durations are derived by firmware from stroke, settle, and rung counts. The
+    host previously memorised the answers per schema, so any timing change broke
+    it, and duration was even used to infer the Stage-B revision, which aborted a
+    run in session 3 when two schemas deliberately shared a duration.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(13)
+    feed_plan(
+        assembler,
+        schema_revision=12,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=999_999,
+        maximum_workflow_ms=1_000_000,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["nominal_workflow_ms"] == 999_999
+    assert assembler.plan["maximum_workflow_ms"] == 1_000_000
 
 
 def feed_rung(assembler, sequence, rung_index, i_raw, kind):

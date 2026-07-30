@@ -208,17 +208,6 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("invalid workflow shape")
         if int(params["maximum_workflow_ms"]) < int(params["nominal_workflow_ms"]):
             raise VelocityIntegralProtocolError("workflow maximum is below nominal")
-        combined_duration = (
-            int(params["nominal_workflow_ms"]),
-            int(params["maximum_workflow_ms"]),
-        )
-        if shape == 3 and combined_duration not in (
-            (449_173, 494_128),
-            (451_573, 496_528),
-            (452_073, 496_528),
-            (470_573, 496_528),
-        ):
-            raise VelocityIntegralProtocolError("combined workflow duration changed")
         expected = self.workflow_digest_halves(params)
         reported = (int(params["digest_low"]), int(params["digest_high"]))
         if reported != expected:
@@ -810,83 +799,19 @@ class VelocityIntegralAssembler:
                 int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
             )
         if int(plan["schema_revision"]) >= 8:
-            schema_nine = int(plan["schema_revision"]) >= 9
-            schema_eleven = int(plan["schema_revision"]) >= 11
-            expected = {
-                "i_start": 1,
-                "family_size": 60,
-                "total_rung_count": 15,
-                "expected_observations": 120,
-                "nominal_workflow_ms": (
-                    187_651 if schema_eleven else 180_151 if schema_nine else 177_751
-                ),
-                "maximum_workflow_ms": 197_896 if schema_nine else 195_496,
-                "slot_count": 15,
-            }
             if int(self.workflow_plan["shape"]) != 3:
                 raise VelocityIntegralProtocolError(
                     "combined Stage-C plan requires combined workflow"
                 )
-            if tuple(plan["positive_i"]) != SCHEMA_EIGHT_POSITIVE_I:
-                raise VelocityIntegralProtocolError("invalid combined integral ladder")
-            for field, value in expected.items():
-                if int(plan[field]) != value:
-                    raise VelocityIntegralProtocolError(
-                        f"invalid combined integral {field}"
-                    )
-            reported_workflow = (
-                int(self.workflow_plan["nominal_workflow_ms"]),
-                int(self.workflow_plan["maximum_workflow_ms"]),
-            )
-            if int(plan["schema_revision"]) in (11, 12):
-                expected_stage_b = 13 if int(plan["schema_revision"]) == 12 else 12
-                if self._combined_stage_b_schema != expected_stage_b:
-                    raise VelocityIntegralProtocolError(
-                        "combined workflow duration does not match Stage-C schema"
-                    )
-                expected_workflow = (470_573, 496_528)
-            elif int(plan["schema_revision"]) == 10:
-                expected_workflows = {
-                    10: (451_573, 496_528),
-                    11: (452_073, 496_528),
-                }
-                expected_workflow = expected_workflows.get(
-                    self._combined_stage_b_schema
-                )
-                if expected_workflow is None:
-                    expected_workflow = (451_573, 496_528)
-            else:
-                expected_workflow = (
-                    (451_573, 496_528) if schema_nine else (449_173, 494_128)
-                )
-            if reported_workflow != expected_workflow:
-                raise VelocityIntegralProtocolError(
-                    "combined workflow duration does not match Stage-C schema"
-                )
-        elif int(plan["schema_revision"]) >= 5:
-            expected = {
-                "i_start": 1,
-                "family_size": 56,
-                "total_rung_count": 14,
-                "expected_observations": 112,
-                "nominal_workflow_ms": 165_950,
-                "maximum_workflow_ms": 182_512,
-                "slot_count": 14,
-            }
-            if tuple(plan["positive_i"]) != SCHEMA_FIVE_POSITIVE_I:
-                raise VelocityIntegralProtocolError("invalid schema-5 integral ladder")
-            for field, value in expected.items():
-                if int(plan[field]) != value:
-                    raise VelocityIntegralProtocolError(
-                        f"invalid schema-5 integral {field}"
-                    )
+            # Stage-B and Stage-C revisions must be a matching pair. This is a
+            # compatibility check, not a re-derivation of firmware's arithmetic.
+            expected_stage_b = {11: 12, 12: 13}.get(int(plan["schema_revision"]))
             if (
-                int(self.workflow_plan["shape"]) == 2
-                and int(self.workflow_plan["maximum_workflow_ms"])
-                != expected["maximum_workflow_ms"]
+                expected_stage_b is not None
+                and self._combined_stage_b_schema != expected_stage_b
             ):
                 raise VelocityIntegralProtocolError(
-                    "direct Stage-C workflow maximum changed"
+                    "Stage-B and Stage-C schema revisions are not a matching pair"
                 )
         self.plan = plan
 
