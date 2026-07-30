@@ -1481,3 +1481,42 @@ def test_no_transition_rejects_any_other_terminal_only_shape(
             cause=cause,
             flags=flags,
         )
+
+
+def test_mirrored_slot_order_flag_is_accepted_at_every_schema():
+    """Firmware records the mirrored slot order without moving the schema.
+
+    Bit 2 of the plan recovery flags marks a combined run whose forward and
+    reverse observation slots executed in mirrored order. Unlike the older flag
+    bits it is not schema-gated, because firmware sets it without a schema bump.
+    """
+    # Schema 6 predates the probe-constrained bit entirely, so accepting bit 2
+    # there proves it is not riding on a later gate.
+    for schema_revision in (6, 7):
+        assembler = VelocityIntegralAssembler()
+        feed_workflow(assembler, maximum_ms=182_512)
+        feed_plan(
+            assembler,
+            schema_revision=schema_revision,
+            positive_i=NATIVE_Q4_12_POSITIVE_I,
+            nominal_workflow_ms=165_950,
+            maximum_workflow_ms=182_512,
+            recovery_flags=0b100,
+        )
+        assert assembler.plan["mirrored_slot_order"] is True
+        assert assembler.plan["recovery_quantization_exposed"] is False
+
+
+def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="plan recovery flags"):
+        feed_plan(
+            assembler,
+            schema_revision=6,
+            positive_i=NATIVE_Q4_12_POSITIVE_I,
+            nominal_workflow_ms=165_950,
+            maximum_workflow_ms=182_512,
+            recovery_flags=0b1000,
+        )

@@ -20,6 +20,10 @@ SCHEMA_FIVE_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
 SCHEMA_EIGHT_POSITIVE_I = (*SCHEMA_FIVE_POSITIVE_I, 1310)
 PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
 PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
+# Set when a combined run executed its forward and reverse observation slots in
+# mirrored order. Firmware records this without moving the Stage-C schema, so
+# unlike the older bits it is accepted at every schema revision.
+PLAN_MIRRORED_SLOT_ORDER = 1 << 2
 TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
@@ -268,7 +272,7 @@ class VelocityIntegralAssembler:
         schema_revision = int(self._plan_parts[0]["schema_revision"])
         if schema_revision >= 6:
             flags = int(params.get("flags", -1))
-            known_flags = PLAN_RECOVERY_QUANTIZATION_EXPOSED
+            known_flags = PLAN_RECOVERY_QUANTIZATION_EXPOSED | PLAN_MIRRORED_SLOT_ORDER
             if schema_revision >= 7:
                 known_flags |= PLAN_PROBE_CONSTRAINED_TEST_POINT
             if flags < 0 or flags & ~known_flags:
@@ -771,6 +775,9 @@ class VelocityIntegralAssembler:
         if int(plan["schema_revision"]) >= 6:
             plan["recovery_quantization_exposed"] = bool(
                 int(plan["flags"]) & PLAN_RECOVERY_QUANTIZATION_EXPOSED
+            )
+            plan["mirrored_slot_order"] = bool(
+                int(plan["flags"]) & PLAN_MIRRORED_SLOT_ORDER
             )
         if int(plan["schema_revision"]) >= 7:
             plan["probe_constrained_test_point"] = bool(
