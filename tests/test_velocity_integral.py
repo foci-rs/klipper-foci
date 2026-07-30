@@ -3,6 +3,7 @@
 import pytest
 
 from klipper_foci.velocity_integral import (
+    slot_direction_index,
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
 )
@@ -133,8 +134,8 @@ def feed_plan(
         )
 
 
-def feed_observation(assembler, sequence, rung_index, slot, i_raw, mirrored=False):
-    direction = (slot & 1) ^ int(mirrored)
+def feed_observation(assembler, sequence, rung_index, slot, i_raw, slot_order=0):
+    direction = slot_direction_index(slot_order, slot)
     common = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
@@ -1508,6 +1509,7 @@ def test_mirrored_slot_order_flag_is_accepted_at_every_schema():
 
 
 def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
+    # Bits 2 and 3 are the slot-order field; bit 4 is the first still-reserved bit.
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, maximum_ms=182_512)
 
@@ -1518,7 +1520,7 @@ def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
             positive_i=NATIVE_Q4_12_POSITIVE_I,
             nominal_workflow_ms=165_950,
             maximum_workflow_ms=182_512,
-            recovery_flags=0b1000,
+            recovery_flags=0b10000,
         )
 
 
@@ -1542,12 +1544,12 @@ def test_mirrored_run_accepts_the_inverted_slot_direction():
     assert assembler.plan["mirrored_slot_order"] is True
 
     # Slot 0 travels reverse under mirroring, which is the inverse of parity.
-    feed_observation(assembler, 1, 0, 0, 1, mirrored=True)
+    feed_observation(assembler, 1, 0, 0, 1, slot_order=1)
     assert (0, 0) in assembler.observations
 
     # The unmirrored pairing must now be the one refused.
     with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
-        feed_observation(assembler, 3, 0, 1, 1, mirrored=False)
+        feed_observation(assembler, 3, 0, 1, 1, slot_order=0)
 
 
 def test_unmirrored_run_still_requires_parity_matched_directions():
@@ -1566,4 +1568,42 @@ def test_unmirrored_run_still_requires_parity_matched_directions():
     feed_observation(assembler, 1, 0, 0, 1)
     assert (0, 0) in assembler.observations
     with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
-        feed_observation(assembler, 3, 0, 1, 1, mirrored=True)
+        feed_observation(assembler, 3, 0, 1, 1, slot_order=1)
+
+
+def test_paired_slot_order_accepts_its_f_r_r_f_directions():
+    """The paired order runs F,R,R,F,F,R,R,F, so direction is not slot parity.
+
+    A boolean mirrored flag cannot express it: slots 0 and 3 both travel forward
+    while slots 1 and 2 both travel reverse, which neither parity nor its inverse
+    produces.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0b1000,
+    )
+    assert assembler.plan["slot_order"] == 2
+
+    expected = [0, 1, 1, 0, 0, 1, 1, 0]
+    for slot, direction in enumerate(expected):
+        assert slot_direction_index(2, slot) == direction, f"slot {slot}"
+
+    # Slot 0 forward and slot 1 reverse match parity here, but slot 2 must be
+    # reverse and slot 3 forward, which is where parity would disagree.
+    feed_observation(assembler, 1, 0, 0, 1, slot_order=2)
+    assert (0, 0) in assembler.observations
+    with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
+        feed_observation(assembler, 3, 0, 2, 1, slot_order=0)
+
+
+def test_slot_direction_index_covers_all_three_orders():
+    for slot in range(8):
+        assert slot_direction_index(0, slot) == slot & 1
+        assert slot_direction_index(1, slot) == (slot & 1) ^ 1
+    assert [slot_direction_index(2, s) for s in range(8)] == [0, 1, 1, 0, 0, 1, 1, 0]

@@ -507,6 +507,7 @@ def test_combined_mirrored_is_requestable_but_a_mirrored_matrix_is_not():
     unexposed makes that unreachable rather than merely discouraged.
     """
     assert parse_autotune_action("combined_mirrored") == 5
+    assert parse_autotune_action("combined_paired") == 6
     assert parse_autotune_action("combined") == 0
     for unreachable in ("matrix_ascending_mirrored", "matrix_descending_mirrored"):
         with pytest.raises(AcceptanceMatrixProtocolError):

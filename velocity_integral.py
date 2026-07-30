@@ -23,7 +23,32 @@ PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
 # Set when a combined run executed its forward and reverse observation slots in
 # mirrored order. Firmware records this without moving the Stage-C schema, so
 # unlike the older bits it is accepted at every schema revision.
-PLAN_MIRRORED_SLOT_ORDER = 1 << 2
+PLAN_SLOT_ORDER_SHIFT = 2
+PLAN_SLOT_ORDER_MASK = 0b11 << PLAN_SLOT_ORDER_SHIFT
+
+SLOT_ORDER_FORWARD_FIRST = 0
+SLOT_ORDER_REVERSE_FIRST = 1
+SLOT_ORDER_PAIRED_OUT_AND_BACK = 2
+
+
+def slot_direction_index(slot_order: int, slot: int) -> int:
+    """Return 0 for forward and 1 for reverse travel in the declared order.
+
+    The three orders differ only in a parity twist applied to the same-direction
+    observation ordinal: none for forward-first, a fixed inversion for
+    reverse-first, and an alternating one for the paired F,R,R,F order.
+    """
+    if slot_order == SLOT_ORDER_FORWARD_FIRST:
+        twist = 0
+    elif slot_order == SLOT_ORDER_REVERSE_FIRST:
+        twist = 1
+    elif slot_order == SLOT_ORDER_PAIRED_OUT_AND_BACK:
+        twist = (slot >> 1) & 1
+    else:
+        raise VelocityIntegralProtocolError("unknown observation slot order")
+    return (slot & 1) ^ twist
+
+
 TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
@@ -272,7 +297,7 @@ class VelocityIntegralAssembler:
         schema_revision = int(self._plan_parts[0]["schema_revision"])
         if schema_revision >= 6:
             flags = int(params.get("flags", -1))
-            known_flags = PLAN_RECOVERY_QUANTIZATION_EXPOSED | PLAN_MIRRORED_SLOT_ORDER
+            known_flags = PLAN_RECOVERY_QUANTIZATION_EXPOSED | PLAN_SLOT_ORDER_MASK
             if schema_revision >= 7:
                 known_flags |= PLAN_PROBE_CONSTRAINED_TEST_POINT
             if flags < 0 or flags & ~known_flags:
@@ -776,9 +801,10 @@ class VelocityIntegralAssembler:
             plan["recovery_quantization_exposed"] = bool(
                 int(plan["flags"]) & PLAN_RECOVERY_QUANTIZATION_EXPOSED
             )
-            plan["mirrored_slot_order"] = bool(
-                int(plan["flags"]) & PLAN_MIRRORED_SLOT_ORDER
-            )
+            plan["slot_order"] = (
+                int(plan["flags"]) & PLAN_SLOT_ORDER_MASK
+            ) >> PLAN_SLOT_ORDER_SHIFT
+            plan["mirrored_slot_order"] = plan["slot_order"] == SLOT_ORDER_REVERSE_FIRST
         if int(plan["schema_revision"]) >= 7:
             plan["probe_constrained_test_point"] = bool(
                 int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
@@ -870,10 +896,10 @@ class VelocityIntegralAssembler:
         key = (int(core["rung_index"]), int(core["slot"]))
         if key in self.observations:
             raise VelocityIntegralProtocolError("duplicate observation")
-        # Slot parity gives the travel direction, inverted when the run executed
-        # its forward and reverse slots in mirrored order.
-        mirrored = bool((self.plan or {}).get("mirrored_slot_order", False))
-        expected_direction = (key[1] & 1) ^ int(mirrored)
+        # The declared slot order gives the travel direction; slot parity alone
+        # does not, because the paired order is not a parity function.
+        slot_order = int((self.plan or {}).get("slot_order", SLOT_ORDER_FORWARD_FIRST))
+        expected_direction = slot_direction_index(slot_order, key[1])
         if key[1] not in range(8) or int(core["direction"]) != expected_direction:
             raise VelocityIntegralProtocolError("invalid observation slot or direction")
         if int(rate["deficit_low_q"]) > int(rate["deficit_high_q"]):
