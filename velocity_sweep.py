@@ -25,19 +25,17 @@ CONSENSUS_ELIGIBLE = 0
 CONSENSUS_AMBIGUOUS = 1
 CONSENSUS_INSUFFICIENT = 2
 CONSENSUS_INCOMPLETE = 3
+# Fallback only, for firmware that publishes no revision and sends a plan with no
+# schema field. Not a gate: a duration outside this table is not an error.
 COMBINED_STAGE_B_WORKFLOW_SCHEMAS = {
     (449_173, 494_128): 8,
     (451_573, 496_528): 10,
     (452_073, 496_528): 11,
     (470_573, 496_528): 12,
 }
-COMBINED_STAGE_B_DURATIONS = {
-    8: (271_423, 298_632),
-    10: (271_423, 298_632),
-    11: (271_423, 298_632),
-    12: (282_923, 298_632),
-    13: (282_923, 298_632),
-}
+# Stage-B revisions this host understands. Schema gating is the compatibility
+# boundary; workflow durations are firmware-authored and no longer asserted.
+COMBINED_STAGE_B_REVISIONS = frozenset({8, 10, 11, 12, 13})
 
 
 class VelocitySweepProtocolError(Exception):
@@ -94,7 +92,7 @@ class VelocitySweepAssembler:
             raise VelocitySweepProtocolError(
                 "firmware Stage-B revision arrived after the plan"
             )
-        if schema_revision not in COMBINED_STAGE_B_DURATIONS:
+        if schema_revision not in COMBINED_STAGE_B_REVISIONS:
             raise VelocitySweepProtocolError("unknown firmware Stage-B revision")
         self._firmware_stage_b_schema = schema_revision
 
@@ -764,36 +762,25 @@ class VelocitySweepAssembler:
         plan = self._merge(parts)
         if int(plan["maximum_workflow_ms"]) < int(plan["nominal_workflow_ms"]):
             raise VelocitySweepProtocolError("plan maximum is below nominal duration")
-        if self._workflow_shape == 3 and self._workflow_duration is not None:
-            duration_schema = COMBINED_STAGE_B_WORKFLOW_SCHEMAS.get(
-                self._workflow_duration
-            )
-            if duration_schema is None:
-                raise VelocitySweepProtocolError(
-                    "combined workflow duration has no Stage-B binding"
+        if self._workflow_shape == 3:
+            # Precedence: the plan's own field, then the revision the MCU
+            # publishes, then duration inference. Inference is a fallback for
+            # firmware that publishes neither, not a gate: the duration tables
+            # only ever listed the values produced at previously-run TRAVEL
+            # settings, so gating on them rejected valid acquisitions elsewhere.
+            schema_revision = plan.get("schema_revision")
+            if schema_revision is not None:
+                schema_revision = int(schema_revision)
+            elif self._firmware_stage_b_schema is not None:
+                schema_revision = self._firmware_stage_b_schema
+            elif self._workflow_duration is not None:
+                schema_revision = COMBINED_STAGE_B_WORKFLOW_SCHEMAS.get(
+                    self._workflow_duration
                 )
-            inferred_schema = (
-                duration_schema
-                if self._firmware_stage_b_schema is None
-                else self._firmware_stage_b_schema
-            )
-            schema_revision = int(plan.get("schema_revision", inferred_schema))
-            if schema_revision == 13:
-                if self._workflow_duration != (470_573, 496_528):
-                    raise VelocitySweepProtocolError(
-                        "combined Stage-B schema changed its workflow duration"
-                    )
-            elif schema_revision != duration_schema:
-                raise VelocitySweepProtocolError(
-                    "combined workflow duration disagrees with Stage-B schema"
-                )
-            duration = (
-                int(plan["nominal_workflow_ms"]),
-                int(plan["maximum_workflow_ms"]),
-            )
-            if duration != COMBINED_STAGE_B_DURATIONS[schema_revision]:
-                raise VelocitySweepProtocolError("combined Stage-B duration changed")
-            self._combined_stage_b_schema = schema_revision
+            # Nothing to bind from is not an error here; a consumer that needs
+            # the revision reports its own absence more usefully than this can.
+            if schema_revision is not None:
+                self._combined_stage_b_schema = schema_revision
         self.plan = plan
 
     def _finish_observation(self, parts: list[dict]) -> None:

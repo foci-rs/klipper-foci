@@ -2071,3 +2071,35 @@ def test_stage_b_12_firmware_revision_keeps_one_hidden_position():
     assembler.handle_plan_recovery(recovery)
 
     assert assembler.combined_stage_b_schema == 12
+
+
+def test_combined_stage_b_binds_from_firmware_revision_at_any_duration():
+    """A different TRAVEL changes the combined workflow duration.
+
+    The duration tables only listed the values produced at the TRAVEL settings
+    someone had previously run, so a valid acquisition at another TRAVEL was
+    rejected before the published revision was consulted. Duration inference is
+    a fallback for firmware that publishes no revision, not a gate.
+    """
+    assembler = VelocitySweepAssembler()
+    assembler.bind_firmware_stage_b_schema(13)
+    assembler.configure_workflow_shape(3, 301_234, 331_357)
+    limits, geometry, timing, recovery = plan_fragments(5, 2)
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+    assert assembler.combined_stage_b_schema == 13
+
+
+def test_combined_stage_b_still_infers_from_duration_without_a_published_revision():
+    assembler = VelocitySweepAssembler()
+    assembler.configure_workflow_shape(3, 470_573, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(5, 2)
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+    assert assembler.combined_stage_b_schema == 12
