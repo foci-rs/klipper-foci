@@ -518,3 +518,21 @@ def test_plan_rejects_an_unusable_packed_schedule_order_byte():
                     ),
                 }
             )
+
+
+def test_matrix_terminals_are_accepted_at_the_revision_firmware_emits():
+    """Terminal validation sat at 4 while firmware emitted 5, so a live
+    schema-5 terminal was rejected. Pin acceptance to the emitted revision
+    rather than to a literal, so the two cannot drift apart again."""
+    assembler = AcceptanceMatrixAssembler()
+    recovery_wide_workflow(assembler)
+    assembler.handle_plan(
+        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=5, nominal_ms=63_041)}
+    )
+
+    assembler.handle_terminal(
+        {"oid": 1, "payload": terminal_payload(schema=5)},
+    )
+
+    assert assembler.plan["schema_revision"] == 5
+    assert assembler.terminal["schema_revision"] == 5
