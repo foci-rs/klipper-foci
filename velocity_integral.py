@@ -870,7 +870,11 @@ class VelocityIntegralAssembler:
         key = (int(core["rung_index"]), int(core["slot"]))
         if key in self.observations:
             raise VelocityIntegralProtocolError("duplicate observation")
-        if key[1] not in range(8) or int(core["direction"]) != key[1] & 1:
+        # Slot parity gives the travel direction, inverted when the run executed
+        # its forward and reverse slots in mirrored order.
+        mirrored = bool((self.plan or {}).get("mirrored_slot_order", False))
+        expected_direction = (key[1] & 1) ^ int(mirrored)
+        if key[1] not in range(8) or int(core["direction"]) != expected_direction:
             raise VelocityIntegralProtocolError("invalid observation slot or direction")
         if int(rate["deficit_low_q"]) > int(rate["deficit_high_q"]):
             raise VelocityIntegralProtocolError("reversed deficit interval")

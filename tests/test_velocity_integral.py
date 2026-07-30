@@ -133,8 +133,8 @@ def feed_plan(
         )
 
 
-def feed_observation(assembler, sequence, rung_index, slot, i_raw):
-    direction = slot & 1
+def feed_observation(assembler, sequence, rung_index, slot, i_raw, mirrored=False):
+    direction = (slot & 1) ^ int(mirrored)
     common = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
@@ -1520,3 +1520,50 @@ def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
             maximum_workflow_ms=182_512,
             recovery_flags=0b1000,
         )
+
+
+def test_mirrored_run_accepts_the_inverted_slot_direction():
+    """A mirrored run inverts which direction each slot travels.
+
+    The host validated direction against raw slot parity, so every observation of
+    a mirrored run was rejected with "invalid observation slot or direction". The
+    run aborted at the first observation, before producing any evidence.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0b100,
+    )
+    assert assembler.plan["mirrored_slot_order"] is True
+
+    # Slot 0 travels reverse under mirroring, which is the inverse of parity.
+    feed_observation(assembler, 1, 0, 0, 1, mirrored=True)
+    assert (0, 0) in assembler.observations
+
+    # The unmirrored pairing must now be the one refused.
+    with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
+        feed_observation(assembler, 3, 0, 1, 1, mirrored=False)
+
+
+def test_unmirrored_run_still_requires_parity_matched_directions():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0,
+    )
+    assert assembler.plan["mirrored_slot_order"] is False
+
+    feed_observation(assembler, 1, 0, 0, 1)
+    assert (0, 0) in assembler.observations
+    with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
+        feed_observation(assembler, 3, 0, 1, 1, mirrored=True)
