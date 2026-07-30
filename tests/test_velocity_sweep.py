@@ -127,6 +127,51 @@ def feed_combined_stage_b_13_plan(
     assembler.handle_plan_recovery(recovery)
 
 
+def feed_combined_stage_b_14_plan(
+    assembler, rung_count=5, observations_per_direction=2
+):
+    assembler.configure_workflow_shape(3, 470_573, 496_528)
+    limits, geometry, timing, recovery = plan_fragments(
+        rung_count,
+        observations_per_direction,
+        schema_revision=14,
+    )
+    timing = {
+        **timing,
+        "nominal_workflow_ms": 282_923,
+        "maximum_workflow_ms": 298_632,
+    }
+    recovery = {**recovery, "nominal_slot_us": 2_316_958}
+    assembler.handle_plan_limits(limits)
+    assembler.handle_plan_geometry(geometry)
+    assembler.handle_plan_timing(timing)
+    assembler.handle_plan_recovery(recovery)
+
+
+def test_stage_b_14_observation_skips_both_hidden_trace_only_positions():
+    """Schema 14 interleaves the same two trace-only records as 13.
+
+    Firmware emits observation, rest selection, primitive current, observation,
+    so the host must advance its evidence sequence by two hidden positions
+    between consecutive observations. Schema 14 differs from 13 only by four
+    bytes appended to the observation record; nothing about the sequence
+    changed.
+
+    This is a regression test for a live failure. Adding 14 to the acceptance
+    set without adding it to the behaviour sets left the host accepting the
+    stream and then refusing it mid-run with "evidence sequence gap: got 4,
+    expected 2", after the firmware had already completed Stage B.
+    """
+    assembler = VelocitySweepAssembler()
+    feed_combined_stage_b_14_plan(assembler, rung_count=1, observations_per_direction=4)
+    feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
+
+    feed_observation(assembler, sequence=4, slot=1, low=-200, high=-100)
+
+    assert (0, 0) in assembler.observations
+    assert (0, 1) in assembler.observations
+
+
 def stage_b_region_fragments(*, sequence=1, direction=0, member_mask=0b11100):
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
     return (

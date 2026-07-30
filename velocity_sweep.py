@@ -37,6 +37,21 @@ COMBINED_STAGE_B_WORKFLOW_SCHEMAS = {
 # boundary; workflow durations are firmware-authored and no longer asserted.
 COMBINED_STAGE_B_REVISIONS = frozenset({8, 10, 11, 12, 13, 14})
 
+# Accepting a revision is not the same as knowing how it behaves. The sets below
+# gate sequence-tracking behaviour, and adding a revision to the acceptance set
+# above without adding it here leaves the host accepting a stream it then
+# mis-tracks. Schema 14 reached production that way: it differs from 13 only by
+# four bytes appended to the observation record, so every behaviour here is
+# unchanged, but the host still refused the run with an evidence sequence gap.
+#
+# Revisions that interleave two trace-only records (rest selection and primitive
+# current) into the evidence sequence rather than one.
+STAGE_B_SCHEMAS_WITH_TWO_HIDDEN_POSITIONS = (13, 14)
+# Revisions that emit hidden recovery-rest evidence alongside a moving recovery.
+STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST = (12, 13, 14)
+# Revisions that arm recovery-rest tracking when a rung completes.
+STAGE_B_SCHEMAS_WITH_RECOVERY_REST_PENDING = (11, 12, 13, 14)
+
 
 class VelocitySweepProtocolError(Exception):
     """Raised when the streamed sweep evidence violates its wire contract."""
@@ -683,7 +698,7 @@ class VelocitySweepAssembler:
     ) -> None:
         if not self._trace_only_current_pending:
             return
-        if self._combined_stage_b_schema == 13:
+        if self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_TWO_HIDDEN_POSITIONS:
             if evidence_sequence == self._next_evidence_sequence + 2:
                 self._next_evidence_sequence += 2
                 self._trace_only_current_pending = False
@@ -713,10 +728,16 @@ class VelocitySweepAssembler:
         rung_index: int | None = None,
         outcome: int | None = None,
     ) -> None:
-        hidden_positions = 2 if self._combined_stage_b_schema == 13 else 1
+        hidden_positions = (
+            2
+            if self._combined_stage_b_schema
+            in STAGE_B_SCHEMAS_WITH_TWO_HIDDEN_POSITIONS
+            else 1
+        )
         if evidence_sequence == self._next_evidence_sequence:
             if (
-                self._combined_stage_b_schema in (12, 13)
+                self._combined_stage_b_schema
+                in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
                 and kind == "recovery"
                 and outcome == 1
             ):
@@ -726,14 +747,15 @@ class VelocitySweepAssembler:
             return
         pending = self._recovery_rest_pending
         if (
-            self._combined_stage_b_schema in (11, 12, 13)
+            self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_RECOVERY_REST_PENDING
             and evidence_sequence == self._next_evidence_sequence + hidden_positions
             and pending is not None
             and pending[0] == 0
             and kind in ("recovery", "stage b terminal")
         ):
             if (
-                self._combined_stage_b_schema in (12, 13)
+                self._combined_stage_b_schema
+                in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
                 and kind == "recovery"
                 and (rung_index != pending[1] or outcome != 1)
             ):
@@ -824,7 +846,7 @@ class VelocitySweepAssembler:
         rung_index = int(rung["rung_index"])
         self.rungs[rung_index] = rung
         self._last_evidence = ("rung", rung_index)
-        if self._combined_stage_b_schema in (11, 12, 13):
+        if self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_RECOVERY_REST_PENDING:
             self._recovery_rest_pending = (0, rung_index, False)
 
     def _finish_directional_region(self, parts: list[dict]) -> None:
@@ -1101,7 +1123,11 @@ class VelocitySweepAssembler:
         ordinary_rest = int(core["cause"]) == 53
         if hidden_rest and not (
             selected_rest
-            or (self._combined_stage_b_schema in (12, 13) and ordinary_rest)
+            or (
+                self._combined_stage_b_schema
+                in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
+                and ordinary_rest
+            )
         ):
             if self._combined_stage_b_schema == 11:
                 raise VelocitySweepProtocolError(
@@ -1111,7 +1137,7 @@ class VelocitySweepAssembler:
                 "hidden recovery-rest sequence lacks a completed-rest terminal"
             )
         if (
-            self._combined_stage_b_schema in (12, 13)
+            self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
             and pending is not None
             and not hidden_rest
             and ordinary_rest
