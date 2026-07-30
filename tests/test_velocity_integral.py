@@ -419,6 +419,26 @@ def test_schema_eleven_accepts_recovery_wide_combined_duration_envelope():
     assert assembler.maximum_duration_s == 496.528
 
 
+def test_schema_thirteen_pairs_with_stage_b_fourteen():
+    """Each schema gate fails closed and silently, so this asserts acceptance
+    of the current firmware revision pair rather than the absence of a
+    crash."""
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+    assembler.bind_combined_stage_b_schema(14)
+    feed_plan(
+        assembler,
+        schema_revision=13,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=187_651,
+        maximum_workflow_ms=197_896,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["schema_revision"] == 13
+
+
 @pytest.mark.parametrize(
     ("stage_b_schema", "schema_revision"),
     [

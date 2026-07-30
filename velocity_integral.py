@@ -156,7 +156,7 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "combined Stage-B schema arrived after Stage-C evidence"
             )
-        if schema_revision not in (8, 10, 11, 12, 13):
+        if schema_revision not in (8, 10, 11, 12, 13, 14):
             raise VelocityIntegralProtocolError("unsupported combined Stage-B schema")
         if (
             self._combined_stage_b_schema is not None
@@ -230,6 +230,7 @@ class VelocityIntegralAssembler:
             10,
             11,
             12,
+            13,
         ):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
@@ -803,7 +804,9 @@ class VelocityIntegralAssembler:
                 )
             # Stage-B and Stage-C revisions must be a matching pair. This is a
             # compatibility check, not a re-derivation of firmware's arithmetic.
-            expected_stage_b = {11: 12, 12: 13}.get(int(plan["schema_revision"]))
+            expected_stage_b = {11: 12, 12: 13, 13: 14}.get(
+                int(plan["schema_revision"])
+            )
             if (
                 expected_stage_b is not None
                 and self._combined_stage_b_schema != expected_stage_b

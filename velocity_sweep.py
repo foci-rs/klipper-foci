@@ -35,7 +35,7 @@ COMBINED_STAGE_B_WORKFLOW_SCHEMAS = {
 }
 # Stage-B revisions this host understands. Schema gating is the compatibility
 # boundary; workflow durations are firmware-authored and no longer asserted.
-COMBINED_STAGE_B_REVISIONS = frozenset({8, 10, 11, 12, 13})
+COMBINED_STAGE_B_REVISIONS = frozenset({8, 10, 11, 12, 13, 14})
 
 
 class VelocitySweepProtocolError(Exception):

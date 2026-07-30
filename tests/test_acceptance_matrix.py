@@ -536,3 +536,21 @@ def test_matrix_terminals_are_accepted_at_the_revision_firmware_emits():
 
     assert assembler.plan["schema_revision"] == 5
     assert assembler.terminal["schema_revision"] == 5
+
+
+def test_matrix_schema_six_plan_and_terminal_are_accepted():
+    """Each matrix schema gate fails closed and silently, so this asserts
+    acceptance of the current firmware revision rather than the absence of a
+    crash."""
+    assembler = AcceptanceMatrixAssembler()
+    recovery_wide_workflow(assembler)
+    assembler.handle_plan(
+        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=6, nominal_ms=63_041)}
+    )
+
+    assembler.handle_terminal(
+        {"oid": 1, "payload": terminal_payload(schema=6)},
+    )
+
+    assert assembler.plan["schema_revision"] == 6
+    assert assembler.terminal["schema_revision"] == 6

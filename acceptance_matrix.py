@@ -6,8 +6,8 @@ import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-MATRIX_SCHEMA_REVISION = 5
-MATRIX_SCHEMA_REVISIONS = (1, 2, 3, 4, MATRIX_SCHEMA_REVISION)
+MATRIX_SCHEMA_REVISION = 6
+MATRIX_SCHEMA_REVISIONS = (1, 2, 3, 4, 5, MATRIX_SCHEMA_REVISION)
 PLAN_REPLY_FRAGMENTS = 2
 MATRIX_AMPLITUDE_COUNT = 5
 MATRIX_EXPECTED_OBSERVATIONS = 40
@@ -191,6 +191,7 @@ class AcceptanceMatrixAssembler:
             3: _PLAN_V2,
             4: _PLAN_V2,
             5: _PLAN_V2,
+            6: _PLAN_V2,
         }.get(schema)
         if plan_struct is None:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")

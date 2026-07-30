@@ -2103,3 +2103,14 @@ def test_combined_stage_b_still_infers_from_duration_without_a_published_revisio
     assembler.handle_plan_recovery(recovery)
 
     assert assembler.combined_stage_b_schema == 12
+
+
+def test_stage_b_14_binds_from_firmware_revision_without_plan_schema_field():
+    """Each Stage-B revision gate fails closed and silently, so this asserts
+    acceptance of the current firmware revision rather than the absence of a
+    crash."""
+    assembler = VelocitySweepAssembler()
+    assembler.bind_firmware_stage_b_schema(14)
+    feed_firmware_combined_stage_b_plan(assembler)
+
+    assert assembler.combined_stage_b_schema == 14
