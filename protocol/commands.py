@@ -7,6 +7,7 @@ from .bindings import (
     register_commissioning_responses,
     register_dump_responses,
     register_homing_responses,
+    register_last_panic_response,
     register_motion_scale_responses,
     register_selftest_responses,
 )
@@ -157,6 +158,7 @@ class FociMcuCommands:
         self.calibrate = mcu.lookup_command("foci_calibrate oid=%c", cq=cmd_queue)
         self.dump_registers = mcu.lookup_command("foci_dump_registers oid=%c")
         register_dump_responses(mcu._serial, driver, oid)
+        register_last_panic_response(mcu._serial, driver, oid)
         register_homing_responses(mcu._serial, driver, oid)
         self.set_pid_gains = mcu.lookup_command(
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
