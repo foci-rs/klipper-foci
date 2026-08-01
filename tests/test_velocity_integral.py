@@ -4,6 +4,7 @@ import pytest
 
 from klipper_foci.velocity_integral import (
     slot_direction_index,
+    BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
@@ -1870,6 +1871,7 @@ def feed_discovery_plan(
             "oid": 0,
             "run_sequence": run_sequence,
             "evidence_sequence": 2,
+            "schema_revision": BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
             "rung_count": 3,
             "observations_per_direction": 8,
             "floor_p_raw": 290,
@@ -1882,22 +1884,10 @@ def feed_discovery_plan(
     )
 
 
-def feed_discovery_ladder_and_margins(
+def feed_discovery_rung_margins(
     assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=DISCOVERY_DIGEST
 ):
     low, high = digest
-    for rung_index, p_raw in enumerate((320, 360, 400)):
-        assembler.handle_discovery_ladder_rung(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 2,
-                "plan_digest_low": low,
-                "plan_digest_high": high,
-                "rung_index": rung_index,
-                "p_raw": p_raw,
-            }
-        )
     margins = (
         (0, 360, 71_000, 79_000, 1_000, 4_000, 0),
         (1, 400, 72_000, 78_000, 2_000, 3_000, 5_000),
@@ -2065,6 +2055,52 @@ def feed_campaign_terminal(
     )
 
 
+def feed_raw_observation(
+    assembler,
+    *,
+    run_sequence=BREAKAWAY_RUN_SEQUENCE,
+    evidence_sequence,
+    digest,
+    phase,
+    rung_index=0,
+    slot_index=0,
+    direction=0,
+    mean_rate_q_low=1_000,
+    mean_rate_q_high=0,
+    target_rate_q_low=2_000,
+    target_rate_q_high=0,
+):
+    low, high = digest
+    assembler.handle_raw_observation_identity(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": evidence_sequence,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "phase": phase,
+            "rung_index": rung_index,
+            "slot_index": slot_index,
+            "direction": direction,
+        }
+    )
+    assembler.handle_raw_observation_measurement(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": evidence_sequence,
+            "mean_rate_q_low": mean_rate_q_low,
+            "mean_rate_q_high": mean_rate_q_high,
+            "variance_word0": 1,
+            "variance_word1": 0,
+            "variance_word2": 0,
+            "variance_word3": 0,
+            "target_rate_q_low": target_rate_q_low,
+            "target_rate_q_high": target_rate_q_high,
+        }
+    )
+
+
 def test_breakaway_probe_and_directional_breakaway_relay_firmware_values():
     """No selection happens here: every stored value is the input verbatim."""
     assembler = BreakawayCampaignAssembler()
@@ -2145,9 +2181,46 @@ def test_breakaway_discovery_geometry_rejects_gains_out_of_order():
                 "oid": 0,
                 "run_sequence": BREAKAWAY_RUN_SEQUENCE,
                 "evidence_sequence": 2,
+                "schema_revision": BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
                 "rung_count": 3,
                 "observations_per_direction": 8,
                 "floor_p_raw": 330,
+                "floor_origin": 0,
+                "breakaway_p_raw": 320,
+                "ceiling_p_raw": 2000,
+                "first_additive_step_raw": 40,
+                "maximum_workflow_ms": 20_000,
+            }
+        )
+
+
+def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    assembler.handle_discovery_plan_identity(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 2,
+            "plan_digest_low": DISCOVERY_DIGEST[0],
+            "plan_digest_high": DISCOVERY_DIGEST[1],
+            "prior_plan_digest_low": PROBE_DIGEST[0],
+            "prior_plan_digest_high": PROBE_DIGEST[1],
+            "family_size": 32,
+        }
+    )
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="unsupported"):
+        assembler.handle_discovery_plan_geometry(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "schema_revision": BREAKAWAY_DISCOVERY_SCHEMA_REVISION + 1,
+                "rung_count": 3,
+                "observations_per_direction": 8,
+                "floor_p_raw": 290,
                 "floor_origin": 0,
                 "breakaway_p_raw": 320,
                 "ceiling_p_raw": 2000,
@@ -2169,7 +2242,7 @@ def test_breakaway_discovery_terminal_collected_count_must_match_margins():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler, collected_count=3)  # only 2 margins fed
 
     with pytest.raises(BreakawayCampaignProtocolError, match="collected count"):
@@ -2181,7 +2254,7 @@ def test_breakaway_confirmation_observation_follows_the_fixed_capture_schedule()
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
 
@@ -2207,7 +2280,7 @@ def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2258,7 +2331,7 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2273,7 +2346,7 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2299,7 +2372,7 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2330,7 +2403,7 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2343,6 +2416,194 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
 
     with pytest.raises(BreakawayCampaignProtocolError, match="duplicate confirmation"):
         feed_confirmation_plan(assembler, candidate_p_raw=360)
+
+
+def test_breakaway_raw_observation_relays_discovery_and_confirmation_evidence():
+    """No r/SE/nomination math happens here -- the merged fragment is stored
+
+    exactly as firmware sent it, for foci-trace's independent offline replay.
+    """
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_raw_observation(
+        assembler,
+        evidence_sequence=2,
+        digest=DISCOVERY_DIGEST,
+        phase=1,
+        rung_index=1,
+        slot_index=3,
+        direction=1,
+        mean_rate_q_low=4_242,
+        target_rate_q_low=6_000,
+    )
+    feed_discovery_rung_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_raw_observation(
+        assembler,
+        evidence_sequence=3,
+        digest=CONFIRMATION_DIGEST,
+        phase=2,
+        slot_index=5,
+        direction=1,
+    )
+    feed_confirmation_observations(assembler)
+    feed_confirmation_terminal(assembler, accepted=True)
+    feed_campaign_terminal(assembler, accepted=True)
+
+    assert len(assembler.raw_observations) == 2
+    discovery_observation, confirmation_observation = assembler.raw_observations
+    assert discovery_observation["phase"] == 1
+    assert discovery_observation["rung_index"] == 1
+    assert discovery_observation["slot_index"] == 3
+    assert discovery_observation["mean_rate_q_low"] == 4_242
+    assert discovery_observation["target_rate_q_low"] == 6_000
+    assert confirmation_observation["phase"] == 2
+    assert confirmation_observation["slot_index"] == 5
+    # No reduced statistic (r, SE, nomination interval) is ever computed or
+    # stored here -- only the raw firmware-authored inputs.
+    for observation in assembler.raw_observations:
+        assert "r" not in observation
+        assert "relative_standard_error_permille" not in observation
+        assert "nominated_margin_percent_milli" not in observation
+
+
+def test_breakaway_raw_observation_identity_rejects_plan_digest_mismatch():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="plan digest mismatch"):
+        assembler.handle_raw_observation_identity(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "plan_digest_low": 0,
+                "plan_digest_high": 0,
+                "phase": 1,
+                "rung_index": 0,
+                "slot_index": 0,
+                "direction": 0,
+            }
+        )
+
+
+def test_breakaway_raw_observation_identity_rejects_probe_phase():
+    """Firmware never streams raw observations for the probe phase (0)."""
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="invalid raw observation phase"
+    ):
+        assembler.handle_raw_observation_identity(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "plan_digest_low": DISCOVERY_DIGEST[0],
+                "plan_digest_high": DISCOVERY_DIGEST[1],
+                "phase": 0,
+                "rung_index": 0,
+                "slot_index": 0,
+                "direction": 0,
+            }
+        )
+
+
+def test_breakaway_raw_observation_measurement_requires_prior_identity():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="preceded its identity"):
+        assembler.handle_raw_observation_measurement(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "mean_rate_q_low": 0,
+                "mean_rate_q_high": 0,
+                "variance_word0": 0,
+                "variance_word1": 0,
+                "variance_word2": 0,
+                "variance_word3": 0,
+                "target_rate_q_low": 0,
+                "target_rate_q_high": 0,
+            }
+        )
+
+
+def test_breakaway_raw_observation_identity_rejects_a_dangling_predecessor():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    assembler.handle_raw_observation_identity(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 2,
+            "plan_digest_low": DISCOVERY_DIGEST[0],
+            "plan_digest_high": DISCOVERY_DIGEST[1],
+            "phase": 1,
+            "rung_index": 0,
+            "slot_index": 0,
+            "direction": 0,
+        }
+    )
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="before its prior measurement"
+    ):
+        assembler.handle_raw_observation_identity(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "plan_digest_low": DISCOVERY_DIGEST[0],
+                "plan_digest_high": DISCOVERY_DIGEST[1],
+                "phase": 1,
+                "rung_index": 0,
+                "slot_index": 1,
+                "direction": 1,
+            }
+        )
+
+
+def test_breakaway_campaign_terminal_rejects_a_dangling_raw_observation():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_rung_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    assembler.handle_raw_observation_identity(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 3,
+            "plan_digest_low": CONFIRMATION_DIGEST[0],
+            "plan_digest_high": CONFIRMATION_DIGEST[1],
+            "phase": 2,
+            "rung_index": 0,
+            "slot_index": 0,
+            "direction": 0,
+        }
+    )
+    feed_confirmation_observations(assembler)
+    feed_confirmation_terminal(assembler, accepted=True)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="no matching measurement"):
+        feed_campaign_terminal(assembler, accepted=True)
 
 
 def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
@@ -2375,7 +2636,6 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
             "probe_terminal",
             "discovery_plan",
             "discovery_ceiling_source",
-            "discovery_rungs",
             "discovery_rung_margins",
             "discovery_rung_zero",
             "discovery_terminal",
@@ -2383,6 +2643,7 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
             "confirmation_observations",
             "confirmation_terminal",
             "campaign_terminal",
+            "raw_observations",
             "accepted",
             "stage_c_plan_digest",
             "done",

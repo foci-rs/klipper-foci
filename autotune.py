@@ -267,8 +267,11 @@ class AutotuneWorkflow:
     def handle_breakaway_discovery_ceiling_source(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_discovery_ceiling_source", params)
 
-    def handle_breakaway_discovery_ladder_rung(self, params: dict) -> None:
-        self._handle_breakaway_campaign("handle_discovery_ladder_rung", params)
+    def handle_breakaway_raw_observation_identity(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_raw_observation_identity", params)
+
+    def handle_breakaway_raw_observation_measurement(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_raw_observation_measurement", params)
 
     def handle_breakaway_discovery_rung_margin(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_discovery_rung_margin", params)

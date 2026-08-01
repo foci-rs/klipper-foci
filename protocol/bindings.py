@@ -310,8 +310,12 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_breakaway_ceiling_source",
         ),
         (
-            driver.autotune.handle_breakaway_discovery_ladder_rung,
-            "foci_breakaway_ladder_rung",
+            driver.autotune.handle_breakaway_raw_observation_identity,
+            "foci_breakaway_raw_observation_identity",
+        ),
+        (
+            driver.autotune.handle_breakaway_raw_observation_measurement,
+            "foci_breakaway_raw_observation_measurement",
         ),
         (
             driver.autotune.handle_breakaway_discovery_rung_margin,

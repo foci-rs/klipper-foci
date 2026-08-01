@@ -1256,7 +1256,16 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
 FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}
 CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 
+# Firmware's `combined_plan::BREAKAWAY_STAGE_B_SCHEMA_REVISION`: the only
+# discovery-plan-geometry schema this host currently understands.
+BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 15
+
 BREAKAWAY_DIRECTION_NAMES = {0: "forward", 1: "reverse"}
+
+# Owning-phase wire codes carried by a raw-observation identity fragment.
+# Firmware never streams raw observations for the probe phase (0); the probe's
+# directional breakaway report already covers that phase's evidence.
+RAW_OBSERVATION_PHASE_NAMES = {1: "discovery", 2: "confirmation"}
 
 # Fixed capture schedule the confirmation driver is built to (spec/Task 4):
 # four forward strokes (slots 0-3) then four reverse strokes (slots 4-7).
@@ -1284,7 +1293,6 @@ class BreakawayCampaignAssembler:
         self.probe_terminal: dict | None = None
         self.discovery_plan: dict | None = None
         self.discovery_ceiling_source: dict | None = None
-        self.discovery_rungs: list[dict] = []
         self.discovery_rung_margins: list[dict] = []
         self.discovery_rung_zero: dict | None = None
         self.discovery_terminal: dict | None = None
@@ -1292,6 +1300,7 @@ class BreakawayCampaignAssembler:
         self.confirmation_observations: list[dict] = []
         self.confirmation_terminal: dict | None = None
         self.campaign_terminal: dict | None = None
+        self.raw_observations: list[dict] = []
         self.accepted = False
         self.stage_c_plan_digest: int | None = None
         self.done = False
@@ -1301,6 +1310,7 @@ class BreakawayCampaignAssembler:
         self._confirmation_terminal_identity: dict | None = None
         self._discovery_closed = False
         self._confirmation_closed = False
+        self._pending_raw_observation: dict | None = None
 
     # -- shared identity/sequence plumbing ---------------------------------
 
@@ -1501,6 +1511,10 @@ class BreakawayCampaignAssembler:
             raise BreakawayCampaignProtocolError(
                 "discovery geometry evidence sequence does not match its identity"
             )
+        if int(params["schema_revision"]) != BREAKAWAY_DISCOVERY_SCHEMA_REVISION:
+            raise BreakawayCampaignProtocolError(
+                "unsupported breakaway discovery evidence schema"
+            )
         floor = int(params["floor_p_raw"])
         breakaway = int(params["breakaway_p_raw"])
         ceiling = int(params["ceiling_p_raw"])
@@ -1530,25 +1544,6 @@ class BreakawayCampaignAssembler:
                 "invalid discovery ceiling binding source"
             )
         self.discovery_ceiling_source = _metadata_free(params)
-
-    def handle_discovery_ladder_rung(self, params: dict) -> None:
-        self._require_discovery_plan(params)
-        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
-            raise BreakawayCampaignProtocolError(
-                "discovery ladder rung plan digest mismatch"
-            )
-        rung_index = int(params.get("rung_index", -1))
-        if rung_index != len(self.discovery_rungs):
-            raise BreakawayCampaignProtocolError(
-                "reordered or duplicate discovery ladder rung"
-            )
-        if self.discovery_rungs and int(params["p_raw"]) < int(
-            self.discovery_rungs[-1]["p_raw"]
-        ):
-            raise BreakawayCampaignProtocolError(
-                "discovery ladder rung gains are not nondecreasing"
-            )
-        self.discovery_rungs.append(_metadata_free(params))
 
     def handle_discovery_rung_margin(self, params: dict) -> None:
         self._require_discovery_plan(params)
@@ -1743,9 +1738,61 @@ class BreakawayCampaignAssembler:
         }
         self._confirmation_terminal_identity = None
 
+    # -- raw-observation evidence --------------------------------------------
+    #
+    # These carry the family-free mean_rate_q/variance_of_mean_q2/target_rate_q
+    # inputs behind a discovery or confirmation stroke, streamed so an offline
+    # decoder (foci-trace) can independently recompute r/SE/the nomination
+    # interval/the [70, 80] containment. The live host validates the wire
+    # structure (identity/measurement correlation, phase, direction, and the
+    # owning-plan digest) and relays the merged fragment for operator
+    # diagnostics; it never performs that recomputation itself.
+
+    def handle_raw_observation_identity(self, params: dict) -> None:
+        if self._pending_raw_observation is not None:
+            raise BreakawayCampaignProtocolError(
+                "raw observation identity arrived before its prior measurement"
+            )
+        self._track_sequence(params)
+        phase = int(params.get("phase", -1))
+        if phase not in RAW_OBSERVATION_PHASE_NAMES:
+            raise BreakawayCampaignProtocolError("invalid raw observation phase")
+        owner = self.discovery_plan if phase == 1 else self.confirmation_plan
+        if owner is None:
+            raise BreakawayCampaignProtocolError(
+                "raw observation arrived before its owning phase plan"
+            )
+        if self._reported_plan_digest(params) != owner["plan_digest"]:
+            raise BreakawayCampaignProtocolError("raw observation plan digest mismatch")
+        if int(params.get("direction", -1)) not in (0, 1):
+            raise BreakawayCampaignProtocolError("invalid raw observation direction")
+        self._pending_raw_observation = _metadata_free(params)
+
+    def handle_raw_observation_measurement(self, params: dict) -> None:
+        if self._pending_raw_observation is None:
+            raise BreakawayCampaignProtocolError(
+                "raw observation measurement preceded its identity"
+            )
+        self._require_run(params)
+        if int(params.get("evidence_sequence", -1)) != int(
+            self._pending_raw_observation["evidence_sequence"]
+        ):
+            raise BreakawayCampaignProtocolError(
+                "raw observation measurement evidence sequence does not match "
+                "its identity"
+            )
+        self.raw_observations.append(
+            {**self._pending_raw_observation, **_metadata_free(params)}
+        )
+        self._pending_raw_observation = None
+
     # -- campaign closure ----------------------------------------------------
 
     def handle_campaign_terminal(self, params: dict) -> None:
+        if self._pending_raw_observation is not None:
+            raise BreakawayCampaignProtocolError(
+                "raw observation identity has no matching measurement"
+            )
         self._close_discovery()
         self._close_confirmation()
         self._require_run(params)

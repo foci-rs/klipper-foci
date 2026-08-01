@@ -220,7 +220,7 @@ def test_commissioning_registers_only_stage_b_schema8_reproduction_group():
 
 
 def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
-    """All 15 `FociBreakaway*` replies (replies.rs) must reach a live MCU's
+    """All 16 `FociBreakaway*` replies (replies.rs) must reach a live MCU's
     handler, mirroring the sibling `foci_velocity_integral_*` /
     `foci_acceptance_matrix_*` registrations exactly."""
     driver = make_driver()
@@ -248,8 +248,11 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
         "foci_breakaway_ceiling_source": (
             driver.autotune.handle_breakaway_discovery_ceiling_source
         ),
-        "foci_breakaway_ladder_rung": (
-            driver.autotune.handle_breakaway_discovery_ladder_rung
+        "foci_breakaway_raw_observation_identity": (
+            driver.autotune.handle_breakaway_raw_observation_identity
+        ),
+        "foci_breakaway_raw_observation_measurement": (
+            driver.autotune.handle_breakaway_raw_observation_measurement
         ),
         "foci_breakaway_discovery_rung_margin": (
             driver.autotune.handle_breakaway_discovery_rung_margin
@@ -277,7 +280,7 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
         ),
     }
 
-    assert len(expected) == 15
+    assert len(expected) == 16
     assert set(expected) <= set(registered)
     for name, handler in expected.items():
         assert registered[name] == handler, name

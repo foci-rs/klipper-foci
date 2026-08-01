@@ -4,7 +4,10 @@ import unittest
 
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.registers import REGISTERS
-from klipper_foci.velocity_integral import VelocityIntegralAssembler
+from klipper_foci.velocity_integral import (
+    BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
+    VelocityIntegralAssembler,
+)
 
 from tests.mocks import (
     CommandError,
@@ -1076,6 +1079,7 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "oid": 0,
             "run_sequence": run_sequence,
             "evidence_sequence": 2,
+            "schema_revision": BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
             "rung_count": 3,
             "observations_per_direction": 8,
             "floor_p_raw": 290,
@@ -1096,18 +1100,34 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "binding_source": 0,
         }
     )
-    for rung_index, p_raw in enumerate((320, 360, 400)):
-        driver.autotune.handle_breakaway_discovery_ladder_rung(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 2,
-                "plan_digest_low": discovery_low,
-                "plan_digest_high": discovery_high,
-                "rung_index": rung_index,
-                "p_raw": p_raw,
-            }
-        )
+    driver.autotune.handle_breakaway_raw_observation_identity(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": discovery_low,
+            "plan_digest_high": discovery_high,
+            "phase": 1,
+            "rung_index": 1,
+            "slot_index": 0,
+            "direction": 0,
+        }
+    )
+    driver.autotune.handle_breakaway_raw_observation_measurement(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "mean_rate_q_low": 4_000,
+            "mean_rate_q_high": 0,
+            "variance_word0": 1,
+            "variance_word1": 0,
+            "variance_word2": 0,
+            "variance_word3": 0,
+            "target_rate_q_low": 5_000,
+            "target_rate_q_high": 0,
+        }
+    )
     margins = (
         (0, 360, 71_000, 79_000, 1_000, 4_000, 0),
         (1, 400, 72_000, 78_000, 2_000, 3_000, 5_000),
