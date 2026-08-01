@@ -20,6 +20,12 @@ from .autotune_budget import (
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 from .velocity_integral import (
+    BREAKAWAY_PHASE_NAMES,
+    BREAKAWAY_TERMINAL_CAUSE_NAMES,
+    BREAKAWAY_TERMINAL_REMEDIATION,
+    FLOOR_ORIGIN_NAMES,
+    BreakawayCampaignAssembler,
+    BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
 )
@@ -78,6 +84,8 @@ class AutotuneWorkflow:
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
         self.acceptance_matrix = AcceptanceMatrixAssembler()
         self.acceptance_matrix_error: AcceptanceMatrixProtocolError | None = None
+        self.breakaway_campaign = BreakawayCampaignAssembler()
+        self.breakaway_campaign_error: BreakawayCampaignProtocolError | None = None
         self._stage_b_candidate_request: dict | None = None
         self.done = False
 
@@ -142,10 +150,52 @@ class AutotuneWorkflow:
             except VelocityIntegralProtocolError as err:
                 self.velocity_integral_error = err
                 return
+        if (
+            method_name == "handle_plan_core"
+            and workflow is not None
+            and int(workflow["shape"]) == 6
+            and not (self.breakaway_campaign.done and self.breakaway_campaign.accepted)
+        ):
+            self.velocity_integral_error = VelocityIntegralProtocolError(
+                "breakaway Stage-C plan arrived before an accepted campaign terminal"
+            )
+            return
         try:
             getattr(self.velocity_integral, method_name)(params)
         except VelocityIntegralProtocolError as err:
             self.velocity_integral_error = err
+            return
+        # Once the breakaway Stage-C plan is fully assembled, cross-check its
+        # exact digest against the digest the campaign terminal already
+        # disclosed at acceptance time. This is a firmware-identity check --
+        # confirming two things firmware itself sent agree -- not a
+        # recomputation of either value.
+        if (
+            method_name == "handle_plan_rung"
+            and workflow is not None
+            and int(workflow["shape"]) == 6
+            and self.velocity_integral.plan is not None
+            and int(self.velocity_integral.plan["plan_digest"])
+            != self.breakaway_campaign.stage_c_plan_digest
+        ):
+            self.velocity_integral_error = VelocityIntegralProtocolError(
+                "breakaway Stage-C plan digest does not match the accepted "
+                "campaign terminal"
+            )
+
+    def _handle_breakaway_campaign(self, method_name: str, params: dict) -> None:
+        if self.breakaway_campaign_error is not None:
+            return
+        workflow = self.velocity_integral.workflow_plan
+        if workflow is None or int(workflow["shape"]) != 6:
+            self.breakaway_campaign_error = BreakawayCampaignProtocolError(
+                "breakaway campaign evidence arrived without a breakaway workflow plan"
+            )
+            return
+        try:
+            getattr(self.breakaway_campaign, method_name)(params)
+        except BreakawayCampaignProtocolError as err:
+            self.breakaway_campaign_error = err
 
     def _handle_recovery_summary(self, params: dict) -> None:
         stage = int(params.get("stage", -1))
@@ -199,6 +249,51 @@ class AutotuneWorkflow:
         except AcceptanceMatrixProtocolError as err:
             self.acceptance_matrix_error = err
 
+    def handle_breakaway_probe_plan(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_probe_plan", params)
+
+    def handle_breakaway_directional_breakaway(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_directional_breakaway", params)
+
+    def handle_breakaway_probe_terminal(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_probe_terminal", params)
+
+    def handle_breakaway_discovery_plan_identity(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_plan_identity", params)
+
+    def handle_breakaway_discovery_plan_geometry(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_plan_geometry", params)
+
+    def handle_breakaway_discovery_ceiling_source(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_ceiling_source", params)
+
+    def handle_breakaway_discovery_ladder_rung(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_ladder_rung", params)
+
+    def handle_breakaway_discovery_rung_margin(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_rung_margin", params)
+
+    def handle_breakaway_discovery_rung_zero_diagnostic(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_rung_zero_diagnostic", params)
+
+    def handle_breakaway_discovery_terminal(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_discovery_terminal", params)
+
+    def handle_breakaway_confirmation_plan(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_confirmation_plan", params)
+
+    def handle_breakaway_confirmation_observation(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_confirmation_observation", params)
+
+    def handle_breakaway_confirmation_terminal_identity(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_confirmation_terminal_identity", params)
+
+    def handle_breakaway_confirmation_terminal_masks(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_confirmation_terminal_masks", params)
+
+    def handle_breakaway_campaign_terminal(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_campaign_terminal", params)
+
     def _request_for_stage_b_dispatch(self, request_fields: dict) -> dict:
         """Reuse the exact retained encoding when the explicit request matches."""
         if (
@@ -241,6 +336,17 @@ class AutotuneWorkflow:
         if shape == 0:
             return self.velocity_sweep.done
         if shape == 2:
+            return self.velocity_integral.done
+        if shape == 6:
+            # The breakaway campaign never touches velocity_sweep at all (no
+            # Stage-B evidence exists for it); its own campaign terminal is
+            # the only phase-independent completion signal. A non-accept
+            # terminal ends the workflow immediately; an accepted one only
+            # finishes once the handed-off classic Stage-C evidence completes.
+            if not self.breakaway_campaign.done:
+                return False
+            if not self.breakaway_campaign.accepted:
+                return True
             return self.velocity_integral.done
         if not self.velocity_sweep.done:
             return False
@@ -569,6 +675,80 @@ class AutotuneWorkflow:
             message += "; " + "; ".join(mask_text)
         return message
 
+    def _breakaway_campaign_has_safety_fault(self) -> bool:
+        campaign = self.breakaway_campaign
+        return bool(
+            int((campaign.probe_terminal or {}).get("has_safety_fault", 0))
+            or int((campaign.discovery_terminal or {}).get("has_safety_fault", 0))
+            or int((campaign.confirmation_terminal or {}).get("has_safety_fault", 0))
+        )
+
+    def _format_breakaway_campaign_result(self) -> str:
+        """Relay the firmware-authored breakaway campaign report verbatim.
+
+        Every value here is copied straight out of BreakawayCampaignAssembler
+        -- directional breakaway gains, additive-ladder geometry, the
+        nomination margin, confirmation bounds, and terminal cause -- with no
+        recomputation. The host does not choose or restate a rung, gain, or
+        verdict; it only names the wire codes firmware already sent.
+        """
+        campaign = self.breakaway_campaign
+        terminal = campaign.campaign_terminal or {}
+        cause = int(terminal.get("terminal_cause", 0))
+        cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, "unknown_%d" % cause)
+        phase_name = BREAKAWAY_PHASE_NAMES.get(
+            int(terminal.get("phase", -1)), "unknown"
+        )
+        message = "breakaway campaign %s (phase=%s cause=%s)" % (
+            "accepted" if campaign.accepted else "not accepted",
+            phase_name,
+            cause_name,
+        )
+        direction_text = []
+        for direction, name in ((0, "forward"), (1, "reverse")):
+            report = campaign.directional_breakaways.get(direction)
+            if report is None:
+                continue
+            inert = (
+                "P=%d" % report["inert_p_raw"] if report["inert_present"] else "none"
+            )
+            direction_text.append(
+                "%s inert=%s moving=%d obs=%d"
+                % (name, inert, report["moving_p_raw"], report["observations"])
+            )
+        if direction_text:
+            message += "; " + "; ".join(direction_text)
+        discovery = campaign.discovery_plan
+        if discovery is not None:
+            message += (
+                "; ladder floor=%d(%s) breakaway=%d ceiling=%d step=%d rungs=%d"
+                % (
+                    discovery.get("floor_p_raw", 0),
+                    FLOOR_ORIGIN_NAMES.get(int(discovery.get("floor_origin", -1)), "?"),
+                    discovery.get("breakaway_p_raw", 0),
+                    discovery.get("ceiling_p_raw", 0),
+                    discovery.get("first_additive_step_raw", 0),
+                    discovery.get("rung_count", 0),
+                )
+            )
+        confirmation = campaign.confirmation_plan
+        if confirmation is not None:
+            message += "; nominated P=%d margin=%dpm" % (
+                confirmation.get("candidate_p_raw", 0),
+                confirmation.get("nominated_margin_percent_milli", 0),
+            )
+        confirmation_terminal = campaign.confirmation_terminal
+        if confirmation_terminal is not None:
+            message += "; confirmed P=%d measured_SE=%dpm required_SE=%dpm" % (
+                confirmation_terminal.get("confirmed_p_raw", 0),
+                confirmation_terminal.get("max_relative_se_permille", 0),
+                confirmation_terminal.get("required_relative_se_permille", 0),
+            )
+        remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
+        if remediation:
+            message += "; remediation: %s" % remediation
+        return message
+
     def _format_outer_safety_fault(self) -> str:
         fault = self.outer_safety_fault
         if not fault:
@@ -737,6 +917,8 @@ class AutotuneWorkflow:
             self.velocity_integral_error = None
             self.acceptance_matrix = AcceptanceMatrixAssembler()
             self.acceptance_matrix_error = None
+            self.breakaway_campaign = BreakawayCampaignAssembler()
+            self.breakaway_campaign_error = None
             self.driver.commissioning.error_code = 0
 
             request_fields = self._request_for_stage_b_dispatch(
@@ -794,6 +976,11 @@ class AutotuneWorkflow:
                         "FOCI %s: velocity confidence transport failure: %s"
                         % (self.driver.name, self.acceptance_matrix_error)
                     )
+                if self.breakaway_campaign_error is not None:
+                    raise gcmd.error(
+                        "FOCI %s: breakaway campaign transport failure: %s"
+                        % (self.driver.name, self.breakaway_campaign_error)
+                    )
                 if (
                     self.velocity_integral.workflow_plan is not None
                     or self.acceptance_matrix.workflow_plan is not None
@@ -840,6 +1027,46 @@ class AutotuneWorkflow:
                             "FOCI %s: velocity confidence matrix %s"
                             % (self.driver.name, self.acceptance_matrix.outcome)
                         )
+                    return
+                if self.breakaway_campaign.done:
+                    gcmd.respond_info(
+                        "FOCI %s: %s"
+                        % (self.driver.name, self._format_breakaway_campaign_result())
+                    )
+                    if self._breakaway_campaign_has_safety_fault():
+                        safety_detail = self._format_outer_safety_fault()
+                        detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                        raise gcmd.error(
+                            "FOCI %s: breakaway campaign safety fault%s"
+                            % (self.driver.name, detail_suffix)
+                        )
+                    if not self.breakaway_campaign.accepted:
+                        # No previously commissioned P is touched here: this
+                        # branch never reaches persist_tune_results or the
+                        # active_gains assignment below.
+                        return
+                    if self.velocity_integral.done:
+                        gcmd.respond_info(
+                            "FOCI %s: %s"
+                            % (
+                                self.driver.name,
+                                self._format_velocity_integral_result(),
+                            )
+                        )
+                        if self.velocity_integral.outcome == "fault":
+                            safety_detail = self._format_outer_safety_fault()
+                            detail_suffix = (
+                                "; %s" % safety_detail if safety_detail else ""
+                            )
+                            raise gcmd.error(
+                                "FOCI %s: velocity integral response fault "
+                                "(cause=%d)%s"
+                                % (
+                                    self.driver.name,
+                                    self.velocity_integral.terminal.get("cause", 0),
+                                    detail_suffix,
+                                )
+                            )
                     return
                 self._retain_request_from_terminal(request_fields)
                 workflow = self.velocity_integral.workflow_plan or {}

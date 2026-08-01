@@ -2159,3 +2159,19 @@ def test_stage_b_14_binds_from_firmware_revision_without_plan_schema_field():
     feed_firmware_combined_stage_b_plan(assembler)
 
     assert assembler.combined_stage_b_schema == 14
+
+
+def test_breakaway_workflow_shape_is_accepted_but_stays_inert():
+    """Shape 6 (the breakaway campaign) never emits Stage-B sweep evidence.
+
+    BreakawayCampaignAssembler (velocity_integral.py) relays the campaign's
+    own probe/discovery/confirmation evidence; this assembler only needs to
+    accept the shared command-level workflow shape without raising, exactly
+    as it already does for shape 2 (Stage-C resume).
+    """
+    assembler = VelocitySweepAssembler()
+
+    assembler.configure_workflow_shape(6, 400_000, 400_000)
+
+    assert assembler.plan is None
+    assert assembler.done is False

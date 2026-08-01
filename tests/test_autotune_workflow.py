@@ -997,3 +997,433 @@ class TestVelocitySweepFirmwareSchemaBinding(unittest.TestCase):
         feed_firmware_combined_stage_b_plan(assembler)
 
         self.assertEqual(assembler.combined_stage_b_schema, 12)
+
+
+# ============================================================================
+# Breakaway-seeded campaign: end-to-end host orchestration
+# ============================================================================
+
+BREAKAWAY_RUN_SEQUENCE = 21
+BREAKAWAY_PROBE_DIGEST = (0x1111_1111, 0x2222_2222)
+BREAKAWAY_DISCOVERY_DIGEST = (0x3333_3333, 0x4444_4444)
+BREAKAWAY_CONFIRMATION_DIGEST = (0x5555_5555, 0x6666_6666)
+BREAKAWAY_STAGE_C_DIGEST = (0x7777_7777, 0x8888_8888)
+
+
+def feed_breakaway_workflow_plan(driver, run_sequence, maximum_workflow_ms):
+    params = {
+        "run_sequence": run_sequence,
+        "shape": 6,
+        "nominal_workflow_ms": maximum_workflow_ms,
+        "maximum_workflow_ms": maximum_workflow_ms,
+    }
+    low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
+    driver.autotune.handle_commissioning_workflow_plan(
+        {**params, "digest_low": low, "digest_high": high}
+    )
+
+
+def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE):
+    """Feed a resolved probe and a 2-nomination discovery ladder."""
+    probe_low, probe_high = BREAKAWAY_PROBE_DIGEST
+    driver.autotune.handle_breakaway_probe_plan(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 0,
+            "plan_digest_low": probe_low,
+            "plan_digest_high": probe_high,
+            "family_size": 16,
+            "max_observations": 8,
+            "search_count": 10,
+            "p_start_raw": 100,
+            "p_top_raw": 2000,
+        }
+    )
+    for direction, (inert, moving, observations) in enumerate(
+        ((300, 320, 5), (310, 330, 6))
+    ):
+        driver.autotune.handle_breakaway_directional_breakaway(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 1,
+                "plan_digest_low": probe_low,
+                "plan_digest_high": probe_high,
+                "direction": direction,
+                "inert_present": 1,
+                "inert_p_raw": inert,
+                "moving_p_raw": moving,
+                "observations": observations,
+            }
+        )
+
+    discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
+    driver.autotune.handle_breakaway_discovery_plan_identity(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": discovery_low,
+            "plan_digest_high": discovery_high,
+            "prior_plan_digest_low": probe_low,
+            "prior_plan_digest_high": probe_high,
+            "family_size": 32,
+        }
+    )
+    driver.autotune.handle_breakaway_discovery_plan_geometry(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "rung_count": 3,
+            "observations_per_direction": 8,
+            "floor_p_raw": 290,
+            "floor_origin": 0,
+            "breakaway_p_raw": 320,
+            "ceiling_p_raw": 2000,
+            "first_additive_step_raw": 40,
+            "maximum_workflow_ms": 20_000,
+        }
+    )
+    driver.autotune.handle_breakaway_discovery_ceiling_source(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": discovery_low,
+            "plan_digest_high": discovery_high,
+            "binding_source": 0,
+        }
+    )
+    for rung_index, p_raw in enumerate((320, 360, 400)):
+        driver.autotune.handle_breakaway_discovery_ladder_rung(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 2,
+                "plan_digest_low": discovery_low,
+                "plan_digest_high": discovery_high,
+                "rung_index": rung_index,
+                "p_raw": p_raw,
+            }
+        )
+    margins = (
+        (0, 360, 71_000, 79_000, 1_000, 4_000, 0),
+        (1, 400, 72_000, 78_000, 2_000, 3_000, 5_000),
+    )
+    for collected_index, p_raw, lower, upper, margin, half_width, step in margins:
+        driver.autotune.handle_breakaway_discovery_rung_margin(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 2,
+                "plan_digest_low": discovery_low,
+                "plan_digest_high": discovery_high,
+                "collected_index": collected_index,
+                "p_raw": p_raw,
+                "lower_percent_milli": lower,
+                "upper_percent_milli": upper,
+                "margin_percent_milli": margin,
+                "half_width_percent_milli": half_width,
+                "adjacent_rate_step_permille": step,
+            }
+        )
+    driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": discovery_low,
+            "plan_digest_high": discovery_high,
+            "forward_moved": 0,
+            "reverse_moved": 1,
+        }
+    )
+    driver.autotune.handle_breakaway_discovery_terminal(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": discovery_low,
+            "plan_digest_high": discovery_high,
+            "prior_plan_digest_low": probe_low,
+            "prior_plan_digest_high": probe_high,
+            "family_size": 32,
+            "terminal_cause": 0,
+            "collected_count": 2,
+            "has_safety_fault": 0,
+        }
+    )
+
+
+def feed_breakaway_confirmation(
+    driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, accepted
+):
+    """Feed a full held-out 8-stroke confirmation block, then the campaign
+    closure record -- accepted, or ending in a TargetBandConfirmationInconclusive
+    ResponseLocation cause (wire code 15)."""
+    discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
+    confirm_low, confirm_high = BREAKAWAY_CONFIRMATION_DIGEST
+    driver.autotune.handle_breakaway_confirmation_plan(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 3,
+            "plan_digest_low": confirm_low,
+            "plan_digest_high": confirm_high,
+            "prior_plan_digest_low": discovery_low,
+            "prior_plan_digest_high": discovery_high,
+            "family_size": 8,
+            "observations_per_direction": 4,
+            "candidate_p_raw": 400,
+            "band_lower_percent": 70,
+            "band_upper_percent": 80,
+            "capture_profile": 0,
+            "acceptance_rule": 0,
+            "nominated_margin_percent_milli": 2_000,
+        }
+    )
+    for slot_index in range(8):
+        driver.autotune.handle_breakaway_confirmation_observation(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 3,
+                "plan_digest_low": confirm_low,
+                "plan_digest_high": confirm_high,
+                "slot_index": slot_index,
+                "direction": 0 if slot_index < 4 else 1,
+                "response_lower_percent_milli": 72_000,
+                "response_upper_percent_milli": 78_000,
+                "relative_standard_error_permille": 500,
+            }
+        )
+    driver.autotune.handle_breakaway_confirmation_terminal_identity(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 3,
+            "plan_digest_low": confirm_low,
+            "plan_digest_high": confirm_high,
+            "prior_plan_digest_low": discovery_low,
+            "prior_plan_digest_high": discovery_high,
+            "family_size": 8,
+            "terminal_cause": 21 if accepted else 15,
+        }
+    )
+    driver.autotune.handle_breakaway_confirmation_terminal_masks(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 3,
+            "forward_collected_mask": 0b1111,
+            "forward_eligible_mask": 0b1111,
+            "forward_included_mask": 0b1111,
+            "reverse_collected_mask": 0b1111,
+            "reverse_eligible_mask": 0b1111,
+            "reverse_included_mask": 0b1111,
+            "accepted": int(accepted),
+            "confirmed_p_raw": 400 if accepted else 0,
+            "max_relative_se_permille": 500 if accepted else 900,
+            "required_relative_se_permille": 667,
+            "has_safety_fault": 0,
+        }
+    )
+    stage_c_low, stage_c_high = BREAKAWAY_STAGE_C_DIGEST if accepted else (0, 0)
+    driver.autotune.handle_breakaway_campaign_terminal(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 4,
+            "phase": 2,
+            "terminal_cause": 21 if accepted else 15,
+            "accepted": int(accepted),
+            "stage_c_plan_digest_low": stage_c_low,
+            "stage_c_plan_digest_high": stage_c_high,
+        }
+    )
+
+
+class TestBreakawayCampaignWorkflow(unittest.TestCase):
+    def _commissioned_driver(self):
+        d = make_driver(
+            stepper_name="stepper_x",
+            kinematics=MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
+            homed_axes="xyz",
+        )
+        d.state.is_calibrated = True
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.runtime_status = "commissioned"
+        d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
+        d.state.commissioned_result.update(
+            {
+                "tau_e_us": 730,
+                "inner_warning_flags": 0,
+                "bandwidth_hz": 1600,
+                "current_gains_source": 1,
+                "current_gains_tier": 1,
+                "current_retry_budget_exhausted": 0,
+                "current_failure_reason": 0,
+                "inductance_source": 1,
+                "inductance_reactance_count_ratio_milli": 8600,
+                "inductance_saliency_status": 1,
+                "resistance_selected_count_slope_milli": 1042,
+            }
+        )
+        install_live_dump(d)
+        return d
+
+    def test_workflow_envelope_precedes_motion_and_extends_host_timeout(self):
+        """Brief step 1: the command-level envelope arrives before any motion
+        evidence, then the host's short 5s setup timeout is replaced by one
+        derived from the firmware-declared `maximum_workflow_ms` -- simulated
+        time is pushed well past 5s below and the run still completes instead
+        of raising "timed out waiting for plan"."""
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        pauses = 0
+
+        def pause_with_breakaway_campaign(deadline):
+            nonlocal pauses
+            pauses += 1
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif (
+                d.autotune.breakaway_campaign.discovery_terminal is None
+                and reactor._time >= 5.5
+            ):
+                feed_breakaway_probe_and_discovery(d)
+            elif (
+                d.autotune.breakaway_campaign.discovery_terminal is not None
+                and not d.autotune.breakaway_campaign.done
+                and reactor._time >= 5.6
+            ):
+                feed_breakaway_confirmation(d, accepted=True)
+                d.autotune.velocity_integral.plan = {
+                    "plan_digest": (
+                        BREAKAWAY_STAGE_C_DIGEST[0]
+                        | (BREAKAWAY_STAGE_C_DIGEST[1] << 32)
+                    )
+                }
+                d.autotune.velocity_integral.outcome = "complete"
+                d.autotune.velocity_integral.terminal = {"cause": 0}
+                d.autotune.velocity_integral.done = True
+            return reactor._time
+
+        reactor.pause = pause_with_breakaway_campaign
+
+        d.autotune.autotune(gcmd)
+
+        self.assertGreater(reactor._time, 5.0)
+        self.assertIsNone(d.autotune.breakaway_campaign_error)
+        self.assertIsNone(d.autotune.velocity_integral_error)
+        self.assertTrue(d.autotune.breakaway_campaign.accepted)
+        self.assertTrue(
+            any("breakaway campaign accepted" in message for message in gcmd._responses)
+        )
+        self.assertTrue(
+            any("integral response" in message for message in gcmd._responses)
+        )
+
+    def test_operator_report_relays_geometry_margin_and_confirmation_bounds(self):
+        """Brief step 3: directional gains, additive geometry, nomination
+        margin, confirmation bounds, and terminal remediation are all present
+        in the operator-facing text, copied verbatim from firmware records."""
+        d = self._commissioned_driver()
+        feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+        feed_breakaway_probe_and_discovery(d)
+        feed_breakaway_confirmation(d, accepted=False)
+
+        message = d.autotune._format_breakaway_campaign_result()
+
+        self.assertIn("forward inert=P=300 moving=320", message)
+        self.assertIn("reverse inert=P=310 moving=330", message)
+        self.assertIn("floor=290", message)
+        self.assertIn("breakaway=320", message)
+        self.assertIn("ceiling=2000", message)
+        self.assertIn("step=40", message)
+        self.assertIn("rungs=3", message)
+        self.assertIn("nominated P=400 margin=2000pm", message)
+        self.assertIn("confirmed P=0 measured_SE=900pm required_SE=667pm", message)
+        self.assertIn("remediation:", message)
+
+    def test_confirmation_inconclusive_preserves_prior_p_and_skips_persistence(self):
+        """Brief step 4: on a non-accept terminal, the previously commissioned
+        P is untouched and neither Stage-C completion nor the persistence
+        callback ever runs."""
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        persisted = []
+        d.autotune.persist_tune_results = lambda *args, **kwargs: persisted.append(
+            (args, kwargs)
+        )
+
+        def pause_with_inconclusive_confirmation(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif not d.autotune.breakaway_campaign.done:
+                feed_breakaway_probe_and_discovery(d)
+                feed_breakaway_confirmation(d, accepted=False)
+            return reactor._time
+
+        reactor.pause = pause_with_inconclusive_confirmation
+
+        d.autotune.autotune(gcmd)
+
+        self.assertFalse(d.autotune.breakaway_campaign.accepted)
+        self.assertIsNone(d.autotune.velocity_integral.plan)
+        self.assertFalse(d.autotune.velocity_integral.done)
+        self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
+        self.assertEqual(persisted, [])
+        self.assertTrue(
+            any(
+                "breakaway campaign not accepted" in message
+                for message in gcmd._responses
+            )
+        )
+
+    def test_dumb_host_never_reissues_a_second_confirmation_after_acceptance(self):
+        """Brief step 2: the host cannot be coerced into "retrying" a
+        candidate. Feeding a second confirmation plan after the campaign
+        already closed is rejected as a protocol violation, not silently
+        accepted as an alternate candidate -- there is no host-side retry
+        path to exercise."""
+        d = self._commissioned_driver()
+        feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+        feed_breakaway_probe_and_discovery(d)
+        feed_breakaway_confirmation(d, accepted=False)
+
+        self.assertTrue(d.autotune.breakaway_campaign.done)
+        self.assertIsNone(d.autotune.breakaway_campaign_error)
+
+        confirm_low, confirm_high = BREAKAWAY_CONFIRMATION_DIGEST
+        discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
+        d.autotune.handle_breakaway_confirmation_plan(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 5,
+                "plan_digest_low": confirm_low,
+                "plan_digest_high": confirm_high,
+                "prior_plan_digest_low": discovery_low,
+                "prior_plan_digest_high": discovery_high,
+                "family_size": 8,
+                "observations_per_direction": 4,
+                "candidate_p_raw": 360,  # a different candidate: never chosen
+                "band_lower_percent": 70,
+                "band_upper_percent": 80,
+                "capture_profile": 0,
+                "acceptance_rule": 0,
+                "nominated_margin_percent_milli": 2_000,
+            }
+        )
+
+        self.assertIsNotNone(d.autotune.breakaway_campaign_error)
+        self.assertIn(
+            "duplicate confirmation", str(d.autotune.breakaway_campaign_error)
+        )

@@ -117,8 +117,16 @@ class VelocitySweepAssembler:
         nominal_workflow_ms: int | None = None,
         maximum_workflow_ms: int | None = None,
     ) -> None:
-        """Bind terminal interpretation to the firmware-disclosed workflow."""
-        if shape not in (0, 1, 2, 3):
+        """Bind terminal interpretation to the firmware-disclosed workflow.
+
+        Shape 6 (the breakaway-seeded campaign) shares this same command-level
+        envelope but never emits any Stage-B sweep evidence of its own -- the
+        campaign's probe/discovery/confirmation phases are relayed by
+        ``BreakawayCampaignAssembler`` instead. Binding it here, like shape 2
+        (Stage-C resume), keeps this assembler's terminal-interpretation gate
+        inert rather than raising on evidence this assembler will never see.
+        """
+        if shape not in (0, 1, 2, 3, 6):
             raise VelocitySweepProtocolError("invalid workflow shape")
         if (
             self.plan is not None

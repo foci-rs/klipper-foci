@@ -202,7 +202,7 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is not None:
             raise VelocityIntegralProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (0, 1, 2, 3):
+        if shape not in (0, 1, 2, 3, 6):
             raise VelocityIntegralProtocolError("invalid workflow shape")
         if int(params["maximum_workflow_ms"]) < int(params["nominal_workflow_ms"]):
             raise VelocityIntegralProtocolError("workflow maximum is below nominal")
@@ -231,6 +231,7 @@ class VelocityIntegralAssembler:
             11,
             12,
             13,
+            14,
         ):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
@@ -574,7 +575,13 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("invalid rest-boundary reference")
         if combined and target_code not in range(5):
             raise VelocityIntegralProtocolError("invalid combined target status")
-        if schema_revision >= 8 and not combined:
+        # The breakaway campaign's Stage-C continuation (schema 14) is not a
+        # "combined" plan (StageCAuthority.new_breakaway never fills
+        # combined_selected_response), so its terminal never carries the
+        # combined-workflow marker. Only the classic combined schema range
+        # (8-13, exclusive of 14, enforced pairwise with shape 3 in
+        # _finish_plan) requires it.
+        if 8 <= schema_revision <= 13 and not combined:
             raise VelocityIntegralProtocolError(
                 "schema-8 terminal omitted combined workflow marker"
             )
@@ -745,11 +752,21 @@ class VelocityIntegralAssembler:
                     int(masks["divergent_mask"])
                 ):
                     raise VelocityIntegralProtocolError("missing divergent intervals")
-        combined = (
-            int(self.plan["schema_revision"]) >= 8
-            and int(self.workflow_plan["shape"]) == 3
-        )
-        if self.outcome == "complete" and self.reproduction is None and not combined:
+        # Neither the classic combined flow (shape 3) nor the breakaway
+        # campaign's Stage-C continuation (shape 6) ever has a reproduced
+        # Stage-B directional model to compare against -- the combined flow
+        # because its Stage-B response was selected live in the same command,
+        # the breakaway campaign because StageCAuthority.new_breakaway leaves
+        # every directional field empty/zero by construction. Both are
+        # therefore exempt from the reproduction-required rule below.
+        combined_or_breakaway = int(self.plan["schema_revision"]) >= 8 and int(
+            self.workflow_plan["shape"]
+        ) in (3, 6)
+        if (
+            self.outcome == "complete"
+            and self.reproduction is None
+            and not combined_or_breakaway
+        ):
             raise VelocityIntegralProtocolError(
                 "complete integral response omitted reproduction evidence"
             )
@@ -798,22 +815,34 @@ class VelocityIntegralAssembler:
                 int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
             )
         if int(plan["schema_revision"]) >= 8:
-            if int(self.workflow_plan["shape"]) != 3:
-                raise VelocityIntegralProtocolError(
-                    "combined Stage-C plan requires combined workflow"
+            workflow_shape = int(self.workflow_plan["shape"])
+            if int(plan["schema_revision"]) == 14:
+                # The breakaway campaign's Stage-C continuation has no
+                # reproduced Stage-B sweep plan to pair against -- Stage C is
+                # authorized by the accepted confirmation digest instead (see
+                # BreakawayCampaignAssembler), not by a Stage-B/Stage-C schema
+                # pairing. Only the workflow shape is exclusive here.
+                if workflow_shape != 6:
+                    raise VelocityIntegralProtocolError(
+                        "breakaway Stage-C plan requires breakaway workflow"
+                    )
+            else:
+                if workflow_shape != 3:
+                    raise VelocityIntegralProtocolError(
+                        "combined Stage-C plan requires combined workflow"
+                    )
+                # Stage-B and Stage-C revisions must be a matching pair. This is a
+                # compatibility check, not a re-derivation of firmware's arithmetic.
+                expected_stage_b = {11: 12, 12: 13, 13: 14}.get(
+                    int(plan["schema_revision"])
                 )
-            # Stage-B and Stage-C revisions must be a matching pair. This is a
-            # compatibility check, not a re-derivation of firmware's arithmetic.
-            expected_stage_b = {11: 12, 12: 13, 13: 14}.get(
-                int(plan["schema_revision"])
-            )
-            if (
-                expected_stage_b is not None
-                and self._combined_stage_b_schema != expected_stage_b
-            ):
-                raise VelocityIntegralProtocolError(
-                    "Stage-B and Stage-C schema revisions are not a matching pair"
-                )
+                if (
+                    expected_stage_b is not None
+                    and self._combined_stage_b_schema != expected_stage_b
+                ):
+                    raise VelocityIntegralProtocolError(
+                        "Stage-B and Stage-C schema revisions are not a matching pair"
+                    )
         self.plan = plan
 
     @property
@@ -1152,3 +1181,604 @@ class VelocityIntegralAssembler:
                     )
                 merged[key] = value
         return merged
+
+
+# ============================================================================
+# Breakaway-seeded campaign reporting
+# ============================================================================
+#
+# The breakaway campaign (StageCPlanShape.BreakawaySeededPThenI = 6) is a
+# three-phase acquisition -- a two-direction bisection probe, an additive
+# discovery ladder, and a held-out eight-stroke confirmation block -- that
+# firmware runs entirely on its own authority before, on acceptance, handing
+# off into the existing Stage-C velocity-integral flow above (schema 14,
+# handled by VelocityIntegralAssembler already). BreakawayCampaignAssembler
+# below covers only the campaign's own evidence: it validates the firmware's
+# digest chain (each phase's plan names the prior phase's digest) and the
+# wire's own internal structure (direction codes, monotonic indices, interval
+# ordering, mask subset relationships), and otherwise relays every firmware
+# value unchanged. It never selects a rung, changes a family size, retries a
+# candidate, or synthesizes a value firmware did not send -- see
+# tests/test_velocity_integral.py's dumb-host proof tests.
+
+BREAKAWAY_PHASE_NAMES = {0: "probe", 1: "discovery", 2: "confirmation"}
+
+BREAKAWAY_TERMINAL_CAUSE_NAMES = {
+    0: "none",
+    1: "probe_no_motion_at_authority",
+    2: "probe_unstable_breakaway",
+    3: "probe_directional_breakaway_disagreement",
+    4: "probe_evidence_excluded",
+    5: "probe_authority_failure",
+    6: "probe_safety_fault",
+    7: "discovery_target_band_skipped",
+    8: "discovery_current_headroom_before_band",
+    9: "discovery_insufficient_additive_span",
+    10: "discovery_additive_ladder_resolution_budget_exceeded",
+    11: "discovery_evidence_excluded",
+    12: "discovery_safety_fault",
+    13: "confirmation_target_band_unconfirmable_from_discovery",
+    14: "confirmation_target_band_not_reached_at_authority",
+    15: "confirmation_response_location",
+    16: "confirmation_excessive_uncertainty",
+    17: "confirmation_loss_of_consensus",
+    18: "confirmation_current_authority",
+    19: "confirmation_evidence_excluded",
+    20: "confirmation_safety_fault",
+    21: "accepted",
+}
+
+# Advisory text only -- relays what the disclosed cause means, not a
+# host-computed remedy. Mirrors velocity_sweep.py's INCONCLUSIVE_REMEDIATION.
+BREAKAWAY_TERMINAL_REMEDIATION = {
+    1: "no direction showed motion within the probe's authority; check current limits",
+    2: "the probe's inert/moving bracket did not stay stable; rerun the probe",
+    3: "forward and reverse breakaway estimates disagreed; inspect both directions",
+    4: "probe evidence was excluded; retain the trace and inspect stationarity",
+    5: "probe authority was exhausted before a bracket resolved",
+    6: "probe stopped on a safety fault; inspect retained safety evidence",
+    7: "discovery skipped the target band; inspect the resolved ladder",
+    8: "current headroom ended discovery before the target band; review headroom",
+    9: "the additive span between breakaway and ceiling was insufficient",
+    10: "the additive ladder exceeded its resolution budget",
+    11: "discovery evidence was excluded; retain the trace and inspect stationarity",
+    12: "discovery stopped on a safety fault; inspect retained safety evidence",
+    13: "no discovery rung could be confirmed; inspect the nomination margins",
+    14: "the target band was not reached at the discovery authority ceiling",
+    15: "the confirmed response left the 70-80% band; inspect confirmation bounds",
+    16: "confirmation uncertainty exceeded the containable range",
+    17: "forward and reverse confirmation strokes lost consensus",
+    18: "confirmation ended on current authority instead of the target band",
+    19: "confirmation evidence was excluded; retain the trace and inspect stationarity",
+    20: "confirmation stopped on a safety fault; inspect retained safety evidence",
+}
+
+FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}
+CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
+
+BREAKAWAY_DIRECTION_NAMES = {0: "forward", 1: "reverse"}
+
+# Fixed capture schedule the confirmation driver is built to (spec/Task 4):
+# four forward strokes (slots 0-3) then four reverse strokes (slots 4-7).
+BREAKAWAY_CONFIRMATION_OBSERVATIONS_PER_DIRECTION = 4
+
+
+class BreakawayCampaignProtocolError(Exception):
+    """Raised when breakaway-campaign evidence violates its wire contract."""
+
+
+class BreakawayCampaignAssembler:
+    """Strictly relay one firmware-authored breakaway-campaign report.
+
+    This assembler never decides anything: it validates that each phase's
+    plan names the previous phase's exact digest, that individual records are
+    internally well-formed (direction codes, ordering, interval and mask
+    sanity), and that a batch's declared count matches the records actually
+    received -- then stores every firmware value unchanged for the operator
+    report. No rung, family size, candidate, or retry is ever chosen here.
+    """
+
+    def __init__(self) -> None:
+        self.probe_plan: dict | None = None
+        self.directional_breakaways: dict[int, dict] = {}
+        self.probe_terminal: dict | None = None
+        self.discovery_plan: dict | None = None
+        self.discovery_ceiling_source: dict | None = None
+        self.discovery_rungs: list[dict] = []
+        self.discovery_rung_margins: list[dict] = []
+        self.discovery_rung_zero: dict | None = None
+        self.discovery_terminal: dict | None = None
+        self.confirmation_plan: dict | None = None
+        self.confirmation_observations: list[dict] = []
+        self.confirmation_terminal: dict | None = None
+        self.campaign_terminal: dict | None = None
+        self.accepted = False
+        self.stage_c_plan_digest: int | None = None
+        self.done = False
+        self._run_sequence: int | None = None
+        self._last_evidence_sequence: int | None = None
+        self._discovery_identity: dict | None = None
+        self._confirmation_terminal_identity: dict | None = None
+        self._discovery_closed = False
+        self._confirmation_closed = False
+
+    # -- shared identity/sequence plumbing ---------------------------------
+
+    def _bind_run(self, params: dict) -> None:
+        if self._run_sequence is not None:
+            raise BreakawayCampaignProtocolError("duplicate probe plan")
+        self._run_sequence = int(params.get("run_sequence", -1))
+
+    def _require_run(self, params: dict) -> None:
+        if (
+            self._run_sequence is None
+            or int(params.get("run_sequence", -1)) != self._run_sequence
+        ):
+            raise BreakawayCampaignProtocolError("run sequence changed")
+
+    def _track_sequence(self, params: dict) -> int:
+        self._require_run(params)
+        sequence = int(params.get("evidence_sequence", -1))
+        if sequence < 0:
+            raise BreakawayCampaignProtocolError("missing evidence sequence")
+        if (
+            self._last_evidence_sequence is not None
+            and sequence < self._last_evidence_sequence
+        ):
+            raise BreakawayCampaignProtocolError("evidence sequence went backwards")
+        self._last_evidence_sequence = sequence
+        return sequence
+
+    @staticmethod
+    def _reported_plan_digest(params: dict) -> int:
+        return _u64(params["plan_digest_low"], params["plan_digest_high"])
+
+    def _require_probe_plan(self, params: dict) -> None:
+        if self.probe_plan is None:
+            raise BreakawayCampaignProtocolError(
+                "breakaway evidence arrived before the probe plan"
+            )
+        self._require_run(params)
+
+    def _require_probe_resolved(self, params: dict) -> None:
+        self._require_probe_plan(params)
+        if len(self.directional_breakaways) != 2 or self.probe_terminal is not None:
+            raise BreakawayCampaignProtocolError(
+                "discovery evidence arrived without a resolved probe breakaway"
+            )
+
+    def _require_discovery_plan(self, params: dict) -> None:
+        if self.discovery_plan is None:
+            raise BreakawayCampaignProtocolError(
+                "breakaway evidence arrived before the discovery plan"
+            )
+        self._require_run(params)
+
+    def _require_confirmation_plan(self, params: dict) -> None:
+        if self.confirmation_plan is None:
+            raise BreakawayCampaignProtocolError(
+                "breakaway evidence arrived before the confirmation plan"
+            )
+        self._require_run(params)
+
+    def _close_discovery(self) -> None:
+        """Reconcile the discovery-terminal batch once discovery has closed.
+
+        The rung-margin, rung-zero, and terminal records that make up one
+        discovery-terminal batch share a single evidence_sequence and firmware
+        does not guarantee their wire order within that batch, so this
+        cross-check is deferred until the campaign has unambiguously moved
+        past discovery (the next confirmation-plan or campaign-terminal
+        record), by which point every record in the batch must have arrived.
+        """
+        if self.discovery_terminal is None or self._discovery_closed:
+            return
+        collected_count = int(self.discovery_terminal["collected_count"])
+        if len(self.discovery_rung_margins) != collected_count:
+            raise BreakawayCampaignProtocolError(
+                "discovery terminal collected count does not match the "
+                "reported rung margins"
+            )
+        self._discovery_closed = True
+
+    def _close_confirmation(self) -> None:
+        """Reconcile the confirmation-terminal batch once confirmation closed.
+
+        Deferred for the same reason as `_close_discovery`: the fresh-stroke
+        observation records share the confirmation terminal's evidence
+        sequence and firmware does not guarantee their relative wire order.
+        """
+        if self.confirmation_terminal is None or self._confirmation_closed:
+            return
+        observed_count = len(self.confirmation_observations)
+        if observed_count not in (0, 8):
+            raise BreakawayCampaignProtocolError(
+                "confirmation observations are not a complete eight-stroke block"
+            )
+        if (
+            bool(int(self.confirmation_terminal.get("accepted", 0)))
+            and observed_count != 8
+        ):
+            raise BreakawayCampaignProtocolError(
+                "accepted confirmation is missing its eight-stroke evidence"
+            )
+        self._confirmation_closed = True
+
+    # -- probe phase ---------------------------------------------------------
+
+    def handle_probe_plan(self, params: dict) -> None:
+        if self.probe_plan is not None:
+            raise BreakawayCampaignProtocolError("duplicate probe plan")
+        self._bind_run(params)
+        if int(params.get("evidence_sequence", -1)) != 0:
+            raise BreakawayCampaignProtocolError("probe plan sequence is not zero")
+        self._last_evidence_sequence = 0
+        family_size = int(params["family_size"])
+        max_observations = int(params["max_observations"])
+        if family_size != 2 * max_observations:
+            raise BreakawayCampaignProtocolError(
+                "probe family size does not match the observation budget"
+            )
+        if int(params["search_count"]) < 1:
+            raise BreakawayCampaignProtocolError("empty probe search grid")
+        if int(params["p_start_raw"]) > int(params["p_top_raw"]):
+            raise BreakawayCampaignProtocolError("reversed probe search grid")
+        self.probe_plan = _metadata_free(params)
+        self.probe_plan["plan_digest"] = self._reported_plan_digest(params)
+
+    def handle_directional_breakaway(self, params: dict) -> None:
+        self._require_probe_plan(params)
+        if self.probe_terminal is not None:
+            raise BreakawayCampaignProtocolError(
+                "directional breakaway arrived after a probe failure terminal"
+            )
+        self._track_sequence(params)
+        if self._reported_plan_digest(params) != self.probe_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "directional breakaway plan digest mismatch"
+            )
+        direction = int(params.get("direction", -1))
+        if direction != len(self.directional_breakaways) or direction not in (0, 1):
+            raise BreakawayCampaignProtocolError(
+                "reordered or duplicate directional breakaway"
+            )
+        if not int(params["inert_present"]) and int(params["inert_p_raw"]) != 0:
+            raise BreakawayCampaignProtocolError(
+                "absent inert bracket carries a nonzero gain"
+            )
+        if int(params["observations"]) < 1:
+            raise BreakawayCampaignProtocolError(
+                "directional breakaway reports zero observations"
+            )
+        self.directional_breakaways[direction] = _metadata_free(params)
+
+    def handle_probe_terminal(self, params: dict) -> None:
+        self._require_probe_plan(params)
+        if self.probe_terminal is not None:
+            raise BreakawayCampaignProtocolError("duplicate probe terminal")
+        if self.directional_breakaways:
+            raise BreakawayCampaignProtocolError(
+                "probe terminal arrived after a resolved breakaway"
+            )
+        self._track_sequence(params)
+        if self._reported_plan_digest(params) != self.probe_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError("probe terminal plan digest mismatch")
+        if int(params["family_size"]) != int(self.probe_plan["family_size"]):
+            raise BreakawayCampaignProtocolError(
+                "probe terminal family size does not match the probe plan"
+            )
+        cause = int(params["terminal_cause"])
+        if cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES or cause == 0:
+            raise BreakawayCampaignProtocolError("invalid probe terminal cause")
+        self.probe_terminal = _metadata_free(params)
+
+    # -- discovery phase -------------------------------------------------
+
+    def handle_discovery_plan_identity(self, params: dict) -> None:
+        if self._discovery_identity is not None or self.discovery_plan is not None:
+            raise BreakawayCampaignProtocolError("duplicate discovery plan identity")
+        self._require_probe_resolved(params)
+        self._track_sequence(params)
+        prior = _u64(params["prior_plan_digest_low"], params["prior_plan_digest_high"])
+        if prior != self.probe_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "discovery plan does not chain from the probe plan"
+            )
+        self._discovery_identity = _metadata_free(params)
+        self._discovery_identity["plan_digest"] = self._reported_plan_digest(params)
+
+    def handle_discovery_plan_geometry(self, params: dict) -> None:
+        if self._discovery_identity is None:
+            raise BreakawayCampaignProtocolError(
+                "discovery geometry preceded discovery identity"
+            )
+        if self.discovery_plan is not None:
+            raise BreakawayCampaignProtocolError("duplicate discovery plan geometry")
+        self._require_run(params)
+        if int(params.get("evidence_sequence", -1)) != int(
+            self._discovery_identity["evidence_sequence"]
+        ):
+            raise BreakawayCampaignProtocolError(
+                "discovery geometry evidence sequence does not match its identity"
+            )
+        floor = int(params["floor_p_raw"])
+        breakaway = int(params["breakaway_p_raw"])
+        ceiling = int(params["ceiling_p_raw"])
+        if not floor <= breakaway <= ceiling:
+            raise BreakawayCampaignProtocolError(
+                "discovery geometry gains are not ordered floor<=breakaway<=ceiling"
+            )
+        if int(params["rung_count"]) < 1:
+            raise BreakawayCampaignProtocolError("empty discovery ladder")
+        if int(params["floor_origin"]) not in FLOOR_ORIGIN_NAMES:
+            raise BreakawayCampaignProtocolError("invalid discovery floor origin")
+        if int(params["maximum_workflow_ms"]) == 0:
+            raise BreakawayCampaignProtocolError("zero discovery workflow reservation")
+        self.discovery_plan = {**self._discovery_identity, **_metadata_free(params)}
+        self._discovery_identity = None
+
+    def handle_discovery_ceiling_source(self, params: dict) -> None:
+        self._require_discovery_plan(params)
+        if self.discovery_ceiling_source is not None:
+            raise BreakawayCampaignProtocolError("duplicate discovery ceiling source")
+        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "discovery ceiling source plan digest mismatch"
+            )
+        if int(params["binding_source"]) not in CEILING_BINDING_SOURCE_NAMES:
+            raise BreakawayCampaignProtocolError(
+                "invalid discovery ceiling binding source"
+            )
+        self.discovery_ceiling_source = _metadata_free(params)
+
+    def handle_discovery_ladder_rung(self, params: dict) -> None:
+        self._require_discovery_plan(params)
+        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "discovery ladder rung plan digest mismatch"
+            )
+        rung_index = int(params.get("rung_index", -1))
+        if rung_index != len(self.discovery_rungs):
+            raise BreakawayCampaignProtocolError(
+                "reordered or duplicate discovery ladder rung"
+            )
+        if self.discovery_rungs and int(params["p_raw"]) < int(
+            self.discovery_rungs[-1]["p_raw"]
+        ):
+            raise BreakawayCampaignProtocolError(
+                "discovery ladder rung gains are not nondecreasing"
+            )
+        self.discovery_rungs.append(_metadata_free(params))
+
+    def handle_discovery_rung_margin(self, params: dict) -> None:
+        self._require_discovery_plan(params)
+        if self.discovery_terminal is not None:
+            raise BreakawayCampaignProtocolError(
+                "rung margin arrived after the discovery terminal"
+            )
+        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "discovery rung margin plan digest mismatch"
+            )
+        collected_index = int(params.get("collected_index", -1))
+        if collected_index < 0 or (
+            self.discovery_rung_margins
+            and collected_index
+            <= int(self.discovery_rung_margins[-1]["collected_index"])
+        ):
+            raise BreakawayCampaignProtocolError(
+                "discovery rung margins are not strictly increasing"
+            )
+        lower = int(params["lower_percent_milli"])
+        upper = int(params["upper_percent_milli"])
+        if lower > upper:
+            raise BreakawayCampaignProtocolError("reversed nomination interval")
+        if int(params["half_width_percent_milli"]) < 0:
+            raise BreakawayCampaignProtocolError("negative nomination half-width")
+        previous = (
+            self.discovery_rung_margins[-1] if self.discovery_rung_margins else None
+        )
+        contiguous = (
+            previous is not None
+            and collected_index == int(previous["collected_index"]) + 1
+        )
+        if not contiguous and int(params["adjacent_rate_step_permille"]) != 0:
+            raise BreakawayCampaignProtocolError(
+                "adjacent rate step reported across a nomination gap"
+            )
+        self.discovery_rung_margins.append(_metadata_free(params))
+
+    def handle_discovery_rung_zero_diagnostic(self, params: dict) -> None:
+        self._require_discovery_plan(params)
+        if self.discovery_terminal is not None:
+            raise BreakawayCampaignProtocolError(
+                "rung-zero diagnostic arrived after the discovery terminal"
+            )
+        if self.discovery_rung_zero is not None:
+            raise BreakawayCampaignProtocolError("duplicate rung-zero diagnostic")
+        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "rung-zero diagnostic plan digest mismatch"
+            )
+        self.discovery_rung_zero = _metadata_free(params)
+
+    def handle_discovery_terminal(self, params: dict) -> None:
+        self._require_discovery_plan(params)
+        if self.discovery_terminal is not None:
+            raise BreakawayCampaignProtocolError("duplicate discovery terminal")
+        prior = _u64(params["prior_plan_digest_low"], params["prior_plan_digest_high"])
+        if prior != self.probe_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "discovery terminal does not chain from the probe plan"
+            )
+        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "discovery terminal plan digest mismatch"
+            )
+        cause = int(params["terminal_cause"])
+        if cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES:
+            raise BreakawayCampaignProtocolError("invalid discovery terminal cause")
+        self.discovery_terminal = _metadata_free(params)
+
+    # -- confirmation phase ------------------------------------------------
+
+    def handle_confirmation_plan(self, params: dict) -> None:
+        self._close_discovery()
+        if self.discovery_plan is None:
+            raise BreakawayCampaignProtocolError(
+                "confirmation plan arrived before the discovery plan"
+            )
+        if self.confirmation_plan is not None:
+            raise BreakawayCampaignProtocolError("duplicate confirmation plan")
+        self._require_run(params)
+        prior = _u64(params["prior_plan_digest_low"], params["prior_plan_digest_high"])
+        if prior != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "confirmation plan does not chain from the discovery plan"
+            )
+        family_size = int(params["family_size"])
+        observations_per_direction = int(params["observations_per_direction"])
+        if family_size != 2 * observations_per_direction:
+            raise BreakawayCampaignProtocolError(
+                "confirmation family size does not match the observation budget"
+            )
+        lower = int(params["band_lower_percent"])
+        upper = int(params["band_upper_percent"])
+        if not 0 <= lower < upper <= 100:
+            raise BreakawayCampaignProtocolError("invalid confirmation band")
+        self.confirmation_plan = _metadata_free(params)
+        self.confirmation_plan["plan_digest"] = self._reported_plan_digest(params)
+
+    def handle_confirmation_observation(self, params: dict) -> None:
+        self._require_confirmation_plan(params)
+        if self.confirmation_terminal is not None:
+            raise BreakawayCampaignProtocolError(
+                "confirmation observation arrived after the confirmation terminal"
+            )
+        if self._reported_plan_digest(params) != self.confirmation_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "confirmation observation plan digest mismatch"
+            )
+        slot_index = int(params.get("slot_index", -1))
+        if slot_index != len(self.confirmation_observations):
+            raise BreakawayCampaignProtocolError(
+                "reordered or duplicate confirmation observation"
+            )
+        expected_direction = (
+            0 if slot_index < BREAKAWAY_CONFIRMATION_OBSERVATIONS_PER_DIRECTION else 1
+        )
+        if int(params.get("direction", -1)) != expected_direction:
+            raise BreakawayCampaignProtocolError(
+                "confirmation observation direction does not match the fixed "
+                "capture schedule"
+            )
+        if int(params["response_lower_percent_milli"]) > int(
+            params["response_upper_percent_milli"]
+        ):
+            raise BreakawayCampaignProtocolError(
+                "reversed confirmation response interval"
+            )
+        self.confirmation_observations.append(_metadata_free(params))
+
+    def handle_confirmation_terminal_identity(self, params: dict) -> None:
+        self._require_confirmation_plan(params)
+        if self.confirmation_terminal is not None or (
+            self._confirmation_terminal_identity is not None
+        ):
+            raise BreakawayCampaignProtocolError(
+                "duplicate confirmation terminal identity"
+            )
+        prior = _u64(params["prior_plan_digest_low"], params["prior_plan_digest_high"])
+        if prior != self.discovery_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "confirmation terminal does not chain from the discovery plan"
+            )
+        if self._reported_plan_digest(params) != self.confirmation_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError(
+                "confirmation terminal identity plan digest mismatch"
+            )
+        cause = int(params["terminal_cause"])
+        if cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES:
+            raise BreakawayCampaignProtocolError("invalid confirmation terminal cause")
+        self._confirmation_terminal_identity = _metadata_free(params)
+
+    def handle_confirmation_terminal_masks(self, params: dict) -> None:
+        if self._confirmation_terminal_identity is None:
+            raise BreakawayCampaignProtocolError(
+                "confirmation terminal masks preceded its identity"
+            )
+        if self.confirmation_terminal is not None:
+            raise BreakawayCampaignProtocolError(
+                "duplicate confirmation terminal masks"
+            )
+        self._require_run(params)
+        for prefix in ("forward", "reverse"):
+            collected = int(params[f"{prefix}_collected_mask"])
+            eligible = int(params[f"{prefix}_eligible_mask"])
+            included = int(params[f"{prefix}_included_mask"])
+            for mask in (collected, eligible, included):
+                if mask & ~0b1111:
+                    raise BreakawayCampaignProtocolError(
+                        "confirmation mask exceeds the four-observation schedule"
+                    )
+            if eligible & ~collected:
+                raise BreakawayCampaignProtocolError(
+                    "confirmation eligible mask exceeds its collected mask"
+                )
+            if included & ~eligible:
+                raise BreakawayCampaignProtocolError(
+                    "confirmation included mask exceeds its eligible mask"
+                )
+        accepted = int(params["accepted"])
+        if accepted not in (0, 1):
+            raise BreakawayCampaignProtocolError("invalid confirmation accepted flag")
+        confirmed_p_raw = int(params["confirmed_p_raw"])
+        if bool(accepted) != (confirmed_p_raw != 0):
+            raise BreakawayCampaignProtocolError(
+                "confirmation accepted flag disagrees with the confirmed gain"
+            )
+        self.confirmation_terminal = {
+            **self._confirmation_terminal_identity,
+            **_metadata_free(params),
+        }
+        self._confirmation_terminal_identity = None
+
+    # -- campaign closure ----------------------------------------------------
+
+    def handle_campaign_terminal(self, params: dict) -> None:
+        self._close_discovery()
+        self._close_confirmation()
+        self._require_run(params)
+        if self.campaign_terminal is not None:
+            raise BreakawayCampaignProtocolError("duplicate campaign terminal")
+        phase = int(params.get("phase", -1))
+        if phase not in BREAKAWAY_PHASE_NAMES:
+            raise BreakawayCampaignProtocolError("invalid campaign terminal phase")
+        terminal_cause = int(params.get("terminal_cause", -1))
+        if terminal_cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES:
+            raise BreakawayCampaignProtocolError("invalid campaign terminal cause")
+        accepted = int(params.get("accepted", -1))
+        if accepted not in (0, 1):
+            raise BreakawayCampaignProtocolError("invalid campaign accepted flag")
+        digest = _u64(
+            params["stage_c_plan_digest_low"], params["stage_c_plan_digest_high"]
+        )
+        if bool(accepted) != (digest != 0):
+            raise BreakawayCampaignProtocolError(
+                "campaign accepted flag disagrees with the Stage-C plan digest"
+            )
+        confirmation_accepted = bool(
+            int((self.confirmation_terminal or {}).get("accepted", 0))
+        )
+        if (
+            self.confirmation_terminal is not None
+            and bool(accepted) != confirmation_accepted
+        ):
+            raise BreakawayCampaignProtocolError(
+                "campaign terminal disagrees with the confirmation terminal's "
+                "own acceptance"
+            )
+        self.campaign_terminal = _metadata_free(params)
+        self.accepted = bool(accepted)
+        self.stage_c_plan_digest = digest
+        self.done = True

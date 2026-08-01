@@ -4,6 +4,8 @@ import pytest
 
 from klipper_foci.velocity_integral import (
     slot_direction_index,
+    BreakawayCampaignAssembler,
+    BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
 )
@@ -1656,3 +1658,736 @@ def test_slot_range_follows_the_plan_not_a_hardcoded_eight():
 
     assert observations % rungs == 0
     assert assembler.slots_per_rung == observations // rungs
+
+
+# ============================================================================
+# Breakaway-seeded campaign: schema-14 Stage-C continuation
+# ============================================================================
+
+
+def test_schema_fourteen_assembles_the_breakaway_stage_c_plan():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler,
+        schema_revision=14,
+        positive_i=POSITIVE_I,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    assert assembler.plan["schema_revision"] == 14
+    assert assembler.plan["final_p"] == 1024
+
+
+def test_schema_fourteen_requires_breakaway_workflow():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="breakaway workflow"):
+        feed_plan(
+            assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0
+        )
+
+
+def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="combined workflow"):
+        feed_plan(
+            assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0
+        )
+
+
+def test_schema_fourteen_terminal_core_does_not_require_a_combined_marker():
+    """Firmware never sets TERMINAL_COMBINED_WORKFLOW for a breakaway plan.
+
+    `data.plan.combined_workflow` (and therefore the wire marker) is only
+    `true` when `combined_selected_response` was built, which
+    StageCAuthority::new_breakaway never does. Before this fix, the old
+    unconditional `schema_revision >= 8` gate rejected every schema-14
+    terminal outright.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=49_920, maximum_ms=49_920)
+    feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
+    common = {
+        "oid": 0,
+        "run_sequence": RUN_SEQUENCE,
+        "evidence_sequence": 1,
+    }
+    assembler.handle_run_summary(
+        {
+            **common,
+            "fragment": 0,
+            "forward_eligible_mask": 0,
+            "reverse_eligible_mask": 0,
+            "opening_available_mask": 0,
+            "bookend_available_mask": 0,
+            "current_terminus_plus_one": 0,
+            "sufficient_direction_mask": 0,
+        }
+    )
+
+    assembler.handle_terminal_core(
+        {
+            **common,
+            "fragment": 0,
+            "outcome": 3,
+            "cause": 17,
+            "rest_boundary_rung_plus_one": 0,
+            "rest_boundary_slot_plus_one": 0,
+            "expected_observations": 0,
+            "emitted_observations": 0,
+            "expected_rungs": 0,
+            "emitted_rungs": 0,
+            "recovery_flags": 0,
+        }
+    )
+
+    assert len(assembler._terminal_parts) == 1
+
+
+def test_schema_fourteen_complete_outcome_does_not_require_reproduction():
+    """Neither shape 3 nor shape 6 ever has a reproduced Stage-B model.
+
+    This targets the `combined_or_breakaway` exemption in `validate_complete`
+    directly: the completeness state is synthesized rather than streamed
+    through the full observation/rung/terminal handler sequence (already
+    exercised by the schema<12 combined-flow tests above and unaffected by
+    this change), because schema >= 12's two-hidden-position sequencing is
+    orthogonal to what this test targets.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=49_920, maximum_ms=49_920)
+    feed_plan(assembler, schema_revision=14, positive_i=(5,), joint_membership=0)
+
+    assembler.outcome = "complete"
+    assembler._summary = {"bookend_available_mask": 0b11}
+    assembler.curves = [
+        {"eligible_mask": 0, "opening": (0, 0), "positive": {}, "bookend": (0, 0)},
+        {"eligible_mask": 0, "opening": (0, 0), "positive": {}, "bookend": (0, 0)},
+    ]
+    assembler.drift = [{}, {}]
+    assembler.stage_b_comparison = [{}, {}]
+    assembler.terminal = {
+        "plan_digest": assembler.plan["plan_digest"],
+        "expected_observations": assembler.plan["expected_observations"],
+        "emitted_observations": 0,
+        "expected_rungs": assembler.plan["total_rung_count"],
+        "emitted_rungs": 0,
+        "cause": 0,
+        "rest_boundary": None,
+        "recovery_quantization_exposed": False,
+        "recovered_with_current_headroom": False,
+        "probe_constrained_test_point": False,
+    }
+    assembler.observations = {}
+    assembler.rungs = {}
+    assembler.recoveries = {}
+
+    assembler.validate_complete()  # must not raise despite reproduction is None
+
+
+# ============================================================================
+# Breakaway-seeded campaign: BreakawayCampaignAssembler
+# ============================================================================
+
+BREAKAWAY_RUN_SEQUENCE = 21
+PROBE_DIGEST = (0x1111_1111, 0x2222_2222)
+DISCOVERY_DIGEST = (0x3333_3333, 0x4444_4444)
+CONFIRMATION_DIGEST = (0x5555_5555, 0x6666_6666)
+STAGE_C_DIGEST = (0x7777_7777, 0x8888_8888)
+
+
+def feed_probe_plan(
+    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST
+):
+    low, high = digest
+    assembler.handle_probe_plan(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 0,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "family_size": 16,
+            "max_observations": 8,
+            "search_count": 10,
+            "p_start_raw": 100,
+            "p_top_raw": 2000,
+        }
+    )
+
+
+def feed_directional_breakaways(
+    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST
+):
+    low, high = digest
+    for direction, (inert, moving, observations) in enumerate(
+        ((300, 320, 5), (310, 330, 6))
+    ):
+        assembler.handle_directional_breakaway(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 1,
+                "plan_digest_low": low,
+                "plan_digest_high": high,
+                "direction": direction,
+                "inert_present": 1,
+                "inert_p_raw": inert,
+                "moving_p_raw": moving,
+                "observations": observations,
+            }
+        )
+
+
+def feed_discovery_plan(
+    assembler,
+    *,
+    run_sequence=BREAKAWAY_RUN_SEQUENCE,
+    prior_digest=PROBE_DIGEST,
+    digest=DISCOVERY_DIGEST,
+):
+    prior_low, prior_high = prior_digest
+    low, high = digest
+    assembler.handle_discovery_plan_identity(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "prior_plan_digest_low": prior_low,
+            "prior_plan_digest_high": prior_high,
+            "family_size": 32,
+        }
+    )
+    assembler.handle_discovery_plan_geometry(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "rung_count": 3,
+            "observations_per_direction": 8,
+            "floor_p_raw": 290,
+            "floor_origin": 0,
+            "breakaway_p_raw": 320,
+            "ceiling_p_raw": 2000,
+            "first_additive_step_raw": 40,
+            "maximum_workflow_ms": 20_000,
+        }
+    )
+
+
+def feed_discovery_ladder_and_margins(
+    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=DISCOVERY_DIGEST
+):
+    low, high = digest
+    for rung_index, p_raw in enumerate((320, 360, 400)):
+        assembler.handle_discovery_ladder_rung(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 2,
+                "plan_digest_low": low,
+                "plan_digest_high": high,
+                "rung_index": rung_index,
+                "p_raw": p_raw,
+            }
+        )
+    margins = (
+        (0, 360, 71_000, 79_000, 1_000, 4_000, 0),
+        (1, 400, 72_000, 78_000, 2_000, 3_000, 5_000),
+    )
+    for collected_index, p_raw, lower, upper, margin, half_width, step in margins:
+        assembler.handle_discovery_rung_margin(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 2,
+                "plan_digest_low": low,
+                "plan_digest_high": high,
+                "collected_index": collected_index,
+                "p_raw": p_raw,
+                "lower_percent_milli": lower,
+                "upper_percent_milli": upper,
+                "margin_percent_milli": margin,
+                "half_width_percent_milli": half_width,
+                "adjacent_rate_step_permille": step,
+            }
+        )
+
+
+def feed_discovery_terminal(
+    assembler,
+    *,
+    run_sequence=BREAKAWAY_RUN_SEQUENCE,
+    prior_digest=PROBE_DIGEST,
+    digest=DISCOVERY_DIGEST,
+    collected_count=2,
+):
+    prior_low, prior_high = prior_digest
+    low, high = digest
+    assembler.handle_discovery_terminal(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "prior_plan_digest_low": prior_low,
+            "prior_plan_digest_high": prior_high,
+            "family_size": 32,
+            "terminal_cause": 0,
+            "collected_count": collected_count,
+            "has_safety_fault": 0,
+        }
+    )
+
+
+def feed_confirmation_plan(
+    assembler,
+    *,
+    run_sequence=BREAKAWAY_RUN_SEQUENCE,
+    prior_digest=DISCOVERY_DIGEST,
+    digest=CONFIRMATION_DIGEST,
+    candidate_p_raw=400,
+):
+    prior_low, prior_high = prior_digest
+    low, high = digest
+    assembler.handle_confirmation_plan(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 3,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "prior_plan_digest_low": prior_low,
+            "prior_plan_digest_high": prior_high,
+            "family_size": 8,
+            "observations_per_direction": 4,
+            "candidate_p_raw": candidate_p_raw,
+            "band_lower_percent": 70,
+            "band_upper_percent": 80,
+            "capture_profile": 0,
+            "acceptance_rule": 0,
+            "nominated_margin_percent_milli": 2_000,
+        }
+    )
+
+
+def feed_confirmation_observations(
+    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=CONFIRMATION_DIGEST
+):
+    low, high = digest
+    for slot_index in range(8):
+        assembler.handle_confirmation_observation(
+            {
+                "oid": 0,
+                "run_sequence": run_sequence,
+                "evidence_sequence": 3,
+                "plan_digest_low": low,
+                "plan_digest_high": high,
+                "slot_index": slot_index,
+                "direction": 0 if slot_index < 4 else 1,
+                "response_lower_percent_milli": 72_000,
+                "response_upper_percent_milli": 78_000,
+                "relative_standard_error_permille": 500,
+            }
+        )
+
+
+def feed_confirmation_terminal(
+    assembler,
+    *,
+    run_sequence=BREAKAWAY_RUN_SEQUENCE,
+    prior_digest=DISCOVERY_DIGEST,
+    digest=CONFIRMATION_DIGEST,
+    accepted,
+):
+    prior_low, prior_high = prior_digest
+    low, high = digest
+    assembler.handle_confirmation_terminal_identity(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 3,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "prior_plan_digest_low": prior_low,
+            "prior_plan_digest_high": prior_high,
+            "family_size": 8,
+            "terminal_cause": 21 if accepted else 15,
+        }
+    )
+    assembler.handle_confirmation_terminal_masks(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 3,
+            "forward_collected_mask": 0b1111,
+            "forward_eligible_mask": 0b1111,
+            "forward_included_mask": 0b1111,
+            "reverse_collected_mask": 0b1111,
+            "reverse_eligible_mask": 0b1111,
+            "reverse_included_mask": 0b1111,
+            "accepted": int(accepted),
+            "confirmed_p_raw": 400 if accepted else 0,
+            "max_relative_se_permille": 500 if accepted else 900,
+            "required_relative_se_permille": 667,
+            "has_safety_fault": 0,
+        }
+    )
+
+
+def feed_campaign_terminal(
+    assembler,
+    *,
+    run_sequence=BREAKAWAY_RUN_SEQUENCE,
+    accepted,
+    stage_c_digest=STAGE_C_DIGEST,
+):
+    low, high = stage_c_digest if accepted else (0, 0)
+    assembler.handle_campaign_terminal(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 4,
+            "phase": 2,
+            "terminal_cause": 21 if accepted else 15,
+            "accepted": int(accepted),
+            "stage_c_plan_digest_low": low,
+            "stage_c_plan_digest_high": high,
+        }
+    )
+
+
+def test_breakaway_probe_and_directional_breakaway_relay_firmware_values():
+    """No selection happens here: every stored value is the input verbatim."""
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+
+    assert assembler.probe_plan["p_start_raw"] == 100
+    assert assembler.probe_plan["p_top_raw"] == 2000
+    assert assembler.directional_breakaways[0]["moving_p_raw"] == 320
+    assert assembler.directional_breakaways[1]["moving_p_raw"] == 330
+    assert assembler.directional_breakaways[0]["observations"] == 5
+    assert assembler.directional_breakaways[1]["observations"] == 6
+
+
+def test_breakaway_directional_breakaway_rejects_digest_mismatch():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="digest mismatch"):
+        assembler.handle_directional_breakaway(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 1,
+                "plan_digest_low": 0,
+                "plan_digest_high": 0,
+                "direction": 0,
+                "inert_present": 1,
+                "inert_p_raw": 300,
+                "moving_p_raw": 320,
+                "observations": 5,
+            }
+        )
+
+
+def test_breakaway_discovery_plan_must_chain_from_the_probe_digest():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="chain from the probe"):
+        assembler.handle_discovery_plan_identity(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "plan_digest_low": DISCOVERY_DIGEST[0],
+                "plan_digest_high": DISCOVERY_DIGEST[1],
+                "prior_plan_digest_low": 0,
+                "prior_plan_digest_high": 0,
+                "family_size": 32,
+            }
+        )
+
+
+def test_breakaway_discovery_geometry_rejects_gains_out_of_order():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    assembler.handle_discovery_plan_identity(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 2,
+            "plan_digest_low": DISCOVERY_DIGEST[0],
+            "plan_digest_high": DISCOVERY_DIGEST[1],
+            "prior_plan_digest_low": PROBE_DIGEST[0],
+            "prior_plan_digest_high": PROBE_DIGEST[1],
+            "family_size": 32,
+        }
+    )
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="floor<=breakaway<=ceiling"
+    ):
+        assembler.handle_discovery_plan_geometry(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 2,
+                "rung_count": 3,
+                "observations_per_direction": 8,
+                "floor_p_raw": 330,
+                "floor_origin": 0,
+                "breakaway_p_raw": 320,
+                "ceiling_p_raw": 2000,
+                "first_additive_step_raw": 40,
+                "maximum_workflow_ms": 20_000,
+            }
+        )
+
+
+def test_breakaway_discovery_terminal_collected_count_must_match_margins():
+    """The count/margin cross-check is deferred to the next phase boundary.
+
+    The rung-margin, rung-zero, and terminal records in one discovery-terminal
+    batch share a single evidence_sequence and firmware does not guarantee
+    their relative wire order, so this assembler reconciles the batch when the
+    campaign unambiguously moves on -- here, at the confirmation plan.
+    """
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler, collected_count=3)  # only 2 margins fed
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="collected count"):
+        feed_confirmation_plan(assembler)
+
+
+def test_breakaway_confirmation_observation_follows_the_fixed_capture_schedule():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="capture schedule"):
+        assembler.handle_confirmation_observation(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "plan_digest_low": CONFIRMATION_DIGEST[0],
+                "plan_digest_high": CONFIRMATION_DIGEST[1],
+                "slot_index": 0,
+                "direction": 1,  # slot 0 must be forward (direction 0)
+                "response_lower_percent_milli": 72_000,
+                "response_upper_percent_milli": 78_000,
+                "relative_standard_error_permille": 500,
+            }
+        )
+
+
+def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_observations(assembler)
+    assembler.handle_confirmation_terminal_identity(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 3,
+            "plan_digest_low": CONFIRMATION_DIGEST[0],
+            "plan_digest_high": CONFIRMATION_DIGEST[1],
+            "prior_plan_digest_low": DISCOVERY_DIGEST[0],
+            "prior_plan_digest_high": DISCOVERY_DIGEST[1],
+            "family_size": 8,
+            "terminal_cause": 21,
+        }
+    )
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="included mask"):
+        assembler.handle_confirmation_terminal_masks(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "forward_collected_mask": 0b1111,
+                "forward_eligible_mask": 0b0011,
+                "forward_included_mask": 0b1111,  # exceeds eligible
+                "reverse_collected_mask": 0b1111,
+                "reverse_eligible_mask": 0b1111,
+                "reverse_included_mask": 0b1111,
+                "accepted": 1,
+                "confirmed_p_raw": 400,
+                "max_relative_se_permille": 500,
+                "required_relative_se_permille": 667,
+                "has_safety_fault": 0,
+            }
+        )
+
+
+def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
+    """The campaign closure record must not contradict its own confirmation.
+
+    Firmware only ever routes an `Accepted` confirmation outcome to the
+    accepting campaign terminal (`route_confirmed_accept`); this proves the
+    host catches a firmware report that disagreed with itself instead of
+    silently trusting whichever flag it reads last.
+    """
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_observations(assembler)
+    feed_confirmation_terminal(assembler, accepted=False)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="own acceptance"):
+        feed_campaign_terminal(assembler, accepted=True)
+
+
+def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_observations(assembler)
+    feed_confirmation_terminal(assembler, accepted=True)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="Stage-C plan digest"):
+        assembler.handle_campaign_terminal(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 4,
+                "phase": 2,
+                "terminal_cause": 21,
+                "accepted": 1,
+                "stage_c_plan_digest_low": 0,
+                "stage_c_plan_digest_high": 0,
+            }
+        )
+
+
+def test_breakaway_campaign_accepts_and_relays_the_full_report():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_observations(assembler)
+    feed_confirmation_terminal(assembler, accepted=True)
+    feed_campaign_terminal(assembler, accepted=True)
+
+    assert assembler.done
+    assert assembler.accepted is True
+    assert assembler.stage_c_plan_digest == (
+        STAGE_C_DIGEST[0] | (STAGE_C_DIGEST[1] << 32)
+    )
+    # The confirmed gain is the exact confirmation candidate, never a
+    # host-reselected value.
+    assert (
+        assembler.confirmation_terminal["confirmed_p_raw"]
+        == (assembler.confirmation_plan["candidate_p_raw"])
+    )
+
+
+def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
+    """On an inconclusive confirmation the campaign never nominates a gain.
+
+    No Stage-C authority may be derived, so `stage_c_plan_digest` reads as the
+    empty identity and a second confirmation plan (a "retry") is refused --
+    the assembler exposes no path to keep trying candidates.
+    """
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_ladder_and_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_observations(assembler)
+    feed_confirmation_terminal(assembler, accepted=False)
+    feed_campaign_terminal(assembler, accepted=False)
+
+    assert assembler.done
+    assert assembler.accepted is False
+    assert assembler.stage_c_plan_digest == 0
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="duplicate confirmation"):
+        feed_confirmation_plan(assembler, candidate_p_raw=360)
+
+
+def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
+    """Dumb-host proof: no method here can choose a rung, family, or retry.
+
+    Every public method on this assembler is named `handle_*` -- it accepts
+    and validates one firmware-authored record and stores it unchanged. None
+    of the banned decision verbs below (which the acceptance/discovery/probe
+    logic in firmware actually uses -- see breakaway_campaign.rs) name any
+    method or attribute on this class.
+    """
+    banned_verbs = (
+        "select",
+        "choose",
+        "pick",
+        "nominate",
+        "retry",
+        "resolve",
+        "decide",
+        "reselect",
+    )
+    surface = [
+        name for name in dir(BreakawayCampaignAssembler) if not name.startswith("_")
+    ]
+    assert surface, "expected a nonempty public surface to scan"
+    for name in surface:
+        assert name.startswith("handle_") or name in (
+            "probe_plan",
+            "directional_breakaways",
+            "probe_terminal",
+            "discovery_plan",
+            "discovery_ceiling_source",
+            "discovery_rungs",
+            "discovery_rung_margins",
+            "discovery_rung_zero",
+            "discovery_terminal",
+            "confirmation_plan",
+            "confirmation_observations",
+            "confirmation_terminal",
+            "campaign_terminal",
+            "accepted",
+            "stage_c_plan_digest",
+            "done",
+        ), f"unexpected non-relay method on the assembler: {name}"
+        for verb in banned_verbs:
+            assert verb not in name.lower(), (
+                f"{name} looks like a decision, not a relay"
+            )
