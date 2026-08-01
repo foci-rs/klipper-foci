@@ -254,9 +254,6 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
         "foci_breakaway_raw_observation_measurement": (
             driver.autotune.handle_breakaway_raw_observation_measurement
         ),
-        "foci_breakaway_discovery_rung_margin": (
-            driver.autotune.handle_breakaway_discovery_rung_margin
-        ),
         "foci_breakaway_rung_zero_diagnostic": (
             driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic
         ),
@@ -280,7 +277,7 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
         ),
     }
 
-    assert len(expected) == 16
+    assert len(expected) == 15
     assert set(expected) <= set(registered)
     for name, handler in expected.items():
         assert registered[name] == handler, name

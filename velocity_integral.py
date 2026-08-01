@@ -1293,7 +1293,6 @@ class BreakawayCampaignAssembler:
         self.probe_terminal: dict | None = None
         self.discovery_plan: dict | None = None
         self.discovery_ceiling_source: dict | None = None
-        self.discovery_rung_margins: list[dict] = []
         self.discovery_rung_zero: dict | None = None
         self.discovery_terminal: dict | None = None
         self.confirmation_plan: dict | None = None
@@ -1308,7 +1307,6 @@ class BreakawayCampaignAssembler:
         self._last_evidence_sequence: int | None = None
         self._discovery_identity: dict | None = None
         self._confirmation_terminal_identity: dict | None = None
-        self._discovery_closed = False
         self._confirmation_closed = False
         self._pending_raw_observation: dict | None = None
 
@@ -1371,43 +1369,10 @@ class BreakawayCampaignAssembler:
             )
         self._require_run(params)
 
-    def _close_discovery(self) -> None:
-        """Reconcile the discovery-terminal batch once discovery has closed.
-
-        The rung-margin, rung-zero, and terminal records that make up one
-        discovery-terminal batch share a single evidence_sequence and firmware
-        does not guarantee their wire order within that batch, so this
-        cross-check is deferred until the campaign has unambiguously moved
-        past discovery (the next confirmation-plan or campaign-terminal
-        record), by which point every record in the batch must have arrived.
-        """
-        if self.discovery_terminal is None or self._discovery_closed:
-            return
-        collected_count = int(self.discovery_terminal["collected_count"])
-        # collected_count is every collected in-band rung, but firmware emits a
-        # margin only for a *nominatable* rung, so a batch with non-nominatable
-        # in-band rungs legitimately carries fewer margins than the collected
-        # count. Bound the margins to the collected set (already validated to be
-        # strictly ascending by index in handle_discovery_rung_margin) rather
-        # than demanding an exact match.
-        if len(self.discovery_rung_margins) > collected_count:
-            raise BreakawayCampaignProtocolError(
-                "more discovery rung margins than collected in-band rungs"
-            )
-        if (
-            self.discovery_rung_margins
-            and int(self.discovery_rung_margins[-1]["collected_index"])
-            >= collected_count
-        ):
-            raise BreakawayCampaignProtocolError(
-                "discovery rung margin index falls outside the collected in-band set"
-            )
-        self._discovery_closed = True
-
     def _close_confirmation(self) -> None:
         """Reconcile the confirmation-terminal batch once confirmation closed.
 
-        Deferred for the same reason as `_close_discovery`: the fresh-stroke
+        Deferred until the campaign moves past confirmation: the fresh-stroke
         observation records share the confirmation terminal's evidence
         sequence and firmware does not guarantee their relative wire order.
         """
@@ -1563,44 +1528,6 @@ class BreakawayCampaignAssembler:
             )
         self.discovery_ceiling_source = _metadata_free(params)
 
-    def handle_discovery_rung_margin(self, params: dict) -> None:
-        self._require_discovery_plan(params)
-        if self.discovery_terminal is not None:
-            raise BreakawayCampaignProtocolError(
-                "rung margin arrived after the discovery terminal"
-            )
-        if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
-            raise BreakawayCampaignProtocolError(
-                "discovery rung margin plan digest mismatch"
-            )
-        collected_index = int(params.get("collected_index", -1))
-        if collected_index < 0 or (
-            self.discovery_rung_margins
-            and collected_index
-            <= int(self.discovery_rung_margins[-1]["collected_index"])
-        ):
-            raise BreakawayCampaignProtocolError(
-                "discovery rung margins are not strictly increasing"
-            )
-        lower = int(params["lower_percent_milli"])
-        upper = int(params["upper_percent_milli"])
-        if lower > upper:
-            raise BreakawayCampaignProtocolError("reversed nomination interval")
-        if int(params["half_width_percent_milli"]) < 0:
-            raise BreakawayCampaignProtocolError("negative nomination half-width")
-        previous = (
-            self.discovery_rung_margins[-1] if self.discovery_rung_margins else None
-        )
-        contiguous = (
-            previous is not None
-            and collected_index == int(previous["collected_index"]) + 1
-        )
-        if not contiguous and int(params["adjacent_rate_step_permille"]) != 0:
-            raise BreakawayCampaignProtocolError(
-                "adjacent rate step reported across a nomination gap"
-            )
-        self.discovery_rung_margins.append(_metadata_free(params))
-
     def handle_discovery_rung_zero_diagnostic(self, params: dict) -> None:
         self._require_discovery_plan(params)
         if self.discovery_terminal is not None:
@@ -1636,7 +1563,6 @@ class BreakawayCampaignAssembler:
     # -- confirmation phase ------------------------------------------------
 
     def handle_confirmation_plan(self, params: dict) -> None:
-        self._close_discovery()
         if self.discovery_plan is None:
             raise BreakawayCampaignProtocolError(
                 "confirmation plan arrived before the discovery plan"
@@ -1811,7 +1737,6 @@ class BreakawayCampaignAssembler:
             raise BreakawayCampaignProtocolError(
                 "raw observation identity has no matching measurement"
             )
-        self._close_discovery()
         self._close_confirmation()
         self._require_run(params)
         if self.campaign_terminal is not None:

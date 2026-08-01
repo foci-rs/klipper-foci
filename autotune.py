@@ -273,9 +273,6 @@ class AutotuneWorkflow:
     def handle_breakaway_raw_observation_measurement(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_raw_observation_measurement", params)
 
-    def handle_breakaway_discovery_rung_margin(self, params: dict) -> None:
-        self._handle_breakaway_campaign("handle_discovery_rung_margin", params)
-
     def handle_breakaway_discovery_rung_zero_diagnostic(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_discovery_rung_zero_diagnostic", params)
 

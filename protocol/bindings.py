@@ -318,10 +318,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_breakaway_raw_observation_measurement",
         ),
         (
-            driver.autotune.handle_breakaway_discovery_rung_margin,
-            "foci_breakaway_discovery_rung_margin",
-        ),
-        (
             driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic,
             "foci_breakaway_rung_zero_diagnostic",
         ),

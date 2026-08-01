@@ -1128,27 +1128,6 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "target_rate_q_high": 0,
         }
     )
-    margins = (
-        (0, 360, 71_000, 79_000, 1_000, 4_000, 0),
-        (1, 400, 72_000, 78_000, 2_000, 3_000, 5_000),
-    )
-    for collected_index, p_raw, lower, upper, margin, half_width, step in margins:
-        driver.autotune.handle_breakaway_discovery_rung_margin(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 2,
-                "plan_digest_low": discovery_low,
-                "plan_digest_high": discovery_high,
-                "collected_index": collected_index,
-                "p_raw": p_raw,
-                "lower_percent_milli": lower,
-                "upper_percent_milli": upper,
-                "margin_percent_milli": margin,
-                "half_width_percent_milli": half_width,
-                "adjacent_rate_step_permille": step,
-            }
-        )
     driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic(
         {
             "oid": 0,

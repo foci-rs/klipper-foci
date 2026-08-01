@@ -1884,33 +1884,6 @@ def feed_discovery_plan(
     )
 
 
-def feed_discovery_rung_margins(
-    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=DISCOVERY_DIGEST
-):
-    low, high = digest
-    margins = (
-        (0, 360, 71_000, 79_000, 1_000, 4_000, 0),
-        (1, 400, 72_000, 78_000, 2_000, 3_000, 5_000),
-    )
-    for collected_index, p_raw, lower, upper, margin, half_width, step in margins:
-        assembler.handle_discovery_rung_margin(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 2,
-                "plan_digest_low": low,
-                "plan_digest_high": high,
-                "collected_index": collected_index,
-                "p_raw": p_raw,
-                "lower_percent_milli": lower,
-                "upper_percent_milli": upper,
-                "margin_percent_milli": margin,
-                "half_width_percent_milli": half_width,
-                "adjacent_rate_step_permille": step,
-            }
-        )
-
-
 def feed_discovery_terminal(
     assembler,
     *,
@@ -2230,73 +2203,6 @@ def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
         )
 
 
-def test_breakaway_discovery_allows_fewer_margins_than_collected_in_band():
-    """A non-nominatable in-band rung produces no margin record.
-
-    Firmware counts every collected in-band rung in collected_count but emits a
-    margin only for a nominatable one, so a legitimate batch may carry fewer
-    margins than its collected count. The reconciliation (deferred to the next
-    phase boundary) must tolerate that gap rather than demand an exact match;
-    foci-trace already recognizes it.
-    """
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)  # margins at collected indices 0 and 1
-    feed_discovery_terminal(assembler, collected_count=3)  # a 3rd, non-nominatable
-
-    feed_confirmation_plan(assembler)  # closes discovery; must not raise
-    assert assembler._discovery_closed is True
-
-
-def test_breakaway_discovery_rejects_more_margins_than_collected():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)  # two margins
-    feed_discovery_terminal(
-        assembler, collected_count=1
-    )  # fewer collected than margins
-
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="more discovery rung margins"
-    ):
-        feed_confirmation_plan(assembler)
-
-
-def test_breakaway_discovery_rejects_margin_index_outside_collected_set():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    low, high = DISCOVERY_DIGEST
-    # A single margin whose collected_index sits past the collected set: it
-    # passes the count bound (1 <= 3) but references a rung that was never
-    # collected.
-    assembler.handle_discovery_rung_margin(
-        {
-            "oid": 0,
-            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-            "evidence_sequence": 2,
-            "plan_digest_low": low,
-            "plan_digest_high": high,
-            "collected_index": 5,
-            "p_raw": 360,
-            "lower_percent_milli": 71_000,
-            "upper_percent_milli": 79_000,
-            "margin_percent_milli": 1_000,
-            "half_width_percent_milli": 4_000,
-            "adjacent_rate_step_permille": 0,
-        }
-    )
-    feed_discovery_terminal(assembler, collected_count=3)
-
-    with pytest.raises(BreakawayCampaignProtocolError, match="outside the collected"):
-        feed_confirmation_plan(assembler)
-
-
 def _feed_partial_confirmation(assembler, stroke_count):
     """Feed a confirmation plan, `stroke_count` forward strokes, and a
     non-accepted terminal whose masks match the partial block."""
@@ -2359,7 +2265,6 @@ def test_breakaway_confirmation_allows_a_partial_non_accepted_block():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     _feed_partial_confirmation(assembler, stroke_count=2)
 
@@ -2372,7 +2277,6 @@ def test_breakaway_accepted_confirmation_still_requires_all_eight_strokes():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     # Only two strokes, but an accepted terminal.
@@ -2405,7 +2309,6 @@ def test_breakaway_confirmation_observation_follows_the_fixed_capture_schedule()
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
 
@@ -2431,7 +2334,6 @@ def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2482,7 +2384,6 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2497,7 +2398,6 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2523,7 +2423,6 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2554,7 +2453,6 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_confirmation_observations(assembler)
@@ -2589,7 +2487,6 @@ def test_breakaway_raw_observation_relays_discovery_and_confirmation_evidence():
         mean_rate_q_low=4_242,
         target_rate_q_low=6_000,
     )
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     feed_raw_observation(
@@ -2734,7 +2631,6 @@ def test_breakaway_campaign_terminal_rejects_a_dangling_raw_observation():
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
     assembler.handle_raw_observation_identity(
@@ -2787,7 +2683,6 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
             "probe_terminal",
             "discovery_plan",
             "discovery_ceiling_source",
-            "discovery_rung_margins",
             "discovery_rung_zero",
             "discovery_terminal",
             "confirmation_plan",
