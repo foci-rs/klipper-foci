@@ -1414,9 +1414,14 @@ class BreakawayCampaignAssembler:
         if self.confirmation_terminal is None or self._confirmation_closed:
             return
         observed_count = len(self.confirmation_observations)
-        if observed_count not in (0, 8):
+        # A non-accepted terminal may close after a partial block: a mid-block
+        # SafetyFault or ConfirmationEvidenceExcluded preserves the 1-7 strokes
+        # that did run (their slot indices are validated contiguous from zero by
+        # handle_confirmation_observation). Only an *accepted* terminal must
+        # carry the full eight-stroke block.
+        if observed_count > 8:
             raise BreakawayCampaignProtocolError(
-                "confirmation observations are not a complete eight-stroke block"
+                "confirmation reported more than a full eight-stroke block"
             )
         if (
             bool(int(self.confirmation_terminal.get("accepted", 0)))

@@ -2297,6 +2297,109 @@ def test_breakaway_discovery_rejects_margin_index_outside_collected_set():
         feed_confirmation_plan(assembler)
 
 
+def _feed_partial_confirmation(assembler, stroke_count):
+    """Feed a confirmation plan, `stroke_count` forward strokes, and a
+    non-accepted terminal whose masks match the partial block."""
+    feed_confirmation_plan(assembler)
+    low, high = CONFIRMATION_DIGEST
+    for slot_index in range(stroke_count):
+        assembler.handle_confirmation_observation(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "plan_digest_low": low,
+                "plan_digest_high": high,
+                "slot_index": slot_index,
+                "direction": 0,
+                "response_lower_percent_milli": 72_000,
+                "response_upper_percent_milli": 78_000,
+                "relative_standard_error_permille": 500,
+            }
+        )
+    partial_mask = (1 << min(stroke_count, 4)) - 1
+    assembler.handle_confirmation_terminal_identity(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 3,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "prior_plan_digest_low": DISCOVERY_DIGEST[0],
+            "prior_plan_digest_high": DISCOVERY_DIGEST[1],
+            "family_size": 8,
+            "terminal_cause": 15,  # a non-accepted cause
+        }
+    )
+    assembler.handle_confirmation_terminal_masks(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 3,
+            "forward_collected_mask": partial_mask,
+            "forward_eligible_mask": partial_mask,
+            "forward_included_mask": 0,
+            "reverse_collected_mask": 0,
+            "reverse_eligible_mask": 0,
+            "reverse_included_mask": 0,
+            "accepted": 0,
+            "confirmed_p_raw": 0,
+            "max_relative_se_permille": 900,
+            "required_relative_se_permille": 667,
+            "has_safety_fault": 0,
+        }
+    )
+
+
+def test_breakaway_confirmation_allows_a_partial_non_accepted_block():
+    """A mid-block SafetyFault or ConfirmationEvidenceExcluded preserves the
+    1-7 strokes that ran. A non-accepted terminal carrying a partial block is
+    legitimate; only an accepted terminal must carry the full eight."""
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_rung_margins(assembler)
+    feed_discovery_terminal(assembler)
+    _feed_partial_confirmation(assembler, stroke_count=2)
+
+    feed_campaign_terminal(assembler, accepted=False)  # closes confirmation
+    assert assembler._confirmation_closed is True
+
+
+def test_breakaway_accepted_confirmation_still_requires_all_eight_strokes():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_rung_margins(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    # Only two strokes, but an accepted terminal.
+    low, high = CONFIRMATION_DIGEST
+    for slot_index in range(2):
+        assembler.handle_confirmation_observation(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "plan_digest_low": low,
+                "plan_digest_high": high,
+                "slot_index": slot_index,
+                "direction": 0,
+                "response_lower_percent_milli": 72_000,
+                "response_upper_percent_milli": 78_000,
+                "relative_standard_error_permille": 500,
+            }
+        )
+    feed_confirmation_terminal(assembler, accepted=True)
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="missing its eight-stroke"
+    ):
+        feed_campaign_terminal(assembler, accepted=True)
+
+
 def test_breakaway_confirmation_observation_follows_the_fixed_capture_schedule():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
