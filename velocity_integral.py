@@ -1395,6 +1395,31 @@ class BreakawayCampaignAssembler:
             raise BreakawayCampaignProtocolError(
                 "accepted confirmation is missing its eight-stroke evidence"
             )
+        # Reconcile the reported collected masks with the slots actually
+        # received, for every outcome: the forward accumulator records schedule
+        # slots 0-3, the reverse 4-7. A terminal whose collected mask omits a
+        # received slot or claims an absent one is inconsistent regardless of
+        # acceptance.
+        forward_collected = 0
+        reverse_collected = 0
+        for observation in self.confirmation_observations:
+            slot = int(observation["slot_index"])
+            if 0 <= slot < 4:
+                forward_collected |= 1 << slot
+            elif 4 <= slot < 8:
+                reverse_collected |= 1 << (slot - 4)
+        if forward_collected != int(
+            self.confirmation_terminal["forward_collected_mask"]
+        ):
+            raise BreakawayCampaignProtocolError(
+                "confirmation forward collected mask does not match the received slots"
+            )
+        if reverse_collected != int(
+            self.confirmation_terminal["reverse_collected_mask"]
+        ):
+            raise BreakawayCampaignProtocolError(
+                "confirmation reverse collected mask does not match the received slots"
+            )
         self._confirmation_closed = True
 
     # -- probe phase ---------------------------------------------------------

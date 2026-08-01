@@ -2203,9 +2203,13 @@ def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
         )
 
 
-def _feed_partial_confirmation(assembler, stroke_count):
+def _feed_partial_confirmation(
+    assembler, stroke_count, *, forward_collected=None, forward_eligible=None
+):
     """Feed a confirmation plan, `stroke_count` forward strokes, and a
-    non-accepted terminal whose masks match the partial block."""
+    non-accepted terminal. The masks default to the block the strokes actually
+    formed; `forward_collected`/`forward_eligible` override them to feed a
+    terminal whose reported masks disagree with the received slots."""
     feed_confirmation_plan(assembler)
     low, high = CONFIRMATION_DIGEST
     for slot_index in range(stroke_count):
@@ -2224,6 +2228,10 @@ def _feed_partial_confirmation(assembler, stroke_count):
             }
         )
     partial_mask = (1 << min(stroke_count, 4)) - 1
+    if forward_collected is None:
+        forward_collected = partial_mask
+    if forward_eligible is None:
+        forward_eligible = partial_mask
     assembler.handle_confirmation_terminal_identity(
         {
             "oid": 0,
@@ -2242,8 +2250,8 @@ def _feed_partial_confirmation(assembler, stroke_count):
             "oid": 0,
             "run_sequence": BREAKAWAY_RUN_SEQUENCE,
             "evidence_sequence": 3,
-            "forward_collected_mask": partial_mask,
-            "forward_eligible_mask": partial_mask,
+            "forward_collected_mask": forward_collected,
+            "forward_eligible_mask": forward_eligible,
             "forward_included_mask": 0,
             "reverse_collected_mask": 0,
             "reverse_eligible_mask": 0,
@@ -2270,6 +2278,26 @@ def test_breakaway_confirmation_allows_a_partial_non_accepted_block():
 
     feed_campaign_terminal(assembler, accepted=False)  # closes confirmation
     assert assembler._confirmation_closed is True
+
+
+def test_breakaway_confirmation_rejects_a_collected_mask_that_omits_received_slots():
+    """A partial terminal whose collected mask claims slots the strokes never
+    filled is inconsistent regardless of acceptance."""
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_terminal(assembler)
+    # Three forward strokes, but the terminal claims a full forward block.
+    _feed_partial_confirmation(
+        assembler, stroke_count=3, forward_collected=0b1111, forward_eligible=0
+    )
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError,
+        match="forward collected mask does not match the received slots",
+    ):
+        feed_campaign_terminal(assembler, accepted=False)
 
 
 def test_breakaway_accepted_confirmation_still_requires_all_eight_strokes():
