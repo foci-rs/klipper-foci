@@ -1942,27 +1942,6 @@ def feed_confirmation_plan(
     )
 
 
-def feed_confirmation_observations(
-    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=CONFIRMATION_DIGEST
-):
-    low, high = digest
-    for slot_index in range(8):
-        assembler.handle_confirmation_observation(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 3,
-                "plan_digest_low": low,
-                "plan_digest_high": high,
-                "slot_index": slot_index,
-                "direction": 0 if slot_index < 4 else 1,
-                "response_lower_percent_milli": 72_000,
-                "response_upper_percent_milli": 78_000,
-                "relative_standard_error_permille": 500,
-            }
-        )
-
-
 def feed_confirmation_terminal(
     assembler,
     *,
@@ -2024,52 +2003,6 @@ def feed_campaign_terminal(
             "accepted": int(accepted),
             "stage_c_plan_digest_low": low,
             "stage_c_plan_digest_high": high,
-        }
-    )
-
-
-def feed_raw_observation(
-    assembler,
-    *,
-    run_sequence=BREAKAWAY_RUN_SEQUENCE,
-    evidence_sequence,
-    digest,
-    phase,
-    rung_index=0,
-    slot_index=0,
-    direction=0,
-    mean_rate_q_low=1_000,
-    mean_rate_q_high=0,
-    target_rate_q_low=2_000,
-    target_rate_q_high=0,
-):
-    low, high = digest
-    assembler.handle_raw_observation_identity(
-        {
-            "oid": 0,
-            "run_sequence": run_sequence,
-            "evidence_sequence": evidence_sequence,
-            "plan_digest_low": low,
-            "plan_digest_high": high,
-            "phase": phase,
-            "rung_index": rung_index,
-            "slot_index": slot_index,
-            "direction": direction,
-        }
-    )
-    assembler.handle_raw_observation_measurement(
-        {
-            "oid": 0,
-            "run_sequence": run_sequence,
-            "evidence_sequence": evidence_sequence,
-            "mean_rate_q_low": mean_rate_q_low,
-            "mean_rate_q_high": mean_rate_q_high,
-            "variance_word0": 1,
-            "variance_word1": 0,
-            "variance_word2": 0,
-            "variance_word3": 0,
-            "target_rate_q_low": target_rate_q_low,
-            "target_rate_q_high": target_rate_q_high,
         }
     )
 
@@ -2203,160 +2136,6 @@ def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
         )
 
 
-def _feed_partial_confirmation(
-    assembler, stroke_count, *, forward_collected=None, forward_eligible=None
-):
-    """Feed a confirmation plan, `stroke_count` forward strokes, and a
-    non-accepted terminal. The masks default to the block the strokes actually
-    formed; `forward_collected`/`forward_eligible` override them to feed a
-    terminal whose reported masks disagree with the received slots."""
-    feed_confirmation_plan(assembler)
-    low, high = CONFIRMATION_DIGEST
-    for slot_index in range(stroke_count):
-        assembler.handle_confirmation_observation(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 3,
-                "plan_digest_low": low,
-                "plan_digest_high": high,
-                "slot_index": slot_index,
-                "direction": 0,
-                "response_lower_percent_milli": 72_000,
-                "response_upper_percent_milli": 78_000,
-                "relative_standard_error_permille": 500,
-            }
-        )
-    partial_mask = (1 << min(stroke_count, 4)) - 1
-    if forward_collected is None:
-        forward_collected = partial_mask
-    if forward_eligible is None:
-        forward_eligible = partial_mask
-    assembler.handle_confirmation_terminal_identity(
-        {
-            "oid": 0,
-            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-            "evidence_sequence": 3,
-            "plan_digest_low": low,
-            "plan_digest_high": high,
-            "prior_plan_digest_low": DISCOVERY_DIGEST[0],
-            "prior_plan_digest_high": DISCOVERY_DIGEST[1],
-            "family_size": 8,
-            "terminal_cause": 15,  # a non-accepted cause
-        }
-    )
-    assembler.handle_confirmation_terminal_masks(
-        {
-            "oid": 0,
-            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-            "evidence_sequence": 3,
-            "forward_collected_mask": forward_collected,
-            "forward_eligible_mask": forward_eligible,
-            "forward_included_mask": 0,
-            "reverse_collected_mask": 0,
-            "reverse_eligible_mask": 0,
-            "reverse_included_mask": 0,
-            "accepted": 0,
-            "confirmed_p_raw": 0,
-            "max_relative_se_permille": 900,
-            "required_relative_se_permille": 667,
-            "has_safety_fault": 0,
-        }
-    )
-
-
-def test_breakaway_confirmation_allows_a_partial_non_accepted_block():
-    """A mid-block SafetyFault or ConfirmationEvidenceExcluded preserves the
-    1-7 strokes that ran. A non-accepted terminal carrying a partial block is
-    legitimate; only an accepted terminal must carry the full eight."""
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_terminal(assembler)
-    _feed_partial_confirmation(assembler, stroke_count=2)
-
-    feed_campaign_terminal(assembler, accepted=False)  # closes confirmation
-    assert assembler._confirmation_closed is True
-
-
-def test_breakaway_confirmation_rejects_a_collected_mask_that_omits_received_slots():
-    """A partial terminal whose collected mask claims slots the strokes never
-    filled is inconsistent regardless of acceptance."""
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_terminal(assembler)
-    # Three forward strokes, but the terminal claims a full forward block.
-    _feed_partial_confirmation(
-        assembler, stroke_count=3, forward_collected=0b1111, forward_eligible=0
-    )
-
-    with pytest.raises(
-        BreakawayCampaignProtocolError,
-        match="forward collected mask does not match the received slots",
-    ):
-        feed_campaign_terminal(assembler, accepted=False)
-
-
-def test_breakaway_accepted_confirmation_still_requires_all_eight_strokes():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_terminal(assembler)
-    feed_confirmation_plan(assembler)
-    # Only two strokes, but an accepted terminal.
-    low, high = CONFIRMATION_DIGEST
-    for slot_index in range(2):
-        assembler.handle_confirmation_observation(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 3,
-                "plan_digest_low": low,
-                "plan_digest_high": high,
-                "slot_index": slot_index,
-                "direction": 0,
-                "response_lower_percent_milli": 72_000,
-                "response_upper_percent_milli": 78_000,
-                "relative_standard_error_permille": 500,
-            }
-        )
-    feed_confirmation_terminal(assembler, accepted=True)
-
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="missing its eight-stroke"
-    ):
-        feed_campaign_terminal(assembler, accepted=True)
-
-
-def test_breakaway_confirmation_observation_follows_the_fixed_capture_schedule():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_terminal(assembler)
-    feed_confirmation_plan(assembler)
-
-    with pytest.raises(BreakawayCampaignProtocolError, match="capture schedule"):
-        assembler.handle_confirmation_observation(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 3,
-                "plan_digest_low": CONFIRMATION_DIGEST[0],
-                "plan_digest_high": CONFIRMATION_DIGEST[1],
-                "slot_index": 0,
-                "direction": 1,  # slot 0 must be forward (direction 0)
-                "response_lower_percent_milli": 72_000,
-                "response_upper_percent_milli": 78_000,
-                "relative_standard_error_permille": 500,
-            }
-        )
-
-
 def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
@@ -2364,7 +2143,6 @@ def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
-    feed_confirmation_observations(assembler)
     assembler.handle_confirmation_terminal_identity(
         {
             "oid": 0,
@@ -2414,7 +2192,6 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
-    feed_confirmation_observations(assembler)
     feed_confirmation_terminal(assembler, accepted=False)
 
     with pytest.raises(BreakawayCampaignProtocolError, match="own acceptance"):
@@ -2428,7 +2205,6 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
-    feed_confirmation_observations(assembler)
     feed_confirmation_terminal(assembler, accepted=True)
 
     with pytest.raises(BreakawayCampaignProtocolError, match="Stage-C plan digest"):
@@ -2453,7 +2229,6 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
-    feed_confirmation_observations(assembler)
     feed_confirmation_terminal(assembler, accepted=True)
     feed_campaign_terminal(assembler, accepted=True)
 
@@ -2483,7 +2258,6 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
-    feed_confirmation_observations(assembler)
     feed_confirmation_terminal(assembler, accepted=False)
     feed_campaign_terminal(assembler, accepted=False)
 
@@ -2493,192 +2267,6 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
 
     with pytest.raises(BreakawayCampaignProtocolError, match="duplicate confirmation"):
         feed_confirmation_plan(assembler, candidate_p_raw=360)
-
-
-def test_breakaway_raw_observation_relays_discovery_and_confirmation_evidence():
-    """No r/SE/nomination math happens here -- the merged fragment is stored
-
-    exactly as firmware sent it, for foci-trace's independent offline replay.
-    """
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_raw_observation(
-        assembler,
-        evidence_sequence=2,
-        digest=DISCOVERY_DIGEST,
-        phase=1,
-        rung_index=1,
-        slot_index=3,
-        direction=1,
-        mean_rate_q_low=4_242,
-        target_rate_q_low=6_000,
-    )
-    feed_discovery_terminal(assembler)
-    feed_confirmation_plan(assembler)
-    feed_raw_observation(
-        assembler,
-        evidence_sequence=3,
-        digest=CONFIRMATION_DIGEST,
-        phase=2,
-        slot_index=5,
-        direction=1,
-    )
-    feed_confirmation_observations(assembler)
-    feed_confirmation_terminal(assembler, accepted=True)
-    feed_campaign_terminal(assembler, accepted=True)
-
-    assert len(assembler.raw_observations) == 2
-    discovery_observation, confirmation_observation = assembler.raw_observations
-    assert discovery_observation["phase"] == 1
-    assert discovery_observation["rung_index"] == 1
-    assert discovery_observation["slot_index"] == 3
-    assert discovery_observation["mean_rate_q_low"] == 4_242
-    assert discovery_observation["target_rate_q_low"] == 6_000
-    assert confirmation_observation["phase"] == 2
-    assert confirmation_observation["slot_index"] == 5
-    # No reduced statistic (r, SE, nomination interval) is ever computed or
-    # stored here -- only the raw firmware-authored inputs.
-    for observation in assembler.raw_observations:
-        assert "r" not in observation
-        assert "relative_standard_error_permille" not in observation
-        assert "nominated_margin_percent_milli" not in observation
-
-
-def test_breakaway_raw_observation_identity_rejects_plan_digest_mismatch():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-
-    with pytest.raises(BreakawayCampaignProtocolError, match="plan digest mismatch"):
-        assembler.handle_raw_observation_identity(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 2,
-                "plan_digest_low": 0,
-                "plan_digest_high": 0,
-                "phase": 1,
-                "rung_index": 0,
-                "slot_index": 0,
-                "direction": 0,
-            }
-        )
-
-
-def test_breakaway_raw_observation_identity_rejects_probe_phase():
-    """Firmware never streams raw observations for the probe phase (0)."""
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="invalid raw observation phase"
-    ):
-        assembler.handle_raw_observation_identity(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 2,
-                "plan_digest_low": DISCOVERY_DIGEST[0],
-                "plan_digest_high": DISCOVERY_DIGEST[1],
-                "phase": 0,
-                "rung_index": 0,
-                "slot_index": 0,
-                "direction": 0,
-            }
-        )
-
-
-def test_breakaway_raw_observation_measurement_requires_prior_identity():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-
-    with pytest.raises(BreakawayCampaignProtocolError, match="preceded its identity"):
-        assembler.handle_raw_observation_measurement(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 2,
-                "mean_rate_q_low": 0,
-                "mean_rate_q_high": 0,
-                "variance_word0": 0,
-                "variance_word1": 0,
-                "variance_word2": 0,
-                "variance_word3": 0,
-                "target_rate_q_low": 0,
-                "target_rate_q_high": 0,
-            }
-        )
-
-
-def test_breakaway_raw_observation_identity_rejects_a_dangling_predecessor():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    assembler.handle_raw_observation_identity(
-        {
-            "oid": 0,
-            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-            "evidence_sequence": 2,
-            "plan_digest_low": DISCOVERY_DIGEST[0],
-            "plan_digest_high": DISCOVERY_DIGEST[1],
-            "phase": 1,
-            "rung_index": 0,
-            "slot_index": 0,
-            "direction": 0,
-        }
-    )
-
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="before its prior measurement"
-    ):
-        assembler.handle_raw_observation_identity(
-            {
-                "oid": 0,
-                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-                "evidence_sequence": 2,
-                "plan_digest_low": DISCOVERY_DIGEST[0],
-                "plan_digest_high": DISCOVERY_DIGEST[1],
-                "phase": 1,
-                "rung_index": 0,
-                "slot_index": 1,
-                "direction": 1,
-            }
-        )
-
-
-def test_breakaway_campaign_terminal_rejects_a_dangling_raw_observation():
-    assembler = BreakawayCampaignAssembler()
-    feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
-    feed_discovery_plan(assembler)
-    feed_discovery_terminal(assembler)
-    feed_confirmation_plan(assembler)
-    assembler.handle_raw_observation_identity(
-        {
-            "oid": 0,
-            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
-            "evidence_sequence": 3,
-            "plan_digest_low": CONFIRMATION_DIGEST[0],
-            "plan_digest_high": CONFIRMATION_DIGEST[1],
-            "phase": 2,
-            "rung_index": 0,
-            "slot_index": 0,
-            "direction": 0,
-        }
-    )
-    feed_confirmation_observations(assembler)
-    feed_confirmation_terminal(assembler, accepted=True)
-
-    with pytest.raises(BreakawayCampaignProtocolError, match="no matching measurement"):
-        feed_campaign_terminal(assembler, accepted=True)
 
 
 def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
@@ -2714,10 +2302,8 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
             "discovery_rung_zero",
             "discovery_terminal",
             "confirmation_plan",
-            "confirmation_observations",
             "confirmation_terminal",
             "campaign_terminal",
-            "raw_observations",
             "accepted",
             "stage_c_plan_digest",
             "done",

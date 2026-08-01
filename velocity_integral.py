@@ -1262,15 +1262,6 @@ BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 15
 
 BREAKAWAY_DIRECTION_NAMES = {0: "forward", 1: "reverse"}
 
-# Owning-phase wire codes carried by a raw-observation identity fragment.
-# Firmware never streams raw observations for the probe phase (0); the probe's
-# directional breakaway report already covers that phase's evidence.
-RAW_OBSERVATION_PHASE_NAMES = {1: "discovery", 2: "confirmation"}
-
-# Fixed capture schedule the confirmation driver is built to (spec/Task 4):
-# four forward strokes (slots 0-3) then four reverse strokes (slots 4-7).
-BREAKAWAY_CONFIRMATION_OBSERVATIONS_PER_DIRECTION = 4
-
 
 class BreakawayCampaignProtocolError(Exception):
     """Raised when breakaway-campaign evidence violates its wire contract."""
@@ -1296,10 +1287,8 @@ class BreakawayCampaignAssembler:
         self.discovery_rung_zero: dict | None = None
         self.discovery_terminal: dict | None = None
         self.confirmation_plan: dict | None = None
-        self.confirmation_observations: list[dict] = []
         self.confirmation_terminal: dict | None = None
         self.campaign_terminal: dict | None = None
-        self.raw_observations: list[dict] = []
         self.accepted = False
         self.stage_c_plan_digest: int | None = None
         self.done = False
@@ -1307,8 +1296,6 @@ class BreakawayCampaignAssembler:
         self._last_evidence_sequence: int | None = None
         self._discovery_identity: dict | None = None
         self._confirmation_terminal_identity: dict | None = None
-        self._confirmation_closed = False
-        self._pending_raw_observation: dict | None = None
 
     # -- shared identity/sequence plumbing ---------------------------------
 
@@ -1369,58 +1356,11 @@ class BreakawayCampaignAssembler:
             )
         self._require_run(params)
 
-    def _close_confirmation(self) -> None:
-        """Reconcile the confirmation-terminal batch once confirmation closed.
-
-        Deferred until the campaign moves past confirmation: the fresh-stroke
-        observation records share the confirmation terminal's evidence
-        sequence and firmware does not guarantee their relative wire order.
-        """
-        if self.confirmation_terminal is None or self._confirmation_closed:
-            return
-        observed_count = len(self.confirmation_observations)
-        # A non-accepted terminal may close after a partial block: a mid-block
-        # SafetyFault or ConfirmationEvidenceExcluded preserves the 1-7 strokes
-        # that did run (their slot indices are validated contiguous from zero by
-        # handle_confirmation_observation). Only an *accepted* terminal must
-        # carry the full eight-stroke block.
-        if observed_count > 8:
-            raise BreakawayCampaignProtocolError(
-                "confirmation reported more than a full eight-stroke block"
-            )
-        if (
-            bool(int(self.confirmation_terminal.get("accepted", 0)))
-            and observed_count != 8
-        ):
-            raise BreakawayCampaignProtocolError(
-                "accepted confirmation is missing its eight-stroke evidence"
-            )
-        # Reconcile the reported collected masks with the slots actually
-        # received, for every outcome: the forward accumulator records schedule
-        # slots 0-3, the reverse 4-7. A terminal whose collected mask omits a
-        # received slot or claims an absent one is inconsistent regardless of
-        # acceptance.
-        forward_collected = 0
-        reverse_collected = 0
-        for observation in self.confirmation_observations:
-            slot = int(observation["slot_index"])
-            if 0 <= slot < 4:
-                forward_collected |= 1 << slot
-            elif 4 <= slot < 8:
-                reverse_collected |= 1 << (slot - 4)
-        if forward_collected != int(
-            self.confirmation_terminal["forward_collected_mask"]
-        ):
-            raise BreakawayCampaignProtocolError(
-                "confirmation forward collected mask does not match the received slots"
-            )
-        if reverse_collected != int(
-            self.confirmation_terminal["reverse_collected_mask"]
-        ):
-            raise BreakawayCampaignProtocolError(
-                "confirmation reverse collected mask does not match the received slots"
-            )
-        self._confirmation_closed = True
+    # The live host no longer reconciles per-stroke confirmation evidence:
+    # the per-stroke observation replies were removed, so it validates
+    # only the confirmation terminal's own mask structure (in
+    # handle_confirmation_terminal_masks). foci-trace owns per-stroke and
+    # collected-mask reconciliation from the canonical trace.
 
     # -- probe phase ---------------------------------------------------------
 
@@ -1613,37 +1553,6 @@ class BreakawayCampaignAssembler:
         self.confirmation_plan = _metadata_free(params)
         self.confirmation_plan["plan_digest"] = self._reported_plan_digest(params)
 
-    def handle_confirmation_observation(self, params: dict) -> None:
-        self._require_confirmation_plan(params)
-        if self.confirmation_terminal is not None:
-            raise BreakawayCampaignProtocolError(
-                "confirmation observation arrived after the confirmation terminal"
-            )
-        if self._reported_plan_digest(params) != self.confirmation_plan["plan_digest"]:
-            raise BreakawayCampaignProtocolError(
-                "confirmation observation plan digest mismatch"
-            )
-        slot_index = int(params.get("slot_index", -1))
-        if slot_index != len(self.confirmation_observations):
-            raise BreakawayCampaignProtocolError(
-                "reordered or duplicate confirmation observation"
-            )
-        expected_direction = (
-            0 if slot_index < BREAKAWAY_CONFIRMATION_OBSERVATIONS_PER_DIRECTION else 1
-        )
-        if int(params.get("direction", -1)) != expected_direction:
-            raise BreakawayCampaignProtocolError(
-                "confirmation observation direction does not match the fixed "
-                "capture schedule"
-            )
-        if int(params["response_lower_percent_milli"]) > int(
-            params["response_upper_percent_milli"]
-        ):
-            raise BreakawayCampaignProtocolError(
-                "reversed confirmation response interval"
-            )
-        self.confirmation_observations.append(_metadata_free(params))
-
     def handle_confirmation_terminal_identity(self, params: dict) -> None:
         self._require_confirmation_plan(params)
         if self.confirmation_terminal is not None or (
@@ -1707,62 +1616,14 @@ class BreakawayCampaignAssembler:
         }
         self._confirmation_terminal_identity = None
 
-    # -- raw-observation evidence --------------------------------------------
-    #
-    # These carry the family-free mean_rate_q/variance_of_mean_q2/target_rate_q
-    # inputs behind a discovery or confirmation stroke, streamed so an offline
-    # decoder (foci-trace) can independently recompute r/SE/the nomination
-    # interval/the [70, 80] containment. The live host validates the wire
-    # structure (identity/measurement correlation, phase, direction, and the
-    # owning-plan digest) and relays the merged fragment for operator
-    # diagnostics; it never performs that recomputation itself.
-
-    def handle_raw_observation_identity(self, params: dict) -> None:
-        if self._pending_raw_observation is not None:
-            raise BreakawayCampaignProtocolError(
-                "raw observation identity arrived before its prior measurement"
-            )
-        self._track_sequence(params)
-        phase = int(params.get("phase", -1))
-        if phase not in RAW_OBSERVATION_PHASE_NAMES:
-            raise BreakawayCampaignProtocolError("invalid raw observation phase")
-        owner = self.discovery_plan if phase == 1 else self.confirmation_plan
-        if owner is None:
-            raise BreakawayCampaignProtocolError(
-                "raw observation arrived before its owning phase plan"
-            )
-        if self._reported_plan_digest(params) != owner["plan_digest"]:
-            raise BreakawayCampaignProtocolError("raw observation plan digest mismatch")
-        if int(params.get("direction", -1)) not in (0, 1):
-            raise BreakawayCampaignProtocolError("invalid raw observation direction")
-        self._pending_raw_observation = _metadata_free(params)
-
-    def handle_raw_observation_measurement(self, params: dict) -> None:
-        if self._pending_raw_observation is None:
-            raise BreakawayCampaignProtocolError(
-                "raw observation measurement preceded its identity"
-            )
-        self._require_run(params)
-        if int(params.get("evidence_sequence", -1)) != int(
-            self._pending_raw_observation["evidence_sequence"]
-        ):
-            raise BreakawayCampaignProtocolError(
-                "raw observation measurement evidence sequence does not match "
-                "its identity"
-            )
-        self.raw_observations.append(
-            {**self._pending_raw_observation, **_metadata_free(params)}
-        )
-        self._pending_raw_observation = None
+    # Per-stroke raw-observation replies were removed: the family-free
+    # mean/variance/target inputs and the frozen classify/consensus inputs are
+    # detailed trace-only evidence that foci-trace decodes and reconstructs. The
+    # live host neither receives nor relays them.
 
     # -- campaign closure ----------------------------------------------------
 
     def handle_campaign_terminal(self, params: dict) -> None:
-        if self._pending_raw_observation is not None:
-            raise BreakawayCampaignProtocolError(
-                "raw observation identity has no matching measurement"
-            )
-        self._close_confirmation()
         self._require_run(params)
         if self.campaign_terminal is not None:
             raise BreakawayCampaignProtocolError("duplicate campaign terminal")

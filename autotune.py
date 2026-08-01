@@ -267,12 +267,6 @@ class AutotuneWorkflow:
     def handle_breakaway_discovery_ceiling_source(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_discovery_ceiling_source", params)
 
-    def handle_breakaway_raw_observation_identity(self, params: dict) -> None:
-        self._handle_breakaway_campaign("handle_raw_observation_identity", params)
-
-    def handle_breakaway_raw_observation_measurement(self, params: dict) -> None:
-        self._handle_breakaway_campaign("handle_raw_observation_measurement", params)
-
     def handle_breakaway_discovery_rung_zero_diagnostic(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_discovery_rung_zero_diagnostic", params)
 
@@ -281,9 +275,6 @@ class AutotuneWorkflow:
 
     def handle_breakaway_confirmation_plan(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_confirmation_plan", params)
-
-    def handle_breakaway_confirmation_observation(self, params: dict) -> None:
-        self._handle_breakaway_campaign("handle_confirmation_observation", params)
 
     def handle_breakaway_confirmation_terminal_identity(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_confirmation_terminal_identity", params)

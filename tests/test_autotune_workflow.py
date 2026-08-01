@@ -1100,34 +1100,6 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "binding_source": 0,
         }
     )
-    driver.autotune.handle_breakaway_raw_observation_identity(
-        {
-            "oid": 0,
-            "run_sequence": run_sequence,
-            "evidence_sequence": 2,
-            "plan_digest_low": discovery_low,
-            "plan_digest_high": discovery_high,
-            "phase": 1,
-            "rung_index": 1,
-            "slot_index": 0,
-            "direction": 0,
-        }
-    )
-    driver.autotune.handle_breakaway_raw_observation_measurement(
-        {
-            "oid": 0,
-            "run_sequence": run_sequence,
-            "evidence_sequence": 2,
-            "mean_rate_q_low": 4_000,
-            "mean_rate_q_high": 0,
-            "variance_word0": 1,
-            "variance_word1": 0,
-            "variance_word2": 0,
-            "variance_word3": 0,
-            "target_rate_q_low": 5_000,
-            "target_rate_q_high": 0,
-        }
-    )
     driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic(
         {
             "oid": 0,
@@ -1183,21 +1155,6 @@ def feed_breakaway_confirmation(
             "nominated_margin_percent_milli": 2_000,
         }
     )
-    for slot_index in range(8):
-        driver.autotune.handle_breakaway_confirmation_observation(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 3,
-                "plan_digest_low": confirm_low,
-                "plan_digest_high": confirm_high,
-                "slot_index": slot_index,
-                "direction": 0 if slot_index < 4 else 1,
-                "response_lower_percent_milli": 72_000,
-                "response_upper_percent_milli": 78_000,
-                "relative_standard_error_permille": 500,
-            }
-        )
     driver.autotune.handle_breakaway_confirmation_terminal_identity(
         {
             "oid": 0,
