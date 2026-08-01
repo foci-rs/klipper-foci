@@ -2230,22 +2230,70 @@ def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
         )
 
 
-def test_breakaway_discovery_terminal_collected_count_must_match_margins():
-    """The count/margin cross-check is deferred to the next phase boundary.
+def test_breakaway_discovery_allows_fewer_margins_than_collected_in_band():
+    """A non-nominatable in-band rung produces no margin record.
 
-    The rung-margin, rung-zero, and terminal records in one discovery-terminal
-    batch share a single evidence_sequence and firmware does not guarantee
-    their relative wire order, so this assembler reconciles the batch when the
-    campaign unambiguously moves on -- here, at the confirmation plan.
+    Firmware counts every collected in-band rung in collected_count but emits a
+    margin only for a nominatable one, so a legitimate batch may carry fewer
+    margins than its collected count. The reconciliation (deferred to the next
+    phase boundary) must tolerate that gap rather than demand an exact match;
+    foci-trace already recognizes it.
     """
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
     feed_directional_breakaways(assembler)
     feed_discovery_plan(assembler)
-    feed_discovery_rung_margins(assembler)
-    feed_discovery_terminal(assembler, collected_count=3)  # only 2 margins fed
+    feed_discovery_rung_margins(assembler)  # margins at collected indices 0 and 1
+    feed_discovery_terminal(assembler, collected_count=3)  # a 3rd, non-nominatable
 
-    with pytest.raises(BreakawayCampaignProtocolError, match="collected count"):
+    feed_confirmation_plan(assembler)  # closes discovery; must not raise
+    assert assembler._discovery_closed is True
+
+
+def test_breakaway_discovery_rejects_more_margins_than_collected():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_rung_margins(assembler)  # two margins
+    feed_discovery_terminal(
+        assembler, collected_count=1
+    )  # fewer collected than margins
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="more discovery rung margins"
+    ):
+        feed_confirmation_plan(assembler)
+
+
+def test_breakaway_discovery_rejects_margin_index_outside_collected_set():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_directional_breakaways(assembler)
+    feed_discovery_plan(assembler)
+    low, high = DISCOVERY_DIGEST
+    # A single margin whose collected_index sits past the collected set: it
+    # passes the count bound (1 <= 3) but references a rung that was never
+    # collected.
+    assembler.handle_discovery_rung_margin(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 2,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "collected_index": 5,
+            "p_raw": 360,
+            "lower_percent_milli": 71_000,
+            "upper_percent_milli": 79_000,
+            "margin_percent_milli": 1_000,
+            "half_width_percent_milli": 4_000,
+            "adjacent_rate_step_permille": 0,
+        }
+    )
+    feed_discovery_terminal(assembler, collected_count=3)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="outside the collected"):
         feed_confirmation_plan(assembler)
 
 

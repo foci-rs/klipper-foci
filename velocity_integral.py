@@ -1384,10 +1384,23 @@ class BreakawayCampaignAssembler:
         if self.discovery_terminal is None or self._discovery_closed:
             return
         collected_count = int(self.discovery_terminal["collected_count"])
-        if len(self.discovery_rung_margins) != collected_count:
+        # collected_count is every collected in-band rung, but firmware emits a
+        # margin only for a *nominatable* rung, so a batch with non-nominatable
+        # in-band rungs legitimately carries fewer margins than the collected
+        # count. Bound the margins to the collected set (already validated to be
+        # strictly ascending by index in handle_discovery_rung_margin) rather
+        # than demanding an exact match.
+        if len(self.discovery_rung_margins) > collected_count:
             raise BreakawayCampaignProtocolError(
-                "discovery terminal collected count does not match the "
-                "reported rung margins"
+                "more discovery rung margins than collected in-band rungs"
+            )
+        if (
+            self.discovery_rung_margins
+            and int(self.discovery_rung_margins[-1]["collected_index"])
+            >= collected_count
+        ):
+            raise BreakawayCampaignProtocolError(
+                "discovery rung margin index falls outside the collected in-band set"
             )
         self._discovery_closed = True
 
