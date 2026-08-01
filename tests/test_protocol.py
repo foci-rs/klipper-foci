@@ -219,6 +219,70 @@ def test_commissioning_registers_only_stage_b_schema8_reproduction_group():
         ) not in registrations
 
 
+def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
+    """All 15 `FociBreakaway*` replies (replies.rs) must reach a live MCU's
+    handler, mirroring the sibling `foci_velocity_integral_*` /
+    `foci_acceptance_matrix_*` registrations exactly."""
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_commissioning_responses(serial, driver, driver.oid)
+
+    registered = {
+        name: callback for callback, name, oid in serial.responses if oid == driver.oid
+    }
+    expected = {
+        "foci_breakaway_probe_plan": driver.autotune.handle_breakaway_probe_plan,
+        "foci_breakaway_directional_breakaway": (
+            driver.autotune.handle_breakaway_directional_breakaway
+        ),
+        "foci_breakaway_probe_terminal": (
+            driver.autotune.handle_breakaway_probe_terminal
+        ),
+        "foci_breakaway_discovery_plan_identity": (
+            driver.autotune.handle_breakaway_discovery_plan_identity
+        ),
+        "foci_breakaway_discovery_plan_geometry": (
+            driver.autotune.handle_breakaway_discovery_plan_geometry
+        ),
+        "foci_breakaway_ceiling_source": (
+            driver.autotune.handle_breakaway_discovery_ceiling_source
+        ),
+        "foci_breakaway_ladder_rung": (
+            driver.autotune.handle_breakaway_discovery_ladder_rung
+        ),
+        "foci_breakaway_discovery_rung_margin": (
+            driver.autotune.handle_breakaway_discovery_rung_margin
+        ),
+        "foci_breakaway_rung_zero_diagnostic": (
+            driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic
+        ),
+        "foci_breakaway_discovery_terminal": (
+            driver.autotune.handle_breakaway_discovery_terminal
+        ),
+        "foci_breakaway_confirmation_plan": (
+            driver.autotune.handle_breakaway_confirmation_plan
+        ),
+        "foci_breakaway_confirmation_observation": (
+            driver.autotune.handle_breakaway_confirmation_observation
+        ),
+        "foci_breakaway_confirmation_terminal_identity": (
+            driver.autotune.handle_breakaway_confirmation_terminal_identity
+        ),
+        "foci_breakaway_confirmation_terminal_masks": (
+            driver.autotune.handle_breakaway_confirmation_terminal_masks
+        ),
+        "foci_breakaway_campaign_terminal": (
+            driver.autotune.handle_breakaway_campaign_terminal
+        ),
+    }
+
+    assert len(expected) == 15
+    assert set(expected) <= set(registered)
+    for name, handler in expected.items():
+        assert registered[name] == handler, name
+
+
 def test_inductance_replies_are_not_active_diagnostic_responses():
     driver = make_driver()
     serial = MockSerial()

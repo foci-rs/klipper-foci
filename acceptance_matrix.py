@@ -35,6 +35,7 @@ ACTION_CODES = {
     "matrix_descending": 2,
     "combined_mirrored": 5,
     "combined_paired": 6,
+    "breakaway_seeded": 7,
 }
 OUTCOME_NAMES = {
     0: "complete",

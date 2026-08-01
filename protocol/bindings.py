@@ -285,6 +285,66 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             driver.autotune.handle_acceptance_matrix_terminal,
             "foci_acceptance_matrix_terminal",
         ),
+        (
+            driver.autotune.handle_breakaway_probe_plan,
+            "foci_breakaway_probe_plan",
+        ),
+        (
+            driver.autotune.handle_breakaway_directional_breakaway,
+            "foci_breakaway_directional_breakaway",
+        ),
+        (
+            driver.autotune.handle_breakaway_probe_terminal,
+            "foci_breakaway_probe_terminal",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_plan_identity,
+            "foci_breakaway_discovery_plan_identity",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_plan_geometry,
+            "foci_breakaway_discovery_plan_geometry",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_ceiling_source,
+            "foci_breakaway_ceiling_source",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_ladder_rung,
+            "foci_breakaway_ladder_rung",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_rung_margin,
+            "foci_breakaway_discovery_rung_margin",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic,
+            "foci_breakaway_rung_zero_diagnostic",
+        ),
+        (
+            driver.autotune.handle_breakaway_discovery_terminal,
+            "foci_breakaway_discovery_terminal",
+        ),
+        (
+            driver.autotune.handle_breakaway_confirmation_plan,
+            "foci_breakaway_confirmation_plan",
+        ),
+        (
+            driver.autotune.handle_breakaway_confirmation_observation,
+            "foci_breakaway_confirmation_observation",
+        ),
+        (
+            driver.autotune.handle_breakaway_confirmation_terminal_identity,
+            "foci_breakaway_confirmation_terminal_identity",
+        ),
+        (
+            driver.autotune.handle_breakaway_confirmation_terminal_masks,
+            "foci_breakaway_confirmation_terminal_masks",
+        ),
+        (
+            driver.autotune.handle_breakaway_campaign_terminal,
+            "foci_breakaway_campaign_terminal",
+        ),
     ):
         serial.register_response(callback, name, oid)
     serial.register_response(

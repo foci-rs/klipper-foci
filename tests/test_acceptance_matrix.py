@@ -482,6 +482,12 @@ def test_combined_mirrored_is_requestable_but_a_mirrored_matrix_is_not():
             parse_autotune_action(unreachable)
 
 
+def test_breakaway_seeded_action_resolves_to_firmware_wire_code_seven():
+    """AutotuneAction::BreakawaySeeded = 7 (foci-firmware src/tmc.rs) is
+    reachable from FOCI_AUTOTUNE ACTION=breakaway_seeded."""
+    assert parse_autotune_action("breakaway_seeded") == 7
+
+
 def test_schema_five_plan_unpacks_the_packed_schedule_order_byte():
     """Slot order rides in the high nibble of the amplitude-order byte."""
     assembler = AcceptanceMatrixAssembler()
