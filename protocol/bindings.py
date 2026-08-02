@@ -61,9 +61,8 @@ def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
                 fault_kind, "unknown(%s)" % fault_kind
             )
             logging.error(
-                "FOCI %s recovered last-boot fault: kind=%s line=%s pc=0x%08x"
+                "FOCI board recovered last-boot fault: kind=%s line=%s pc=0x%08x"
                 " file_hash=0x%08x",
-                driver.stepper_name,
                 fault_name,
                 params.get("line"),
                 params.get("pc", 0),
@@ -71,8 +70,7 @@ def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
             )
         if breakaway_interrupted:
             logging.error(
-                "FOCI %s recovered interrupted breakaway campaign: checkpoint=%s",
-                driver.stepper_name,
+                "FOCI board recovered interrupted breakaway campaign: checkpoint=%s",
                 checkpoint,
             )
 

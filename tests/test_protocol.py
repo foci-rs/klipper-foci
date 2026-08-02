@@ -9,6 +9,7 @@ from klipper_foci.protocol.bindings import (
     MOTION_SCALE_REJECTION_NAMES,
     register_active_diagnostic_responses,
     register_commissioning_responses,
+    register_last_boot_diagnostic_response,
 )
 
 from tests.mocks import (
@@ -182,9 +183,10 @@ def test_last_boot_diagnostic_labels_interrupted_breakaway_without_a_fault(caplo
         }
     )
 
-    assert "stepper_x" in caplog.text
+    assert "FOCI board" in caplog.text
     assert "interrupted breakaway campaign" in caplog.text
     assert "checkpoint=5" in caplog.text
+    assert "stepper_x" not in caplog.text
     assert "panic" not in caplog.text
     assert "fault" not in caplog.text
 
@@ -217,6 +219,8 @@ def test_last_boot_diagnostic_preserves_fault_labels_and_context(
     assert "line=321" in caplog.text
     assert "pc=0x12345678" in caplog.text
     assert "file_hash=0x90abcdef" in caplog.text
+    assert "FOCI board" in caplog.text
+    assert "stepper_x" not in caplog.text
 
 
 def test_last_boot_diagnostic_preserves_fault_and_interruption_context(caplog):
@@ -243,6 +247,49 @@ def test_last_boot_diagnostic_preserves_fault_and_interruption_context(caplog):
     assert "file_hash=0xfedcba09" in caplog.text
     assert "interrupted breakaway campaign" in caplog.text
     assert "checkpoint=4" in caplog.text
+    assert "FOCI board" in caplog.text
+    assert "stepper_x" not in caplog.text
+
+
+def test_last_boot_diagnostic_is_board_scoped_for_reversed_oid_order(caplog):
+    serial = MockSerial()
+    driver_0 = make_driver(stepper_name="stepper_x", bind_protocol=False)
+    driver_1 = make_driver(stepper_name="stepper_y", bind_protocol=False)
+    driver_0.oid = 0
+    driver_1.oid = 1
+    register_last_boot_diagnostic_response(serial, driver_0, driver_0.oid)
+    register_last_boot_diagnostic_response(serial, driver_1, driver_1.oid)
+    callbacks = {
+        oid: callback
+        for callback, name, oid in serial.responses
+        if name == "foci_last_boot_diagnostic"
+    }
+    recovered = {
+        "fault_kind": 1,
+        "line": 987,
+        "pc": 0x10203040,
+        "file_hash": 0x50607080,
+        "breakaway_checkpoint": 6,
+        "breakaway_interrupted": 1,
+    }
+
+    callbacks[1]({"oid": 1, **recovered})
+    oid_1_messages = [record.getMessage() for record in caplog.records]
+    caplog.clear()
+    callbacks[0]({"oid": 0, **recovered})
+    oid_0_messages = [record.getMessage() for record in caplog.records]
+
+    assert oid_1_messages == oid_0_messages
+    assert len(oid_0_messages) == 2
+    assert all("FOCI board" in message for message in oid_0_messages)
+    assert "rust_panic" in oid_0_messages[0]
+    assert "line=987" in oid_0_messages[0]
+    assert "pc=0x10203040" in oid_0_messages[0]
+    assert "file_hash=0x50607080" in oid_0_messages[0]
+    assert "interrupted breakaway campaign" in oid_0_messages[1]
+    assert "checkpoint=6" in oid_0_messages[1]
+    assert "stepper_x" not in caplog.text
+    assert "stepper_y" not in caplog.text
 
 
 def test_motion_scale_rejection_response_is_actionable(caplog):
