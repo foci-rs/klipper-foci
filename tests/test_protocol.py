@@ -26,6 +26,15 @@ def response_names(mcu):
     return [(name, oid) for _callback, name, oid in serial.responses]
 
 
+def response_callback(mcu, name):
+    serial = getattr(mcu, "_serial", mcu)
+    return next(
+        callback
+        for callback, response_name, _oid in serial.responses
+        if response_name == name
+    )
+
+
 def test_bind_mcu_looks_up_commands_and_registers_responses():
     driver = make_driver()
     mcu = MockMCU()
@@ -141,6 +150,99 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_current_validation_envelope", driver.oid) in registrations
     assert ("foci_motion_scale_rejected", driver.oid) in registrations
     assert len(registrations) == len(set(registrations))
+
+
+def test_bind_mcu_registers_only_the_last_boot_diagnostic_response():
+    driver = make_driver()
+    mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
+
+    driver.protocol.bind_mcu(mcu, driver.oid)
+
+    registrations = response_names(mcu)
+    assert ("foci_last_boot_diagnostic", driver.oid) in registrations
+    assert ("foci_last_panic", driver.oid) not in registrations
+
+
+def test_last_boot_diagnostic_labels_interrupted_breakaway_without_a_fault(caplog):
+    driver = make_driver()
+    mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
+    driver.protocol.bind_mcu(mcu, driver.oid)
+
+    response_callback(mcu, "foci_last_boot_diagnostic")(
+        {
+            "oid": driver.oid,
+            "fault_kind": 0,
+            "line": 0,
+            "pc": 0,
+            "file_hash": 0,
+            "breakaway_checkpoint": 5,
+            "breakaway_interrupted": 1,
+        }
+    )
+
+    assert "stepper_x" in caplog.text
+    assert "interrupted breakaway campaign" in caplog.text
+    assert "checkpoint=5" in caplog.text
+    assert "panic" not in caplog.text
+    assert "fault" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("fault_kind", "fault_name"),
+    ((1, "rust_panic"), (2, "hard_fault")),
+)
+def test_last_boot_diagnostic_preserves_fault_labels_and_context(
+    caplog, fault_kind, fault_name
+):
+    driver = make_driver()
+    mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
+    driver.protocol.bind_mcu(mcu, driver.oid)
+
+    response_callback(mcu, "foci_last_boot_diagnostic")(
+        {
+            "oid": driver.oid,
+            "fault_kind": fault_kind,
+            "line": 321,
+            "pc": 0x12345678,
+            "file_hash": 0x90ABCDEF,
+            "breakaway_checkpoint": 0,
+            "breakaway_interrupted": 0,
+        }
+    )
+
+    assert fault_name in caplog.text
+    assert "line=321" in caplog.text
+    assert "pc=0x12345678" in caplog.text
+    assert "file_hash=0x90abcdef" in caplog.text
+
+
+def test_last_boot_diagnostic_preserves_fault_and_interruption_context(caplog):
+    driver = make_driver()
+    mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
+    driver.protocol.bind_mcu(mcu, driver.oid)
+
+    response_callback(mcu, "foci_last_boot_diagnostic")(
+        {
+            "oid": driver.oid,
+            "fault_kind": 2,
+            "line": 654,
+            "pc": 0x87654321,
+            "file_hash": 0xFEDCBA09,
+            "breakaway_checkpoint": 4,
+            "breakaway_interrupted": 1,
+        }
+    )
+
+    assert "hard_fault" in caplog.text
+    assert "line=654" in caplog.text
+    assert "pc=0x87654321" in caplog.text
+    assert "file_hash=0xfedcba09" in caplog.text
+    assert "interrupted breakaway campaign" in caplog.text
+    assert "checkpoint=4" in caplog.text
 
 
 def test_motion_scale_rejection_response_is_actionable(caplog):

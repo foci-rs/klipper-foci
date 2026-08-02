@@ -45,27 +45,40 @@ def register_dump_responses(serial, driver, oid: int) -> None:
     serial.register_response(driver.dump.handle_dump_done, "foci_dump_done", oid)
 
 
-_LAST_PANIC_KIND_NAMES = {1: "rust_panic", 2: "hard_fault"}
+_LAST_BOOT_FAULT_KIND_NAMES = {1: "rust_panic", 2: "hard_fault"}
 
 
-def register_last_panic_response(serial, driver, oid: int) -> None:
-    """Log a previous-boot panic/HardFault the firmware recovered from no-init
-    RAM and reported during the connect-time register dump. Without a registered
-    handler Klipper silently drops the reply, so this is what surfaces it."""
+def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
+    """Log a previous-boot fault or interrupted breakaway campaign."""
 
-    def handle_last_panic(params: dict) -> None:
-        kind = params.get("kind")
-        kind_name = _LAST_PANIC_KIND_NAMES.get(kind, "unknown(%s)" % kind)
-        logging.error(
-            "FOCI %s recovered last-boot fault: kind=%s line=%s pc=0x%08x file_hash=0x%08x",
-            driver.stepper_name,
-            kind_name,
-            params.get("line"),
-            params.get("pc", 0),
-            params.get("file_hash", 0),
-        )
+    def handle_last_boot_diagnostic(params: dict) -> None:
+        fault_kind = params.get("fault_kind", 0)
+        breakaway_interrupted = params.get("breakaway_interrupted", 0) != 0
+        checkpoint = params.get("breakaway_checkpoint", 0)
 
-    serial.register_response(handle_last_panic, "foci_last_panic", oid)
+        if fault_kind != 0:
+            fault_name = _LAST_BOOT_FAULT_KIND_NAMES.get(
+                fault_kind, "unknown(%s)" % fault_kind
+            )
+            logging.error(
+                "FOCI %s recovered last-boot fault: kind=%s line=%s pc=0x%08x"
+                " file_hash=0x%08x",
+                driver.stepper_name,
+                fault_name,
+                params.get("line"),
+                params.get("pc", 0),
+                params.get("file_hash", 0),
+            )
+        if breakaway_interrupted:
+            logging.error(
+                "FOCI %s recovered interrupted breakaway campaign: checkpoint=%s",
+                driver.stepper_name,
+                checkpoint,
+            )
+
+    serial.register_response(
+        handle_last_boot_diagnostic, "foci_last_boot_diagnostic", oid
+    )
 
 
 def register_homing_responses(serial, driver, oid: int) -> None:
