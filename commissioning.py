@@ -87,6 +87,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     60: "missing capture state",
     61: "search grid invalid",
     62: "target rate invalid",
+    63: "zero-elapsed encoder sample",
 }
 
 # Error codes for which the failure message should point at a dedicated
