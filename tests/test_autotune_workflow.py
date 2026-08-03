@@ -1036,30 +1036,27 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "evidence_sequence": 0,
             "plan_digest_low": probe_low,
             "plan_digest_high": probe_high,
-            "family_size": 16,
-            "max_observations": 8,
+            "max_observations": 128,
             "search_count": 10,
             "p_start_raw": 100,
             "p_top_raw": 2000,
+            "motion_threshold_counts": 63,
+            "max_capture_interval_us": 2000,
         }
     )
-    for direction, (inert, moving, observations) in enumerate(
-        ((300, 320, 5), (310, 330, 6))
-    ):
-        driver.autotune.handle_breakaway_directional_breakaway(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 1,
-                "plan_digest_low": probe_low,
-                "plan_digest_high": probe_high,
-                "direction": direction,
-                "inert_present": 1,
-                "inert_p_raw": inert,
-                "moving_p_raw": moving,
-                "observations": observations,
-            }
-        )
+    driver.autotune.handle_breakaway_probe_result(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 1,
+            "plan_digest_low": probe_low,
+            "plan_digest_high": probe_high,
+            "rung_index": 5,
+            "breakaway_p_raw": 320,
+            "motion_threshold_counts": 63,
+            "observation_count": 14,
+        }
+    )
 
     discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
     driver.autotune.handle_breakaway_discovery_plan_identity(
@@ -1285,7 +1282,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         )
 
     def test_operator_report_relays_geometry_margin_and_confirmation_bounds(self):
-        """Brief step 3: directional gains, additive geometry, nomination
+        """Brief step 3: the breakaway seed, additive geometry, nomination
         margin, confirmation bounds, and terminal remediation are all present
         in the operator-facing text, copied verbatim from firmware records."""
         d = self._commissioned_driver()
@@ -1295,8 +1292,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         message = d.autotune._format_breakaway_campaign_result()
 
-        self.assertIn("forward inert=P=300 moving=320", message)
-        self.assertIn("reverse inert=P=310 moving=330", message)
+        self.assertIn("breakaway=320 rung=5 obs=14", message)
         self.assertIn("floor=290", message)
         self.assertIn("breakaway=320", message)
         self.assertIn("ceiling=2000", message)

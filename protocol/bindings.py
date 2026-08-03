@@ -324,8 +324,8 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_breakaway_probe_plan",
         ),
         (
-            driver.autotune.handle_breakaway_directional_breakaway,
-            "foci_breakaway_directional_breakaway",
+            driver.autotune.handle_breakaway_probe_result,
+            "foci_breakaway_probe_result",
         ),
         (
             driver.autotune.handle_breakaway_probe_terminal,

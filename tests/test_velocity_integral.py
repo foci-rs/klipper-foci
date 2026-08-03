@@ -1813,36 +1813,33 @@ def feed_probe_plan(
             "evidence_sequence": 0,
             "plan_digest_low": low,
             "plan_digest_high": high,
-            "family_size": 16,
-            "max_observations": 8,
+            "max_observations": 128,
             "search_count": 10,
             "p_start_raw": 100,
             "p_top_raw": 2000,
+            "motion_threshold_counts": 63,
+            "max_capture_interval_us": 2000,
         }
     )
 
 
-def feed_directional_breakaways(
+def feed_probe_result(
     assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST
 ):
     low, high = digest
-    for direction, (inert, moving, observations) in enumerate(
-        ((300, 320, 5), (310, 330, 6))
-    ):
-        assembler.handle_directional_breakaway(
-            {
-                "oid": 0,
-                "run_sequence": run_sequence,
-                "evidence_sequence": 1,
-                "plan_digest_low": low,
-                "plan_digest_high": high,
-                "direction": direction,
-                "inert_present": 1,
-                "inert_p_raw": inert,
-                "moving_p_raw": moving,
-                "observations": observations,
-            }
-        )
+    assembler.handle_probe_result(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 1,
+            "plan_digest_low": low,
+            "plan_digest_high": high,
+            "rung_index": 5,
+            "breakaway_p_raw": 320,
+            "motion_threshold_counts": 63,
+            "observation_count": 14,
+        }
+    )
 
 
 def feed_discovery_plan(
@@ -2007,37 +2004,124 @@ def feed_campaign_terminal(
     )
 
 
-def test_breakaway_probe_and_directional_breakaway_relay_firmware_values():
+def test_breakaway_probe_result_relays_firmware_values():
     """No selection happens here: every stored value is the input verbatim."""
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
 
     assert assembler.probe_plan["p_start_raw"] == 100
     assert assembler.probe_plan["p_top_raw"] == 2000
-    assert assembler.directional_breakaways[0]["moving_p_raw"] == 320
-    assert assembler.directional_breakaways[1]["moving_p_raw"] == 330
-    assert assembler.directional_breakaways[0]["observations"] == 5
-    assert assembler.directional_breakaways[1]["observations"] == 6
+    assert assembler.probe_result["rung_index"] == 5
+    assert assembler.probe_result["breakaway_p_raw"] == 320
+    assert assembler.probe_result["observation_count"] == 14
 
 
-def test_breakaway_directional_breakaway_rejects_digest_mismatch():
+def test_breakaway_probe_result_rejects_digest_mismatch():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
 
     with pytest.raises(BreakawayCampaignProtocolError, match="digest mismatch"):
-        assembler.handle_directional_breakaway(
+        assembler.handle_probe_result(
             {
                 "oid": 0,
                 "run_sequence": BREAKAWAY_RUN_SEQUENCE,
                 "evidence_sequence": 1,
                 "plan_digest_low": 0,
                 "plan_digest_high": 0,
-                "direction": 0,
-                "inert_present": 1,
-                "inert_p_raw": 300,
-                "moving_p_raw": 320,
-                "observations": 5,
+                "rung_index": 5,
+                "breakaway_p_raw": 320,
+                "motion_threshold_counts": 63,
+                "observation_count": 14,
+            }
+        )
+
+
+def test_breakaway_probe_result_rejects_a_duplicate():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_probe_result(assembler)
+
+    with pytest.raises(BreakawayCampaignProtocolError, match="duplicate probe result"):
+        feed_probe_result(assembler)
+
+
+def test_breakaway_discovery_rejects_a_missing_probe_result():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="resolved probe breakaway"
+    ):
+        feed_discovery_plan(assembler)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("max_observations", 127),
+        ("motion_threshold_counts", 0),
+        ("max_capture_interval_us", 2001),
+        ("search_count", 0),
+    ),
+)
+def test_breakaway_probe_plan_rejects_an_invalid_upward_contract(field, value):
+    assembler = BreakawayCampaignAssembler()
+    params = {
+        "oid": 0,
+        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+        "evidence_sequence": 0,
+        "plan_digest_low": PROBE_DIGEST[0],
+        "plan_digest_high": PROBE_DIGEST[1],
+        "max_observations": 128,
+        "search_count": 10,
+        "p_start_raw": 100,
+        "p_top_raw": 2000,
+        "motion_threshold_counts": 63,
+        "max_capture_interval_us": 2000,
+    }
+    params[field] = value
+
+    with pytest.raises(BreakawayCampaignProtocolError):
+        assembler.handle_probe_plan(params)
+
+
+def test_breakaway_probe_terminal_accepts_cause_22():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+
+    assembler.handle_probe_terminal(
+        {
+            "oid": 0,
+            "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+            "evidence_sequence": 1,
+            "plan_digest_low": PROBE_DIGEST[0],
+            "plan_digest_high": PROBE_DIGEST[1],
+            "terminal_cause": 22,
+            "has_safety_fault": 0,
+        }
+    )
+
+    assert assembler.probe_terminal["terminal_cause"] == 22
+
+
+@pytest.mark.parametrize("cause", (2, 3, 4))
+def test_breakaway_probe_terminal_rejects_reserved_causes(cause):
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+
+    with pytest.raises(
+        BreakawayCampaignProtocolError, match="invalid probe terminal cause"
+    ):
+        assembler.handle_probe_terminal(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 1,
+                "plan_digest_low": PROBE_DIGEST[0],
+                "plan_digest_high": PROBE_DIGEST[1],
+                "terminal_cause": cause,
+                "has_safety_fault": 0,
             }
         )
 
@@ -2045,7 +2129,7 @@ def test_breakaway_directional_breakaway_rejects_digest_mismatch():
 def test_breakaway_discovery_plan_must_chain_from_the_probe_digest():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
 
     with pytest.raises(BreakawayCampaignProtocolError, match="chain from the probe"):
         assembler.handle_discovery_plan_identity(
@@ -2065,7 +2149,7 @@ def test_breakaway_discovery_plan_must_chain_from_the_probe_digest():
 def test_breakaway_discovery_geometry_rejects_gains_out_of_order():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     assembler.handle_discovery_plan_identity(
         {
             "oid": 0,
@@ -2103,7 +2187,7 @@ def test_breakaway_discovery_geometry_rejects_gains_out_of_order():
 def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     assembler.handle_discovery_plan_identity(
         {
             "oid": 0,
@@ -2139,7 +2223,7 @@ def test_breakaway_discovery_geometry_rejects_unsupported_schema_revision():
 def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
@@ -2188,7 +2272,7 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
     """
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
@@ -2201,7 +2285,7 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
 def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
@@ -2225,7 +2309,7 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
 def test_breakaway_campaign_accepts_and_relays_the_full_report():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
@@ -2254,7 +2338,7 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
     """
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
-    feed_directional_breakaways(assembler)
+    feed_probe_result(assembler)
     feed_discovery_plan(assembler)
     feed_discovery_terminal(assembler)
     feed_confirmation_plan(assembler)
@@ -2295,7 +2379,7 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
     for name in surface:
         assert name.startswith("handle_") or name in (
             "probe_plan",
-            "directional_breakaways",
+            "probe_result",
             "probe_terminal",
             "discovery_plan",
             "discovery_ceiling_source",

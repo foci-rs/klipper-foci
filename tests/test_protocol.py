@@ -382,9 +382,7 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
     }
     expected = {
         "foci_breakaway_probe_plan": driver.autotune.handle_breakaway_probe_plan,
-        "foci_breakaway_directional_breakaway": (
-            driver.autotune.handle_breakaway_directional_breakaway
-        ),
+        "foci_breakaway_probe_result": driver.autotune.handle_breakaway_probe_result,
         "foci_breakaway_probe_terminal": (
             driver.autotune.handle_breakaway_probe_terminal
         ),

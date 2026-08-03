@@ -252,8 +252,8 @@ class AutotuneWorkflow:
     def handle_breakaway_probe_plan(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_probe_plan", params)
 
-    def handle_breakaway_directional_breakaway(self, params: dict) -> None:
-        self._handle_breakaway_campaign("handle_directional_breakaway", params)
+    def handle_breakaway_probe_result(self, params: dict) -> None:
+        self._handle_breakaway_campaign("handle_probe_result", params)
 
     def handle_breakaway_probe_terminal(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_probe_terminal", params)
@@ -678,7 +678,7 @@ class AutotuneWorkflow:
         """Relay the firmware-authored breakaway campaign report verbatim.
 
         Every value here is copied straight out of BreakawayCampaignAssembler
-        -- directional breakaway gains, additive-ladder geometry, the
+        -- the resolved breakaway gain, additive-ladder geometry, the
         nomination margin, confirmation bounds, and terminal cause -- with no
         recomputation. The host does not choose or restate a rung, gain, or
         verdict; it only names the wire codes firmware already sent.
@@ -695,20 +695,13 @@ class AutotuneWorkflow:
             phase_name,
             cause_name,
         )
-        direction_text = []
-        for direction, name in ((0, "forward"), (1, "reverse")):
-            report = campaign.directional_breakaways.get(direction)
-            if report is None:
-                continue
-            inert = (
-                "P=%d" % report["inert_p_raw"] if report["inert_present"] else "none"
+        probe_result = campaign.probe_result
+        if probe_result is not None:
+            message += "; breakaway=%d rung=%d obs=%d" % (
+                probe_result["breakaway_p_raw"],
+                probe_result["rung_index"],
+                probe_result["observation_count"],
             )
-            direction_text.append(
-                "%s inert=%s moving=%d obs=%d"
-                % (name, inert, report["moving_p_raw"], report["observations"])
-            )
-        if direction_text:
-            message += "; " + "; ".join(direction_text)
         discovery = campaign.discovery_plan
         if discovery is not None:
             message += (

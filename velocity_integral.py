@@ -1188,7 +1188,7 @@ class VelocityIntegralAssembler:
 # ============================================================================
 #
 # The breakaway campaign (StageCPlanShape.BreakawaySeededPThenI = 6) is a
-# three-phase acquisition -- a two-direction bisection probe, an additive
+# three-phase acquisition -- a physical-excursion upward probe, an additive
 # discovery ladder, and a held-out eight-stroke confirmation block -- that
 # firmware runs entirely on its own authority before, on acceptance, handing
 # off into the existing Stage-C velocity-integral flow above (schema 14,
@@ -1205,10 +1205,7 @@ BREAKAWAY_PHASE_NAMES = {0: "probe", 1: "discovery", 2: "confirmation"}
 
 BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     0: "none",
-    1: "probe_no_motion_at_authority",
-    2: "probe_unstable_breakaway",
-    3: "probe_directional_breakaway_disagreement",
-    4: "probe_evidence_excluded",
+    1: "probe_no_repeatable_motion_at_authority",
     5: "probe_authority_failure",
     6: "probe_safety_fault",
     7: "discovery_target_band_skipped",
@@ -1226,16 +1223,14 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     19: "confirmation_evidence_excluded",
     20: "confirmation_safety_fault",
     21: "accepted",
+    22: "probe_excursion_evidence_invalid",
 }
 
 # Advisory text only -- relays what the disclosed cause means, not a
 # host-computed remedy. Mirrors velocity_sweep.py's INCONCLUSIVE_REMEDIATION.
 BREAKAWAY_TERMINAL_REMEDIATION = {
-    1: "no direction showed motion within the probe's authority; check current limits",
-    2: "the probe's inert/moving bracket did not stay stable; rerun the probe",
-    3: "forward and reverse breakaway estimates disagreed; inspect both directions",
-    4: "probe evidence was excluded; retain the trace and inspect stationarity",
-    5: "probe authority was exhausted before a bracket resolved",
+    1: "no rung showed repeatable motion within the probe's authority; check current limits",
+    5: "probe authority was exhausted before repeatable motion resolved",
     6: "probe stopped on a safety fault; inspect retained safety evidence",
     7: "discovery skipped the target band; inspect the resolved ladder",
     8: "current headroom ended discovery before the target band; review headroom",
@@ -1251,6 +1246,7 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
     18: "confirmation ended on current authority instead of the target band",
     19: "confirmation evidence was excluded; retain the trace and inspect stationarity",
     20: "confirmation stopped on a safety fault; inspect retained safety evidence",
+    22: "probe excursion evidence was invalid; inspect the retained trace checkpoint",
 }
 
 FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}
@@ -1260,7 +1256,9 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 # discovery-plan-geometry schema this host currently understands.
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 15
 
-BREAKAWAY_DIRECTION_NAMES = {0: "forward", 1: "reverse"}
+BREAKAWAY_PROBE_MAX_OBSERVATIONS = 128
+BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US = 2_000
+BREAKAWAY_PROBE_MAX_SEARCH_RUNGS = 32
 
 
 class BreakawayCampaignProtocolError(Exception):
@@ -1272,7 +1270,7 @@ class BreakawayCampaignAssembler:
 
     This assembler never decides anything: it validates that each phase's
     plan names the previous phase's exact digest, that individual records are
-    internally well-formed (direction codes, ordering, interval and mask
+    internally well-formed (ordering, interval and mask
     sanity), and that a batch's declared count matches the records actually
     received -- then stores every firmware value unchanged for the operator
     report. No rung, family size, candidate, or retry is ever chosen here.
@@ -1280,7 +1278,7 @@ class BreakawayCampaignAssembler:
 
     def __init__(self) -> None:
         self.probe_plan: dict | None = None
-        self.directional_breakaways: dict[int, dict] = {}
+        self.probe_result: dict | None = None
         self.probe_terminal: dict | None = None
         self.discovery_plan: dict | None = None
         self.discovery_ceiling_source: dict | None = None
@@ -1302,7 +1300,10 @@ class BreakawayCampaignAssembler:
     def _bind_run(self, params: dict) -> None:
         if self._run_sequence is not None:
             raise BreakawayCampaignProtocolError("duplicate probe plan")
-        self._run_sequence = int(params.get("run_sequence", -1))
+        run_sequence = int(params.get("run_sequence", -1))
+        if run_sequence < 0:
+            raise BreakawayCampaignProtocolError("missing run sequence")
+        self._run_sequence = run_sequence
 
     def _require_run(self, params: dict) -> None:
         if (
@@ -1337,7 +1338,7 @@ class BreakawayCampaignAssembler:
 
     def _require_probe_resolved(self, params: dict) -> None:
         self._require_probe_plan(params)
-        if len(self.directional_breakaways) != 2 or self.probe_terminal is not None:
+        if self.probe_result is None or self.probe_terminal is not None:
             raise BreakawayCampaignProtocolError(
                 "discovery evidence arrived without a resolved probe breakaway"
             )
@@ -1371,60 +1372,82 @@ class BreakawayCampaignAssembler:
         if int(params.get("evidence_sequence", -1)) != 0:
             raise BreakawayCampaignProtocolError("probe plan sequence is not zero")
         self._last_evidence_sequence = 0
-        family_size = int(params["family_size"])
         max_observations = int(params["max_observations"])
-        if family_size != 2 * max_observations:
+        if max_observations != BREAKAWAY_PROBE_MAX_OBSERVATIONS:
             raise BreakawayCampaignProtocolError(
-                "probe family size does not match the observation budget"
+                "probe observation budget is not the fixed 128-stroke contract"
             )
-        if int(params["search_count"]) < 1:
+        search_count = int(params["search_count"])
+        if not 1 <= search_count <= BREAKAWAY_PROBE_MAX_SEARCH_RUNGS:
             raise BreakawayCampaignProtocolError("empty probe search grid")
-        if int(params["p_start_raw"]) > int(params["p_top_raw"]):
+        if not 0 < int(params["p_start_raw"]) <= int(params["p_top_raw"]):
             raise BreakawayCampaignProtocolError("reversed probe search grid")
+        if int(params["motion_threshold_counts"]) <= 0:
+            raise BreakawayCampaignProtocolError("zero probe motion threshold")
+        if (
+            int(params["max_capture_interval_us"])
+            != BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US
+        ):
+            raise BreakawayCampaignProtocolError(
+                "probe capture interval does not match the fixed contract"
+            )
+        if self._reported_plan_digest(params) == 0:
+            raise BreakawayCampaignProtocolError("zero probe plan digest")
         self.probe_plan = _metadata_free(params)
         self.probe_plan["plan_digest"] = self._reported_plan_digest(params)
 
-    def handle_directional_breakaway(self, params: dict) -> None:
+    def handle_probe_result(self, params: dict) -> None:
         self._require_probe_plan(params)
+        if self.probe_result is not None:
+            raise BreakawayCampaignProtocolError("duplicate probe result")
         if self.probe_terminal is not None:
             raise BreakawayCampaignProtocolError(
-                "directional breakaway arrived after a probe failure terminal"
+                "probe result arrived after a probe failure terminal"
             )
-        self._track_sequence(params)
+        if self._track_sequence(params) == 0:
+            raise BreakawayCampaignProtocolError(
+                "probe result sequence is not after the plan"
+            )
         if self._reported_plan_digest(params) != self.probe_plan["plan_digest"]:
+            raise BreakawayCampaignProtocolError("probe result plan digest mismatch")
+        rung_index = int(params["rung_index"])
+        if not 0 <= rung_index < int(self.probe_plan["search_count"]):
             raise BreakawayCampaignProtocolError(
-                "directional breakaway plan digest mismatch"
+                "probe result rung is outside the search grid"
             )
-        direction = int(params.get("direction", -1))
-        if direction != len(self.directional_breakaways) or direction not in (0, 1):
+        breakaway = int(params["breakaway_p_raw"])
+        if (
+            not int(self.probe_plan["p_start_raw"])
+            <= breakaway
+            <= int(self.probe_plan["p_top_raw"])
+        ):
             raise BreakawayCampaignProtocolError(
-                "reordered or duplicate directional breakaway"
+                "probe result gain is outside the search grid"
             )
-        if not int(params["inert_present"]) and int(params["inert_p_raw"]) != 0:
+        if int(params["motion_threshold_counts"]) != int(
+            self.probe_plan["motion_threshold_counts"]
+        ):
             raise BreakawayCampaignProtocolError(
-                "absent inert bracket carries a nonzero gain"
+                "probe result motion threshold mismatch"
             )
-        if int(params["observations"]) < 1:
+        observations = int(params["observation_count"])
+        if not 1 <= observations <= int(self.probe_plan["max_observations"]):
             raise BreakawayCampaignProtocolError(
-                "directional breakaway reports zero observations"
+                "invalid probe result observation count"
             )
-        self.directional_breakaways[direction] = _metadata_free(params)
+        self.probe_result = _metadata_free(params)
 
     def handle_probe_terminal(self, params: dict) -> None:
         self._require_probe_plan(params)
         if self.probe_terminal is not None:
             raise BreakawayCampaignProtocolError("duplicate probe terminal")
-        if self.directional_breakaways:
+        if self.probe_result is not None:
             raise BreakawayCampaignProtocolError(
                 "probe terminal arrived after a resolved breakaway"
             )
         self._track_sequence(params)
         if self._reported_plan_digest(params) != self.probe_plan["plan_digest"]:
             raise BreakawayCampaignProtocolError("probe terminal plan digest mismatch")
-        if int(params["family_size"]) != int(self.probe_plan["family_size"]):
-            raise BreakawayCampaignProtocolError(
-                "probe terminal family size does not match the probe plan"
-            )
         cause = int(params["terminal_cause"])
         if cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES or cause == 0:
             raise BreakawayCampaignProtocolError("invalid probe terminal cause")
@@ -1469,6 +1492,10 @@ class BreakawayCampaignAssembler:
         if not floor <= breakaway <= ceiling:
             raise BreakawayCampaignProtocolError(
                 "discovery geometry gains are not ordered floor<=breakaway<=ceiling"
+            )
+        if breakaway != int(self.probe_result["breakaway_p_raw"]):
+            raise BreakawayCampaignProtocolError(
+                "discovery breakaway gain does not match the probe result"
             )
         if int(params["rung_count"]) < 1:
             raise BreakawayCampaignProtocolError("empty discovery ladder")
