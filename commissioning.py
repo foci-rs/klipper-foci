@@ -78,6 +78,15 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     51: "delay_timing",
     52: "velocity sweep analysis overrun",
     53: "velocity rest not confirmed",
+    54: "invalid current limit",
+    55: "evidence buffer full",
+    56: "rung index out of range",
+    57: "frozen plan input changed mid-campaign",
+    58: "rung-origin recovery planning failed",
+    59: "encoder domain invalid",
+    60: "missing capture state",
+    61: "search grid invalid",
+    62: "target rate invalid",
 }
 
 # Error codes for which the failure message should point at a dedicated
