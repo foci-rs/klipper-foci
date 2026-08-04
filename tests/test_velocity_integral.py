@@ -2042,6 +2042,123 @@ def test_schema_fourteen_complete_outcome_does_not_require_reproduction():
     assembler.validate_complete()  # must not raise despite reproduction is None
 
 
+def feed_foc213_transport_validated_replay(
+    assembler, rung_values, *, centred_rung_index
+):
+    """Feed the wire-visible pattern the foc213-transport-validated capture
+    demonstrates.
+
+    Per slot: one observation followed by two hidden positions (a
+    rest_selection and a current), so the next visible record lands 3
+    sequence positions later. Per rung: `integral_rung`, then one hidden
+    position, then `rung_origin_recovery` with outcome 1 -- except
+    `centred_rung_index`, whose recovery was already centred: outcome 0, with
+    no hidden position.
+
+    Returns the next unused evidence_sequence position, so a caller can check
+    it against the archived capture's terminal position.
+    """
+    sequence = 1
+    last_rung_index = len(rung_values) - 1
+    for rung_index, i_raw in enumerate(rung_values):
+        for slot in range(8):
+            feed_observation(assembler, sequence, rung_index, slot, i_raw)
+            sequence += 3
+        kind = 0 if rung_index == 0 else 2 if rung_index == last_rung_index else 1
+        feed_rung(assembler, sequence, rung_index, i_raw, kind)
+        sequence += 1
+        if rung_index == centred_rung_index:
+            feed_recovery(assembler, sequence, rung_index, outcome=0)
+            sequence += 1
+        else:
+            feed_recovery(assembler, sequence + 1, rung_index, outcome=1)
+            sequence += 2
+    return sequence
+
+
+def test_foc213_transport_validated_replays_the_breakaway_evidence_sequence():
+    """Replay the wire-visible pattern from the foc213-transport-validated
+    capture: schema 14, workflow shape 6, all fourteen rungs of
+    `NATIVE_Q4_12_POSITIVE_I`.
+
+    The archived capture's evidence sequence runs contiguously from 1 to 377
+    with the terminal at 378; this fixture reproduces that geometry exactly.
+    Rung 12 was already centred (outcome 0, no hidden position); the other
+    thirteen recoveries were moving (outcome 1, one hidden position).
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler,
+        schema_revision=14,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        final_p=1024,
+        joint_membership=0,
+    )
+    rung_values = (0, *NATIVE_Q4_12_POSITIVE_I, 0)
+    assert len(rung_values) == 14
+
+    next_sequence = feed_foc213_transport_validated_replay(
+        assembler, rung_values, centred_rung_index=12
+    )
+
+    assert next_sequence == 378
+    assert len(assembler.observations) == 112
+    assert len(assembler.rungs) == 14
+    assert len(assembler.recoveries) == 14
+    assert assembler.recoveries[12]["outcome"] == 0
+    assert all(
+        assembler.recoveries[rung_index]["outcome"] == 1
+        for rung_index in range(14)
+        if rung_index != 12
+    )
+
+
+def test_foc213_p18b_replays_the_partial_breakaway_prefix():
+    """Replay foc213-p18b's wire-visible prefix through its first failing
+    recovery.
+
+    That capture's campaign was accepted and Stage C then failed at its first
+    moving recovery -- rung 0, the opening anchor -- and the recorder was
+    stopped two rungs in, mid-way through rung 1's observations: two rungs of
+    eight observations each, `integral_rung`, one hidden position, and
+    `rung_origin_recovery` with outcome 1, then rung 1's eight observations
+    with no rung record or recovery following them.
+
+    Analysing `foc213-p18b` yields only `partial integral-response capture`,
+    so the full audit's grammar checks never run on it. This covers its
+    Stage-C accounting; the record ordering is asserted directly against the
+    decoded stream elsewhere.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler,
+        schema_revision=14,
+        positive_i=POSITIVE_I,
+        final_p=1024,
+        joint_membership=0,
+    )
+
+    sequence = 1
+    for slot in range(8):
+        feed_observation(assembler, sequence, 0, slot, 0)
+        sequence += 3
+    feed_rung(assembler, sequence, 0, 0, 0)
+    sequence += 1
+    feed_recovery(assembler, sequence + 1, 0, outcome=1)
+    sequence += 2
+
+    for slot in range(8):
+        feed_observation(assembler, sequence, 1, slot, POSITIVE_I[0])
+        sequence += 3
+
+    assert len(assembler.observations) == 16
+    assert len(assembler.rungs) == 1
+    assert len(assembler.recoveries) == 1
+    assert assembler.recoveries[0]["outcome"] == 1
+
+
 # ============================================================================
 # Breakaway-seeded campaign: BreakawayCampaignAssembler
 # ============================================================================
