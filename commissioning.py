@@ -96,6 +96,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     69: "grid deadline arithmetic overflowed",
     70: "safety primitive already open",
     71: "primitive start timestamp is in the future",
+    72: "origin recovery start offset mismatch",
 }
 
 # Error codes for which the failure message should point at a dedicated
