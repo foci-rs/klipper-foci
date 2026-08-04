@@ -1104,21 +1104,23 @@ class VelocityIntegralAssembler:
         evidence_sequence = int(params.get("evidence_sequence", -1))
         self._resolve_trace_only_current(evidence_sequence, allow_zero=True)
         pending = self._recovery_rest_pending
-        if evidence_sequence == self._next_evidence_sequence:
-            return
-        if (
-            int(self.plan["schema_revision"]) >= 11
-            and evidence_sequence
-            == self._next_evidence_sequence
-            + (2 if int(self.plan["schema_revision"]) >= 12 else 1)
-            and pending is not None
-        ):
-            self._next_evidence_sequence += (
-                2 if int(self.plan["schema_revision"]) >= 12 else 1
+        # Same gating as the original nonzero branch: hidden recovery evidence
+        # exists only from schema 11 and only when a rest is pending. Note this
+        # method, unlike the recovery path, has no rung identity to check.
+        carries_hidden_evidence = (
+            int(self.plan["schema_revision"]) >= 11 and pending is not None
+        )
+        maximum_hidden_run = (
+            self.MAXIMUM_RECOVERY_HIDDEN_RUN if carries_hidden_evidence else 0
+        )
+        hidden_run = evidence_sequence - self._next_evidence_sequence
+        if hidden_run < 0 or hidden_run > maximum_hidden_run:
+            raise VelocityIntegralProtocolError(
+                "integral-response evidence sequence gap"
             )
+        self._next_evidence_sequence = evidence_sequence
+        if hidden_run:
             self._recovery_rest_pending = (pending[0], pending[1], True)
-            return
-        raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
 
     def _require_summary(self, params: dict) -> None:
         if self._summary is None:

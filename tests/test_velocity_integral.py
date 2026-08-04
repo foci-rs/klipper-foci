@@ -784,6 +784,26 @@ def test_stage_c_12_rest_terminal_requires_exact_hidden_positions():
 
 
 @pytest.mark.parametrize(
+    ("sequence", "error"),
+    (
+        (27, None),
+        (28, None),
+        (29, "sequence gap"),
+        (24, "sequence gap"),
+        (26, "omitted hidden"),
+    ),
+)
+def test_stage_c_12_terminal_accepts_a_bounded_hidden_run(sequence, error):
+    assembler = stage_c_12_recovery_assembler()
+    if error is not None:
+        with pytest.raises(VelocityIntegralProtocolError, match=error):
+            feed_stage_c_terminal_start(assembler, sequence, cause=53)
+    else:
+        feed_stage_c_terminal_start(assembler, sequence, cause=53)
+        assert len(assembler._terminal_parts) == 1
+
+
+@pytest.mark.parametrize(
     ("replacement", "message"),
     (
         ({"stage": 0}, "wrong stage"),
