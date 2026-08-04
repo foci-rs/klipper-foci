@@ -94,6 +94,8 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     67: "sampling grid period is zero",
     68: "grid deadline advanced before it was due",
     69: "grid deadline arithmetic overflowed",
+    70: "safety primitive already open",
+    71: "primitive start timestamp is in the future",
 }
 
 # Error codes for which the failure message should point at a dedicated
