@@ -88,6 +88,9 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     61: "search grid invalid",
     62: "target rate invalid",
     63: "zero-elapsed encoder sample",
+    64: "campaign plan could not be constructed",
+    65: "Stage-C authority denied",
+    66: "discovery selected no in-band ladder",
 }
 
 # Error codes for which the failure message should point at a dedicated
