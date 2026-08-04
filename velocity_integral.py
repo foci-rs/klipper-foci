@@ -1224,6 +1224,9 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     20: "confirmation_safety_fault",
     21: "accepted",
     22: "probe_excursion_evidence_invalid",
+    23: "probe_internal_fault",
+    24: "discovery_internal_fault",
+    25: "confirmation_internal_fault",
 }
 
 # Advisory text only -- relays what the disclosed cause means, not a
