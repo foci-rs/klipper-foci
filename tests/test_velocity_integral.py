@@ -655,14 +655,13 @@ def test_stage_c_recovery_summary_is_causal_and_compact():
     ("sequence", "outcome", "error"),
     (
         (19, 1, None),
-        (18, 1, "hidden recovery-rest"),
+        (20, 1, None),
         (18, 0, None),
-        (20, 1, "sequence gap"),
+        (18, 1, "hidden recovery-rest"),
+        (21, 1, "sequence gap"),
     ),
 )
-def test_stage_c_11_recovery_uses_one_causal_hidden_rest_position(
-    sequence, outcome, error
-):
+def test_stage_c_11_recovery_accepts_a_bounded_hidden_run(sequence, outcome, error):
     assembler = stage_c_11_recovery_assembler()
     if error is not None:
         with pytest.raises(VelocityIntegralProtocolError, match=error):
@@ -676,13 +675,15 @@ def test_stage_c_11_recovery_uses_one_causal_hidden_rest_position(
     ("sequence", "outcome", "error"),
     (
         (28, 1, None),
-        (26, 1, "hidden recovery-rest"),
+        (27, 1, None),
         (26, 0, None),
-        (27, 1, "sequence gap"),
+        (26, 3, None),
+        (26, 1, "hidden recovery-rest"),
+        (26, 5, "hidden recovery-rest"),
         (29, 1, "sequence gap"),
     ),
 )
-def test_stage_c_12_recovery_uses_two_causal_hidden_positions(sequence, outcome, error):
+def test_stage_c_12_recovery_accepts_a_bounded_hidden_run(sequence, outcome, error):
     assembler = stage_c_12_recovery_assembler()
     if error is not None:
         with pytest.raises(VelocityIntegralProtocolError, match=error):

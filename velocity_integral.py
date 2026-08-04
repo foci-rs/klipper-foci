@@ -96,6 +96,11 @@ def _pack(values: tuple[tuple[str, int], ...]) -> bytes:
 class VelocityIntegralAssembler:
     """Strictly assemble one firmware-authored integral-response report."""
 
+    # The hidden run before a recovery is 0, 1, or 2 depending on which
+    # controller exit was taken; neither the schema revision nor the outcome
+    # determines it. See docs/specs/2026-08-04-stage-c-evidence-grammar.md.
+    MAXIMUM_RECOVERY_HIDDEN_RUN = 2
+
     def __init__(self) -> None:
         self.workflow_plan: dict | None = None
         self.plan: dict | None = None
@@ -1033,28 +1038,36 @@ class VelocityIntegralAssembler:
         self._resolve_trace_only_current(evidence_sequence)
         self._ordinary_rest_hidden_positions = None
         pending = self._recovery_rest_pending
-        hidden_positions = 2 if int(self.plan["schema_revision"]) >= 12 else 1
-        if evidence_sequence == self._next_evidence_sequence:
-            if (
-                int(self.plan["schema_revision"]) >= 11
-                and pending is not None
-                and outcome in (1, 5)
-            ):
-                raise VelocityIntegralProtocolError(
-                    "moving recovery omitted hidden recovery-rest evidence"
-                )
-            return
-        if (
+        # Hidden recovery evidence exists only from schema 11, and only for the
+        # rung whose completed record set `pending`. Everywhere else the run
+        # must be zero, exactly as before this change.
+        carries_hidden_evidence = (
             int(self.plan["schema_revision"]) >= 11
-            and evidence_sequence == self._next_evidence_sequence + hidden_positions
             and pending is not None
             and pending[:2] == (1, rung_index)
+        )
+        maximum_hidden_run = (
+            self.MAXIMUM_RECOVERY_HIDDEN_RUN if carries_hidden_evidence else 0
+        )
+        hidden_run = evidence_sequence - self._next_evidence_sequence
+        if hidden_run < 0 or hidden_run > maximum_hidden_run:
+            raise VelocityIntegralProtocolError(
+                "integral-response evidence sequence gap"
+            )
+        # Outcomes 1 and 5 are reached only after the settle poll, which always
+        # commits a scored-rest selection, so they cannot hide nothing.
+        if (
+            hidden_run == 0
             and outcome in (1, 5)
+            and int(self.plan["schema_revision"]) >= 11
+            and pending is not None
         ):
-            self._next_evidence_sequence += hidden_positions
+            raise VelocityIntegralProtocolError(
+                "moving recovery omitted hidden recovery-rest evidence"
+            )
+        self._next_evidence_sequence = evidence_sequence
+        if hidden_run:
             self._recovery_rest_pending = (1, rung_index, True)
-            return
-        raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
 
     def _resolve_trace_only_current(
         self, evidence_sequence: int, *, allow_zero: bool = False
