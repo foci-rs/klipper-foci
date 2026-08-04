@@ -944,6 +944,67 @@ def feed_full_evidence_omitting(
     return sequence
 
 
+def feed_full_evidence_with_recovery_shift(
+    assembler, shift_rung_index, hidden_run, recovery_outcomes=None, *, rung_count=None
+):
+    """Feed every rung's evidence like feed_full_evidence, but shift one recovery.
+
+    Every observation, rung, and recovery is fed -- nothing is omitted, so
+    the resulting stream carries the same wire-visible records as an exact
+    (hidden_run == 0) run. Only `shift_rung_index`'s recovery lands
+    `hidden_run` evidence-sequence positions later than the exact run would
+    place it, and every later record is renumbered to follow from there, the
+    same way real firmware's own sequence counter would after leaving a
+    bounded number of positions unreported.
+    """
+    sequence = 1
+    rung_values = (0, *assembler.plan["positive_i"], 0)
+    if rung_count is not None:
+        rung_values = rung_values[:rung_count]
+    recovery_outcomes = recovery_outcomes or {}
+    for rung_index, i_raw in enumerate(rung_values):
+        for slot in range(8):
+            feed_observation(assembler, sequence, rung_index, slot, i_raw)
+            sequence += 2
+        feed_rung(
+            assembler,
+            sequence,
+            rung_index,
+            i_raw,
+            0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
+        )
+        sequence += 1
+        shift = hidden_run if rung_index == shift_rung_index else 0
+        feed_recovery(
+            assembler,
+            sequence + shift,
+            rung_index,
+            outcome=recovery_outcomes.get(rung_index, 0),
+        )
+        sequence += 1 + shift
+    return sequence
+
+
+def _without_evidence_sequence(value):
+    """Strip evidence_sequence recursively so a shifted run compares equal.
+
+    A record-preserving sequence shift necessarily changes the raw
+    evidence_sequence stamped on the shifted recovery and on every record
+    fed after it. Stripping that one field is what lets the comparison prove
+    the *content* is identical, rather than trivially failing on the shift
+    itself.
+    """
+    if isinstance(value, dict):
+        return {
+            key: _without_evidence_sequence(item)
+            for key, item in value.items()
+            if key != "evidence_sequence"
+        }
+    if isinstance(value, list):
+        return [_without_evidence_sequence(item) for item in value]
+    return value
+
+
 def feed_terminal(
     assembler,
     sequence,
@@ -1507,27 +1568,54 @@ def test_stage_c_fault_terminal_masks_an_omitted_final_recovery():
     assert set(assembler.recoveries) == set(range(final_rung))
 
 
-def test_stage_c_11_bounded_hidden_run_is_invisible_to_the_recovery_set():
-    """Pin the limit of the terminal reconciliation above.
+def test_stage_c_11_complete_run_accepts_a_bounded_recovery_sequence_shift():
+    """Pin the fourth guarantee end to end, not just at the recovery step.
 
-    The bounded rule (Task 1) accepts a recovery landing anywhere from zero
-    to two positions late, and does not record which one actually happened.
-    No wire-visible record is missing in either case, and the reconciliation
-    just pinned only ever looks at the count of assembled rungs/observations
-    and the set of recovered rung indices -- none of which the hidden-run
-    count touches. So a genuinely different shift that stays inside the
-    bound is invisible to every structural check the terminal performs. This
-    is the documented trade, not a defect this suite can close.
+    Build two otherwise identical schema-11 streams -- the same rungs,
+    observations, and recovery outcomes -- that differ only in how many
+    positions rung 0's recovery appears to have hidden: zero (an exact
+    sequence) versus two (the bound's ceiling). Neither stream omits a
+    wire-visible record, so the terminal's declared counts are the same
+    complete-run counts in both, unchanged from what feed_terminal reports
+    by default. Carry the resulting sequence through a normal complete
+    terminal: both assemblers must finish successfully with identical
+    assembled structures, proving the bounded rule (Task 1) cannot tell a
+    genuinely different shift from an exact sequence once every record has
+    actually arrived -- not just that one recovery call accepts it in
+    isolation.
     """
-    exact = stage_c_11_recovery_assembler()
-    feed_recovery(exact, 18, 0)  # hidden_run == 0
 
-    shifted = stage_c_11_recovery_assembler()
-    feed_recovery(shifted, 20, 0)  # hidden_run == 2, the bound's ceiling
+    def build(hidden_run):
+        assembler = VelocityIntegralAssembler()
+        feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
+        assembler.bind_combined_stage_b_schema(12)
+        feed_plan(
+            assembler,
+            schema_revision=11,
+            positive_i=COMBINED_Q4_12_POSITIVE_I,
+            nominal_workflow_ms=187_651,
+            maximum_workflow_ms=197_896,
+            final_p=1024,
+            joint_membership=0,
+        )
+        sequence = feed_full_evidence_with_recovery_shift(assembler, 0, hidden_run)
+        feed_terminal(assembler, sequence, recovery_flags=0x80)
+        return assembler
 
-    assert set(exact.recoveries) == set(shifted.recoveries) == {0}
-    assert len(exact.rungs) == len(shifted.rungs) == 1
-    assert len(exact.observations) == len(shifted.observations) == 8
+    exact = build(hidden_run=0)
+    shifted = build(hidden_run=2)
+
+    assert exact.done and shifted.done
+    assert exact.outcome == shifted.outcome == "complete"
+    assert _without_evidence_sequence(exact.observations) == _without_evidence_sequence(
+        shifted.observations
+    )
+    assert _without_evidence_sequence(exact.rungs) == _without_evidence_sequence(
+        shifted.rungs
+    )
+    assert _without_evidence_sequence(exact.recoveries) == _without_evidence_sequence(
+        shifted.recoveries
+    )
 
 
 def test_schema_six_requires_causal_recovery_outcome_for_recovered_flag():
