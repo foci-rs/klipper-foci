@@ -91,6 +91,9 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     64: "campaign plan could not be constructed",
     65: "Stage-C authority denied",
     66: "discovery selected no in-band ladder",
+    67: "sampling grid period is zero",
+    68: "grid deadline advanced before it was due",
+    69: "grid deadline arithmetic overflowed",
 }
 
 # Error codes for which the failure message should point at a dedicated

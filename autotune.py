@@ -31,6 +31,25 @@ from .velocity_integral import (
 )
 from .velocity_sweep import VelocitySweepAssembler, VelocitySweepProtocolError
 
+# TEMPORARY DIAGNOSTIC -- remove before committing.
+# Logs Stage-C evidence sequence accounting so the "integral-response evidence
+# sequence gap" refusal can be located: what arrived, what the assembler
+# expected next, and whether a trace-only current record was pending.
+import logging as _seq_logging
+
+
+def _seq_trace(handler, method_name: str, params: dict) -> None:
+    vi = handler.velocity_integral
+    _seq_logging.info(
+        "FOC213SEQ %-34s arrived=%s expected=%s trace_only_pending=%s hidden=%s",
+        method_name,
+        params.get("evidence_sequence"),
+        getattr(vi, "_next_evidence_sequence", None),
+        getattr(vi, "_trace_only_current_pending", None),
+        getattr(vi, "_ordinary_rest_hidden_positions", None),
+    )
+
+
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
     "nominal": 1,
@@ -118,6 +137,7 @@ class AutotuneWorkflow:
             self.velocity_sweep_error = err
 
     def _handle_velocity_integral(self, method_name: str, params: dict) -> None:
+        _seq_trace(self, method_name, params)
         if self.velocity_integral_error is not None:
             return
         workflow = self.velocity_integral.workflow_plan
