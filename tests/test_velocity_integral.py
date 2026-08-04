@@ -877,6 +877,73 @@ def feed_full_evidence(assembler, recovery_outcomes=None, *, rung_count=None):
     return sequence
 
 
+def feed_full_evidence_omitting(
+    assembler, omit, recovery_outcomes=None, *, rung_count=None
+):
+    """Feed every rung's evidence like feed_full_evidence, but skip one record.
+
+    `omit` names exactly one record to withhold entirely:
+      ("observation", rung_index, slot) -- withhold that one observation
+      ("rung", rung_index)              -- withhold that rung's core and
+                                            component records, and (because
+                                            handle_recovery_summary then has
+                                            no causal predecessor to follow,
+                                            per velocity_integral.py:314-323)
+                                            its recovery too
+      ("recovery", rung_index)          -- withhold only that recovery
+
+    Every evidence_sequence position the omitted record(s) would have used is
+    never issued, so every later record is renumbered to close the gap and
+    local sequence validation still passes. What remains reachable is only
+    the terminal's structural reconciliation against the assembled
+    observation/rung/recovery collections -- the thing this feeder exists to
+    isolate.
+    """
+    kind, omit_rung_index, *rest = omit
+    omit_slot = rest[0] if rest else None
+    sequence = 1
+    rung_values = (0, *assembler.plan["positive_i"], 0)
+    if rung_count is not None:
+        rung_values = rung_values[:rung_count]
+    recovery_outcomes = recovery_outcomes or {}
+    for rung_index, i_raw in enumerate(rung_values):
+        omit_rung = kind == "rung" and rung_index == omit_rung_index
+        for slot in range(8):
+            if (
+                kind == "observation"
+                and rung_index == omit_rung_index
+                and slot == omit_slot
+            ):
+                continue
+            feed_observation(assembler, sequence, rung_index, slot, i_raw)
+            sequence += 2
+        if not omit_rung:
+            feed_rung(
+                assembler,
+                sequence,
+                rung_index,
+                i_raw,
+                0
+                if rung_index == 0
+                else 2
+                if rung_index == len(rung_values) - 1
+                else 1,
+            )
+            sequence += 1
+        omit_recovery = omit_rung or (
+            kind == "recovery" and rung_index == omit_rung_index
+        )
+        if not omit_recovery:
+            feed_recovery(
+                assembler,
+                sequence,
+                rung_index,
+                outcome=recovery_outcomes.get(rung_index, 0),
+            )
+            sequence += 1
+    return sequence
+
+
 def feed_terminal(
     assembler,
     sequence,
@@ -1312,7 +1379,7 @@ def test_partial_rung_recovery_requires_post_sufficiency_terminal(
     assert set(assembler.recoveries) == {0, 1, 2, 3, boundary_rung, bookend_rung}
 
 
-def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
+def schema_six_assembler():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, maximum_ms=182_512)
     feed_plan(
@@ -1323,6 +1390,11 @@ def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
         maximum_workflow_ms=182_512,
         recovery_flags=1,
     )
+    return assembler
+
+
+def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
+    assembler = schema_six_assembler()
     final_rung = int(assembler.plan["total_rung_count"]) - 1
     sequence = feed_full_evidence(
         assembler,
@@ -1333,16 +1405,7 @@ def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
 
 
 def schema_six_recovery_fault_prefix(*, outcome=3, missing_recoveries=(6,)):
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=6,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=1,
-    )
+    assembler = schema_six_assembler()
     emitted_rungs = 7
     sequence = feed_full_evidence(assembler, rung_count=emitted_rungs)
     for rung_index in missing_recoveries:
@@ -1386,6 +1449,85 @@ def test_stage_c_fault_rejects_two_missing_recovery_records():
 def test_stage_c_fault_rejects_missing_intermediate_recovery():
     with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
         schema_six_recovery_fault_prefix(missing_recoveries=(5,))
+
+
+# ============================================================================
+# Terminal structural reconciliation: the bounded hidden-run rule (Tasks 1 and 2) gives up sequence-level
+# detection of a shift that omits no record. What still catches an actual
+# omission is the terminal comparing its declared counts, and the assembled
+# recovery set, against what the assembler built from the evidence it saw.
+# ============================================================================
+
+
+def test_stage_c_terminal_reconciliation_catches_an_omitted_observation():
+    assembler = schema_six_assembler()
+    sequence = feed_full_evidence_omitting(assembler, ("observation", 1, 0))
+
+    with pytest.raises(
+        VelocityIntegralProtocolError, match="terminal observation count mismatch"
+    ):
+        feed_terminal(assembler, sequence)
+
+
+def test_stage_c_terminal_reconciliation_catches_an_omitted_rung():
+    assembler = schema_six_assembler()
+    sequence = feed_full_evidence_omitting(assembler, ("rung", 1))
+
+    with pytest.raises(
+        VelocityIntegralProtocolError, match="terminal rung count mismatch"
+    ):
+        feed_terminal(assembler, sequence)
+
+
+def test_stage_c_terminal_reconciliation_catches_an_omitted_recovery():
+    assembler = schema_six_assembler()
+    sequence = feed_full_evidence_omitting(assembler, ("recovery", 1))
+
+    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
+        feed_terminal(assembler, sequence, outcome=2)
+
+
+def test_stage_c_fault_terminal_masks_an_omitted_final_recovery():
+    """Pin the documented masking, not just its acceptance.
+
+    A fault terminal drops its highest expected recovery from the required
+    set when that recovery immediately followed its rung and is absent
+    (velocity_integral.py:707-714). A genuine fault raised before the
+    firmware ever emitted the final recovery, and a final recovery that was
+    simply lost in transit, are indistinguishable by this check -- assert the
+    surviving recovery set, so the test proves exactly what was accepted.
+    """
+    assembler = schema_six_assembler()
+    final_rung = int(assembler.plan["total_rung_count"]) - 1
+    sequence = feed_full_evidence_omitting(assembler, ("recovery", final_rung))
+
+    feed_terminal(assembler, sequence, outcome=3, cause=11)
+
+    assert assembler.outcome == "fault"
+    assert set(assembler.recoveries) == set(range(final_rung))
+
+
+def test_stage_c_11_bounded_hidden_run_is_invisible_to_the_recovery_set():
+    """Pin the limit of the terminal reconciliation above.
+
+    The bounded rule (Task 1) accepts a recovery landing anywhere from zero
+    to two positions late, and does not record which one actually happened.
+    No wire-visible record is missing in either case, and the reconciliation
+    just pinned only ever looks at the count of assembled rungs/observations
+    and the set of recovered rung indices -- none of which the hidden-run
+    count touches. So a genuinely different shift that stays inside the
+    bound is invisible to every structural check the terminal performs. This
+    is the documented trade, not a defect this suite can close.
+    """
+    exact = stage_c_11_recovery_assembler()
+    feed_recovery(exact, 18, 0)  # hidden_run == 0
+
+    shifted = stage_c_11_recovery_assembler()
+    feed_recovery(shifted, 20, 0)  # hidden_run == 2, the bound's ceiling
+
+    assert set(exact.recoveries) == set(shifted.recoveries) == {0}
+    assert len(exact.rungs) == len(shifted.rungs) == 1
+    assert len(exact.observations) == len(shifted.observations) == 8
 
 
 def test_schema_six_requires_causal_recovery_outcome_for_recovered_flag():
