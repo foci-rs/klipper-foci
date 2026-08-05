@@ -1,7 +1,6 @@
 """Velocity-sweep stream reassembly and integrity tests."""
 
 import pytest
-
 from klipper_foci.velocity_sweep import (
     VelocitySweepAssembler,
     VelocitySweepProtocolError,
@@ -60,22 +59,16 @@ def plan_fragments(rung_count=5, observations_per_direction=2, *, schema_revisio
 
 
 def feed_plan(assembler, rung_count=5, observations_per_direction=2):
-    limits, geometry, timing, recovery = plan_fragments(
-        rung_count, observations_per_direction
-    )
+    limits, geometry, timing, recovery = plan_fragments(rung_count, observations_per_direction)
     assembler.handle_plan_limits(limits)
     assembler.handle_plan_geometry(geometry)
     assembler.handle_plan_timing(timing)
     assembler.handle_plan_recovery(recovery)
 
 
-def feed_combined_stage_b_11_plan(
-    assembler, rung_count=5, observations_per_direction=2
-):
+def feed_combined_stage_b_11_plan(assembler, rung_count=5, observations_per_direction=2):
     assembler.configure_workflow_shape(3, 452_073, 496_528)
-    limits, geometry, timing, recovery = plan_fragments(
-        rung_count, observations_per_direction
-    )
+    limits, geometry, timing, recovery = plan_fragments(rung_count, observations_per_direction)
     timing = {
         **timing,
         "nominal_workflow_ms": 271_423,
@@ -87,13 +80,9 @@ def feed_combined_stage_b_11_plan(
     assembler.handle_plan_recovery(recovery)
 
 
-def feed_combined_stage_b_12_plan(
-    assembler, rung_count=5, observations_per_direction=2
-):
+def feed_combined_stage_b_12_plan(assembler, rung_count=5, observations_per_direction=2):
     assembler.configure_workflow_shape(3, 470_573, 496_528)
-    limits, geometry, timing, recovery = plan_fragments(
-        rung_count, observations_per_direction
-    )
+    limits, geometry, timing, recovery = plan_fragments(rung_count, observations_per_direction)
     timing = {
         **timing,
         "nominal_workflow_ms": 282_923,
@@ -106,9 +95,7 @@ def feed_combined_stage_b_12_plan(
     assembler.handle_plan_recovery(recovery)
 
 
-def feed_combined_stage_b_13_plan(
-    assembler, rung_count=5, observations_per_direction=2
-):
+def feed_combined_stage_b_13_plan(assembler, rung_count=5, observations_per_direction=2):
     assembler.configure_workflow_shape(3, 470_573, 496_528)
     limits, geometry, timing, recovery = plan_fragments(
         rung_count,
@@ -127,9 +114,7 @@ def feed_combined_stage_b_13_plan(
     assembler.handle_plan_recovery(recovery)
 
 
-def feed_combined_stage_b_14_plan(
-    assembler, rung_count=5, observations_per_direction=2
-):
+def feed_combined_stage_b_14_plan(assembler, rung_count=5, observations_per_direction=2):
     assembler.configure_workflow_shape(3, 470_573, 496_528)
     limits, geometry, timing, recovery = plan_fragments(
         rung_count,
@@ -287,9 +272,7 @@ def stage_b_reproduction_v4_fragments(
     if selected_joint_mask is None:
         selected_joint_mask = member_mask
     if selected_first_rung is None:
-        selected_first_rung = (
-            selected_joint_mask & -selected_joint_mask
-        ).bit_length() - 1
+        selected_first_rung = (selected_joint_mask & -selected_joint_mask).bit_length() - 1
     if selected_member_count is None:
         selected_member_count = selected_joint_mask.bit_count()
     common = {"oid": 0, "run_sequence": 7, "evidence_sequence": sequence}
@@ -1040,9 +1023,7 @@ def test_combined_stage_b_plan_binds_the_exact_workflow_duration(
 ):
     assembler = VelocitySweepAssembler()
     assembler.configure_workflow_shape(3, nominal_ms, maximum_ms)
-    limits, geometry, timing, recovery = plan_fragments(
-        rung_count=23, observations_per_direction=4
-    )
+    limits, geometry, timing, recovery = plan_fragments(rung_count=23, observations_per_direction=4)
     timing = dict(
         timing,
         nominal_workflow_ms=271_423,
@@ -1347,15 +1328,11 @@ def test_eight_observations_preserve_firmware_consensus_group():
     sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=145, high=155
-        )
+        consensus_component(sequence=sequence, direction=0, component_index=0, low=145, high=155)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
-        )
+        consensus_component(sequence=sequence, direction=1, component_index=0, low=-155, high=-145)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
 
@@ -1372,15 +1349,11 @@ def stage_b_recovery_assembler():
     sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=145, high=155
-        )
+        consensus_component(sequence=sequence, direction=0, component_index=0, low=145, high=155)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
-        )
+        consensus_component(sequence=sequence, direction=1, component_index=0, low=-155, high=-145)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
     return assembler
@@ -1393,15 +1366,11 @@ def stage_b_11_recovery_assembler():
     sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=145, high=155
-        )
+        consensus_component(sequence=sequence, direction=0, component_index=0, low=145, high=155)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
-        )
+        consensus_component(sequence=sequence, direction=1, component_index=0, low=-155, high=-145)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
     return assembler
@@ -1414,15 +1383,11 @@ def stage_b_12_recovery_assembler():
     sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=145, high=155
-        )
+        consensus_component(sequence=sequence, direction=0, component_index=0, low=145, high=155)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
-        )
+        consensus_component(sequence=sequence, direction=1, component_index=0, low=-155, high=-145)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
     return assembler
@@ -1443,15 +1408,11 @@ def stage_b_13_recovery_assembler():
     sequence = 25
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=145, high=155
-        )
+        consensus_component(sequence=sequence, direction=0, component_index=0, low=145, high=155)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-155, high=-145
-        )
+        consensus_component(sequence=sequence, direction=1, component_index=0, low=-155, high=-145)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
     return assembler
@@ -1466,9 +1427,7 @@ def stage_b_13_recovery_assembler():
         (5, "sequence gap"),
     ),
 )
-def test_stage_b_13_ordinary_rest_uses_exact_two_hidden_positions(
-    second_sequence, error
-):
+def test_stage_b_13_ordinary_rest_uses_exact_two_hidden_positions(second_sequence, error):
     assembler = VelocitySweepAssembler()
     feed_combined_stage_b_13_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
@@ -1571,9 +1530,7 @@ def test_stage_b_11_recovery_accepts_hidden_selected_rest_sequence():
         (20, 1, "sequence gap"),
     ),
 )
-def test_stage_b_12_recovery_uses_one_causal_hidden_rest_position(
-    sequence, outcome, error
-):
+def test_stage_b_12_recovery_uses_one_causal_hidden_rest_position(sequence, outcome, error):
     assembler = stage_b_12_recovery_assembler()
     params = {
         "oid": 0,
@@ -1673,9 +1630,7 @@ def test_stage_b_11_terminal_accepts_hidden_unconfirmed_rest_sequence():
     ),
 )
 def test_selected_rest_sequence_does_not_relax_other_gaps(schema_11, sequence):
-    assembler = (
-        stage_b_11_recovery_assembler() if schema_11 else stage_b_recovery_assembler()
-    )
+    assembler = stage_b_11_recovery_assembler() if schema_11 else stage_b_recovery_assembler()
 
     with pytest.raises(VelocitySweepProtocolError, match="sequence gap"):
         assembler.handle_recovery_summary(
@@ -1717,9 +1672,7 @@ def test_selected_rest_sequence_keeps_recovery_rung_causal():
         (7, 0),
     ),
 )
-def test_hidden_selected_rest_terminal_requires_cause_seven(
-    cause, recovery_unavailable
-):
+def test_hidden_selected_rest_terminal_requires_cause_seven(cause, recovery_unavailable):
     assembler = stage_b_11_recovery_assembler()
 
     with pytest.raises(VelocitySweepProtocolError, match="selected-rest"):
@@ -1797,27 +1750,21 @@ def test_schema_six_ordinary_end_requires_every_complete_rung_recovery():
     assembler = recovery_cardinality_assembler({0})
 
     with pytest.raises(VelocitySweepProtocolError, match="fully acquired"):
-        assembler._validate_recovery_completeness(
-            {"cause": 0, "recovery_unavailable": 0}
-        )
+        assembler._validate_recovery_completeness({"cause": 0, "recovery_unavailable": 0})
 
 
 def test_schema_six_current_headroom_rejects_missing_nonterminal_recovery():
     assembler = recovery_cardinality_assembler({1})
 
     with pytest.raises(VelocitySweepProtocolError, match="fully acquired"):
-        assembler._validate_recovery_completeness(
-            {"cause": 4, "recovery_unavailable": 1}
-        )
+        assembler._validate_recovery_completeness({"cause": 4, "recovery_unavailable": 1})
 
 
 def test_schema_six_missing_final_recovery_requires_terminal_annotation():
     assembler = recovery_cardinality_assembler({0})
 
     with pytest.raises(VelocitySweepProtocolError, match="fully acquired"):
-        assembler._validate_recovery_completeness(
-            {"cause": 4, "recovery_unavailable": 0}
-        )
+        assembler._validate_recovery_completeness({"cause": 4, "recovery_unavailable": 0})
 
 
 def test_structured_recovery_source_is_preserved():
@@ -1911,15 +1858,11 @@ def test_host_does_not_recompute_a_structurally_valid_firmware_consensus():
     sequence = 17
     assembler.handle_rung_consensus_core(consensus_core(sequence=sequence))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=0, component_index=0, low=300, high=400
-        )
+        consensus_component(sequence=sequence, direction=0, component_index=0, low=300, high=400)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=0))
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=sequence, direction=1, component_index=0, low=-400, high=-300
-        )
+        consensus_component(sequence=sequence, direction=1, component_index=0, low=-400, high=-300)
     )
     assembler.handle_rung_consensus_pool(consensus_pool(sequence=sequence, direction=1))
 
@@ -1965,9 +1908,7 @@ def test_consensus_group_rejects_missing_duplicate_and_misidentified_parts():
     feed_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_eight_observations(assembler)
     assembler.handle_rung_consensus_core(consensus_core(sequence=17))
-    forward = consensus_component(
-        sequence=17, direction=0, component_index=0, low=100, high=200
-    )
+    forward = consensus_component(sequence=17, direction=0, component_index=0, low=100, high=200)
     assembler.handle_rung_consensus_component(forward)
     with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
         assembler.handle_rung_consensus_component(forward)
@@ -1976,18 +1917,14 @@ def test_consensus_group_rejects_missing_duplicate_and_misidentified_parts():
     with pytest.raises(VelocitySweepProtocolError, match="duplicate"):
         assembler.handle_rung_consensus_pool(forward_pool)
     assembler.handle_rung_consensus_component(
-        consensus_component(
-            sequence=17, direction=1, component_index=0, low=-200, high=-100
-        )
+        consensus_component(sequence=17, direction=1, component_index=0, low=-200, high=-100)
     )
 
     wrong = VelocitySweepAssembler()
     feed_plan(wrong, rung_count=1, observations_per_direction=4)
     feed_eight_observations(wrong)
     wrong.handle_rung_consensus_core(consensus_core(sequence=17))
-    component = consensus_component(
-        sequence=17, direction=0, component_index=0, low=100, high=200
-    )
+    component = consensus_component(sequence=17, direction=0, component_index=0, low=100, high=200)
     component["fragment"] = 2
     with pytest.raises(VelocitySweepProtocolError, match="identity"):
         wrong.handle_rung_consensus_component(component)
@@ -2053,9 +1990,7 @@ def test_inconclusive_requires_matching_generic_terminal():
     assert "one direction" in assembler.remediation
 
 
-def feed_firmware_combined_stage_b_plan(
-    assembler, rung_count=5, observations_per_direction=2
-):
+def feed_firmware_combined_stage_b_plan(assembler, rung_count=5, observations_per_direction=2):
     """Feed a combined plan exactly as firmware sends it.
 
     Real firmware omits ``schema_revision`` from the Stage-B plan fragments and
@@ -2063,9 +1998,7 @@ def feed_firmware_combined_stage_b_plan(
     the only thing that distinguishes Stage-B 13 from 12.
     """
     assembler.configure_workflow_shape(3, 470_573, 496_528)
-    limits, geometry, timing, recovery = plan_fragments(
-        rung_count, observations_per_direction
-    )
+    limits, geometry, timing, recovery = plan_fragments(rung_count, observations_per_direction)
     timing = {
         **timing,
         "nominal_workflow_ms": 282_923,
@@ -2089,9 +2022,7 @@ def test_stage_b_13_binds_from_firmware_revision_without_plan_schema_field():
 def test_stage_b_13_ordinary_rest_advances_two_hidden_positions_from_firmware_plan():
     assembler = VelocitySweepAssembler()
     assembler.bind_firmware_stage_b_schema(13)
-    feed_firmware_combined_stage_b_plan(
-        assembler, rung_count=1, observations_per_direction=4
-    )
+    feed_firmware_combined_stage_b_plan(assembler, rung_count=1, observations_per_direction=4)
     feed_observation(assembler, sequence=1, slot=0, low=100, high=200)
 
     feed_observation(assembler, sequence=4, slot=1, low=-200, high=-100)

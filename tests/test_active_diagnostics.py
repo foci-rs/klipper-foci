@@ -2,7 +2,6 @@
 
 import unittest
 
-
 from tests.mocks import (
     CommandError,
     MockCoreXYKinematics,
@@ -198,9 +197,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d = make_driver()
 
         with self.assertRaises(CommandError):
-            d.diagnostics.current_step_test(
-                MockGCmd({"AXIS": "position", "TARGET": 250})
-            )
+            d.diagnostics.current_step_test(MockGCmd({"AXIS": "position", "TARGET": 250}))
 
     def test_current_step_result_formats_motion_and_supply_fields(self):
         d = make_driver()
@@ -282,9 +279,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
     def test_sends_torque_sample_step_with_long_diagnostic_delay(self):
         d = make_driver()
-        d.diagnostics.current_torque_sample_details[(500, -125, 100, 29000)] = {
-            "torque_error": 1
-        }
+        d.diagnostics.current_torque_sample_details[(500, -125, 100, 29000)] = {"torque_error": 1}
 
         d.diagnostics.current_torque_sample_test(
             MockGCmd(
@@ -498,9 +493,7 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         kinematics = MockCoreXYKinematics([["manual_stepper stepper_x"], ["stepper_y"]])
         d = make_driver(kinematics=kinematics, homed_axes="xy")
         d.state.is_calibrated = True
-        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
-            d.stepper_name
-        )
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(0.0)
 
         d.diagnostics.active.handle_resistance_run(
@@ -569,9 +562,7 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         kinematics = MockCoreXYKinematics([["manual_stepper stepper_x"], ["stepper_y"]])
         d = make_driver(kinematics=kinematics, homed_axes="xy")
         d.state.is_calibrated = True
-        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
-            d.stepper_name
-        )
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(0.0)
 
         d.diagnostics.active.handle_resistance_run(

@@ -75,9 +75,7 @@ class FociDriver:
         register_gcode_commands(self, gcode, self.foci_mode)
 
         # Lifecycle events
-        self.printer.register_event_handler(
-            "klippy:mcu_identify", self._handle_mcu_identify
-        )
+        self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler(
             "homing:home_rails_begin", self.homing.handle_home_rails_begin
@@ -121,14 +119,12 @@ class FociDriver:
             stepper = self._find_linked_stepper()
         if stepper is None or not hasattr(stepper, "get_oid"):
             raise self.printer.config_error(
-                "[%s] could not resolve MCU stepper OID for %s"
-                % (self.name, self.stepper_name)
+                f"[{self.name}] could not resolve MCU stepper OID for {self.stepper_name}"
             )
         oid = stepper.get_oid()
         if oid is None:
             raise self.printer.config_error(
-                "[%s] could not resolve MCU stepper OID for %s"
-                % (self.name, self.stepper_name)
+                f"[{self.name}] could not resolve MCU stepper OID for {self.stepper_name}"
             )
         return oid
 
@@ -143,9 +139,7 @@ class FociDriver:
     def _register_trace_gcode_commands_if_available(self) -> None:
         """Register focused commands only when trace firmware publishes them."""
         foci_mode = getattr(self, "foci_mode", "default")
-        if getattr(self, "_trace_gcode_registered", False) or not mode_allows(
-            foci_mode, "expert"
-        ):
+        if getattr(self, "_trace_gcode_registered", False) or not mode_allows(foci_mode, "expert"):
             return
         if self.protocol.commands.velocity_limit_latch_test is None:
             return
@@ -161,15 +155,10 @@ class FociDriver:
     def _register_dev_gcode_commands_if_available(self) -> None:
         """Register raw TMC developer commands only for dev firmware."""
         foci_mode = getattr(self, "foci_mode", "default")
-        if getattr(self, "_dev_gcode_registered", False) or not mode_allows(
-            foci_mode, "developer"
-        ):
+        if getattr(self, "_dev_gcode_registered", False) or not mode_allows(foci_mode, "developer"):
             return
         commands = self.protocol.commands
-        if (
-            commands.dev_tmc_read_register is None
-            or commands.dev_tmc_write_register is None
-        ):
+        if commands.dev_tmc_read_register is None or commands.dev_tmc_write_register is None:
             return
         gcode = self.printer.lookup_object("gcode")
         register_gcode_commands(
@@ -232,36 +221,20 @@ class FociDriver:
         """Explain the deterministic startup mapping without overriding firmware."""
         parsed = self.config
         planner_steps = parsed.planner_steps_per_rev
-        tmc_grid = (
-            1 << (planner_steps - 1).bit_length() if planner_steps < 65_536 else 65_536
-        )
+        tmc_grid = 1 << (planner_steps - 1).bit_length() if planner_steps < 65_536 else 65_536
         step_width = 65_536 // tmc_grid
         error_bound = str(step_width // 2) if step_width % 2 == 0 else "0.5"
         gcode = self.printer.lookup_object("gcode")
         gcode.respond_info(
-            "[foci %s] motion scale:\n"
-            "planner=%d*%d=%d steps/rev encoder=%d ppr=%d quadrature counts/rev\n"
-            "tmc_grid=%d pulses/rev step_width=%d position_units/pulse"
-            " pulse_ratio=%d/%d\n"
-            "accumulated_scale_error=0 instantaneous_error_bound=%s position_units\n"
-            "configured rotation_distance=%g"
-            % (
-                self.stepper_name,
-                parsed.full_steps,
-                parsed.microsteps,
-                planner_steps,
-                parsed.encoder_ppr,
-                parsed.encoder_ppr * 4,
-                tmc_grid,
-                step_width,
-                tmc_grid,
-                planner_steps,
-                error_bound,
-                parsed.rotation_distance,
-            )
+            f"[foci {self.stepper_name}] motion scale:\nplanner={int(parsed.full_steps)}*"
+            f"{int(parsed.microsteps)}={int(planner_steps)} steps/rev encoder="
+            f"{int(parsed.encoder_ppr)} ppr={int(parsed.encoder_ppr * 4)} quadrature "
+            f"counts/rev\ntmc_grid={int(tmc_grid)} pulses/rev step_width={int(step_width)} "
+            f"position_units/pulse pulse_ratio={int(tmc_grid)}/{int(planner_steps)}"
+            f"\naccumulated_scale_error=0 instantaneous_error_bound={error_bound} "
+            f"position_units\nconfigured rotation_distance={parsed.rotation_distance:g}"
         )
         gcode.respond_info(
-            "[foci %s] rollout warning: remove legacy hand compensation and compare"
-            " rotation_distance with the actual transmission before enabling motion"
-            % self.stepper_name
+            f"[foci {self.stepper_name}] rollout warning: remove legacy hand compensation and "
+            f"compare rotation_distance with the actual transmission before enabling motion"
         )

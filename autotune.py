@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from .commissioning import (
-    COMMISSION_ERROR_NAMES,
-    HARD_FAULT_CODES,
-    PROFILE_MAP,
-    format_inner_warning_flags,
-)
+# TEMPORARY DIAGNOSTIC -- remove before committing.
+# Logs Stage-C evidence sequence accounting so the "integral-response evidence
+# sequence gap" refusal can be located: what arrived, what the assembler
+# expected next, and whether a trace-only current record was pending.
+import logging as _seq_logging
+
 from .acceptance_matrix import (
     AcceptanceMatrixAssembler,
     AcceptanceMatrixProtocolError,
@@ -17,6 +17,12 @@ from .autotune_budget import (
     AutotuneBudgetError,
     compute_autotune_motion_budget,
     format_safe_pose_move,
+)
+from .commissioning import (
+    COMMISSION_ERROR_NAMES,
+    HARD_FAULT_CODES,
+    PROFILE_MAP,
+    format_inner_warning_flags,
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 from .velocity_integral import (
@@ -30,12 +36,6 @@ from .velocity_integral import (
     VelocityIntegralProtocolError,
 )
 from .velocity_sweep import VelocitySweepAssembler, VelocitySweepProtocolError
-
-# TEMPORARY DIAGNOSTIC -- remove before committing.
-# Logs Stage-C evidence sequence accounting so the "integral-response evidence
-# sequence gap" refusal can be located: what arrived, what the assembler
-# expected next, and whether a trace-only current record was pending.
-import logging as _seq_logging
 
 
 def _seq_trace(handler, method_name: str, params: dict) -> None:
@@ -145,10 +145,7 @@ class AutotuneWorkflow:
             method_name == "handle_plan_core"
             and workflow is not None
             and int(workflow["shape"]) in (1, 3)
-            and (
-                not self.velocity_sweep.done
-                or self.velocity_sweep.outcome != "complete"
-            )
+            and (not self.velocity_sweep.done or self.velocity_sweep.outcome != "complete")
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
                 "integral-response plan arrived before proportional handoff"
@@ -199,8 +196,7 @@ class AutotuneWorkflow:
             != self.breakaway_campaign.stage_c_plan_digest
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
-                "breakaway Stage-C plan digest does not match the accepted "
-                "campaign terminal"
+                "breakaway Stage-C plan digest does not match the accepted campaign terminal"
             )
 
     def _handle_breakaway_campaign(self, method_name: str, params: dict) -> None:
@@ -318,9 +314,7 @@ class AutotuneWorkflow:
         """Mirror firmware candidate lifetime without interpreting its evidence."""
         outcome = self.velocity_sweep.outcome
         cause = int((self.velocity_sweep.terminal or {}).get("cause", 0))
-        if outcome == "complete_candidate" or (
-            outcome == "inconclusive" and cause == 5
-        ):
+        if outcome == "complete_candidate" or (outcome == "inconclusive" and cause == 5):
             self._stage_b_candidate_request = dict(request_fields)
         elif outcome != "rejected_plan_mismatch":
             self._stage_b_candidate_request = None
@@ -363,10 +357,7 @@ class AutotuneWorkflow:
             return False
         if self.velocity_sweep.outcome != "complete":
             return True
-        if (
-            int((self.velocity_sweep.terminal or {}).get("recovery_unavailable", 0))
-            == 1
-        ):
+        if int((self.velocity_sweep.terminal or {}).get("recovery_unavailable", 0)) == 1:
             return True
         return self.velocity_integral.done
 
@@ -380,14 +371,11 @@ class AutotuneWorkflow:
     def _format_acceptance_matrix_result(self) -> str:
         terminal = self.acceptance_matrix.terminal or {}
         return (
-            "velocity confidence matrix: %s (namespace=%s cause=%s attempted=%s eligible=%s)"
-            % (
-                terminal.get("outcome_name", "unknown"),
-                terminal.get("outcome_namespace", "acceptance_matrix"),
-                terminal.get("cause_name", "unknown"),
-                terminal.get("attempted_masks", (0, 0)),
-                terminal.get("eligible_masks", (0, 0)),
-            )
+            f"velocity confidence matrix: {terminal.get('outcome_name', 'unknown')} (namespace="
+            f"{terminal.get('outcome_namespace', 'acceptance_matrix')} cause="
+            f"{terminal.get('cause_name', 'unknown')} attempted="
+            f"{terminal.get('attempted_masks', (0, 0))} eligible="
+            f"{terminal.get('eligible_masks', (0, 0))})"
         )
 
     def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
@@ -565,9 +553,7 @@ class AutotuneWorkflow:
             outcome_name = sweep.terminal.get("outcome_name", sweep.outcome)
             outcome_namespace = sweep.terminal.get("outcome_namespace", "stage_b")
             valid_regions = [
-                region
-                for region in sweep.directional_regions
-                if region["kind"] == "valid"
+                region for region in sweep.directional_regions if region["kind"] == "valid"
             ]
             region_text = []
             for direction, name in ((0, "forward"), (1, "reverse")):
@@ -581,71 +567,47 @@ class AutotuneWorkflow:
                 if selected:
                     region = selected[0]
                     region_text.append(
-                        "%s mask=0x%08x D_eq=[%d,%d] common=[%d,%d]"
-                        % (
-                            name,
-                            region["member_mask"],
-                            region["pooled_low_q16"],
-                            region["pooled_high_q16"],
-                            region["common_low_q16"],
-                            region["common_high_q16"],
-                        )
+                        f"{name} mask=0x{region['member_mask']:08x} D_eq=["
+                        f"{int(region['pooled_low_q16'])},{int(region['pooled_high_q16'])}] "
+                        f"common=[{int(region['common_low_q16'])},"
+                        f"{int(region['common_high_q16'])}]"
                     )
             message = (
-                "stage b %s: nominated_P=%d model_mask=0x%02x "
-                "coverage=0x%02x regions=%d/%d fragments=%d/%d namespace=%s cause=%d"
-                % (
-                    outcome_name,
-                    sweep.terminal["nominated_p"],
-                    sweep.terminal["model_direction_mask"],
-                    sweep.terminal["coverage_mask"],
-                    sweep.terminal["forward_region_count"],
-                    sweep.terminal["reverse_region_count"],
-                    sweep.terminal["forward_fragment_count"],
-                    sweep.terminal["reverse_fragment_count"],
-                    outcome_namespace,
-                    sweep.terminal["cause"],
-                )
+                f"stage b {outcome_name}: nominated_P={int(sweep.terminal['nominated_p'])} "
+                f"model_mask=0x{sweep.terminal['model_direction_mask']:02x} coverage=0x"
+                f"{sweep.terminal['coverage_mask']:02x} regions="
+                f"{int(sweep.terminal['forward_region_count'])}/"
+                f"{int(sweep.terminal['reverse_region_count'])} fragments="
+                f"{int(sweep.terminal['forward_fragment_count'])}/"
+                f"{int(sweep.terminal['reverse_fragment_count'])} namespace={outcome_namespace} "
+                f"cause={int(sweep.terminal['cause'])}"
             )
             if region_text:
                 message += "; " + "; ".join(region_text)
             if sweep.remediation:
-                message += "; remediation: %s" % sweep.remediation
+                message += f"; remediation: {sweep.remediation}"
             return message
         directions = sweep.terminal_directions
         direction_text = []
-        for name, report in zip(("forward", "reverse"), directions):
+        for name, report in zip(("forward", "reverse"), directions, strict=False):
             direction_text.append(
-                "%s P=%d..%d D_eq=%d [%d,%d] quality=[%d,%d]"
-                % (
-                    name,
-                    report.get("p_low", 0),
-                    report.get("p_high", 0),
-                    report.get("pooled_q16", 0),
-                    report.get("pooled_low_q16", 0),
-                    report.get("pooled_high_q16", 0),
-                    report.get("common_low_q16", 0),
-                    report.get("common_high_q16", 0),
-                )
+                f"{name} P={int(report.get('p_low', 0))}..{int(report.get('p_high', 0))} D_eq="
+                f"{int(report.get('pooled_q16', 0))} [{int(report.get('pooled_low_q16', 0))},"
+                f"{int(report.get('pooled_high_q16', 0))}] quality=["
+                f"{int(report.get('common_low_q16', 0))},"
+                f"{int(report.get('common_high_q16', 0))}]"
             )
         message = (
-            "velocity sweep %s: requested=%dmrev/s planned=%dmrev/s target=%dRPM "
-            "clamp=0x%04x binding=%d runtime=%dms rungs=%d cause=%d; %s"
-            % (
-                sweep.outcome,
-                plan.get("requested_velocity_mrev_s", 0),
-                plan.get("planned_velocity_mrev_s", 0),
-                plan.get("target_velocity_rpm", 0),
-                plan.get("clamp_flags", 0),
-                plan.get("binding_source", 0),
-                plan.get("maximum_workflow_ms", 0),
-                plan.get("rung_count", 0),
-                (sweep.integrity or {}).get("cause", 0),
-                "; ".join(direction_text),
-            )
+            f"velocity sweep {sweep.outcome}: requested="
+            f"{int(plan.get('requested_velocity_mrev_s', 0))}mrev/s planned="
+            f"{int(plan.get('planned_velocity_mrev_s', 0))}mrev/s target="
+            f"{int(plan.get('target_velocity_rpm', 0))}RPM clamp=0x{plan.get('clamp_flags', 0):04x}"
+            f" binding={int(plan.get('binding_source', 0))} runtime="
+            f"{int(plan.get('maximum_workflow_ms', 0))}ms rungs={int(plan.get('rung_count', 0))} "
+            f"cause={int((sweep.integrity or {}).get('cause', 0))}; {'; '.join(direction_text)}"
         )
         if sweep.remediation:
-            message += "; remediation: %s" % sweep.remediation
+            message += f"; remediation: {sweep.remediation}"
         return message
 
     def _format_velocity_integral_result(self) -> str:
@@ -654,21 +616,15 @@ class AutotuneWorkflow:
         summary = response.summary or {}
         terminal = response.terminal or {}
         message = (
-            "velocity integral response %s: P=%d velocity=%dmrev/s "
-            "positive_rungs=%d eligible=0x%08x/0x%08x "
-            "bookend=0x%02x current_terminus=%d namespace=%s cause=%d"
-            % (
-                terminal.get("outcome_name", response.outcome),
-                plan.get("final_p", 0),
-                plan.get("planned_velocity_mrev_s", 0),
-                plan.get("positive_rung_count", 0),
-                summary.get("forward_eligible_mask", 0),
-                summary.get("reverse_eligible_mask", 0),
-                summary.get("bookend_available_mask", 0),
-                summary.get("current_terminus_plus_one", 0),
-                terminal.get("outcome_namespace", "stage_c"),
-                (response.terminal or {}).get("cause", 0),
-            )
+            f"velocity integral response {terminal.get('outcome_name', response.outcome)}: P="
+            f"{int(plan.get('final_p', 0))} velocity={int(plan.get('planned_velocity_mrev_s', 0))}"
+            f"mrev/s positive_rungs={int(plan.get('positive_rung_count', 0))} eligible=0x"
+            f"{summary.get('forward_eligible_mask', 0):08x}/0x"
+            f"{summary.get('reverse_eligible_mask', 0):08x} bookend=0x"
+            f"{summary.get('bookend_available_mask', 0):02x} current_terminus="
+            f"{int(summary.get('current_terminus_plus_one', 0))} namespace="
+            f"{terminal.get('outcome_namespace', 'stage_c')} cause="
+            f"{int((response.terminal or {}).get('cause', 0))}"
         )
         if response.reproduction is not None:
             masks = response.reproduction.get("masks", {})
@@ -676,12 +632,8 @@ class AutotuneWorkflow:
             for direction, name in ((0, "forward"), (1, "reverse")):
                 values = masks.get(direction, {})
                 mask_text.append(
-                    "%s reproduced=0x%08x divergent=0x%08x"
-                    % (
-                        name,
-                        values.get("reproduced_mask", 0),
-                        values.get("divergent_mask", 0),
-                    )
+                    f"{name} reproduced=0x{values.get('reproduced_mask', 0):08x} divergent=0x"
+                    f"{values.get('divergent_mask', 0):08x}"
                 )
             message += "; " + "; ".join(mask_text)
         return message
@@ -706,51 +658,44 @@ class AutotuneWorkflow:
         campaign = self.breakaway_campaign
         terminal = campaign.campaign_terminal or {}
         cause = int(terminal.get("terminal_cause", 0))
-        cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, "unknown_%d" % cause)
-        phase_name = BREAKAWAY_PHASE_NAMES.get(
-            int(terminal.get("phase", -1)), "unknown"
-        )
-        message = "breakaway campaign %s (phase=%s cause=%s)" % (
-            "accepted" if campaign.accepted else "not accepted",
-            phase_name,
-            cause_name,
+        cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{int(cause)}")
+        phase_name = BREAKAWAY_PHASE_NAMES.get(int(terminal.get("phase", -1)), "unknown")
+        message = (
+            f"breakaway campaign {'accepted' if campaign.accepted else 'not accepted'} (phase="
+            f"{phase_name} cause={cause_name})"
         )
         probe_result = campaign.probe_result
         if probe_result is not None:
-            message += "; breakaway=%d rung=%d obs=%d" % (
-                probe_result["breakaway_p_raw"],
-                probe_result["rung_index"],
-                probe_result["observation_count"],
+            message += (
+                f"; breakaway={int(probe_result['breakaway_p_raw'])} rung="
+                f"{int(probe_result['rung_index'])} obs={int(probe_result['observation_count'])}"
             )
         discovery = campaign.discovery_plan
         if discovery is not None:
             message += (
-                "; ladder floor=%d(%s) breakaway=%d ceiling=%d step=%d rungs=%d"
-                % (
-                    discovery.get("floor_p_raw", 0),
-                    FLOOR_ORIGIN_NAMES.get(int(discovery.get("floor_origin", -1)), "?"),
-                    discovery.get("breakaway_p_raw", 0),
-                    discovery.get("ceiling_p_raw", 0),
-                    discovery.get("first_additive_step_raw", 0),
-                    discovery.get("rung_count", 0),
-                )
+                f"; ladder floor={int(discovery.get('floor_p_raw', 0))}("
+                f"{FLOOR_ORIGIN_NAMES.get(int(discovery.get('floor_origin', -1)), '?')}) breakaway="
+                f"{int(discovery.get('breakaway_p_raw', 0))} ceiling="
+                f"{int(discovery.get('ceiling_p_raw', 0))} step="
+                f"{int(discovery.get('first_additive_step_raw', 0))} rungs="
+                f"{int(discovery.get('rung_count', 0))}"
             )
         confirmation = campaign.confirmation_plan
         if confirmation is not None:
-            message += "; nominated P=%d margin=%dpm" % (
-                confirmation.get("candidate_p_raw", 0),
-                confirmation.get("nominated_margin_percent_milli", 0),
+            message += (
+                f"; nominated P={int(confirmation.get('candidate_p_raw', 0))} margin="
+                f"{int(confirmation.get('nominated_margin_percent_milli', 0))}pm"
             )
         confirmation_terminal = campaign.confirmation_terminal
         if confirmation_terminal is not None:
-            message += "; confirmed P=%d measured_SE=%dpm required_SE=%dpm" % (
-                confirmation_terminal.get("confirmed_p_raw", 0),
-                confirmation_terminal.get("max_relative_se_permille", 0),
-                confirmation_terminal.get("required_relative_se_permille", 0),
+            message += (
+                f"; confirmed P={int(confirmation_terminal.get('confirmed_p_raw', 0))} measured_SE="
+                f"{int(confirmation_terminal.get('max_relative_se_permille', 0))}pm required_SE="
+                f"{int(confirmation_terminal.get('required_relative_se_permille', 0))}pm"
             )
         remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
         if remediation:
-            message += "; remediation: %s" % remediation
+            message += f"; remediation: {remediation}"
         return message
 
     def _format_outer_safety_fault(self) -> str:
@@ -760,42 +705,30 @@ class AutotuneWorkflow:
         reason_code = int(fault.get("reason", 0))
         reason = OUTER_SAFETY_FAULT_NAMES.get(
             reason_code,
-            "unknown_%d" % reason_code,
+            f"unknown_{int(reason_code)}",
         )
         return (
-            "outer safety %s: delta_counts=%d dt_us=%d "
-            "velocity_counts_per_ms=%d cap_counts_per_ms=%d "
-            "position_counts=%d/%d elapsed_us=%d/%d "
-            "budget=%dmrev/%dmrev_s/%dms dir=0x%02x"
-            % (
-                reason,
-                fault.get("delta_counts", 0),
-                fault.get("dt_us", 0),
-                fault.get("velocity_counts_per_ms", 0),
-                fault.get("velocity_cap_counts_per_ms", 0),
-                fault.get("position_counts", 0),
-                fault.get("position_window_counts", 0),
-                fault.get("elapsed_us", 0),
-                fault.get("duration_cap_us", 0),
-                fault.get("max_travel_mrev", 0),
-                fault.get("max_velocity_mrev_s", 0),
-                fault.get("max_duration_ms", 0),
-                fault.get("direction_mask", 0),
-            )
+            f"outer safety {reason}: delta_counts={int(fault.get('delta_counts', 0))} dt_us="
+            f"{int(fault.get('dt_us', 0))} velocity_counts_per_ms="
+            f"{int(fault.get('velocity_counts_per_ms', 0))} cap_counts_per_ms="
+            f"{int(fault.get('velocity_cap_counts_per_ms', 0))} position_counts="
+            f"{int(fault.get('position_counts', 0))}/{int(fault.get('position_window_counts', 0))} "
+            f"elapsed_us={int(fault.get('elapsed_us', 0))}/{int(fault.get('duration_cap_us', 0))} "
+            f"budget={int(fault.get('max_travel_mrev', 0))}mrev/"
+            f"{int(fault.get('max_velocity_mrev_s', 0))}mrev_s/"
+            f"{int(fault.get('max_duration_ms', 0))}ms dir=0x{fault.get('direction_mask', 0):02x}"
         )
 
     def _ensure_printer_idle(self, gcmd, toolhead) -> None:
         print_stats = self.driver.printer.lookup_object("print_stats", None)
         if print_stats is None:
-            raise gcmd.error(
-                "FOCI %s: printer idle state unavailable" % self.driver.name
-            )
+            raise gcmd.error(f"FOCI {self.driver.name}: printer idle state unavailable")
         status = print_stats.get_status(toolhead.get_last_move_time())
         state = str(status.get("state", "")).lower()
         if state not in IDLE_PRINT_STATES:
             raise gcmd.error(
-                "FOCI %s: printer is not idle (print_stats state=%s)"
-                % (self.driver.name, state or "unknown")
+                f"FOCI {self.driver.name}: printer is not idle (print_stats state="
+                f"{state or 'unknown'})"
             )
 
     def autotune(self, gcmd) -> None:
@@ -803,39 +736,33 @@ class AutotuneWorkflow:
         try:
             action = parse_autotune_action(gcmd.get("ACTION", None))
         except AcceptanceMatrixProtocolError as err:
-            raise gcmd.error("FOCI %s: %s" % (self.driver.name, err))
+            raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
         if profile_name not in PROFILE_MAP:
             raise gcmd.error(
-                "FOCI %s: unknown profile '%s' (expected: %s)"
-                % (self.driver.name, profile_name, ", ".join(sorted(PROFILE_MAP)))
+                f"FOCI {self.driver.name}: unknown profile '{profile_name}' (expected: "
+                f"{', '.join(sorted(PROFILE_MAP))})"
             )
         if mode_name not in MODE_MAP:
             raise gcmd.error(
-                "FOCI %s: unknown mode '%s' (expected: %s)"
-                % (self.driver.name, mode_name, ", ".join(sorted(MODE_MAP)))
+                f"FOCI {self.driver.name}: unknown mode '{mode_name}' (expected: "
+                f"{', '.join(sorted(MODE_MAP))})"
             )
 
         if not self.driver.state.try_acquire():
-            raise gcmd.error(
-                "FOCI %s: another FOCI operation is in progress" % self.driver.name
-            )
+            raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
 
         try:
             if self.driver.state.inhibited:
-                raise gcmd.error(
-                    "FOCI %s: inhibited after failed FOCI_COMMISSION" % self.driver.name
-                )
+                raise gcmd.error(f"FOCI {self.driver.name}: inhibited after failed FOCI_COMMISSION")
             if self.driver.state.runtime_status == "uncommissioned":
                 raise gcmd.error(
-                    "FOCI %s: not commissioned. Run FOCI_COMMISSION first."
-                    % self.driver.name
+                    f"FOCI {self.driver.name}: not commissioned. Run FOCI_COMMISSION first."
                 )
             if not self.driver.state.is_calibrated:
                 raise gcmd.error(
-                    "FOCI %s: not calibrated. Enable motor, re-home, then retry."
-                    % self.driver.name
+                    f"FOCI {self.driver.name}: not calibrated. Enable motor, re-home, then retry."
                 )
 
             toolhead = self.driver.printer.lookup_object("toolhead")
@@ -843,18 +770,16 @@ class AutotuneWorkflow:
             try:
                 motion_budget = compute_autotune_motion_budget(self.driver, gcmd)
             except AutotuneBudgetError as err:
-                raise gcmd.error("FOCI %s: %s" % (self.driver.name, err))
+                raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
 
             toolhead.wait_moves()
             self._ensure_printer_idle(gcmd, toolhead)
 
             if not self.driver.state.is_calibrated:
-                raise gcmd.error(
-                    "FOCI %s: calibration lost during wait" % self.driver.name
-                )
+                raise gcmd.error(f"FOCI {self.driver.name}: calibration lost during wait")
             kin_status = toolhead.get_status(toolhead.get_last_move_time())
             if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
-                raise gcmd.error("FOCI %s: homing lost during wait" % self.driver.name)
+                raise gcmd.error(f"FOCI {self.driver.name}: homing lost during wait")
 
             live_current_gains = self.driver.dump.read_live_current_gains()
             readiness = resolve_autotune_readiness(
@@ -863,38 +788,34 @@ class AutotuneWorkflow:
             )
             if readiness.blocked:
                 raise gcmd.error(
-                    "FOCI %s: FOCI_AUTOTUNE blocked: %s"
-                    % (self.driver.name, "; ".join(readiness.blockers))
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE blocked: "
+                    f"{'; '.join(readiness.blockers)}"
                 )
             if readiness.stage2_policy == POLICY_UNAVAILABLE:
                 raise gcmd.error(
-                    "FOCI %s: FOCI_AUTOTUNE stage 2 unavailable inputs: %s"
-                    % (self.driver.name, ", ".join(readiness.unavailable_inputs))
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE stage 2 unavailable inputs: "
+                    f"{', '.join(readiness.unavailable_inputs)}"
                 )
 
             if readiness.warnings:
                 gcmd.respond_info(
-                    "FOCI %s autotune readiness warnings: %s"
-                    % (self.driver.name, "; ".join(readiness.warnings))
+                    f"FOCI {self.driver.name} autotune readiness warnings: "
+                    f"{'; '.join(readiness.warnings)}"
                 )
             if readiness.unavailable_inputs:
                 gcmd.respond_info(
-                    "FOCI %s autotune unavailable inputs: %s"
-                    % (self.driver.name, ", ".join(readiness.unavailable_inputs))
+                    f"FOCI {self.driver.name} autotune unavailable inputs: "
+                    f"{', '.join(readiness.unavailable_inputs)}"
                 )
 
             gcode = self.driver.printer.lookup_object("gcode")
             gcode.run_script_from_command(format_safe_pose_move(motion_budget))
             toolhead.wait_moves()
             if not self.driver.state.is_calibrated:
-                raise gcmd.error(
-                    "FOCI %s: calibration lost during safe-pose move" % self.driver.name
-                )
+                raise gcmd.error(f"FOCI {self.driver.name}: calibration lost during safe-pose move")
             kin_status = toolhead.get_status(toolhead.get_last_move_time())
             if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
-                raise gcmd.error(
-                    "FOCI %s: homing lost during safe-pose move" % self.driver.name
-                )
+                raise gcmd.error(f"FOCI {self.driver.name}: homing lost during safe-pose move")
 
             self.driver.homing.invalidate_homing()
 
@@ -935,19 +856,13 @@ class AutotuneWorkflow:
                     "current_ringing": ringing,
                     "current_bw": bandwidth,
                     "inner_warning_flags": inner_warning_flags,
-                    "requested_velocity_mrev_s": (
-                        motion_budget.requested_velocity_mrev_s
-                    ),
+                    "requested_velocity_mrev_s": (motion_budget.requested_velocity_mrev_s),
                     "machine_velocity_ceiling_mrev_s": (
                         motion_budget.machine_velocity_ceiling_mrev_s
                     ),
-                    "requested_velocity_source": (
-                        motion_budget.requested_velocity_source
-                    ),
+                    "requested_velocity_source": (motion_budget.requested_velocity_source),
                     "max_stroke_travel_mrev": motion_budget.max_stroke_travel_mrev,
-                    "settle_travel_reserve_mrev": (
-                        motion_budget.settle_travel_reserve_mrev
-                    ),
+                    "settle_travel_reserve_mrev": (motion_budget.settle_travel_reserve_mrev),
                     "negative_position_headroom_mrev": (
                         motion_budget.negative_position_headroom_mrev
                     ),
@@ -967,23 +882,23 @@ class AutotuneWorkflow:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if self.velocity_sweep_error is not None:
                     raise gcmd.error(
-                        "FOCI %s: velocity sweep transport failure: %s"
-                        % (self.driver.name, self.velocity_sweep_error)
+                        f"FOCI {self.driver.name}: velocity sweep transport failure: "
+                        f"{self.velocity_sweep_error}"
                     )
                 if self.velocity_integral_error is not None:
                     raise gcmd.error(
-                        "FOCI %s: velocity integral transport failure: %s"
-                        % (self.driver.name, self.velocity_integral_error)
+                        f"FOCI {self.driver.name}: velocity integral transport failure: "
+                        f"{self.velocity_integral_error}"
                     )
                 if self.acceptance_matrix_error is not None:
                     raise gcmd.error(
-                        "FOCI %s: velocity confidence transport failure: %s"
-                        % (self.driver.name, self.acceptance_matrix_error)
+                        f"FOCI {self.driver.name}: velocity confidence transport failure: "
+                        f"{self.acceptance_matrix_error}"
                     )
                 if self.breakaway_campaign_error is not None:
                     raise gcmd.error(
-                        "FOCI %s: breakaway campaign transport failure: %s"
-                        % (self.driver.name, self.breakaway_campaign_error)
+                        f"FOCI {self.driver.name}: breakaway campaign transport failure: "
+                        f"{self.breakaway_campaign_error}"
                     )
                 if (
                     self.velocity_integral.workflow_plan is not None
@@ -994,55 +909,43 @@ class AutotuneWorkflow:
                         if self.acceptance_matrix.workflow_plan is not None
                         else self.velocity_integral.maximum_duration_s
                     )
-                    timeout = (
-                        eventtime
-                        + maximum_duration_s
-                        + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
-                    )
+                    timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
                     workflow_timeout_armed = True
                 if eventtime > timeout:
                     phase = "run" if workflow_timeout_armed else "waiting for plan"
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE timed out %s"
-                        % (self.driver.name, phase)
-                    )
+                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE timed out {phase}")
                 if self.driver.commissioning.error_code != 0:
                     error_name = COMMISSION_ERROR_NAMES.get(
                         self.driver.commissioning.error_code,
-                        "UNKNOWN(%d)" % self.driver.commissioning.error_code,
+                        f"UNKNOWN({int(self.driver.commissioning.error_code)})",
                     )
                     self.driver.commissioning.maybe_clear_calibration_for_chip_reset(
                         self.driver.commissioning.error_code
                     )
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE failed: %s"
-                        % (self.driver.name, error_name)
-                    )
+                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
 
             if self._workflow_finished():
                 self._synchronize_disarmed_workflow_terminal(toolhead)
                 if self.acceptance_matrix.done:
                     gcmd.respond_info(
-                        "FOCI %s: %s"
-                        % (self.driver.name, self._format_acceptance_matrix_result())
+                        f"FOCI {self.driver.name}: {self._format_acceptance_matrix_result()}"
                     )
                     if self.acceptance_matrix.outcome in ("fault", "failed"):
                         raise gcmd.error(
-                            "FOCI %s: velocity confidence matrix %s"
-                            % (self.driver.name, self.acceptance_matrix.outcome)
+                            f"FOCI {self.driver.name}: velocity confidence matrix "
+                            f"{self.acceptance_matrix.outcome}"
                         )
                     return
                 if self.breakaway_campaign.done:
                     gcmd.respond_info(
-                        "FOCI %s: %s"
-                        % (self.driver.name, self._format_breakaway_campaign_result())
+                        f"FOCI {self.driver.name}: {self._format_breakaway_campaign_result()}"
                     )
                     if self._breakaway_campaign_has_safety_fault():
                         safety_detail = self._format_outer_safety_fault()
-                        detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                        detail_suffix = f"; {safety_detail}" if safety_detail else ""
                         raise gcmd.error(
-                            "FOCI %s: breakaway campaign safety fault%s"
-                            % (self.driver.name, detail_suffix)
+                            f"FOCI {self.driver.name}: breakaway campaign safety fault"
+                            f"{detail_suffix}"
                         )
                     if not self.breakaway_campaign.accepted:
                         # No previously commissioned P is touched here: this
@@ -1051,25 +954,15 @@ class AutotuneWorkflow:
                         return
                     if self.velocity_integral.done:
                         gcmd.respond_info(
-                            "FOCI %s: %s"
-                            % (
-                                self.driver.name,
-                                self._format_velocity_integral_result(),
-                            )
+                            f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"
                         )
                         if self.velocity_integral.outcome == "fault":
                             safety_detail = self._format_outer_safety_fault()
-                            detail_suffix = (
-                                "; %s" % safety_detail if safety_detail else ""
-                            )
+                            detail_suffix = f"; {safety_detail}" if safety_detail else ""
                             raise gcmd.error(
-                                "FOCI %s: velocity integral response fault "
-                                "(cause=%d)%s"
-                                % (
-                                    self.driver.name,
-                                    self.velocity_integral.terminal.get("cause", 0),
-                                    detail_suffix,
-                                )
+                                f"FOCI {self.driver.name}: velocity integral response fault "
+                                f"(cause={int(self.velocity_integral.terminal.get('cause', 0))}"
+                                f"){detail_suffix}"
                             )
                     return
                 self._retain_request_from_terminal(request_fields)
@@ -1077,52 +970,44 @@ class AutotuneWorkflow:
                 shape = int(workflow.get("shape", 0))
                 if self.velocity_sweep.done:
                     gcmd.respond_info(
-                        "FOCI %s: %s"
-                        % (self.driver.name, self._format_velocity_sweep_result())
+                        f"FOCI {self.driver.name}: {self._format_velocity_sweep_result()}"
                     )
                     if self.velocity_sweep.outcome == "fault":
                         safety_detail = self._format_outer_safety_fault()
-                        detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                        detail_suffix = f"; {safety_detail}" if safety_detail else ""
                         raise gcmd.error(
-                            "FOCI %s: velocity sweep fault (cause=%d)%s"
-                            % (
-                                self.driver.name,
-                                self.velocity_sweep.integrity.get("cause", 0),
-                                detail_suffix,
-                            )
+                            f"FOCI {self.driver.name}: velocity sweep fault (cause="
+                            f"{int(self.velocity_sweep.integrity.get('cause', 0))})"
+                            f"{detail_suffix}"
                         )
                     if shape == 0 or self.velocity_sweep.outcome != "complete":
                         return
                 if self.velocity_integral.done:
                     gcmd.respond_info(
-                        "FOCI %s: %s"
-                        % (self.driver.name, self._format_velocity_integral_result())
+                        f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"
                     )
                     if self.velocity_integral.outcome == "fault":
                         safety_detail = self._format_outer_safety_fault()
-                        detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                        detail_suffix = f"; {safety_detail}" if safety_detail else ""
                         raise gcmd.error(
-                            "FOCI %s: velocity integral response fault (cause=%d)%s"
-                            % (
-                                self.driver.name,
-                                self.velocity_integral.terminal.get("cause", 0),
-                                detail_suffix,
-                            )
+                            f"FOCI {self.driver.name}: velocity integral response fault (cause="
+                            f"{int(self.velocity_integral.terminal.get('cause', 0))})"
+                            f"{detail_suffix}"
                         )
                 return
 
             result = self.result
             status = result.get("status", 255)
             if status > 1:
-                error_name = COMMISSION_ERROR_NAMES.get(status, "UNKNOWN(%d)" % status)
+                error_name = COMMISSION_ERROR_NAMES.get(status, f"UNKNOWN({int(status)})")
                 if status == 18:
                     self.driver.commissioning.handle_chip_reset_detected()
                     stepper_enable = self.driver.printer.lookup_object("stepper_enable")
                     enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
                     enable_line.motor_disable(toolhead.get_last_move_time())
                     raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE chip reset: %s "
-                        "(motor disabled by firmware)" % (self.driver.name, error_name)
+                        f"FOCI {self.driver.name}: FOCI_AUTOTUNE chip reset: {error_name} "
+                        f"(motor disabled by firmware)"
                     )
                 if status in HARD_FAULT_CODES:
                     self.driver.commissioning.on_commission_failure()
@@ -1130,15 +1015,14 @@ class AutotuneWorkflow:
                     enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
                     enable_line.motor_disable(toolhead.get_last_move_time())
                     safety_detail = self._format_outer_safety_fault()
-                    detail_suffix = "; %s" % safety_detail if safety_detail else ""
+                    detail_suffix = f"; {safety_detail}" if safety_detail else ""
                     raise gcmd.error(
-                        "FOCI %s: FOCI_AUTOTUNE safety fault: %s%s "
-                        "(motor disabled by firmware)"
-                        % (self.driver.name, error_name, detail_suffix)
+                        f"FOCI {self.driver.name}: FOCI_AUTOTUNE safety fault: {error_name}"
+                        f"{detail_suffix} (motor disabled by firmware)"
                     )
                 gcmd.respond_info(
-                    "FOCI %s: FOCI_AUTOTUNE failed: %s "
-                    "(motor holding with entry gains)" % (self.driver.name, error_name)
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name} (motor "
+                    f"holding with entry gains)"
                 )
                 return
 
@@ -1169,33 +1053,21 @@ class AutotuneWorkflow:
             self.persist_tune_results(result, mode_name, tune_status)
 
             gcmd.respond_info(
-                "FOCI %s tuned (%s): vel_p=%d pos_p=%d"
-                % (
-                    self.driver.name,
-                    tune_status,
-                    result["velocity_p"],
-                    result["position_p"],
-                )
+                f"FOCI {self.driver.name} tuned ({tune_status}): vel_p="
+                f"{int(result['velocity_p'])} pos_p={int(result['position_p'])}"
             )
             if "stiffness_timebase_ms" in result:
                 gcmd.respond_info(
-                    "FOCI %s autotune evidence: budget=%dmrev "
-                    "stiffness_timebase=%dms search_stop=%d flags=0x%02x"
-                    % (
-                        self.driver.name,
-                        result.get("motion_budget_mrev", 0),
-                        result.get("stiffness_timebase_ms", 0),
-                        result.get("velocity_search_stop_reason", 0),
-                        result.get("outer_evidence_flags", 0),
-                    )
+                    f"FOCI {self.driver.name} autotune evidence: budget="
+                    f"{int(result.get('motion_budget_mrev', 0))}mrev stiffness_timebase="
+                    f"{int(result.get('stiffness_timebase_ms', 0))}ms search_stop="
+                    f"{int(result.get('velocity_search_stop_reason', 0))} flags=0x"
+                    f"{result.get('outer_evidence_flags', 0):02x}"
                 )
             if inner_warning_flags:
                 gcmd.respond_info(
-                    "FOCI %s inner confidence: %s"
-                    % (
-                        self.driver.name,
-                        format_inner_warning_flags(inner_warning_flags),
-                    )
+                    f"FOCI {self.driver.name} inner confidence: "
+                    f"{format_inner_warning_flags(inner_warning_flags)}"
                 )
         finally:
             self.driver.state.release()
@@ -1203,36 +1075,36 @@ class AutotuneWorkflow:
     def persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
         """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
         configfile = self.driver.printer.lookup_object("configfile")
-        configfile.set(self.driver.name, "pid_velocity_p", "%d" % result["velocity_p"])
-        configfile.set(self.driver.name, "pid_velocity_i", "%d" % result["velocity_i"])
+        configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['velocity_p'])}")
+        configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['velocity_i'])}")
         configfile.set(
             self.driver.name,
             "pid_velocity_limit",
-            "%d" % result["velocity_limit"],
+            f"{int(result['velocity_limit'])}",
         )
-        configfile.set(self.driver.name, "pid_position_p", "%d" % result["position_p"])
-        configfile.set(self.driver.name, "pid_position_i", "%d" % result["position_i"])
+        configfile.set(self.driver.name, "pid_position_p", f"{int(result['position_p'])}")
+        configfile.set(self.driver.name, "pid_position_i", f"{int(result['position_i'])}")
         configfile.set(
             self.driver.name,
             "velocity_filter_hz",
-            "%d" % result["velocity_filter_hz"],
+            f"{int(result['velocity_filter_hz'])}",
         )
         configfile.set(
             self.driver.name,
             "position_filter_hz",
-            "%d" % result["position_filter_hz"],
+            f"{int(result['position_filter_hz'])}",
         )
         configfile.set(
             self.driver.name,
             "flux_filter_hz",
-            "%d" % result["flux_filter_hz"],
+            f"{int(result['flux_filter_hz'])}",
         )
         configfile.set(
             self.driver.name,
             "torque_filter_hz",
-            "%d" % result["torque_filter_hz"],
+            f"{int(result['torque_filter_hz'])}",
         )
-        configfile.set(self.driver.name, "identified_j_eff", "%d" % result["j_eff"])
-        configfile.set(self.driver.name, "identified_b_eff", "%d" % result["b_eff"])
+        configfile.set(self.driver.name, "identified_j_eff", f"{int(result['j_eff'])}")
+        configfile.set(self.driver.name, "identified_b_eff", f"{int(result['b_eff'])}")
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)

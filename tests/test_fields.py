@@ -9,18 +9,18 @@ import unittest
 
 from klipper_foci.registers import (
     DUMP_GROUPS,
-    FieldHelper,
-    Fields,
+    FIELD_FORMATTERS,
     REGISTERS,
     SIGNED_FIELDS,
-    FIELD_FORMATTERS,
+    FieldHelper,
+    Fields,
     _ffs,
-    _fmt_q4_12,
-    _fmt_q8_8,
+    _fmt_angle_source,
+    _fmt_motion_mode,
     _fmt_motor_type,
     _fmt_phi_e,
-    _fmt_motion_mode,
-    _fmt_angle_source,
+    _fmt_q4_12,
+    _fmt_q8_8,
     _fmt_velocity_meter,
     format_i_gain,
     format_p_gain,
@@ -60,9 +60,7 @@ class TestFieldExtraction(unittest.TestCase):
     def test_velocity_selection_fields(self):
         val = self.fh.get_field("velocity_selection", "VELOCITY_SELECTION", 0x00000109)
         self.assertEqual(val, 9)
-        val = self.fh.get_field(
-            "velocity_meter_selection", "VELOCITY_SELECTION", 0x00000109
-        )
+        val = self.fh.get_field("velocity_meter_selection", "VELOCITY_SELECTION", 0x00000109)
         self.assertEqual(val, 1)
 
     def test_position_selection_field(self):

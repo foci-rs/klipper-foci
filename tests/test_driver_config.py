@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import fields
 
 import pytest
-
 from klipper_foci.config import (
     CONTROL_SETTING_FIELDS,
     FociControlSettings,
@@ -24,7 +23,6 @@ from tests.mocks import (
     make_config_printer,
     make_driver,
 )
-
 
 CONFIG_FIELD_NAMES = {
     "name",
@@ -166,9 +164,7 @@ DRIVER_CONFIG_FACADE_FIELDS = {
 }
 
 
-DISALLOWED_DRIVER_CONFIG_FACADE_FIELDS = (
-    CONFIG_FIELD_NAMES - DRIVER_CONFIG_FACADE_FIELDS
-)
+DISALLOWED_DRIVER_CONFIG_FACADE_FIELDS = CONFIG_FIELD_NAMES - DRIVER_CONFIG_FACADE_FIELDS
 
 
 EXPECTED_CONTROL_SETTING_FIELDS = (
@@ -343,23 +339,17 @@ def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
 
 
 def test_parse_driver_config_bounds_run_current_at_five_amps():
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"run_current": 5.0}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"run_current": 5.0})
 
     assert parse_driver_config(config).run_current == 5.0
 
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"run_current": 5.001}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"run_current": 5.001})
     with pytest.raises(CommandError, match="run_current above maximum"):
         parse_driver_config(config)
 
 
 def test_parse_driver_config_accepts_largest_encoder_ppr_that_fits_quadrature():
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"encoder_ppr": 0x3FFF_FFFF}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"encoder_ppr": 0x3FFF_FFFF})
 
     parsed = parse_driver_config(config)
 
@@ -367,9 +357,7 @@ def test_parse_driver_config_accepts_largest_encoder_ppr_that_fits_quadrature():
 
 
 def test_parse_driver_config_rejects_encoder_ppr_above_quadrature_bound_with_context():
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"encoder_ppr": 0x4000_0000}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"encoder_ppr": 0x4000_0000})
 
     with pytest.raises(CommandError) as excinfo:
         parse_driver_config(config)
@@ -391,9 +379,7 @@ def test_parse_driver_config_rejects_encoder_ppr_above_quadrature_bound_with_con
 def test_parse_driver_config_rejects_invalid_planner_scale_with_context(
     stepper_values, invalid_value
 ):
-    _printer, _chips, _sections, config = make_foci_config(
-        stepper_values=stepper_values
-    )
+    _printer, _chips, _sections, config = make_foci_config(stepper_values=stepper_values)
 
     with pytest.raises(CommandError) as excinfo:
         parse_driver_config(config)
@@ -577,8 +563,8 @@ def test_parse_driver_config_bounds_current_loop_evidence_fields():
 
 @pytest.mark.parametrize("field_name", ACTIVE_PID_GAIN_FIELDS)
 def test_parse_driver_config_bounds_active_pid_gains(field_name):
-    inner = {name: 0 for name in ACTIVE_PID_GAIN_FIELDS[:4]}
-    outer = {name: 0 for name in ACTIVE_PID_GAIN_FIELDS[4:]}
+    inner = dict.fromkeys(ACTIVE_PID_GAIN_FIELDS[:4], 0)
+    outer = dict.fromkeys(ACTIVE_PID_GAIN_FIELDS[4:], 0)
     values = {**inner, **outer, field_name: 32767}
 
     parsed = parsed_config_with(values)
@@ -586,7 +572,7 @@ def test_parse_driver_config_bounds_active_pid_gains(field_name):
     assert getattr(parsed, field_name) == 32767
 
     values[field_name] = 32768
-    with pytest.raises(CommandError, match="%s above maximum" % field_name):
+    with pytest.raises(CommandError, match=f"{field_name} above maximum"):
         parsed_config_with(values)
 
 
@@ -595,7 +581,7 @@ def test_parse_driver_config_preserves_raw_candidate_gain_range(field_name):
     parsed = parsed_config_with({field_name: 65535})
     assert getattr(parsed, field_name) == 65535
 
-    with pytest.raises(CommandError, match="%s above maximum" % field_name):
+    with pytest.raises(CommandError, match=f"{field_name} above maximum"):
         parsed_config_with({field_name: 65536})
 
 
@@ -609,9 +595,7 @@ def test_parse_driver_config_bounds_inductance_evidence_fields():
 
 
 def test_parse_driver_config_rejects_low_filter_hz():
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"velocity_filter_hz": 5}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"velocity_filter_hz": 5})
 
     with pytest.raises(CommandError, match="velocity_filter_hz must be 0"):
         parse_driver_config(config)
@@ -659,27 +643,21 @@ def test_parse_driver_config_preserves_explicit_zero_filter_disable():
 
 def test_parse_driver_config_keeps_motion_filters_capped_at_one_khz():
     for option in ("velocity_filter_hz", "position_filter_hz"):
-        _printer, _chips, _sections, config = make_foci_config(
-            foci_values={option: 1001}
-        )
+        _printer, _chips, _sections, config = make_foci_config(foci_values={option: 1001})
 
-        with pytest.raises(CommandError, match="%s above maximum" % option):
+        with pytest.raises(CommandError, match=f"{option} above maximum"):
             parse_driver_config(config)
 
 
 def test_parse_driver_config_rejects_incomplete_inner_pid_group():
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"pid_flux_p": 256}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"pid_flux_p": 256})
 
     with pytest.raises(CommandError, match="must be set as a complete group"):
         parse_driver_config(config)
 
 
 def test_parse_driver_config_rejects_incomplete_position_velocity_pid_group():
-    _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"pid_position_p": 600}
-    )
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"pid_position_p": 600})
 
     with pytest.raises(CommandError, match="must be set together"):
         parse_driver_config(config)
@@ -743,8 +721,7 @@ def test_foci_driver_stores_config_settings_and_explicit_facade():
         assert getattr(driver, field_name) == getattr(driver.config, field_name)
     for field_name in DISALLOWED_DRIVER_CONFIG_FACADE_FIELDS:
         assert not hasattr(driver, field_name), (
-            f"{field_name} should live on driver.config or driver.settings, "
-            "not the driver facade"
+            f"{field_name} should live on driver.config or driver.settings, not the driver facade"
         )
 
 
@@ -852,9 +829,7 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
         configured_i["velocity_i"],
     ]
     driver.state.active_gains = dict(active)
-    assert {
-        name: driver.state.active_gains[name] for name in configured_i
-    } == configured_i
+    assert {name: driver.state.active_gains[name] for name in configured_i} == configured_i
 
     class ConfigSink:
         def __init__(self):
@@ -875,12 +850,8 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
     driver.commissioning.persist_commission_results(reply, "balanced")
     assert sink.values[(driver.name, "pid_flux_i")] == str(configured_i["flux_i"])
     assert sink.values[(driver.name, "pid_torque_i")] == str(configured_i["torque_i"])
-    assert sink.values[(driver.name, "commissioned_velocity_i")] == str(
-        configured_i["velocity_i"]
-    )
-    assert sink.values[(driver.name, "commissioned_position_i")] == str(
-        configured_i["position_i"]
-    )
+    assert sink.values[(driver.name, "commissioned_velocity_i")] == str(configured_i["velocity_i"])
+    assert sink.values[(driver.name, "commissioned_position_i")] == str(configured_i["position_i"])
 
 
 def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable():
@@ -1088,10 +1059,10 @@ def test_handle_connect_reads_mechanical_payloads_from_config_not_facade():
     driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
     driver._handle_mcu_identify()
 
-    setattr(driver, "encoder_ppr", 1)
-    setattr(driver, "encoder_reversed", False)
-    setattr(driver, "microsteps", 1)
-    setattr(driver, "full_steps", 0)
+    driver.encoder_ppr = 1
+    driver.encoder_reversed = False
+    driver.microsteps = 1
+    driver.full_steps = 0
 
     driver._handle_connect()
 
@@ -1104,7 +1075,7 @@ def test_handle_connect_reads_mechanical_payloads_from_config_not_facade():
 def test_handle_connect_supports_common_power_of_two_microsteps_without_warning(
     microsteps, full_steps
 ):
-    printer, _chips, sections, config = make_foci_config(
+    printer, _chips, sections, _config = make_foci_config(
         stepper_values={
             "microsteps": microsteps,
             "full_steps_per_rotation": full_steps,
@@ -1128,7 +1099,7 @@ def test_handle_connect_supports_common_power_of_two_microsteps_without_warning(
 
 
 def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
-    printer, _chips, sections, config = make_foci_config(
+    printer, _chips, sections, _config = make_foci_config(
         stepper_values={
             "microsteps": 16,
             "full_steps_per_rotation": 200,
@@ -1149,7 +1120,4 @@ def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
     ) in output
     assert "rotation_distance=40" in output
     assert "remove legacy hand compensation" in output
-    assert (
-        "compare rotation_distance with the actual transmission before enabling motion"
-        in output
-    )
+    assert "compare rotation_distance with the actual transmission before enabling motion" in output

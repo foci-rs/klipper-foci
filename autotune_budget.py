@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 DEFAULT_AUTOTUNE_TRAVEL_MM = 40.0
 MAX_AUTOTUNE_TRAVEL_MM = 120.0
 AUTOTUNE_SAFETY_MARGIN_MM = 10.0
@@ -50,7 +49,7 @@ class AutotuneMotionBudget:
 def _status_axis_tuple(status: dict, key: str) -> tuple[float, float]:
     value = status.get(key)
     if value is None or len(value) < 2:
-        raise AutotuneBudgetError("missing X/Y %s" % key)
+        raise AutotuneBudgetError(f"missing X/Y {key}")
     return float(value[0]), float(value[1])
 
 
@@ -60,7 +59,7 @@ def _kinematics_kind(kinematics) -> str:
         return "corexy"
     if "cartesian" in name or "cart" in name:
         return "cartesian"
-    raise AutotuneBudgetError("unsupported kinematics '%s'" % type(kinematics).__name__)
+    raise AutotuneBudgetError(f"unsupported kinematics '{type(kinematics).__name__}'")
 
 
 def _stepper_role(stepper_name: str) -> str:
@@ -69,9 +68,7 @@ def _stepper_role(stepper_name: str) -> str:
         return "x"
     if short.endswith("stepper_y"):
         return "y"
-    raise AutotuneBudgetError(
-        "named stepper '%s' is outside supported XY motion set" % stepper_name
-    )
+    raise AutotuneBudgetError(f"named stepper '{stepper_name}' is outside supported XY motion set")
 
 
 def _rotation_distance_mm(driver) -> float:
@@ -98,9 +95,7 @@ def _rotation_distance_mm(driver) -> float:
                     * float(driver.config.microsteps)
                     * float(driver.config.full_steps)
                 )
-    raise AutotuneBudgetError(
-        "could not resolve rotation_distance for '%s'" % driver.stepper_name
-    )
+    raise AutotuneBudgetError(f"could not resolve rotation_distance for '{driver.stepper_name}'")
 
 
 def _kinematic_budget_mm(
@@ -151,13 +146,9 @@ def _firmware_envelope_constants(driver) -> tuple[int, int, int]:
     constants = get_constants() if get_constants is not None else {}
     missing = [name for name in _ENVELOPE_CONSTANT_NAMES if name not in constants]
     if missing:
-        raise AutotuneBudgetError(
-            "missing firmware envelope constant(s): %s" % ", ".join(missing)
-        )
+        raise AutotuneBudgetError(f"missing firmware envelope constant(s): {', '.join(missing)}")
     try:
-        numerator, denominator, margin = (
-            int(constants[name]) for name in _ENVELOPE_CONSTANT_NAMES
-        )
+        numerator, denominator, margin = (int(constants[name]) for name in _ENVELOPE_CONSTANT_NAMES)
     except (TypeError, ValueError) as err:
         raise AutotuneBudgetError("invalid firmware envelope constants") from err
     if numerator <= denominator or denominator <= 0 or margin <= 0:
@@ -175,7 +166,7 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     homed = set(status.get("homed_axes", ""))
     if not {"x", "y"}.issubset(homed):
         missing = "".join(sorted({"x", "y"} - homed))
-        raise AutotuneBudgetError("printer not homed for X/Y (missing: %s)" % missing)
+        raise AutotuneBudgetError(f"printer not homed for X/Y (missing: {missing})")
 
     _status_axis_tuple(status, "position")
     min_x, min_y = _status_axis_tuple(status, "axis_minimum")
@@ -199,9 +190,7 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
 
     rotation_distance = _rotation_distance_mm(driver)
     if rotation_distance <= 0.0:
-        raise AutotuneBudgetError(
-            "invalid rotation_distance for '%s'" % driver.stepper_name
-        )
+        raise AutotuneBudgetError(f"invalid rotation_distance for '{driver.stepper_name}'")
     max_stroke_travel_mrev = _mrev(full_stroke_mm, rotation_distance)
     settle_travel_reserve_mrev = _mrev(AUTOTUNE_SAFETY_MARGIN_MM, rotation_distance)
     if (
@@ -227,12 +216,8 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
         AUTOTUNE_SAFETY_MARGIN_MM,
         AUTOTUNE_SAFETY_MARGIN_MM,
     )
-    negative_position_headroom_mrev = _mrev(
-        negative_mm - absolute_margin_mm, rotation_distance
-    )
-    positive_position_headroom_mrev = _mrev(
-        positive_mm - absolute_margin_mm, rotation_distance
-    )
+    negative_position_headroom_mrev = _mrev(negative_mm - absolute_margin_mm, rotation_distance)
+    positive_position_headroom_mrev = _mrev(positive_mm - absolute_margin_mm, rotation_distance)
     if negative_position_headroom_mrev <= 0 or positive_position_headroom_mrev <= 0:
         raise AutotuneBudgetError("insufficient absolute-position headroom")
 
@@ -284,4 +269,4 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
 
 def format_safe_pose_move(budget: AutotuneMotionBudget) -> str:
     """Return the Klipper move command for the selected safe pose."""
-    return "G0 X%.3f Y%.3f" % (budget.safe_x, budget.safe_y)
+    return f"G0 X{budget.safe_x:.3f} Y{budget.safe_y:.3f}"

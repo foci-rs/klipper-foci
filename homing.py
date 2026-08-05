@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
+from typing import ClassVar
 
-from .commissioning import COMMISSION_ERROR_NAMES
-from .commissioning import format_commission_detail
+from .commissioning import COMMISSION_ERROR_NAMES, format_commission_detail
 
 
 class HomingWorkflow:
@@ -14,7 +14,7 @@ class HomingWorkflow:
     # Status codes for foci_calibrate_response (CalibrationError::status_code).
     # This is a separate namespace from commissioning errors because calibration
     # and commission paths report through different message types.
-    CALIBRATION_ERROR_NAMES: dict[int, str] = {
+    CALIBRATION_ERROR_NAMES: ClassVar[dict[int, str]] = {
         1: "SPI_ERROR (TMC4671 not responding)",
         2: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
         5: "ALREADY_ENABLED",
@@ -25,7 +25,7 @@ class HomingWorkflow:
 
     # Kinematics coupling map: in coupled kinematics a single motor affects
     # multiple Cartesian axes. Maps rail index -> affected axes.
-    COUPLED_AXES = {
+    COUPLED_AXES: ClassVar[dict[str, dict[int, tuple[int, ...]]]] = {
         "CoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
         "CoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},
         "HybridCoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
@@ -81,15 +81,14 @@ class HomingWorkflow:
         if not details:
             return
         gcode = self.driver.printer.lookup_object("gcode")
-        lines = ["FOCI %s calibration diagnostics:" % self.driver.stepper_name]
-        lines.extend("  %s" % format_commission_detail(detail) for detail in details)
+        lines = [f"FOCI {self.driver.stepper_name} calibration diagnostics:"]
+        lines.extend(f"  {format_commission_detail(detail)}" for detail in details)
         gcode.respond_info("\n".join(lines))
 
     def apply_initial_state(self) -> None:
         """Apply connect-time homing state after driver config is loaded."""
         allow_auto_calibrate = (
-            self.driver.state.active_gains is not None
-            and not self.driver.state.inhibited
+            self.driver.state.active_gains is not None and not self.driver.state.inhibited
         )
         if allow_auto_calibrate:
             self.apply_active_gains_to_firmware()
@@ -105,11 +104,11 @@ class HomingWorkflow:
         if status in self.CALIBRATION_ERROR_NAMES:
             return self.CALIBRATION_ERROR_NAMES[status]
         if status in COMMISSION_ERROR_NAMES:
-            return "legacy commissioning status %d in calibration reply: %s" % (
-                status,
-                COMMISSION_ERROR_NAMES[status],
+            return (
+                f"legacy commissioning status {int(status)} in calibration reply: "
+                f"{COMMISSION_ERROR_NAMES[status]}"
             )
-        return "UNKNOWN_CALIBRATION_STATUS(%d)" % status
+        return f"UNKNOWN_CALIBRATION_STATUS({int(status)})"
 
     def apply_active_gains_to_firmware(self) -> None:
         """Preload saved FOCI gains into firmware state before enabling."""
@@ -164,24 +163,21 @@ class HomingWorkflow:
         if self.driver.state.inhibited:
             detail = ""
             if self.driver.state.last_commission_failure:
-                detail = (
-                    " last failure: %s." % self.driver.state.last_commission_failure
-                )
+                detail = f" last failure: {self.driver.state.last_commission_failure}."
             raise self.driver.printer.command_error(
-                "FOCI %s: operation inhibited after failed FOCI_COMMISSION. "
-                "Retry FOCI_COMMISSION or restart Klipper.%s"
-                % (self.driver.name, detail)
+                f"FOCI {self.driver.name}: operation inhibited after failed FOCI_COMMISSION. "
+                f"Retry FOCI_COMMISSION or restart Klipper.{detail}"
             )
         if self.driver.state.is_calibrated:
             return
         if self.driver.state.active_gains is None:
             raise self.driver.printer.command_error(
-                "FOCI %s: no commissioned gains available. "
-                "Run FOCI_COMMISSION first." % self.driver.name
+                f"FOCI {self.driver.name}: no commissioned gains available. Run "
+                f"FOCI_COMMISSION first."
             )
         if not self.driver.state.try_acquire():
             raise self.driver.printer.command_error(
-                "FOCI %s: another FOCI operation is in progress" % self.driver.name
+                f"FOCI {self.driver.name}: another FOCI operation is in progress"
             )
         try:
             self.apply_active_gains_to_firmware()
@@ -205,8 +201,7 @@ class HomingWorkflow:
 
             if params is None:
                 raise self.driver.printer.command_error(
-                    "FOCI %s: calibration timed out (no response from firmware)"
-                    % self.driver.name
+                    f"FOCI {self.driver.name}: calibration timed out (no response from firmware)"
                 )
             status = params.get("status", 255)
             if status == 5:
@@ -222,7 +217,7 @@ class HomingWorkflow:
                     self.driver.commissioning.handle_chip_reset_detected()
                 self._report_calibration_details()
                 raise self.driver.printer.command_error(
-                    "FOCI %s calibration failed: %s" % (self.driver.name, msg)
+                    f"FOCI {self.driver.name} calibration failed: {msg}"
                 )
             self.driver.state.is_calibrated = True
             logging.info(
@@ -301,19 +296,10 @@ class HomingWorkflow:
             over_steps = halt_pos - trig_pos
             step_dist = float(sp.stepper.get_step_dist())
             gcode.respond_info(
-                "FOCI_HOME_POSITION %s endstop=%s start=%d trig=%d halt=%d"
-                " move_steps=%d over_steps=%d move_mm=%.3f over_mm=%.3f"
-                % (
-                    self.driver.stepper_name,
-                    sp.endstop_name,
-                    start_pos,
-                    trig_pos,
-                    halt_pos,
-                    move_steps,
-                    over_steps,
-                    move_steps * step_dist,
-                    over_steps * step_dist,
-                )
+                f"FOCI_HOME_POSITION {self.driver.stepper_name} endstop={sp.endstop_name} "
+                f"start={int(start_pos)} trig={int(trig_pos)} halt={int(halt_pos)} move_steps="
+                f"{int(move_steps)} over_steps={int(over_steps)} move_mm="
+                f"{move_steps * step_dist:.3f} over_mm={over_steps * step_dist:.3f}"
             )
             self._report_homing_step_history(gcode, homing_move, sp, start_time)
             return
@@ -349,12 +335,8 @@ class HomingWorkflow:
 
         signed_steps = sum(int(step.step_count) for step in move_history)
         abs_steps = sum(abs(int(step.step_count)) for step in move_history)
-        pos_steps = sum(
-            int(step.step_count) for step in move_history if int(step.step_count) > 0
-        )
-        neg_steps = sum(
-            -int(step.step_count) for step in move_history if int(step.step_count) < 0
-        )
+        pos_steps = sum(int(step.step_count) for step in move_history if int(step.step_count) > 0)
+        neg_steps = sum(-int(step.step_count) for step in move_history if int(step.step_count) < 0)
         dir_changes = self._count_history_dir_changes(move_history)
         gap_steps = self._sum_history_position_gaps(move_history)
         first = move_history[0]
@@ -363,40 +345,21 @@ class HomingWorkflow:
         planned_end = int(last.start_position) + int(last.step_count)
         step_dist = float(sp.stepper.get_step_dist())
         gcode.respond_info(
-            "FOCI_HOME_STEP_HISTORY %s start_clock=%d end_clock=%d"
-            " segments=%d move_segments=%d marker_segments=%d signed_steps=%d"
-            " abs_steps=%d pos_steps=%d neg_steps=%d dir_changes=%d"
-            " gap_steps=%d planned_start=%d planned_end=%d first_clock=%d"
-            " last_clock=%d signed_mm=%.3f abs_mm=%.3f"
-            % (
-                self.driver.stepper_name,
-                start_clock,
-                end_clock,
-                len(history),
-                len(move_history),
-                len(marker_history),
-                signed_steps,
-                abs_steps,
-                pos_steps,
-                neg_steps,
-                dir_changes,
-                gap_steps,
-                planned_start,
-                planned_end,
-                int(first.first_clock),
-                int(last.last_clock),
-                signed_steps * step_dist,
-                abs_steps * step_dist,
-            )
+            f"FOCI_HOME_STEP_HISTORY {self.driver.stepper_name} start_clock={int(start_clock)} "
+            f"end_clock={int(end_clock)} segments={len(history)} move_segments="
+            f"{len(move_history)} marker_segments={len(marker_history)} signed_steps="
+            f"{int(signed_steps)} abs_steps={int(abs_steps)} pos_steps={int(pos_steps)} "
+            f"neg_steps={int(neg_steps)} dir_changes={int(dir_changes)} gap_steps="
+            f"{int(gap_steps)} planned_start={int(planned_start)} planned_end="
+            f"{int(planned_end)} first_clock={int(first.first_clock)} last_clock="
+            f"{int(last.last_clock)} signed_mm={signed_steps * step_dist:.3f} abs_mm="
+            f"{abs_steps * step_dist:.3f}"
         )
         gcode.respond_info(
-            "FOCI_HOME_STEP_SEGMENTS %s first=%s last=%s markers=%s"
-            % (
-                self.driver.stepper_name,
-                self._format_history_segment_edges(move_history[:4]),
-                self._format_history_segment_edges(move_history[-4:]),
-                self._format_history_markers(marker_history[:4]),
-            )
+            f"FOCI_HOME_STEP_SEGMENTS {self.driver.stepper_name} first="
+            f"{self._format_history_segment_edges(move_history[:4])} last="
+            f"{self._format_history_segment_edges(move_history[-4:])} markers="
+            f"{self._format_history_markers(marker_history[:4])}"
         )
 
     def _extract_step_history(self, stepper, start_clock, end_clock):
@@ -447,13 +410,9 @@ class HomingWorkflow:
         if not history:
             return "none"
         return ",".join(
-            "%d:%d:%+d@%d/%+d"
-            % (
-                int(step.first_clock),
-                int(step.start_position),
-                int(step.step_count),
-                int(step.interval),
-                int(step.add),
+            (
+                f"{int(step.first_clock)}:{int(step.start_position)}:{int(step.step_count):+}@"
+                f"{int(step.interval)}/{int(step.add):+}"
             )
             for step in history
         )
@@ -462,10 +421,7 @@ class HomingWorkflow:
         """Format zero-count reset/query markers for homing diagnostics."""
         if not history:
             return "none"
-        return ",".join(
-            "%d:%d" % (int(step.first_clock), int(step.start_position))
-            for step in history
-        )
+        return ",".join(f"{int(step.first_clock)}:{int(step.start_position)}" for step in history)
 
     def handle_stepper_enable(self, print_time, is_enable) -> None:
         """Synchronize FOCI calibration state with Klipper stepper enable."""

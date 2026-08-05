@@ -41,8 +41,7 @@ class PassiveDiagnostics:
         stepper = self.driver._find_linked_stepper()
         if stepper is None:
             raise gcmd.error(
-                "FOCI_STEP_POSITION could not find linked stepper %s"
-                % self.driver.stepper_name
+                f"FOCI_STEP_POSITION could not find linked stepper {self.driver.stepper_name}"
             )
 
         params = self.driver.protocol.get_step_position()
@@ -58,20 +57,20 @@ class PassiveDiagnostics:
             delta = host_position - klipper_position
 
         parts = [
-            "FOCI_STEP_POSITION %s:" % self.driver.stepper_name,
-            "raw=%d" % raw_position,
-            "host=%d" % host_position,
-            "klipper=%s" % (klipper_position if klipper_position is not None else "?"),
-            "delta=%s" % (delta if delta is not None else "?"),
-            "invert_dir=%d" % (1 if invert_dir else 0),
+            f"FOCI_STEP_POSITION {self.driver.stepper_name}:",
+            f"raw={int(raw_position)}",
+            f"host={int(host_position)}",
+            f"klipper={klipper_position if klipper_position is not None else '?'}",
+            f"delta={delta if delta is not None else '?'}",
+            f"invert_dir={(1 if invert_dir else 0)}",
         ]
 
         get_step_dist = getattr(stepper, "get_step_dist", None)
         if get_step_dist is not None:
             step_dist = float(get_step_dist())
-            parts.append("step_dist=%.6f" % step_dist)
+            parts.append(f"step_dist={step_dist:.6f}")
             if delta is not None:
-                parts.append("delta_mm=%.3f" % (delta * step_dist))
+                parts.append(f"delta_mm={delta * step_dist:.3f}")
 
         gcmd.respond_info(" ".join(parts))
 
@@ -129,9 +128,9 @@ class PassiveDiagnostics:
             "timer_active",
             "queue_len",
         ]
-        parts = ["FOCI_STEPPER_STATS %s:" % self.driver.stepper_name]
+        parts = [f"FOCI_STEPPER_STATS {self.driver.stepper_name}:"]
         for field in fields:
-            parts.append("%s=%s" % (field, params.get(field, "?")))
+            parts.append(f"{field}={params.get(field, '?')}")
         gcmd.respond_info(" ".join(parts))
 
     def dispatch_stats(self, gcmd) -> None:
@@ -176,15 +175,13 @@ class PassiveDiagnostics:
             "stepper_load_lateness_last_ticks",
             "build_trace_enabled",
         ]
-        parts = ["FOCI_DISPATCH_STATS %s:" % self.driver.stepper_name]
+        parts = [f"FOCI_DISPATCH_STATS {self.driver.stepper_name}:"]
         for field in fields:
-            parts.append("%s=%s" % (field, response.get(field, "?")))
-        parts.append("crit_max_us=%s" % cycles_to_us("crit_max_cycles"))
-        parts.append("queue_step_max_us=%s" % cycles_to_us("queue_step_max_cycles"))
-        parts.append("tim5_irq_max_us=%s" % cycles_to_us("tim5_irq_max_cycles"))
-        parts.append(
-            "tim5_dispatch_max_us=%s" % cycles_to_us("tim5_dispatch_max_cycles")
-        )
+            parts.append(f"{field}={response.get(field, '?')}")
+        parts.append(f"crit_max_us={cycles_to_us('crit_max_cycles')}")
+        parts.append(f"queue_step_max_us={cycles_to_us('queue_step_max_cycles')}")
+        parts.append(f"tim5_irq_max_us={cycles_to_us('tim5_irq_max_cycles')}")
+        parts.append(f"tim5_dispatch_max_us={cycles_to_us('tim5_dispatch_max_cycles')}")
         gcmd.respond_info(" ".join(parts))
 
     def tmc_read_register(self, gcmd) -> None:
@@ -193,6 +190,6 @@ class PassiveDiagnostics:
         response = self.driver.protocol.dev_tmc_read_register(addr=addr)
         value = int(response["value"])
         gcmd.respond_info(
-            "FOCI_TMC_READ_REGISTER %s: addr=0x%02x value=0x%08x value=%d"
-            % (self.driver.stepper_name, addr, value, value)
+            f"FOCI_TMC_READ_REGISTER {self.driver.stepper_name}: addr=0x{addr:02x} value=0x"
+            f"{value:08x} value={int(value)}"
         )

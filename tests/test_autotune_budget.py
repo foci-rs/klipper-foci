@@ -1,13 +1,13 @@
 """Tests for host-side autotune motion budgeting."""
 
 import pytest
-
 from klipper_foci.autotune_budget import (
     AutotuneBudgetError,
     _motor_headroom_mm,
     compute_autotune_motion_budget,
     format_safe_pose_move,
 )
+
 from tests.mocks import (
     MockCartesianKinematics,
     MockCoreXYKinematics,
@@ -40,12 +40,7 @@ def ready_driver(stepper_name="stepper_x", kinematics=None):
 
 def test_cartesian_x_budget_applies_margin_and_rotation_distance():
     driver = ready_driver("stepper_x", MockCartesianKinematics())
-    stepper = (
-        driver.printer.lookup_object("toolhead")
-        .get_kinematics()
-        .rails[0]
-        .get_steppers()[0]
-    )
+    stepper = driver.printer.lookup_object("toolhead").get_kinematics().rails[0].get_steppers()[0]
     stepper._step_dist = 0.01
 
     budget = compute_autotune_motion_budget(driver, MockGCmd({}))
@@ -66,12 +61,7 @@ def test_cartesian_x_budget_applies_margin_and_rotation_distance():
 
 def test_corexy_budget_doubles_axis_clearance_before_margin():
     driver = ready_driver("stepper_x", MockCoreXYKinematics())
-    stepper = (
-        driver.printer.lookup_object("toolhead")
-        .get_kinematics()
-        .rails[0]
-        .get_steppers()[0]
-    )
+    stepper = driver.printer.lookup_object("toolhead").get_kinematics().rails[0].get_steppers()[0]
     stepper._step_dist = 0.01
 
     budget = compute_autotune_motion_budget(driver, MockGCmd({"TRAVEL": "70"}))
@@ -97,12 +87,7 @@ def test_budget_resolves_rotation_distance_from_get_rails_kinematics():
 
 def test_explicit_tune_velocity_is_converted_to_motor_space():
     driver = ready_driver("stepper_x", MockCartesianKinematics())
-    stepper = (
-        driver.printer.lookup_object("toolhead")
-        .get_kinematics()
-        .rails[0]
-        .get_steppers()[0]
-    )
+    stepper = driver.printer.lookup_object("toolhead").get_kinematics().rails[0].get_steppers()[0]
     stepper._step_dist = 0.01
 
     budget = compute_autotune_motion_budget(
@@ -124,12 +109,7 @@ def test_default_velocity_uses_firmware_published_envelope_constants():
             "ENVELOPE_ABSOLUTE_MARGIN_MREV_S": 1000,
         }
     )
-    stepper = (
-        driver.printer.lookup_object("toolhead")
-        .get_kinematics()
-        .rails[0]
-        .get_steppers()[0]
-    )
+    stepper = driver.printer.lookup_object("toolhead").get_kinematics().rails[0].get_steppers()[0]
     stepper._step_dist = 0.01
 
     budget = compute_autotune_motion_budget(driver, MockGCmd({}))

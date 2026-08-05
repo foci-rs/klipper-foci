@@ -3,7 +3,6 @@
 import struct
 
 import pytest
-
 from klipper_foci.acceptance_matrix import (
     MATRIX_ORDER_ASCENDING,
     AcceptanceMatrixAssembler,
@@ -11,14 +10,14 @@ from klipper_foci.acceptance_matrix import (
     parse_autotune_action,
 )
 from klipper_foci.registers import REGISTERS
+
 from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
     CommandError,
     MockCartesianKinematics,
     MockGCmd,
-    SAMPLE_ACTIVE_GAINS,
     make_driver,
 )
-
 
 PLAN_DIGEST = 0x0123_4567_89AB_CDEF
 ACCEPTANCE_DIGEST = 0xFEDC_BA98_7654_3210
@@ -71,9 +70,7 @@ def workflow(assembler, shape=4):
         "nominal_workflow_ms": 60_541,
         "maximum_workflow_ms": 66_456,
     }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
 
 
@@ -230,9 +227,7 @@ def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
         "nominal_workflow_ms": 63_041,
         "maximum_workflow_ms": 66_456,
     }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
     assembler.handle_plan(
         {
@@ -254,13 +249,9 @@ def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
         "nominal_workflow_ms": 63_041,
         "maximum_workflow_ms": 66_456,
     }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
-    assembler.handle_plan(
-        {"oid": 1, "payload": plan_payload(schema=4, nominal_ms=63_041)}
-    )
+    assembler.handle_plan({"oid": 1, "payload": plan_payload(schema=4, nominal_ms=63_041)})
     assembler.handle_terminal(
         {
             "oid": 1,
@@ -299,9 +290,7 @@ def test_matrix_workflow_rejects_non_matrix_shapes(shape, nominal, maximum):
         "nominal_workflow_ms": nominal,
         "maximum_workflow_ms": maximum,
     }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     with pytest.raises(AcceptanceMatrixProtocolError):
         assembler.handle_workflow_plan(params)
 
@@ -431,9 +420,7 @@ def test_plan_is_incomplete_until_its_second_fragment():
     workflow(assembler)
     payload = plan_payload()
 
-    assembler.handle_plan(
-        {"oid": 1, "fragment": 0, "payload": payload[:PLAN_FRAGMENT_BYTES]}
-    )
+    assembler.handle_plan({"oid": 1, "fragment": 0, "payload": payload[:PLAN_FRAGMENT_BYTES]})
 
     assert assembler.plan is None
 
@@ -443,12 +430,8 @@ def test_plan_rejects_a_reordered_fragment():
     workflow(assembler)
     payload = plan_payload()
 
-    with pytest.raises(
-        AcceptanceMatrixProtocolError, match="reordered matrix plan fragment"
-    ):
-        assembler.handle_plan(
-            {"oid": 1, "fragment": 1, "payload": payload[PLAN_FRAGMENT_BYTES:]}
-        )
+    with pytest.raises(AcceptanceMatrixProtocolError, match="reordered matrix plan fragment"):
+        assembler.handle_plan({"oid": 1, "fragment": 1, "payload": payload[PLAN_FRAGMENT_BYTES:]})
 
 
 def recovery_wide_workflow(assembler, shape=4):
@@ -460,9 +443,7 @@ def recovery_wide_workflow(assembler, shape=4):
         "nominal_workflow_ms": 63_041,
         "maximum_workflow_ms": 66_456,
     }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
 
 
@@ -519,9 +500,7 @@ def test_plan_rejects_an_unusable_packed_schedule_order_byte():
             assembler.handle_plan(
                 {
                     "oid": 1,
-                    "payload": plan_payload(
-                        order_byte, TARGETS, schema=5, nominal_ms=63_041
-                    ),
+                    "payload": plan_payload(order_byte, TARGETS, schema=5, nominal_ms=63_041),
                 }
             )
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-
 MOTION_SCALE_REJECTION_NAMES = {
     1: "encoder_ppr is zero",
     2: "encoder_ppr exceeds 1073741823",
@@ -26,9 +25,9 @@ def register_motion_scale_responses(serial, driver, oid: int) -> None:
     """Register the cause-specific motion-scale rejection diagnostic."""
 
     def handle_rejection(params) -> None:
-        stage = {0: "P2", 1: "P1"}.get(params["stage"], "stage %d" % params["stage"])
+        stage = {0: "P2", 1: "P1"}.get(params["stage"], f"stage {int(params['stage'])}")
         reason = MOTION_SCALE_REJECTION_NAMES.get(
-            params["reason"], "unknown reason %d" % params["reason"]
+            params["reason"], f"unknown reason {int(params['reason'])}"
         )
         logging.error(
             "FOCI %s motion-scale configuration rejected in %s: %s",
@@ -57,12 +56,9 @@ def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
         checkpoint = params.get("breakaway_checkpoint", 0)
 
         if fault_kind != 0:
-            fault_name = _LAST_BOOT_FAULT_KIND_NAMES.get(
-                fault_kind, "unknown(%s)" % fault_kind
-            )
+            fault_name = _LAST_BOOT_FAULT_KIND_NAMES.get(fault_kind, f"unknown({fault_kind})")
             logging.error(
-                "FOCI board recovered last-boot fault: kind=%s line=%s pc=0x%08x"
-                " file_hash=0x%08x",
+                "FOCI board recovered last-boot fault: kind=%s line=%s pc=0x%08x file_hash=0x%08x",
                 fault_name,
                 params.get("line"),
                 params.get("pc", 0),
@@ -74,9 +70,7 @@ def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
                 checkpoint,
             )
 
-    serial.register_response(
-        handle_last_boot_diagnostic, "foci_last_boot_diagnostic", oid
-    )
+    serial.register_response(handle_last_boot_diagnostic, "foci_last_boot_diagnostic", oid)
 
 
 def register_homing_responses(serial, driver, oid: int) -> None:

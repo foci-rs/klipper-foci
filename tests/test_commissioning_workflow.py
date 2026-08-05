@@ -1,27 +1,28 @@
 """Tests for FOCI commissioning workflow behavior."""
 
+import contextlib
 import unittest
+from typing import ClassVar
 
 import pytest
-
-import klipper_foci.commissioning as commissioning
+from klipper_foci import commissioning
 from klipper_foci.commissioning import (
     COMMISSION_ERROR_NAMES,
     ELECTRICAL_ID_DETAIL_NAMES,
     HARD_FAULT_CODES,
     PHASE_NAMES,
     CommissioningWorkflow,
-    format_current_loop_failure_summary,
     format_commission_error_name,
+    format_current_loop_failure_summary,
 )
 from klipper_foci.homing import HomingWorkflow
 
 from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
+    SAMPLE_COMMISSION_RESULT,
     CommandError,
     MockGCmd,
     MockReactor,
-    SAMPLE_ACTIVE_GAINS,
-    SAMPLE_COMMISSION_RESULT,
     complete_commission_result,
     make_driver,
 )
@@ -147,9 +148,7 @@ def test_timing_detail_must_match_terminal_summary():
     driver = make_driver()
     driver.commissioning.handle_commission_timing(timing_reply(status=2))
 
-    with pytest.raises(
-        ValueError, match="resistance.*detail=rejected.*summary=accepted"
-    ):
+    with pytest.raises(ValueError, match="resistance.*detail=rejected.*summary=accepted"):
         driver.commissioning.consume_timing_evidence(1)
 
 
@@ -203,9 +202,7 @@ def test_persistence_ignores_rejected_timing_evidence():
     driver.commissioning.persist_commission_results(result, "balanced")
 
     timing_keys = {key for section, key in configfile.values if section == driver.name}
-    assert configfile.values[(driver.name, "identified_timing_resistance_status")] == (
-        "accepted"
-    )
+    assert configfile.values[(driver.name, "identified_timing_resistance_status")] == ("accepted")
     assert "identified_timing_resistance_period_us" in timing_keys
     assert not any("timing_inductance" in key for key in timing_keys)
 
@@ -246,11 +243,9 @@ class TestCommissionGates(unittest.TestCase):
         d.printer._objects["reactor"] = MockReactor()
         # This will fail because we don't have full mock infrastructure
         # for the success path, but it should NOT raise "not homed"
-        try:
+        # Expected — incomplete mocks for full path
+        with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
-        except (CommandError, AttributeError, TypeError):
-            # Expected — incomplete mocks for full path
-            pass
         # Verify no homing error was raised
         # (if we got here, the homing gate was not hit)
 
@@ -262,10 +257,8 @@ class TestCommissionGates(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced"})
         d.commissioning.done = True
         d.commissioning.result = SAMPLE_COMMISSION_RESULT
-        try:
+        with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
-        except (CommandError, AttributeError, TypeError):
-            pass
         # Should not raise "not commissioned"
 
     def test_commission_failure_reports_diagnostics(self):
@@ -330,9 +323,7 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(d.state.inhibited)
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1]
-        )
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1])
 
     def test_ensure_calibrated_chip_reset_allows_retry(self):
         d = make_driver()
@@ -381,9 +372,7 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn("CHIP_RESET_DETECTED", str(ctx.exception))
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(d.state.inhibited)
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1]
-        )
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1])
 
 
 class TestResistanceIdFailed(unittest.TestCase):
@@ -455,9 +444,7 @@ class TestCommissioningStateTransitions(unittest.TestCase):
         self.assertEqual(d.state.runtime_status, "uncommissioned")
         self.assertIsNone(d.state.commissioned_result)
         self.assertFalse(d.state.is_calibrated)
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
-        )
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 
 
 class TestNameMaps(unittest.TestCase):
@@ -485,9 +472,7 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         configfile = MockConfigFile()
         driver.printer._objects["configfile"] = configfile
 
-        driver.commissioning.persist_commission_results(
-            complete_commission_result(), "balanced"
-        )
+        driver.commissioning.persist_commission_results(complete_commission_result(), "balanced")
 
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_count_milli")],
@@ -588,9 +573,7 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             "1042",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_gain_path_count_slope_milli")
-            ],
+            configfile.values[(driver.name, "identified_r_gain_path_count_slope_milli")],
             "66752",
         )
         self.assertEqual(
@@ -614,18 +597,14 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             "1200",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_max_abs_steady_mean_current_count")
-            ],
+            configfile.values[(driver.name, "identified_r_max_abs_steady_mean_current_count")],
             "900",
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_current_ceiling_count")],
             "1600",
         )
-        self.assertNotIn(
-            (driver.name, "identified_r_power_stage_tripped"), configfile.values
-        )
+        self.assertNotIn((driver.name, "identified_r_power_stage_tripped"), configfile.values)
 
 
 class CommissionResistanceReplyFoldingTests(unittest.TestCase):
@@ -716,14 +695,12 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             "1042",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_gain_path_count_slope_milli")
-            ],
+            configfile.values[(driver.name, "identified_r_gain_path_count_slope_milli")],
             "66752",
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_status_flags_or")],
-            "%d" % 0x00080000,
+            f"{524288}",
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_warning_flags")],
@@ -734,18 +711,14 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             "1200",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_max_abs_steady_mean_current_count")
-            ],
+            configfile.values[(driver.name, "identified_r_max_abs_steady_mean_current_count")],
             "900",
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_current_ceiling_count")],
             "1600",
         )
-        self.assertNotIn(
-            (driver.name, "identified_r_power_stage_tripped"), configfile.values
-        )
+        self.assertNotIn((driver.name, "identified_r_power_stage_tripped"), configfile.values)
         # Distinct axis0/axis1 values, routed by electrical_axis despite
         # arriving axis1-before-axis0 above. A swapped-routing bug would
         # fail these assertions.
@@ -775,34 +748,26 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_selected_mask_axis0")],
-            "%d" % 0b11111000,
+            f"{248}",
         )
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_selected_mask_axis1")],
-            "%d" % 0b11110000,
+            f"{240}",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_axis0_signed_count_slope_milli")
-            ],
+            configfile.values[(driver.name, "identified_r_axis0_signed_count_slope_milli")],
             "1041",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_axis1_signed_count_slope_milli")
-            ],
+            configfile.values[(driver.name, "identified_r_axis1_signed_count_slope_milli")],
             "1047",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_axis0_signed_asymmetry_permille")
-            ],
+            configfile.values[(driver.name, "identified_r_axis0_signed_asymmetry_permille")],
             "12",
         )
         self.assertEqual(
-            configfile.values[
-                (driver.name, "identified_r_axis1_signed_asymmetry_permille")
-            ],
+            configfile.values[(driver.name, "identified_r_axis1_signed_asymmetry_permille")],
             "15",
         )
         self.assertEqual(
@@ -968,9 +933,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
 
         # No commission ran; persist_commission_results was never called.
         # Confirm nothing resistance-related landed in config.
-        resistance_keys = [
-            key for key in configfile.values if "identified_r_" in key[1]
-        ]
+        resistance_keys = [key for key in configfile.values if "identified_r_" in key[1]]
         self.assertEqual(resistance_keys, [])
 
     def test_stale_standalone_cache_does_not_leak_into_later_partial_commission(self):
@@ -1143,7 +1106,7 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         (1, 1, 1, 610, 590, 42, 510, 2, 2, -1),
         (1, 2, 2, 780, 770, 38, 530, 4, 4, -2),
     )
-    CURRENT_LOOP_RUN = {
+    CURRENT_LOOP_RUN: ClassVar[dict[str, int]] = {
         "status": 0,
         "gains_source": 1,
         "candidate_gains_source": 1,
@@ -1168,7 +1131,7 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         "retry_budget_exhausted": 0,
         "failure_reason": 0,
     }
-    EXPECTED_CURRENT_CONFIG = {
+    EXPECTED_CURRENT_CONFIG: ClassVar[dict[str, str]] = {
         "identified_current_gains_source": "1",
         "identified_current_candidate_gains_source": "1",
         "identified_axis_split_source": "1",
@@ -1300,17 +1263,13 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[0])
         self._emit_current_loop_run(driver)
 
-        self.assertEqual(
-            driver.diagnostics.active.pop_current_loop_cache(driver.oid), {}
-        )
+        self.assertEqual(driver.diagnostics.active.pop_current_loop_cache(driver.oid), {})
         self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
 
     def test_unknown_current_validation_axis_does_not_complete_torque_evidence(self):
         driver = make_driver()
         self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[0])
-        self._emit_current_validation_sample(
-            driver, (2, 0, 2, 650, 640, 44, 500, 9, 9, -3)
-        )
+        self._emit_current_validation_sample(driver, (2, 0, 2, 650, 640, 44, 500, 9, 9, -3))
         self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[3])
         run = {
             **self.CURRENT_LOOP_RUN,
@@ -1319,9 +1278,7 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
         }
         driver.diagnostics.active.handle_current_loop_run({"oid": driver.oid, **run})
 
-        self.assertEqual(
-            driver.diagnostics.active.pop_current_loop_cache(driver.oid), {}
-        )
+        self.assertEqual(driver.diagnostics.active.pop_current_loop_cache(driver.oid), {})
         self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
 
     def test_zero_current_validation_sample_counts_fold_nothing_and_clear(self):
@@ -1329,38 +1286,28 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
             with self.subTest(axis_key=axis_key):
                 driver = make_driver()
                 if axis_key == "flux":
-                    self._emit_current_validation_sample(
-                        driver, self.CURRENT_VALIDATION_SAMPLES[3]
-                    )
+                    self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[3])
                     sample_counts = {
                         "flux_validation_sample_count": 0,
                         "torque_validation_sample_count": 1,
                     }
                 else:
-                    self._emit_current_validation_sample(
-                        driver, self.CURRENT_VALIDATION_SAMPLES[0]
-                    )
+                    self._emit_current_validation_sample(driver, self.CURRENT_VALIDATION_SAMPLES[0])
                     sample_counts = {
                         "flux_validation_sample_count": 1,
                         "torque_validation_sample_count": 0,
                     }
                 run = {**self.CURRENT_LOOP_RUN, **sample_counts}
-                driver.diagnostics.active.handle_current_loop_run(
-                    {"oid": driver.oid, **run}
-                )
+                driver.diagnostics.active.handle_current_loop_run({"oid": driver.oid, **run})
 
-                self.assertEqual(
-                    driver.diagnostics.active.pop_current_loop_cache(driver.oid), {}
-                )
-                self.assertNotIn(
-                    driver.oid, driver.diagnostics.active.current_loop_cache
-                )
+                self.assertEqual(driver.diagnostics.active.pop_current_loop_cache(driver.oid), {})
+                self.assertNotIn(driver.oid, driver.diagnostics.active.current_loop_cache)
 
 
 class CommissionInductanceReplyFoldingTests(unittest.TestCase):
     """Verify commission-stream inductance evidence gets folded into result."""
 
-    RUN = {
+    RUN: ClassVar[dict[str, int]] = {
         "source": 1,
         "status": 0,
         "warning_flags": 0,
@@ -1372,7 +1319,7 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
         "encoder_delta_counts": 0,
         "status_flags_or": 0,
     }
-    FRAME = {
+    FRAME: ClassVar[dict[str, int]] = {
         "id_mean_milli_count": 20_000,
         "iq_mean_milli_count": -84_000,
         "id_rms_milli_count": 5000,
@@ -1381,7 +1328,7 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
         "zero_id_mean_milli_count": 100,
         "zero_iq_mean_milli_count": -200,
     }
-    ESTIMATE = {
+    ESTIMATE: ClassVar[dict[str, int]] = {
         "x_average_count_ratio_milli": 8600,
         "x_d_count_ratio_milli": 9200,
         "x_q_count_ratio_milli": 8000,
@@ -1392,7 +1339,7 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
         "x_mag_shift_plus_permille": 4,
         "x_mag_vs_quad_permille": 20,
     }
-    EXPECTED_CONFIG = {
+    EXPECTED_CONFIG: ClassVar[dict[str, str]] = {
         "identified_l_source": "1",
         "identified_l_warning_flags": "0",
         "identified_l_frequency_millihz": "1000000",
@@ -1414,15 +1361,11 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
 
     def _emit_frame(self, driver, params=None) -> None:
         payload = self.FRAME if params is None else params
-        driver.diagnostics.active.handle_inductance_frame(
-            {"oid": driver.oid, **payload}
-        )
+        driver.diagnostics.active.handle_inductance_frame({"oid": driver.oid, **payload})
 
     def _emit_estimate(self, driver, params=None) -> None:
         payload = self.ESTIMATE if params is None else params
-        driver.diagnostics.active.handle_inductance_estimate(
-            {"oid": driver.oid, **payload}
-        )
+        driver.diagnostics.active.handle_inductance_estimate({"oid": driver.oid, **payload})
 
     def test_complete_replies_are_folded_and_persisted(self):
         driver = make_driver()
@@ -1470,9 +1413,7 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
         inductance_keys = {
             config_key for _, config_key in CommissioningWorkflow.INDUCTANCE_RESULT_KEYS
         }
-        persisted_inductance_keys = [
-            key for key in configfile.values if key[1] in inductance_keys
-        ]
+        persisted_inductance_keys = [key for key in configfile.values if key[1] in inductance_keys]
         self.assertEqual(persisted_inductance_keys, [])
         self.assertNotIn(driver.oid, driver.diagnostics.active.inductance_cache)
 
@@ -1490,8 +1431,8 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
                     "estimate": dict(self.ESTIMATE),
                 }
                 if sender is not None:
-                    driver.protocol.commands.commission.send = lambda _args: sender(
-                        driver
+                    driver.protocol.commands.commission.send = (
+                        lambda _args, sender=sender, driver=driver: sender(driver)
                     )
 
                 with self.assertRaises(CommandError):

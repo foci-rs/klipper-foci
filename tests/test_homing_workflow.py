@@ -1,17 +1,18 @@
 """Tests for FOCI homing and calibration workflow behavior."""
 
+import contextlib
 import unittest
 
 from klipper_foci.registers import REGISTERS
 
 from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
+    SAMPLE_COMMISSION_RESULT,
     CommandError,
     MockCartesianKinematics,
     MockCoreXYKinematics,
     MockGCmd,
     MockNoneKinematics,
-    SAMPLE_ACTIVE_GAINS,
-    SAMPLE_COMMISSION_RESULT,
     make_driver,
 )
 
@@ -108,7 +109,7 @@ class TestHomingStateTransitions(unittest.TestCase):
                 calls.append("apply_initial_state")
 
             def __getattr__(self, name):
-                raise AssertionError("unexpected homing method %s" % name)
+                raise AssertionError(f"unexpected homing method {name}")
 
         d.homing = FakeHoming()
         d._handle_connect()
@@ -149,9 +150,7 @@ class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_allows_auto_calibrate_only_with_valid_config(self):
         d = make_driver()
         d._handle_connect()
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
-        )
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 
         d = make_driver()
         d.config.autotune_status = "commissioned"
@@ -169,19 +168,13 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.config.commissioned_position_i = 0
         d.config.commissioned_velocity_limit = 50_000
         d._handle_connect()
-        self.assertEqual(
-            d.protocol.commands.set_pid_gains.last_args, [d.oid, 100, 200, 300, 400]
-        )
+        self.assertEqual(d.protocol.commands.set_pid_gains.last_args, [d.oid, 100, 200, 300, 400])
         self.assertEqual(
             d.protocol.commands.set_position_gains.last_args,
             [d.oid, 700, 0, 1100, 0],
         )
-        self.assertEqual(
-            d.protocol.commands.set_velocity_limit.last_args, [d.oid, 50_000]
-        )
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1]
-        )
+        self.assertEqual(d.protocol.commands.set_velocity_limit.last_args, [d.oid, 50_000])
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 1])
 
     def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):
         d = make_driver()
@@ -201,9 +194,7 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.config.commissioned_position_i = 0
         d.config.commissioned_velocity_limit = 50_000
         d._handle_connect()
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
-        )
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 
     def test_inhibited_blocks_ensure_calibrated(self):
         d = make_driver()
@@ -230,9 +221,7 @@ class TestHomingStateTransitions(unittest.TestCase):
 
         d.homing.apply_active_gains_to_firmware()
 
-        self.assertEqual(
-            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 29000]
-        )
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 29000])
 
     def test_disable_callback_clears_calibrated(self):
         d = make_driver()
@@ -469,26 +458,20 @@ class TestCommandHomingInvalidation(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced"})
         d.commissioning.done = True
         d.commissioning.result = SAMPLE_COMMISSION_RESULT
-        try:
+        with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
-        except (CommandError, AttributeError, TypeError):
-            pass
         # Homing should have been invalidated
         self.assertIsNotNone(kin._cleared_axes)
 
     def test_autotune_invalidates_homing(self):
         d, kin = self._driver_with_cartesian()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        try:
+        with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.autotune.autotune(gcmd)
-        except (CommandError, AttributeError, TypeError):
-            pass
         self.assertIsNotNone(kin._cleared_axes)
 
     def test_selftest_invalidates_homing(self):
         d, kin = self._driver_with_cartesian()
-        try:
+        with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.selftest.selftest(MockGCmd())
-        except (CommandError, AttributeError, TypeError):
-            pass
         self.assertIsNotNone(kin._cleared_axes)

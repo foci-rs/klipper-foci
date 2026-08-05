@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-
 from dataclasses import dataclass, fields
 
 from .constants import (
@@ -201,7 +200,7 @@ class FociControlSettings:
     pid_velocity_limit: int | None
 
     @classmethod
-    def from_config(cls, config: FociDriverConfig) -> "FociControlSettings":
+    def from_config(cls, config: FociDriverConfig) -> FociControlSettings:
         """Seed mutable live settings from parsed config values."""
         return cls(**{field.name: getattr(config, field.name) for field in fields(cls)})
 
@@ -222,14 +221,13 @@ def _validate_complete_group(config, section_name, label, values) -> None:
     if present and len(present) != len(values):
         if label == "inner_pid":
             raise config.error(
-                "PID gains must be set as a complete group"
-                " (pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i)."
-                " Found %d of 4 in [%s]" % (len(present), section_name)
+                f"PID gains must be set as a complete group (pid_flux_p, pid_flux_i, "
+                f"pid_torque_p, pid_torque_i). Found {len(present)} of 4 in [{section_name}]"
             )
         raise config.error(
-            "pid_position_p/i and pid_velocity_p/i must be set together"
-            " (pid_position_p, pid_position_i, pid_velocity_p, pid_velocity_i)."
-            " Found %d of 4 in [%s]" % (len(present), section_name)
+            f"pid_position_p/i and pid_velocity_p/i must be set together (pid_position_p, "
+            f"pid_position_i, pid_velocity_p, pid_velocity_i). Found {len(present)} of 4 in ["
+            f"{section_name}]"
         )
 
 
@@ -239,8 +237,8 @@ def _filter_hz(config, section_name, option, max_hz):
         return None
     if value != 0 and value < FILTER_MIN_HZ:
         raise config.error(
-            "%s must be 0 (disabled) or %d..%d in [%s]"
-            % (option, FILTER_MIN_HZ, max_hz, section_name)
+            f"{option} must be 0 (disabled) or {int(FILTER_MIN_HZ)}..{int(max_hz)} in ["
+            f"{section_name}]"
         )
     return value
 
@@ -259,8 +257,7 @@ def parse_driver_config(config) -> FociDriverConfig:
     encoder_ppr = config.getint("encoder_ppr", minval=1)
     if encoder_ppr > MAX_ENCODER_PPR:
         raise config.error(
-            "encoder_ppr %d in [%s] is outside 1..%d"
-            % (encoder_ppr, name, MAX_ENCODER_PPR)
+            f"encoder_ppr {int(encoder_ppr)} in [{name}] is outside 1..{int(MAX_ENCODER_PPR)}"
         )
     voltage_limit = config.getint(
         "voltage_limit",
@@ -276,12 +273,8 @@ def parse_driver_config(config) -> FociDriverConfig:
 
     pid_flux_p = config.getint("pid_flux_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_flux_i = config.getint("pid_flux_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
-    pid_torque_p = config.getint(
-        "pid_torque_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    pid_torque_i = config.getint(
-        "pid_torque_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
+    pid_torque_p = config.getint("pid_torque_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
+    pid_torque_i = config.getint("pid_torque_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     _validate_complete_group(
         config,
         name,
@@ -289,29 +282,15 @@ def parse_driver_config(config) -> FociDriverConfig:
         [pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i],
     )
 
-    velocity_filter_hz = _filter_hz(
-        config, name, "velocity_filter_hz", MOTION_FILTER_MAX_HZ
-    )
-    torque_filter_hz = _filter_hz(
-        config, name, "torque_filter_hz", CURRENT_FILTER_MAX_HZ
-    )
-    position_filter_hz = _filter_hz(
-        config, name, "position_filter_hz", MOTION_FILTER_MAX_HZ
-    )
+    velocity_filter_hz = _filter_hz(config, name, "velocity_filter_hz", MOTION_FILTER_MAX_HZ)
+    torque_filter_hz = _filter_hz(config, name, "torque_filter_hz", CURRENT_FILTER_MAX_HZ)
+    position_filter_hz = _filter_hz(config, name, "position_filter_hz", MOTION_FILTER_MAX_HZ)
     flux_filter_hz = _filter_hz(config, name, "flux_filter_hz", CURRENT_FILTER_MAX_HZ)
 
-    pid_position_p = config.getint(
-        "pid_position_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    pid_position_i = config.getint(
-        "pid_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    pid_velocity_p = config.getint(
-        "pid_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    pid_velocity_i = config.getint(
-        "pid_velocity_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
+    pid_position_p = config.getint("pid_position_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
+    pid_position_i = config.getint("pid_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
+    pid_velocity_p = config.getint("pid_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
+    pid_velocity_i = config.getint("pid_velocity_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     _validate_complete_group(
         config,
         name,
@@ -323,9 +302,7 @@ def parse_driver_config(config) -> FociDriverConfig:
     velocity_feedforward_multiplier = config.getint(
         "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
     )
-    pid_velocity_limit = config.getint(
-        "pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
-    )
+    pid_velocity_limit = config.getint("pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF)
 
     commissioned_velocity_p = config.getint(
         "commissioned_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
@@ -347,23 +324,17 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_l_count_micro = config.getint("identified_l_count_micro", None, minval=0)
     identified_lambda_us = config.getint("identified_lambda_us", None, minval=0)
     identified_theta_e_us = config.getint("identified_theta_e_us", None, minval=0)
-    identified_ringing_count = config.getint(
-        "identified_ringing_count", None, minval=0, maxval=255
-    )
+    identified_ringing_count = config.getint("identified_ringing_count", None, minval=0, maxval=255)
     identified_bandwidth_hz = config.getint("identified_bandwidth_hz", None, minval=0)
     identified_tau_e_us = config.getint("identified_tau_e_us", None, minval=0)
     identified_inner_warning_flags = config.getint(
         "identified_inner_warning_flags", None, minval=0, maxval=255
     )
-    identified_l_source = config.getint(
-        "identified_l_source", None, minval=0, maxval=255
-    )
+    identified_l_source = config.getint("identified_l_source", None, minval=0, maxval=255)
     identified_l_warning_flags = config.getint(
         "identified_l_warning_flags", None, minval=0, maxval=0xFFFF
     )
-    identified_l_frequency_millihz = config.getint(
-        "identified_l_frequency_millihz", None, minval=0
-    )
+    identified_l_frequency_millihz = config.getint("identified_l_frequency_millihz", None, minval=0)
     identified_l_reactance_count_ratio_milli = config.getint(
         "identified_l_reactance_count_ratio_milli", None, minval=0
     )
@@ -379,9 +350,7 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_l_saliency_permille = config.getint(
         "identified_l_saliency_permille", None, minval=0, maxval=1000
     )
-    identified_l_iq_mean_milli_count = config.getint(
-        "identified_l_iq_mean_milli_count", None
-    )
+    identified_l_iq_mean_milli_count = config.getint("identified_l_iq_mean_milli_count", None)
     identified_l_drift_permille = config.getint(
         "identified_l_drift_permille", None, minval=0, maxval=1000
     )
@@ -481,9 +450,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         "identified_current_torque_encoder_delta_counts", None, minval=0, maxval=65535
     )
 
-    identified_r_count_slope_milli = config.getint(
-        "identified_r_count_slope_milli", None
-    )
+    identified_r_count_slope_milli = config.getint("identified_r_count_slope_milli", None)
     identified_r_gain_path_count_slope_milli = config.getint(
         "identified_r_gain_path_count_slope_milli", None
     )
@@ -493,12 +460,8 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_r_axis1_count_slope_milli = config.getint(
         "identified_r_axis1_count_slope_milli", None
     )
-    identified_r_axis0_intercept_count = config.getint(
-        "identified_r_axis0_intercept_count", None
-    )
-    identified_r_axis1_intercept_count = config.getint(
-        "identified_r_axis1_intercept_count", None
-    )
+    identified_r_axis0_intercept_count = config.getint("identified_r_axis0_intercept_count", None)
+    identified_r_axis1_intercept_count = config.getint("identified_r_axis1_intercept_count", None)
     identified_r_axis0_rmse_permille = config.getint(
         "identified_r_axis0_rmse_permille", None, minval=0, maxval=1000
     )
@@ -529,12 +492,8 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_r_axis1_drift_permille = config.getint(
         "identified_r_axis1_drift_permille", None, minval=0, maxval=1000
     )
-    identified_r_status_flags_or = config.getint(
-        "identified_r_status_flags_or", None, minval=0
-    )
-    identified_r_warning_flags = config.getint(
-        "identified_r_warning_flags", None, minval=0
-    )
+    identified_r_status_flags_or = config.getint("identified_r_status_flags_or", None, minval=0)
+    identified_r_warning_flags = config.getint("identified_r_warning_flags", None, minval=0)
     identified_r_peak_abs_current_count = config.getint(
         "identified_r_peak_abs_current_count", None, minval=0, maxval=0xFFFF
     )
@@ -553,9 +512,7 @@ def parse_driver_config(config) -> FociDriverConfig:
     autotune_status = config.get("autotune_status", None)
 
     if not config.has_section(stepper_name):
-        raise config.error(
-            "[%s] cannot find stepper section for '%s'" % (name, stepper_name)
-        )
+        raise config.error(f"[{name}] cannot find stepper section for '{stepper_name}'")
     stepper_config = config.getsection(stepper_name)
     microsteps = stepper_config.getint("microsteps")
     full_steps = stepper_config.getint("full_steps_per_rotation", 200)
@@ -563,9 +520,9 @@ def parse_driver_config(config) -> FociDriverConfig:
     planner_steps_per_rev = microsteps * full_steps
     if not 1 <= planner_steps_per_rev <= 16_777_216:
         raise config.error(
-            "[%s] stepper %s planner_steps_per_rev=%d"
-            " (full_steps_per_rotation=%d * microsteps=%d) must be in 1..16777216"
-            % (name, stepper_name, planner_steps_per_rev, full_steps, microsteps)
+            f"[{name}] stepper {stepper_name} planner_steps_per_rev="
+            f"{int(planner_steps_per_rev)} (full_steps_per_rotation={int(full_steps)} * "
+            f"microsteps={int(microsteps)}) must be in 1..16777216"
         )
     step_pin = stepper_config.get("step_pin")
     ppins = printer.lookup_object("pins")
@@ -573,8 +530,8 @@ def parse_driver_config(config) -> FociDriverConfig:
     step_pin_name = pin_params["pin"]
     if step_pin_name not in STEP_PINS:
         raise config.error(
-            "[%s] step_pin '%s' is not a FOCI STEP pin (expected one"
-            " of: %s)" % (name, step_pin_name, ", ".join(sorted(STEP_PINS)))
+            f"[{name}] step_pin '{step_pin_name}' is not a FOCI STEP pin (expected one of: "
+            f"{', '.join(sorted(STEP_PINS))})"
         )
 
     return FociDriverConfig(
@@ -644,15 +601,9 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_l_source=identified_l_source,
         identified_l_warning_flags=identified_l_warning_flags,
         identified_l_frequency_millihz=identified_l_frequency_millihz,
-        identified_l_reactance_count_ratio_milli=(
-            identified_l_reactance_count_ratio_milli
-        ),
-        identified_l_d_reactance_count_ratio_milli=(
-            identified_l_d_reactance_count_ratio_milli
-        ),
-        identified_l_q_reactance_count_ratio_milli=(
-            identified_l_q_reactance_count_ratio_milli
-        ),
+        identified_l_reactance_count_ratio_milli=(identified_l_reactance_count_ratio_milli),
+        identified_l_d_reactance_count_ratio_milli=(identified_l_d_reactance_count_ratio_milli),
+        identified_l_q_reactance_count_ratio_milli=(identified_l_q_reactance_count_ratio_milli),
         identified_l_saliency_status=identified_l_saliency_status,
         identified_l_saliency_permille=identified_l_saliency_permille,
         identified_l_iq_mean_milli_count=identified_l_iq_mean_milli_count,
@@ -663,17 +614,13 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_j_eff=identified_j_eff,
         identified_b_eff=identified_b_eff,
         identified_current_gains_source=identified_current_gains_source,
-        identified_current_candidate_gains_source=(
-            identified_current_candidate_gains_source
-        ),
+        identified_current_candidate_gains_source=(identified_current_candidate_gains_source),
         identified_axis_split_source=identified_axis_split_source,
         identified_current_candidate_axis_split_source=(
             identified_current_candidate_axis_split_source
         ),
         identified_current_gains_tier=identified_current_gains_tier,
-        identified_current_candidate_gains_tier=(
-            identified_current_candidate_gains_tier
-        ),
+        identified_current_candidate_gains_tier=(identified_current_candidate_gains_tier),
         identified_current_measured_axis_split_permille=(
             identified_current_measured_axis_split_permille
         ),
@@ -702,9 +649,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_current_torque_validation_sample_count=(
             identified_current_torque_validation_sample_count
         ),
-        identified_current_retry_budget_exhausted=(
-            identified_current_retry_budget_exhausted
-        ),
+        identified_current_retry_budget_exhausted=(identified_current_retry_budget_exhausted),
         identified_current_failure_reason=identified_current_failure_reason,
         identified_current_flux_response_min_permille=(
             identified_current_flux_response_min_permille
@@ -712,16 +657,12 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_current_torque_response_min_permille=(
             identified_current_torque_response_min_permille
         ),
-        identified_current_flux_encoder_delta_counts=(
-            identified_current_flux_encoder_delta_counts
-        ),
+        identified_current_flux_encoder_delta_counts=(identified_current_flux_encoder_delta_counts),
         identified_current_torque_encoder_delta_counts=(
             identified_current_torque_encoder_delta_counts
         ),
         identified_r_count_slope_milli=identified_r_count_slope_milli,
-        identified_r_gain_path_count_slope_milli=(
-            identified_r_gain_path_count_slope_milli
-        ),
+        identified_r_gain_path_count_slope_milli=(identified_r_gain_path_count_slope_milli),
         identified_r_axis0_count_slope_milli=identified_r_axis0_count_slope_milli,
         identified_r_axis1_count_slope_milli=identified_r_axis1_count_slope_milli,
         identified_r_axis0_intercept_count=identified_r_axis0_intercept_count,
@@ -730,18 +671,10 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_r_axis1_rmse_permille=identified_r_axis1_rmse_permille,
         identified_r_selected_mask_axis0=identified_r_selected_mask_axis0,
         identified_r_selected_mask_axis1=identified_r_selected_mask_axis1,
-        identified_r_axis0_signed_count_slope_milli=(
-            identified_r_axis0_signed_count_slope_milli
-        ),
-        identified_r_axis1_signed_count_slope_milli=(
-            identified_r_axis1_signed_count_slope_milli
-        ),
-        identified_r_axis0_signed_asymmetry_permille=(
-            identified_r_axis0_signed_asymmetry_permille
-        ),
-        identified_r_axis1_signed_asymmetry_permille=(
-            identified_r_axis1_signed_asymmetry_permille
-        ),
+        identified_r_axis0_signed_count_slope_milli=(identified_r_axis0_signed_count_slope_milli),
+        identified_r_axis1_signed_count_slope_milli=(identified_r_axis1_signed_count_slope_milli),
+        identified_r_axis0_signed_asymmetry_permille=(identified_r_axis0_signed_asymmetry_permille),
+        identified_r_axis1_signed_asymmetry_permille=(identified_r_axis1_signed_asymmetry_permille),
         identified_r_axis0_drift_permille=identified_r_axis0_drift_permille,
         identified_r_axis1_drift_permille=identified_r_axis1_drift_permille,
         identified_r_status_flags_or=identified_r_status_flags_or,

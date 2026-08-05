@@ -1,11 +1,10 @@
 """Tests for FOCI_SELFTEST streaming result handling and report formatting."""
 
 import pytest
-
 from klipper_foci.commissioning import format_commission_detail
 from klipper_foci.selftest import SELFTEST_STAGES, format_selftest_value
 
-from tests.mocks import CommandError, make_driver, MockCommand, MockGCmd
+from tests.mocks import CommandError, MockCommand, MockGCmd, make_driver
 
 
 def test_selftest_result_handler_appends_to_results():

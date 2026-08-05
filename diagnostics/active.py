@@ -82,51 +82,32 @@ class ActiveDiagnostics:
         flags = fragments.get("flags", {})
         motion = fragments.get("motion", {})
         restore = fragments.get("restore", {})
-        missing = ",".join(
-            name for name in ("flags", "motion", "restore") if name not in fragments
-        )
+        missing = ",".join(name for name in ("flags", "motion", "restore") if name not in fragments)
         msg = (
-            "FOCI %s velocity-limit-latch: status=%d limit=%d p=%d i=%d target_rpm=%d"
-            " limit_readback=%d gains_readback=0x%08x target_readback=%d"
-            " active_status=0x%08x post_pulse_status=0x%08x"
-            " delayed_status=0x%08x post_clear_status=0x%08x"
-            " pulse_us=%d delayed_us=%d encoder_before=%d encoder_after=%d"
-            " encoder_delta=%d saved_limit=%d restored_limit=%d"
-            " saved_gains=0x%08x restored_gains=0x%08x"
-            " saved_target=%d restored_target=%d"
-            " saved_mode=0x%08x restored_mode=0x%08x"
-            " restore_mask=0x%02x power_stage_tripped=%d missing=%s"
-            % (
-                self.driver.name,
-                params["status"],
-                params["test_limit"],
-                params["p_raw"],
-                params["i_raw"],
-                params["target_velocity_rpm"],
-                params["limit_readback"],
-                params["gains_readback"],
-                params["target_readback"],
-                flags.get("active_status_flags", 0),
-                flags.get("post_pulse_status_flags", 0),
-                flags.get("delayed_status_flags", 0),
-                flags.get("post_clear_status_flags", 0),
-                motion.get("pulse_elapsed_us", 0),
-                motion.get("delayed_read_elapsed_us", 0),
-                motion.get("encoder_before", 0),
-                motion.get("encoder_after", 0),
-                motion.get("encoder_delta", 0),
-                restore.get("saved_limit", 0),
-                restore.get("restored_limit_readback", 0),
-                restore.get("saved_gains", 0),
-                restore.get("restored_gains_readback", 0),
-                restore.get("saved_target", 0),
-                restore.get("restored_target_readback", 0),
-                restore.get("saved_mode", 0),
-                restore.get("restored_mode_readback", 0),
-                restore.get("restore_verified_mask", 0),
-                params["power_stage_tripped"],
-                missing or "none",
-            )
+            f"FOCI {self.driver.name} velocity-limit-latch: status={int(params['status'])} limit="
+            f"{int(params['test_limit'])} p={int(params['p_raw'])} i={int(params['i_raw'])} "
+            f"target_rpm={int(params['target_velocity_rpm'])} limit_readback="
+            f"{int(params['limit_readback'])} gains_readback=0x{params['gains_readback']:08x} "
+            f"target_readback={int(params['target_readback'])} active_status=0x"
+            f"{flags.get('active_status_flags', 0):08x} post_pulse_status=0x"
+            f"{flags.get('post_pulse_status_flags', 0):08x} delayed_status=0x"
+            f"{flags.get('delayed_status_flags', 0):08x} post_clear_status=0x"
+            f"{flags.get('post_clear_status_flags', 0):08x} pulse_us="
+            f"{int(motion.get('pulse_elapsed_us', 0))} delayed_us="
+            f"{int(motion.get('delayed_read_elapsed_us', 0))} encoder_before="
+            f"{int(motion.get('encoder_before', 0))} encoder_after="
+            f"{int(motion.get('encoder_after', 0))} encoder_delta="
+            f"{int(motion.get('encoder_delta', 0))} saved_limit="
+            f"{int(restore.get('saved_limit', 0))} restored_limit="
+            f"{int(restore.get('restored_limit_readback', 0))} saved_gains=0x"
+            f"{restore.get('saved_gains', 0):08x} restored_gains=0x"
+            f"{restore.get('restored_gains_readback', 0):08x} saved_target="
+            f"{int(restore.get('saved_target', 0))} restored_target="
+            f"{int(restore.get('restored_target_readback', 0))} saved_mode=0x"
+            f"{restore.get('saved_mode', 0):08x} restored_mode=0x"
+            f"{restore.get('restored_mode_readback', 0):08x} restore_mask=0x"
+            f"{restore.get('restore_verified_mask', 0):02x} power_stage_tripped="
+            f"{int(params['power_stage_tripped'])} missing={missing or 'none'}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -135,8 +116,8 @@ class ActiveDiagnostics:
         self.velocity_limit_latch_cache.pop(self.driver.oid, None)
         self.driver.protocol.run_velocity_limit_latch_test(channel=self.driver.channel)
         gcmd.respond_info(
-            "FOCI %s velocity-limit-latch requested: channel=%d"
-            % (self.driver.name, self.driver.channel)
+            f"FOCI {self.driver.name} velocity-limit-latch requested: channel="
+            f"{int(self.driver.channel)}"
         )
 
     def handle_current_step_result(self, params: dict) -> None:
@@ -144,58 +125,29 @@ class ActiveDiagnostics:
         axis = self.current_step_pending_axis or "torque"
         self.current_step_pending_axis = None
         msg = (
-            "FOCI %s current step: axis=%s status=%d target=%d actual=%d"
-            " before=%d after=%d flux=%d iq=%d id=%d"
-            " uq_limited=%d ud_limited=%d"
-            " enc_before=%d enc_after=%d enc_delta=%d adc_vm_raw=%d"
-            % (
-                self.driver.name,
-                axis,
-                params["status"],
-                params["target"],
-                params["torque_during"],
-                params["torque_before"],
-                params["torque_after"],
-                params["flux_during"],
-                params["iq_during"],
-                params["id_during"],
-                params["uq_limited"],
-                params["ud_limited"],
-                params["encoder_before"],
-                params["encoder_after"],
-                params["encoder_delta"],
-                params["adc_vm_raw"],
-            )
+            f"FOCI {self.driver.name} current step: axis={axis} status={int(params['status'])} "
+            f"target={int(params['target'])} actual={int(params['torque_during'])} before="
+            f"{int(params['torque_before'])} after={int(params['torque_after'])} flux="
+            f"{int(params['flux_during'])} iq={int(params['iq_during'])} id="
+            f"{int(params['id_during'])} uq_limited={int(params['uq_limited'])} ud_limited="
+            f"{int(params['ud_limited'])} enc_before={int(params['encoder_before'])} enc_after="
+            f"{int(params['encoder_after'])} enc_delta={int(params['encoder_delta'])} adc_vm_raw="
+            f"{int(params['adc_vm_raw'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
     def handle_current_vector_step_result(self, params: dict) -> None:
         """Handle foci_current_vector_step_result from firmware."""
         msg = (
-            "FOCI %s current vector step: status=%d"
-            " torque_target=%d flux_target=%d"
-            " actual_torque=%d actual_flux=%d"
-            " before=%d after=%d iq=%d id=%d"
-            " uq_limited=%d ud_limited=%d"
-            " enc_before=%d enc_after=%d enc_delta=%d adc_vm_raw=%d"
-            % (
-                self.driver.name,
-                params["status"],
-                params["torque_target"],
-                params["flux_target"],
-                params["torque_during"],
-                params["flux_during"],
-                params["torque_before"],
-                params["torque_after"],
-                params["iq_during"],
-                params["id_during"],
-                params["uq_limited"],
-                params["ud_limited"],
-                params["encoder_before"],
-                params["encoder_after"],
-                params["encoder_delta"],
-                params["adc_vm_raw"],
-            )
+            f"FOCI {self.driver.name} current vector step: status={int(params['status'])} "
+            f"torque_target={int(params['torque_target'])} flux_target={int(params['flux_target'])}"
+            f" actual_torque={int(params['torque_during'])} actual_flux="
+            f"{int(params['flux_during'])} before={int(params['torque_before'])} after="
+            f"{int(params['torque_after'])} iq={int(params['iq_during'])} id="
+            f"{int(params['id_during'])} uq_limited={int(params['uq_limited'])} ud_limited="
+            f"{int(params['ud_limited'])} enc_before={int(params['encoder_before'])} enc_after="
+            f"{int(params['encoder_after'])} enc_delta={int(params['encoder_delta'])} adc_vm_raw="
+            f"{int(params['adc_vm_raw'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -208,61 +160,30 @@ class ActiveDiagnostics:
             params["voltage_limit"],
         )
         detail = self.current_torque_sample_details.pop(detail_key, {})
-        label = self.current_torque_sample_labels.pop(
-            detail_key, "current torque sample"
-        )
+        label = self.current_torque_sample_labels.pop(detail_key, "current torque sample")
         msg = (
-            "FOCI %s %s: status=%d"
-            " target=%d flux_target=%d sample_delay_ms=%d voltage_limit=%d actual=%d"
-            " before=%d after=%d flux=%d iq=%d id=%d"
-            " uq_limited=%d ud_limited=%d"
-            " enc_before=%d enc_sample=%d enc_after=%d"
-            " enc_delta_sample=%d enc_delta_after=%d adc_vm_raw=%d"
-            " pidin_target_torque=%d pidin_target_flux=%d"
-            " pidout_target_torque=%d pidout_target_flux=%d"
-            " pid_torque_target_monitor=%d"
-            " torque_error=%d flux_error=%d"
-            " torque_error_sum=%d flux_error_sum=%d"
-            " uq_prelimit=%d ud_prelimit=%d"
-            " ff_velocity=%d ff_torque=%d"
-            " status_flags=0x%08x"
-            % (
-                self.driver.name,
-                label,
-                params["status"],
-                params["target"],
-                params.get("flux_target", 0),
-                params["sample_delay_ms"],
-                params["voltage_limit"],
-                params["torque_sample"],
-                params["torque_before"],
-                params["torque_after"],
-                params["flux_sample"],
-                params["iq_sample"],
-                params["id_sample"],
-                params["uq_limited"],
-                params["ud_limited"],
-                params["encoder_before"],
-                params["encoder_sample"],
-                params["encoder_after"],
-                params["encoder_delta_sample"],
-                params["encoder_delta_after"],
-                params["adc_vm_raw"],
-                params.get("pidin_target_torque", 0),
-                params.get("pidin_target_flux", 0),
-                params.get("pidout_target_torque", 0),
-                params.get("pidout_target_flux", 0),
-                params.get("pid_torque_target_monitor", 0),
-                detail.get("torque_error", 0),
-                detail.get("flux_error", 0),
-                detail.get("torque_error_sum", 0),
-                detail.get("flux_error_sum", 0),
-                detail.get("uq_prelimit", 0),
-                detail.get("ud_prelimit", 0),
-                detail.get("ff_velocity", 0),
-                detail.get("ff_torque", 0),
-                params.get("status_flags", 0),
-            )
+            f"FOCI {self.driver.name} {label}: status={int(params['status'])} target="
+            f"{int(params['target'])} flux_target={int(params.get('flux_target', 0))} "
+            f"sample_delay_ms={int(params['sample_delay_ms'])} voltage_limit="
+            f"{int(params['voltage_limit'])} actual={int(params['torque_sample'])} before="
+            f"{int(params['torque_before'])} after={int(params['torque_after'])} flux="
+            f"{int(params['flux_sample'])} iq={int(params['iq_sample'])} id="
+            f"{int(params['id_sample'])} uq_limited={int(params['uq_limited'])} ud_limited="
+            f"{int(params['ud_limited'])} enc_before={int(params['encoder_before'])} enc_sample="
+            f"{int(params['encoder_sample'])} enc_after={int(params['encoder_after'])} "
+            f"enc_delta_sample={int(params['encoder_delta_sample'])} enc_delta_after="
+            f"{int(params['encoder_delta_after'])} adc_vm_raw={int(params['adc_vm_raw'])} "
+            f"pidin_target_torque={int(params.get('pidin_target_torque', 0))} pidin_target_flux="
+            f"{int(params.get('pidin_target_flux', 0))} pidout_target_torque="
+            f"{int(params.get('pidout_target_torque', 0))} pidout_target_flux="
+            f"{int(params.get('pidout_target_flux', 0))} pid_torque_target_monitor="
+            f"{int(params.get('pid_torque_target_monitor', 0))} torque_error="
+            f"{int(detail.get('torque_error', 0))} flux_error={int(detail.get('flux_error', 0))} "
+            f"torque_error_sum={int(detail.get('torque_error_sum', 0))} flux_error_sum="
+            f"{int(detail.get('flux_error_sum', 0))} uq_prelimit="
+            f"{int(detail.get('uq_prelimit', 0))} ud_prelimit={int(detail.get('ud_prelimit', 0))} "
+            f"ff_velocity={int(detail.get('ff_velocity', 0))} ff_torque="
+            f"{int(detail.get('ff_torque', 0))} status_flags=0x{params.get('status_flags', 0):08x}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -279,48 +200,22 @@ class ActiveDiagnostics:
     def handle_voltage_step_result(self, params: dict) -> None:
         """Handle foci_voltage_step_result from firmware."""
         msg = (
-            "FOCI %s voltage step: status=%d"
-            " uq_ext=%d ud_ext=%d sample_delay_ms=%d actual=%d"
-            " before=%d after=%d flux=%d iq=%d id=%d"
-            " uq_limited=%d ud_limited=%d"
-            " uux_sample=%d uwy_sample=%d"
-            " pwm_ux_sample=%d pwm_wy_sample=%d"
-            " pwm_sv_chop=0x%08x pwm_bbm=0x%08x pwm_maxcnt=%d"
-            " phi_e_sample=%d phi_m_sample=%d"
-            " enc_before=%d enc_sample=%d enc_after=%d"
-            " enc_delta_sample=%d enc_delta_after=%d adc_vm_raw=%d"
-            " status_flags=0x%08x"
-            % (
-                self.driver.name,
-                params["status"],
-                params["uq_ext"],
-                params["ud_ext"],
-                params["sample_delay_ms"],
-                params["torque_sample"],
-                params["torque_before"],
-                params["torque_after"],
-                params["flux_sample"],
-                params["iq_sample"],
-                params["id_sample"],
-                params["uq_limited"],
-                params["ud_limited"],
-                params["uux_sample"],
-                params["uwy_sample"],
-                params["pwm_ux_sample"],
-                params["pwm_wy_sample"],
-                params["pwm_sv_chop"],
-                params["pwm_bbm"],
-                params["pwm_maxcnt"],
-                params["phi_e_sample"],
-                params["phi_m_sample"],
-                params["encoder_before"],
-                params["encoder_sample"],
-                params["encoder_after"],
-                params["encoder_delta_sample"],
-                params["encoder_delta_after"],
-                params["adc_vm_raw"],
-                params["status_flags"],
-            )
+            f"FOCI {self.driver.name} voltage step: status={int(params['status'])} uq_ext="
+            f"{int(params['uq_ext'])} ud_ext={int(params['ud_ext'])} sample_delay_ms="
+            f"{int(params['sample_delay_ms'])} actual={int(params['torque_sample'])} before="
+            f"{int(params['torque_before'])} after={int(params['torque_after'])} flux="
+            f"{int(params['flux_sample'])} iq={int(params['iq_sample'])} id="
+            f"{int(params['id_sample'])} uq_limited={int(params['uq_limited'])} ud_limited="
+            f"{int(params['ud_limited'])} uux_sample={int(params['uux_sample'])} uwy_sample="
+            f"{int(params['uwy_sample'])} pwm_ux_sample={int(params['pwm_ux_sample'])} "
+            f"pwm_wy_sample={int(params['pwm_wy_sample'])} pwm_sv_chop=0x"
+            f"{params['pwm_sv_chop']:08x} pwm_bbm=0x{params['pwm_bbm']:08x} pwm_maxcnt="
+            f"{int(params['pwm_maxcnt'])} phi_e_sample={int(params['phi_e_sample'])} phi_m_sample="
+            f"{int(params['phi_m_sample'])} enc_before={int(params['encoder_before'])} enc_sample="
+            f"{int(params['encoder_sample'])} enc_after={int(params['encoder_after'])} "
+            f"enc_delta_sample={int(params['encoder_delta_sample'])} enc_delta_after="
+            f"{int(params['encoder_delta_after'])} adc_vm_raw={int(params['adc_vm_raw'])} "
+            f"status_flags=0x{params['status_flags']:08x}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -348,9 +243,8 @@ class ActiveDiagnostics:
         self.current_step_pending_axis = axis_name
 
         gcmd.respond_info(
-            "FOCI %s current-step requested: axis=%s target=%d"
-            " duration_ms=%d voltage_limit=%d"
-            % (self.driver.name, axis_name, target, duration_ms, voltage_limit)
+            f"FOCI {self.driver.name} current-step requested: axis={axis_name} target="
+            f"{int(target)} duration_ms={int(duration_ms)} voltage_limit={int(voltage_limit)}"
         )
 
     def current_vector_step_test(self, gcmd) -> None:
@@ -373,15 +267,9 @@ class ActiveDiagnostics:
         )
 
         gcmd.respond_info(
-            "FOCI %s current-vector-step requested:"
-            " torque_target=%d flux_target=%d duration_ms=%d voltage_limit=%d"
-            % (
-                self.driver.name,
-                torque_target,
-                flux_target,
-                duration_ms,
-                voltage_limit,
-            )
+            f"FOCI {self.driver.name} current-vector-step requested: torque_target="
+            f"{int(torque_target)} flux_target={int(flux_target)} duration_ms="
+            f"{int(duration_ms)} voltage_limit={int(voltage_limit)}"
         )
 
     def current_torque_sample_test(self, gcmd) -> None:
@@ -414,15 +302,9 @@ class ActiveDiagnostics:
         )
 
         gcmd.respond_info(
-            "FOCI %s current-torque-sample requested:"
-            " target=%d flux_target=%d sample_delay_ms=%d voltage_limit=%d"
-            % (
-                self.driver.name,
-                target,
-                flux_target,
-                sample_delay_ms,
-                voltage_limit,
-            )
+            f"FOCI {self.driver.name} current-torque-sample requested: target={int(target)} "
+            f"flux_target={int(flux_target)} sample_delay_ms={int(sample_delay_ms)} "
+            f"voltage_limit={int(voltage_limit)}"
         )
 
     def position_torque_offset_test(self, gcmd) -> None:
@@ -448,9 +330,8 @@ class ActiveDiagnostics:
         )
 
         gcmd.respond_info(
-            "FOCI %s position-torque-offset requested:"
-            " target=%d sample_delay_ms=%d voltage_limit=%d"
-            % (self.driver.name, target, sample_delay_ms, voltage_limit)
+            f"FOCI {self.driver.name} position-torque-offset requested: target={int(target)} "
+            f"sample_delay_ms={int(sample_delay_ms)} voltage_limit={int(voltage_limit)}"
         )
 
     def handle_resistance_profile(self, params: dict) -> None:
@@ -460,23 +341,13 @@ class ActiveDiagnostics:
         exactly as reported. The host performs no interpretation.
         """
         msg = (
-            "FOCI %s resistance profile:"
-            " pwm_maxcnt=%d bbm_h=%d bbm_l=%d"
-            " dsadc_mdec_a=%d dsadc_mdec_b=%d"
-            " linear_current_threshold_count=%d encoder_move_warn_counts=%d"
-            " status_flags_warn_mask=0x%08x scale_metadata_validated=%d"
-            % (
-                self.driver.name,
-                params["pwm_maxcnt"],
-                params["bbm_h"],
-                params["bbm_l"],
-                params["dsadc_mdec_a"],
-                params["dsadc_mdec_b"],
-                params["linear_current_threshold_count"],
-                params["encoder_move_warn_counts"],
-                params["status_flags_warn_mask"],
-                params["scale_metadata_validated"],
-            )
+            f"FOCI {self.driver.name} resistance profile: pwm_maxcnt={int(params['pwm_maxcnt'])} "
+            f"bbm_h={int(params['bbm_h'])} bbm_l={int(params['bbm_l'])} dsadc_mdec_a="
+            f"{int(params['dsadc_mdec_a'])} dsadc_mdec_b={int(params['dsadc_mdec_b'])} "
+            f"linear_current_threshold_count={int(params['linear_current_threshold_count'])} "
+            f"encoder_move_warn_counts={int(params['encoder_move_warn_counts'])} "
+            f"status_flags_warn_mask=0x{params['status_flags_warn_mask']:08x} "
+            f"scale_metadata_validated={int(params['scale_metadata_validated'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -495,38 +366,23 @@ class ActiveDiagnostics:
             "status_flags_or": params["status_flags_or"],
             "warning_flags": params["warning_flags"],
             "peak_abs_current_count": params["peak_abs_current_count"],
-            "max_abs_steady_mean_current_count": params[
-                "max_abs_steady_mean_current_count"
-            ],
+            "max_abs_steady_mean_current_count": params["max_abs_steady_mean_current_count"],
             "current_ceiling_count": params["current_ceiling_count"],
             "power_stage_tripped": params["power_stage_tripped"],
         }
         msg = (
-            "FOCI %s resistance run: status=%d status_name=%s"
-            " selected_r_count_slope_milli=%d warning_flags=%d"
-            " status_flags_or=0x%08x peak_abs_current_count=%d"
-            " max_abs_steady_mean_current_count=%d current_ceiling_count=%d"
-            " power_stage_tripped=%d pwm_maxcnt_readback=%d"
-            " bbm_readback=0x%04x dsadc_mdec_readback=0x%08x"
-            " pwm_sv_chop_readback=0x%08x"
-            % (
-                self.driver.name,
-                params["status"],
-                format_commission_error_detail_name(params["status"])
-                if params["status"]
-                else "ok",
-                params["selected_r_count_slope_milli"],
-                params["warning_flags"],
-                params["status_flags_or"],
-                params["peak_abs_current_count"],
-                params["max_abs_steady_mean_current_count"],
-                params["current_ceiling_count"],
-                params["power_stage_tripped"],
-                params["pwm_maxcnt_readback"],
-                params["bbm_readback"],
-                params["dsadc_mdec_readback"],
-                params["pwm_sv_chop_readback"],
-            )
+            f"FOCI {self.driver.name} resistance run: status={int(params['status'])} status_name="
+            f"{format_commission_error_detail_name(params['status']) if params['status'] else 'ok'}"
+            f" selected_r_count_slope_milli={int(params['selected_r_count_slope_milli'])} "
+            f"warning_flags={int(params['warning_flags'])} status_flags_or=0x"
+            f"{params['status_flags_or']:08x} peak_abs_current_count="
+            f"{int(params['peak_abs_current_count'])} max_abs_steady_mean_current_count="
+            f"{int(params['max_abs_steady_mean_current_count'])} current_ceiling_count="
+            f"{int(params['current_ceiling_count'])} power_stage_tripped="
+            f"{int(params['power_stage_tripped'])} pwm_maxcnt_readback="
+            f"{int(params['pwm_maxcnt_readback'])} bbm_readback=0x{params['bbm_readback']:04x} "
+            f"dsadc_mdec_readback=0x{params['dsadc_mdec_readback']:08x} pwm_sv_chop_readback=0x"
+            f"{params['pwm_sv_chop_readback']:08x}"
         )
         gcode = self.driver.printer.lookup_object("gcode")
         gcode.respond_info(msg)
@@ -538,8 +394,8 @@ class ActiveDiagnostics:
             self.driver.state.is_calibrated = False
             self.driver.homing.invalidate_homing()
             gcode.respond_info(
-                "FOCI %s resistance containment: firmware disabled the motor; "
-                "calibration was cleared and rehoming is required" % self.driver.name
+                f"FOCI {self.driver.name} resistance containment: firmware disabled the motor; "
+                f"calibration was cleared and rehoming is required"
             )
 
     def handle_resistance_axis(self, params: dict) -> None:
@@ -553,7 +409,7 @@ class ActiveDiagnostics:
         not arrival order) so a subsequent commission completion can fold
         them into the persisted result; see pop_resistance_cache().
         """
-        axis_key = "axis%d" % params["electrical_axis"]
+        axis_key = f"axis{int(params['electrical_axis'])}"
         self.resistance_cache.setdefault(params["oid"], {})[axis_key] = {
             "r_count_slope_milli": params["r_count_slope_milli"],
             "intercept_count": params.get("intercept_count", 0),
@@ -564,27 +420,17 @@ class ActiveDiagnostics:
             "drift_permille": params.get("drift_permille", 0),
         }
         msg = (
-            "FOCI %s resistance axis: electrical_axis=%d phi_e_ext=%d"
-            " count_slope=%d intercept_count=%d rmse_permille=%d"
-            " selected_mask=0x%04x excluded_point_mask=0x%04x"
-            " selected_count=%d signed_count_slope=%d"
-            " signed_asymmetry_permille=%d drift_permille=%d"
-            " warning_flags=%d"
-            % (
-                self.driver.name,
-                params["electrical_axis"],
-                params["phi_e_ext"],
-                params["r_count_slope_milli"],
-                params.get("intercept_count", 0),
-                params.get("rmse_permille", 0),
-                params.get("selected_mask", 0),
-                params.get("excluded_point_mask", 0),
-                params.get("selected_count", 0),
-                params.get("signed_count_slope_milli", 0),
-                params.get("signed_asymmetry_permille", 0),
-                params.get("drift_permille", 0),
-                params["warning_flags"],
-            )
+            f"FOCI {self.driver.name} resistance axis: electrical_axis="
+            f"{int(params['electrical_axis'])} phi_e_ext={int(params['phi_e_ext'])} count_slope="
+            f"{int(params['r_count_slope_milli'])} intercept_count="
+            f"{int(params.get('intercept_count', 0))} rmse_permille="
+            f"{int(params.get('rmse_permille', 0))} selected_mask=0x"
+            f"{params.get('selected_mask', 0):04x} excluded_point_mask=0x"
+            f"{params.get('excluded_point_mask', 0):04x} selected_count="
+            f"{int(params.get('selected_count', 0))} signed_count_slope="
+            f"{int(params.get('signed_count_slope_milli', 0))} signed_asymmetry_permille="
+            f"{int(params.get('signed_asymmetry_permille', 0))} drift_permille="
+            f"{int(params.get('drift_permille', 0))} warning_flags={int(params['warning_flags'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -602,32 +448,20 @@ class ActiveDiagnostics:
         if samples["flux"] or samples["torque"]:
             self._last_current_loop_samples[oid] = samples
         msg = (
-            "FOCI %s current-loop run: status=%d source=%d tier=%d split_source=%d"
-            " measured_split=%d applied_split=%d clamped=%d axes=%d"
-            " retry_exhausted=%d failure_reason=%d/%s"
-            " candidate_source=%d candidate_tier=%d candidate_attempt=%d"
-            " candidate_flux=%d/%d candidate_torque=%d/%d"
-            % (
-                self.driver.name,
-                params["status"],
-                params["gains_source"],
-                params["gains_tier"],
-                params["axis_split_source"],
-                params["measured_axis_split_permille"],
-                params["applied_axis_split_permille"],
-                params["axis_split_clamped"],
-                params["current_validation_axes"],
-                params["retry_budget_exhausted"],
-                params["failure_reason"],
-                CURRENT_LOOP_FAILURE_NAMES.get(params["failure_reason"], "unknown"),
-                params["candidate_gains_source"],
-                params["candidate_gains_tier"],
-                params["candidate_attempt"],
-                params["candidate_flux_p"],
-                params["candidate_flux_i"],
-                params["candidate_torque_p"],
-                params["candidate_torque_i"],
-            )
+            f"FOCI {self.driver.name} current-loop run: status={int(params['status'])} source="
+            f"{int(params['gains_source'])} tier={int(params['gains_tier'])} split_source="
+            f"{int(params['axis_split_source'])} measured_split="
+            f"{int(params['measured_axis_split_permille'])} applied_split="
+            f"{int(params['applied_axis_split_permille'])} clamped="
+            f"{int(params['axis_split_clamped'])} axes={int(params['current_validation_axes'])} "
+            f"retry_exhausted={int(params['retry_budget_exhausted'])} failure_reason="
+            f"{int(params['failure_reason'])}/"
+            f"{CURRENT_LOOP_FAILURE_NAMES.get(params['failure_reason'], 'unknown')} "
+            f"candidate_source={int(params['candidate_gains_source'])} candidate_tier="
+            f"{int(params['candidate_gains_tier'])} candidate_attempt="
+            f"{int(params['candidate_attempt'])} candidate_flux={int(params['candidate_flux_p'])}/"
+            f"{int(params['candidate_flux_i'])} candidate_torque="
+            f"{int(params['candidate_torque_p'])}/{int(params['candidate_torque_i'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -638,14 +472,9 @@ class ActiveDiagnostics:
         cached = self.current_loop_cache.setdefault(oid, {})
         cached["filters"] = filters
         msg = (
-            "FOCI %s current-loop filters: velocity=%d torque=%d position=%d flux=%d"
-            % (
-                self.driver.name,
-                params["velocity_filter_hz"],
-                params["torque_filter_hz"],
-                params["position_filter_hz"],
-                params["flux_filter_hz"],
-            )
+            f"FOCI {self.driver.name} current-loop filters: velocity="
+            f"{int(params['velocity_filter_hz'])} torque={int(params['torque_filter_hz'])} "
+            f"position={int(params['position_filter_hz'])} flux={int(params['flux_filter_hz'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -653,30 +482,17 @@ class ActiveDiagnostics:
         """Handle foci_current_loop_hold from firmware."""
         self.last_current_loop_hold[params["oid"]] = dict(params)
         msg = (
-            "FOCI %s current-loop hold: hold_status=%d warnings=%d"
-            " samples=%d elapsed_us=%d period_us=%d"
-            " pos_span=%d pos_drift=%d"
-            " torque_rms=%d torque_span=%d torque_crossings=%d"
-            " flux_rms=%d flux_span=%d flux_crossings=%d"
-            " status_or=0x%08x actionable_status_count=%d"
-            % (
-                self.driver.name,
-                params["hold_status"],
-                params["warning_flags"],
-                params["sample_count"],
-                params["elapsed_us"],
-                params["requested_sample_period_us"],
-                params["position_span_count"],
-                params["position_drift_count"],
-                params["torque_rms_count"],
-                params["torque_peak_to_peak_count"],
-                params["torque_crossing_count"],
-                params["flux_rms_count"],
-                params["flux_peak_to_peak_count"],
-                params["flux_crossing_count"],
-                params["status_flags_or"],
-                params["actionable_status_count"],
-            )
+            f"FOCI {self.driver.name} current-loop hold: hold_status={int(params['hold_status'])} "
+            f"warnings={int(params['warning_flags'])} samples={int(params['sample_count'])} "
+            f"elapsed_us={int(params['elapsed_us'])} period_us="
+            f"{int(params['requested_sample_period_us'])} pos_span="
+            f"{int(params['position_span_count'])} pos_drift={int(params['position_drift_count'])} "
+            f"torque_rms={int(params['torque_rms_count'])} torque_span="
+            f"{int(params['torque_peak_to_peak_count'])} torque_crossings="
+            f"{int(params['torque_crossing_count'])} flux_rms={int(params['flux_rms_count'])} "
+            f"flux_span={int(params['flux_peak_to_peak_count'])} flux_crossings="
+            f"{int(params['flux_crossing_count'])} status_or=0x{params['status_flags_or']:08x} "
+            f"actionable_status_count={int(params['actionable_status_count'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -684,18 +500,10 @@ class ActiveDiagnostics:
         """Handle foci_closed_loop_entry from firmware."""
         self.last_closed_loop_entry[params["oid"]] = dict(params)
         msg = (
-            "FOCI %s closed-loop entry: entry_status=%d"
-            " position_1=%d position_2=%d drift_count=%d"
-            " threshold_count=%d runaway=%d"
-            % (
-                self.driver.name,
-                params["entry_status"],
-                params["position_1"],
-                params["position_2"],
-                params["drift_count"],
-                params["threshold_count"],
-                params["runaway"],
-            )
+            f"FOCI {self.driver.name} closed-loop entry: entry_status={int(params['entry_status'])}"
+            f" position_1={int(params['position_1'])} position_2={int(params['position_2'])} "
+            f"drift_count={int(params['drift_count'])} threshold_count="
+            f"{int(params['threshold_count'])} runaway={int(params['runaway'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -706,23 +514,15 @@ class ActiveDiagnostics:
         cached["run"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance run: source=%d status=%d warning_flags=%d"
-            " ud_count=%d realized_frequency_millihz=%d elapsed_us=%d"
-            " openloop_phi_delta_counts=%d sample_count=%d"
-            " encoder_delta_counts=%d status_flags_or=0x%08x"
-            % (
-                self.driver.name,
-                params["source"],
-                params["status"],
-                params["warning_flags"],
-                params["ud_count"],
-                params["realized_frequency_millihz"],
-                params["elapsed_us"],
-                params["openloop_phi_delta_counts"],
-                params["sample_count"],
-                params["encoder_delta_counts"],
-                params["status_flags_or"],
-            )
+            f"FOCI {self.driver.name} inductance run: source={int(params['source'])} status="
+            f"{int(params['status'])} warning_flags={int(params['warning_flags'])} ud_count="
+            f"{int(params['ud_count'])} realized_frequency_millihz="
+            f"{int(params['realized_frequency_millihz'])} elapsed_us="
+            f"{int(params['elapsed_us'])} openloop_phi_delta_counts="
+            f"{int(params['openloop_phi_delta_counts'])} sample_count="
+            f"{int(params['sample_count'])} encoder_delta_counts="
+            f"{int(params['encoder_delta_counts'])} status_flags_or=0x"
+            f"{params['status_flags_or']:08x}"
         )
 
     def handle_inductance_frame(self, params: dict) -> None:
@@ -732,20 +532,14 @@ class ActiveDiagnostics:
         cached["frame"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance frame: id_mean_milli_count=%d"
-            " iq_mean_milli_count=%d id_rms_milli_count=%d"
-            " iq_rms_milli_count=%d drift_permille=%d"
-            " zero_id_mean_milli_count=%d zero_iq_mean_milli_count=%d"
-            % (
-                self.driver.name,
-                params["id_mean_milli_count"],
-                params["iq_mean_milli_count"],
-                params["id_rms_milli_count"],
-                params["iq_rms_milli_count"],
-                params["drift_permille"],
-                params["zero_id_mean_milli_count"],
-                params["zero_iq_mean_milli_count"],
-            )
+            f"FOCI {self.driver.name} inductance frame: id_mean_milli_count="
+            f"{int(params['id_mean_milli_count'])} iq_mean_milli_count="
+            f"{int(params['iq_mean_milli_count'])} id_rms_milli_count="
+            f"{int(params['id_rms_milli_count'])} iq_rms_milli_count="
+            f"{int(params['iq_rms_milli_count'])} drift_permille="
+            f"{int(params['drift_permille'])} zero_id_mean_milli_count="
+            f"{int(params['zero_id_mean_milli_count'])} zero_iq_mean_milli_count="
+            f"{int(params['zero_iq_mean_milli_count'])}"
         )
 
     def handle_inductance_estimate(self, params: dict) -> None:
@@ -755,24 +549,16 @@ class ActiveDiagnostics:
         cached["estimate"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
         self.driver.printer.lookup_object("gcode").respond_info(
-            "FOCI %s inductance estimate: x_average_count_ratio_milli=%d"
-            " x_d_count_ratio_milli=%d x_q_count_ratio_milli=%d"
-            " saliency_status=%d saliency_permille=%d"
-            " x_mag_nominal_count_ratio_milli=%d"
-            " x_mag_shift_minus_permille=%d x_mag_shift_plus_permille=%d"
-            " x_mag_vs_quad_permille=%d"
-            % (
-                self.driver.name,
-                params["x_average_count_ratio_milli"],
-                params["x_d_count_ratio_milli"],
-                params["x_q_count_ratio_milli"],
-                params["saliency_status"],
-                params["saliency_permille"],
-                params["x_mag_nominal_count_ratio_milli"],
-                params["x_mag_shift_minus_permille"],
-                params["x_mag_shift_plus_permille"],
-                params["x_mag_vs_quad_permille"],
-            )
+            f"FOCI {self.driver.name} inductance estimate: x_average_count_ratio_milli="
+            f"{int(params['x_average_count_ratio_milli'])} x_d_count_ratio_milli="
+            f"{int(params['x_d_count_ratio_milli'])} x_q_count_ratio_milli="
+            f"{int(params['x_q_count_ratio_milli'])} saliency_status="
+            f"{int(params['saliency_status'])} saliency_permille="
+            f"{int(params['saliency_permille'])} x_mag_nominal_count_ratio_milli="
+            f"{int(params['x_mag_nominal_count_ratio_milli'])} x_mag_shift_minus_permille="
+            f"{int(params['x_mag_shift_minus_permille'])} x_mag_shift_plus_permille="
+            f"{int(params['x_mag_shift_plus_permille'])} x_mag_vs_quad_permille="
+            f"{int(params['x_mag_vs_quad_permille'])}"
         )
 
     def handle_encoder_alignment(self, params: dict) -> None:
@@ -780,19 +566,12 @@ class ActiveDiagnostics:
         evidence = dict(params)
         self.last_encoder_alignment[params["oid"]] = evidence
         msg = (
-            "FOCI %s encoder alignment: encoder_count=%d"
-            " electrical_residual_counts=%d"
-            " stability_counts=%d movement_counts=%d min_movement_counts=%d"
-            " counts_per_electrical_rev=%d"
-            % (
-                self.driver.name,
-                params["encoder_count"],
-                params["electrical_residual_counts"],
-                params["stability_counts"],
-                params["movement_counts"],
-                params["min_movement_counts"],
-                params["counts_per_electrical_rev"],
-            )
+            f"FOCI {self.driver.name} encoder alignment: encoder_count="
+            f"{int(params['encoder_count'])} electrical_residual_counts="
+            f"{int(params['electrical_residual_counts'])} stability_counts="
+            f"{int(params['stability_counts'])} movement_counts={int(params['movement_counts'])} "
+            f"min_movement_counts={int(params['min_movement_counts'])} counts_per_electrical_rev="
+            f"{int(params['counts_per_electrical_rev'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -801,24 +580,14 @@ class ActiveDiagnostics:
         cached = self.adc_residuals.setdefault(params["oid"], [])
         cached.append(dict(params))
         msg = (
-            "FOCI %s adc residual: stage=%d sample_count=%d"
-            " pwm_sv_chop=%d pwm_bbm=0x%08x"
-            " adc_i0_scale_offset=0x%08x adc_i1_scale_offset=0x%08x"
-            " adc_iux_mean_count=%d adc_iwy_mean_count=%d"
-            " pid_flux_mean_count=%d pid_torque_mean_count=%d"
-            % (
-                self.driver.name,
-                params["stage"],
-                params["sample_count"],
-                params["pwm_sv_chop"],
-                params["pwm_bbm"],
-                params["adc_i0_scale_offset"],
-                params["adc_i1_scale_offset"],
-                params["adc_iux_mean_count"],
-                params["adc_iwy_mean_count"],
-                params["pid_flux_mean_count"],
-                params["pid_torque_mean_count"],
-            )
+            f"FOCI {self.driver.name} adc residual: stage={int(params['stage'])} sample_count="
+            f"{int(params['sample_count'])} pwm_sv_chop={int(params['pwm_sv_chop'])} pwm_bbm=0x"
+            f"{params['pwm_bbm']:08x} adc_i0_scale_offset=0x{params['adc_i0_scale_offset']:08x} "
+            f"adc_i1_scale_offset=0x{params['adc_i1_scale_offset']:08x} adc_iux_mean_count="
+            f"{int(params['adc_iux_mean_count'])} adc_iwy_mean_count="
+            f"{int(params['adc_iwy_mean_count'])} pid_flux_mean_count="
+            f"{int(params['pid_flux_mean_count'])} pid_torque_mean_count="
+            f"{int(params['pid_torque_mean_count'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -836,30 +605,20 @@ class ActiveDiagnostics:
             )
             axis_samples.append(sample)
         msg = (
-            "FOCI %s current validation: axis=%d sample_index=%d status=%d"
-            " attempt=%d target=%d delay_ms=%d role=%s response=%d/%d cross=%d"
-            " cross_peak=%d"
-            " voltage=%d encoder_delta=%d signed_encoder_delta=%d/%d"
-            " status_flags_or=0x%08x"
-            % (
-                self.driver.name,
-                params["axis"],
-                params["sample_index"],
-                params["status"],
-                params["attempt"],
-                params["target"],
-                params["sample_delay_ms"],
-                self._current_validation_gate_role(axis_key, params["sample_delay_ms"]),
-                params["positive_response_permille"],
-                params["negative_response_permille"],
-                params["cross_axis_permille"],
-                params.get("cross_axis_peak_permille", params["cross_axis_permille"]),
-                params["voltage_output_permille"],
-                params["encoder_delta_counts"],
-                params.get("positive_encoder_delta_counts", 0),
-                params.get("negative_encoder_delta_counts", 0),
-                params["status_flags_or"],
-            )
+            f"FOCI {self.driver.name} current validation: axis={int(params['axis'])} sample_index="
+            f"{int(params['sample_index'])} status={int(params['status'])} attempt="
+            f"{int(params['attempt'])} target={int(params['target'])} delay_ms="
+            f"{int(params['sample_delay_ms'])} role="
+            f"{self._current_validation_gate_role(axis_key, params['sample_delay_ms'])} response="
+            f"{int(params['positive_response_permille'])}/"
+            f"{int(params['negative_response_permille'])} cross="
+            f"{int(params['cross_axis_permille'])} cross_peak="
+            f"{int(params.get('cross_axis_peak_permille', params['cross_axis_permille']))} voltage="
+            f"{int(params['voltage_output_permille'])} encoder_delta="
+            f"{int(params['encoder_delta_counts'])} signed_encoder_delta="
+            f"{int(params.get('positive_encoder_delta_counts', 0))}/"
+            f"{int(params.get('negative_encoder_delta_counts', 0))} status_flags_or=0x"
+            f"{params['status_flags_or']:08x}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -869,26 +628,14 @@ class ActiveDiagnostics:
         settled_samples = cached.setdefault("settled_samples", [])
         settled_samples.append(dict(params))
         msg = (
-            "FOCI %s current validation settled: axis=%d sample_index=%d"
-            " direction=%d raw_index=%d attempt=%d target=%d delay_ms=%d"
-            " same_count=%d cross_count=%d cross=%d voltage=%d"
-            " encoder_delta=%d status_flags=0x%08x"
-            % (
-                self.driver.name,
-                params["axis"],
-                params["sample_index"],
-                params["direction"],
-                params["raw_index"],
-                params["attempt"],
-                params["target"],
-                params["sample_delay_ms"],
-                params["same_axis_count"],
-                params["cross_axis_count"],
-                params["cross_axis_permille"],
-                params["voltage_output_permille"],
-                params["encoder_delta_counts"],
-                params["status_flags"],
-            )
+            f"FOCI {self.driver.name} current validation settled: axis={int(params['axis'])} "
+            f"sample_index={int(params['sample_index'])} direction={int(params['direction'])} "
+            f"raw_index={int(params['raw_index'])} attempt={int(params['attempt'])} target="
+            f"{int(params['target'])} delay_ms={int(params['sample_delay_ms'])} same_count="
+            f"{int(params['same_axis_count'])} cross_count={int(params['cross_axis_count'])} cross="
+            f"{int(params['cross_axis_permille'])} voltage={int(params['voltage_output_permille'])}"
+            f" encoder_delta={int(params['encoder_delta_counts'])} status_flags=0x"
+            f"{params['status_flags']:08x}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
@@ -897,25 +644,16 @@ class ActiveDiagnostics:
         cached = self.current_loop_cache.setdefault(params["oid"], {})
         cached["validation_envelope"] = dict(params)
         msg = (
-            "FOCI %s current validation envelope: step_amplitude=%d"
-            " flux_step_amplitude=%d torque_step_amplitude=%d"
-            " pidout_limit=%d current_limited=%d voltage_limited=%d max_p=%d"
-            % (
-                self.driver.name,
-                params["step_amplitude"],
-                params["flux_step_amplitude"],
-                params["torque_step_amplitude"],
-                params["pidout_limit"],
-                params["current_limited"],
-                params["voltage_limited"],
-                params["max_p"],
-            )
+            f"FOCI {self.driver.name} current validation envelope: step_amplitude="
+            f"{int(params['step_amplitude'])} flux_step_amplitude="
+            f"{int(params['flux_step_amplitude'])} torque_step_amplitude="
+            f"{int(params['torque_step_amplitude'])} pidout_limit={int(params['pidout_limit'])} "
+            f"current_limited={int(params['current_limited'])} voltage_limited="
+            f"{int(params['voltage_limited'])} max_p={int(params['max_p'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
-    def _current_validation_gate_role(
-        self, axis_key: str | None, sample_delay_ms: int
-    ) -> str:
+    def _current_validation_gate_role(self, axis_key: str | None, sample_delay_ms: int) -> str:
         if axis_key == "flux" and sample_delay_ms == 100:
             return "gate"
         if axis_key == "torque" and sample_delay_ms == 0:
@@ -955,12 +693,8 @@ class ActiveDiagnostics:
             return {}
 
         folded: dict = {
-            "resistance_selected_count_slope_milli": run[
-                "selected_r_count_slope_milli"
-            ],
-            "resistance_gain_path_count_slope_milli": run[
-                "gain_path_count_slope_milli"
-            ],
+            "resistance_selected_count_slope_milli": run["selected_r_count_slope_milli"],
+            "resistance_gain_path_count_slope_milli": run["gain_path_count_slope_milli"],
             "resistance_status_flags_or": run["status_flags_or"],
             "resistance_warning_flags": run["warning_flags"],
             "resistance_peak_abs_current_count": run["peak_abs_current_count"],
@@ -971,27 +705,19 @@ class ActiveDiagnostics:
         }
 
         for axis_index, axis in ((0, axis0), (1, axis1)):
-            folded["resistance_axis%d_count_slope_milli" % axis_index] = axis[
+            folded[f"resistance_axis{int(axis_index)}_count_slope_milli"] = axis[
                 "r_count_slope_milli"
             ]
-            folded["resistance_axis%d_intercept_count" % axis_index] = axis[
-                "intercept_count"
-            ]
-            folded["resistance_axis%d_rmse_permille" % axis_index] = axis[
-                "rmse_permille"
-            ]
-            folded["resistance_selected_mask_axis%d" % axis_index] = axis[
-                "selected_mask"
-            ]
-            folded["resistance_axis%d_signed_count_slope_milli" % axis_index] = axis[
+            folded[f"resistance_axis{int(axis_index)}_intercept_count"] = axis["intercept_count"]
+            folded[f"resistance_axis{int(axis_index)}_rmse_permille"] = axis["rmse_permille"]
+            folded[f"resistance_selected_mask_axis{int(axis_index)}"] = axis["selected_mask"]
+            folded[f"resistance_axis{int(axis_index)}_signed_count_slope_milli"] = axis[
                 "signed_count_slope_milli"
             ]
-            folded["resistance_axis%d_signed_asymmetry_permille" % axis_index] = axis[
+            folded[f"resistance_axis{int(axis_index)}_signed_asymmetry_permille"] = axis[
                 "signed_asymmetry_permille"
             ]
-            folded["resistance_axis%d_drift_permille" % axis_index] = axis[
-                "drift_permille"
-            ]
+            folded[f"resistance_axis{int(axis_index)}_drift_permille"] = axis["drift_permille"]
 
         return folded
 
@@ -1026,15 +752,9 @@ class ActiveDiagnostics:
             "inductance_source": run["source"],
             "inductance_warning_flags": run["warning_flags"],
             "inductance_frequency_millihz": run["realized_frequency_millihz"],
-            "inductance_reactance_count_ratio_milli": estimate[
-                "x_average_count_ratio_milli"
-            ],
-            "inductance_d_reactance_count_ratio_milli": estimate[
-                "x_d_count_ratio_milli"
-            ],
-            "inductance_q_reactance_count_ratio_milli": estimate[
-                "x_q_count_ratio_milli"
-            ],
+            "inductance_reactance_count_ratio_milli": estimate["x_average_count_ratio_milli"],
+            "inductance_d_reactance_count_ratio_milli": estimate["x_d_count_ratio_milli"],
+            "inductance_q_reactance_count_ratio_milli": estimate["x_q_count_ratio_milli"],
             "inductance_saliency_status": estimate["saliency_status"],
             "inductance_saliency_permille": estimate["saliency_permille"],
             "inductance_iq_mean_milli_count": frame["iq_mean_milli_count"],
@@ -1101,21 +821,13 @@ class ActiveDiagnostics:
             "current_candidate_attempt": run["candidate_attempt"],
             "current_validation_axes": run["current_validation_axes"],
             "current_flux_validation_sample_count": run["flux_validation_sample_count"],
-            "current_torque_validation_sample_count": run[
-                "torque_validation_sample_count"
-            ],
+            "current_torque_validation_sample_count": run["torque_validation_sample_count"],
             "current_retry_budget_exhausted": run["retry_budget_exhausted"],
             "current_failure_reason": run["failure_reason"],
             "current_flux_response_min_permille": self._axis_response_min(flux_samples),
-            "current_torque_response_min_permille": self._axis_response_min(
-                torque_samples
-            ),
-            "current_flux_encoder_delta_counts": self._axis_encoder_delta_max(
-                flux_samples
-            ),
-            "current_torque_encoder_delta_counts": self._axis_encoder_delta_max(
-                torque_samples
-            ),
+            "current_torque_response_min_permille": self._axis_response_min(torque_samples),
+            "current_flux_encoder_delta_counts": self._axis_encoder_delta_max(flux_samples),
+            "current_torque_encoder_delta_counts": self._axis_encoder_delta_max(torque_samples),
         }
 
     def clear_current_loop_cache(self, oid: int) -> dict:
@@ -1190,9 +902,8 @@ class ActiveDiagnostics:
         )
 
         gcmd.respond_info(
-            "FOCI %s voltage-step requested:"
-            " uq_ext=%d ud_ext=%d sample_delay_ms=%d"
-            % (self.driver.name, uq_ext, ud_ext, sample_delay_ms)
+            f"FOCI {self.driver.name} voltage-step requested: uq_ext={int(uq_ext)} ud_ext="
+            f"{int(ud_ext)} sample_delay_ms={int(sample_delay_ms)}"
         )
 
     def resistance_test(self, gcmd) -> None:
@@ -1208,5 +919,5 @@ class ActiveDiagnostics:
         self.driver.protocol.run_resistance_test(detail=detail)
 
         gcmd.respond_info(
-            "FOCI %s resistance-test requested: detail=%d" % (self.driver.name, detail)
+            f"FOCI {self.driver.name} resistance-test requested: detail={int(detail)}"
         )

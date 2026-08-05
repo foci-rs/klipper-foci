@@ -147,13 +147,10 @@ class FociMcuCommands:
         )
         self.set_current = mcu.lookup_command("tmc_set_current oid=%c run_ma=%u")
         self.set_motion_scale = mcu.lookup_command(
-            "tmc_set_motion_scale oid=%c channel=%c"
-            " encoder_ppr=%u planner_steps_per_rev=%u"
+            "tmc_set_motion_scale oid=%c channel=%c encoder_ppr=%u planner_steps_per_rev=%u"
         )
         register_motion_scale_responses(mcu._serial, driver, oid)
-        self.set_encoder_dir = mcu.lookup_command(
-            "tmc_set_encoder_dir oid=%c channel=%c invert=%c"
-        )
+        self.set_encoder_dir = mcu.lookup_command("tmc_set_encoder_dir oid=%c channel=%c invert=%c")
         self.selftest = mcu.lookup_command("foci_selftest oid=%c")
         self.calibrate = mcu.lookup_command("foci_calibrate oid=%c", cq=cmd_queue)
         self.dump_registers = mcu.lookup_command("foci_dump_registers oid=%c")
@@ -177,15 +174,11 @@ class FociMcuCommands:
         self.set_velocity_filter = mcu.lookup_command(
             "tmc_set_velocity_filter oid=%c filter_hz=%hu"
         )
-        self.set_torque_filter = mcu.lookup_command(
-            "tmc_set_torque_filter oid=%c filter_hz=%hu"
-        )
+        self.set_torque_filter = mcu.lookup_command("tmc_set_torque_filter oid=%c filter_hz=%hu")
         self.set_position_filter = mcu.lookup_command(
             "tmc_set_position_filter oid=%c filter_hz=%hu"
         )
-        self.set_flux_filter = mcu.lookup_command(
-            "tmc_set_flux_filter oid=%c filter_hz=%hu"
-        )
+        self.set_flux_filter = mcu.lookup_command("tmc_set_flux_filter oid=%c filter_hz=%hu")
         self.set_position_gains = mcu.lookup_command(
             "tmc_set_position_gains oid=%c position_p=%hu position_i=%hu"
             " velocity_p=%hu velocity_i=%hu"
@@ -210,18 +203,12 @@ class FociMcuCommands:
             "tmc_set_position_lead oid=%c enable=%c gain_permille=%hu max_counts=%hu"
         )
         self.set_phase_advance = mcu.lookup_command(
-            "tmc_set_phase_advance oid=%c enable=%c"
-            " gain_ppm=%i max_counts=%hu deadband=%hu"
+            "tmc_set_phase_advance oid=%c enable=%c gain_ppm=%i max_counts=%hu deadband=%hu"
         )
-        self.set_velocity_limit = mcu.lookup_command(
-            "tmc_set_velocity_limit oid=%c limit=%u"
-        )
-        self.set_voltage_limit = mcu.lookup_command(
-            "tmc_set_voltage_limit oid=%c voltage_limit=%u"
-        )
+        self.set_velocity_limit = mcu.lookup_command("tmc_set_velocity_limit oid=%c limit=%u")
+        self.set_voltage_limit = mcu.lookup_command("tmc_set_voltage_limit oid=%c voltage_limit=%u")
         self.current_step_test = mcu.lookup_command(
-            "tmc_current_step_test oid=%c axis=%c target=%hi"
-            " duration_ms=%hu voltage_limit=%hu"
+            "tmc_current_step_test oid=%c axis=%c target=%hi duration_ms=%hu voltage_limit=%hu"
         )
         self.current_vector_step_test = mcu.lookup_command(
             "tmc_current_vector_step_test oid=%c torque_target=%hi flux_target=%hi"
@@ -238,9 +225,7 @@ class FociMcuCommands:
         self.voltage_step_test = mcu.lookup_command(
             "tmc_voltage_step_test oid=%c uq_ext=%hi ud_ext=%hi sample_delay_ms=%hu"
         )
-        self.resistance_test = mcu.lookup_command(
-            "tmc_resistance_test oid=%c detail=%c"
-        )
+        self.resistance_test = mcu.lookup_command("tmc_resistance_test oid=%c detail=%c")
         self.velocity_limit_latch_test = self._optional_lookup_command(
             mcu,
             "tmc_velocity_limit_latch_test oid=%c channel=%c",

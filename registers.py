@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 MOTOR_TYPES: dict[int, str] = {0: "none", 1: "dc", 2: "stepper", 3: "bldc"}
 PHI_E_SOURCES: dict[int, str] = {
@@ -41,7 +40,7 @@ MOTION_MODES: dict[int, str] = {
 
 
 def _fmt_motor_type(val: int) -> str:
-    return "%d(%s)" % (val, MOTOR_TYPES.get(val, "?"))
+    return f"{int(val)}({MOTOR_TYPES.get(val, '?')})"
 
 
 def _fmt_phi_e(val: int) -> str:
@@ -49,11 +48,11 @@ def _fmt_phi_e(val: int) -> str:
 
 
 def _fmt_angle_source(val: int) -> str:
-    return "%d(%s)" % (val, ANGLE_SOURCES.get(val, "?"))
+    return f"{int(val)}({ANGLE_SOURCES.get(val, '?')})"
 
 
 def _fmt_velocity_meter(val: int) -> str:
-    return "%d(%s)" % (val, VELOCITY_METER_SOURCES.get(val, "?"))
+    return f"{int(val)}({VELOCITY_METER_SOURCES.get(val, '?')})"
 
 
 def _fmt_motion_mode(val: int) -> str:
@@ -65,22 +64,22 @@ def _fmt_pid_type(val: int) -> str:
 
 
 def _fmt_q4_12(val: int) -> str:
-    return "%.3f" % (val * 2**-12)
+    return f"{val * 2 ** (-12):.3f}"
 
 
 def _fmt_q8_8(val: int) -> str:
-    return "%.3f" % (val * 2**-8)
+    return f"{val * 2 ** (-8):.3f}"
 
 
 def format_p_gain(raw: int) -> str:
     """Format one raw Q8.8 proportional gain without changing its value."""
-    return "%.6f Q8.8" % (raw * 2**-8)
+    return f"{raw * 2 ** (-8):.6f} Q8.8"
 
 
 def format_i_gain(raw: int) -> str:
     """Format one raw Q4.12 integral gain without changing its value."""
-    decimal = ("%.12f" % (raw * 2**-12)).rstrip("0").rstrip(".")
-    return "%s Q4.12" % decimal
+    decimal = f"{raw * 2 ** (-12):.12f}".rstrip("0").rstrip(".")
+    return f"{decimal} Q4.12"
 
 
 def _fmt_i_gain(val: int) -> str:
@@ -91,7 +90,7 @@ def _fmt_advanced_pi_current_i(val: int) -> str:
     if val == 0:
         return "0"
     q4_12 = format_i_gain(val).removesuffix(" Q4.12")
-    return "%d(q4.12=%s,zero=%d/1048576)" % (val, q4_12, val)
+    return f"{int(val)}(q4.12={q4_12},zero={int(val)}/1048576)"
 
 
 VM_MODEL_CONSTANTS: tuple[str, ...] = (
@@ -138,7 +137,7 @@ def fmt_adc_vm_raw(
     voltage = adc_vm_raw_to_volts(raw, constants, offset_raw)
     if voltage is None:
         return str(raw)
-    return "%d(~%.2fV)" % (raw, voltage)
+    return f"{int(raw)}(~{voltage:.2f}V)"
 
 
 def _fmt_direction(val: int) -> str:
@@ -583,10 +582,10 @@ class FieldHelper:
         reg_fields = self.all_fields.get(reg_name, {})
         sorted_fields = sorted([(mask, name) for name, mask in reg_fields.items()])
         parts: list[str] = []
-        for mask, field_name in sorted_fields:
+        for _mask, field_name in sorted_fields:
             field_value = self.get_field(field_name, reg_name, reg_value)
             fmt = self.field_formatters.get(field_name, str)
             sval = fmt(field_value)
             if sval and sval != "0":
-                parts.append(" %s=%s" % (field_name, sval))
-        return "%-30s %08x%s" % (reg_name + ":", reg_value, "".join(parts))
+                parts.append(f" {field_name}={sval}")
+        return f"{reg_name + ':':30} {reg_value:08x}{''.join(parts)}"

@@ -8,8 +8,8 @@ from .registers import (
     FIELD_FORMATTERS,
     REGISTERS,
     SIGNED_FIELDS,
-    Fields,
     FieldHelper,
+    Fields,
     fmt_adc_vm_raw,
 )
 
@@ -239,7 +239,7 @@ class RegisterDumpWorkflow:
         """Read live current-loop gains from the firmware dump path."""
         if not self._request_dump_values():
             raise self.driver.printer.command_error(
-                "FOCI %s: live current-loop gain readback timed out" % self.driver.name
+                f"FOCI {self.driver.name}: live current-loop gain readback timed out"
             )
         live_gains = self._live_gain_values()
         return {
@@ -269,14 +269,14 @@ class RegisterDumpWorkflow:
                 header = group_name % self.driver.stepper_name
             else:
                 header = group_name
-            lines.append("========== %s ==========" % header)
+            lines.append(f"========== {header} ==========")
             for reg_name in regs:
                 addr = REGISTERS[reg_name]
                 if addr in self._dump_buffer:
                     val = self._dump_buffer[addr]
                     lines.append(self._pretty_format_register(reg_name, val))
                 else:
-                    lines.append("  %-30s = (not in dump)" % reg_name)
+                    lines.append(f"  {reg_name:30} = (not in dump)")
 
         if include_tuning:
             lines.extend(self._format_tuning_analysis())
@@ -306,8 +306,8 @@ class RegisterDumpWorkflow:
         persisted_status = config.autotune_status or "uncommissioned"
         if persisted_status != state.runtime_status:
             lines.append(
-                "  WARNING: autotune_status/runtime_status divergence persisted=%s"
-                " validated=%s" % (persisted_status, state.runtime_status)
+                f"  WARNING: autotune_status/runtime_status divergence persisted="
+                f"{persisted_status} validated={state.runtime_status}"
             )
 
         readiness = resolve_autotune_readiness(
@@ -323,7 +323,7 @@ class RegisterDumpWorkflow:
 
         lines.append("-- Live TMC gains --")
         lines.extend(
-            self._format_pair("live.%s" % field_name, value)
+            self._format_pair(f"live.{field_name}", value)
             for field_name, value in live_gains.items()
         )
 
@@ -332,21 +332,19 @@ class RegisterDumpWorkflow:
             lines.append("  active_gains unavailable")
         else:
             lines.extend(
-                self._format_pair(
-                    "active.%s" % field_name, active_gains.get(field_name)
-                )
+                self._format_pair(f"active.{field_name}", active_gains.get(field_name))
                 for field_name in ACTIVE_GAIN_FIELDS
             )
 
         lines.append("-- Persisted config gains --")
         lines.extend(
-            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in CONFIG_GAIN_FIELDS
         )
 
         lines.append("-- Identified count-space model --")
         lines.extend(
-            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in IDENTIFIED_MODEL_FIELDS
         )
         lines.append(
@@ -366,7 +364,7 @@ class RegisterDumpWorkflow:
         lines.append("-- Current-loop commissioning evidence --")
         lines.extend(self._format_current_loop_summary())
         lines.extend(
-            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in CURRENT_LOOP_IDENTIFICATION_FIELDS
         )
         lines.append(
@@ -385,49 +383,39 @@ class RegisterDumpWorkflow:
             lines.extend(self._format_last_current_loop_summary(last_current_loop))
             lines.extend(
                 self._format_last_current_validation_samples(
-                    self.driver.diagnostics.active.last_current_loop_samples(
-                        self.driver.oid
-                    )
+                    self.driver.diagnostics.active.last_current_loop_samples(self.driver.oid)
                 )
             )
 
-        last_current_loop_hold = (
-            self.driver.diagnostics.active.last_current_loop_hold_evidence(
-                self.driver.oid
-            )
+        last_current_loop_hold = self.driver.diagnostics.active.last_current_loop_hold_evidence(
+            self.driver.oid
         )
         if last_current_loop_hold:
             lines.append("-- Last sustained-hold gate (not persisted) --")
             lines.extend(self._format_last_current_loop_hold(last_current_loop_hold))
 
-        last_closed_loop_entry = (
-            self.driver.diagnostics.active.last_closed_loop_entry_evidence(
-                self.driver.oid
-            )
+        last_closed_loop_entry = self.driver.diagnostics.active.last_closed_loop_entry_evidence(
+            self.driver.oid
         )
         if last_closed_loop_entry:
             lines.append("-- Last closed-loop entry (not persisted) --")
             lines.extend(self._format_last_closed_loop_entry(last_closed_loop_entry))
 
-        last_encoder_alignment = (
-            self.driver.diagnostics.active.last_encoder_alignment_evidence(
-                self.driver.oid
-            )
+        last_encoder_alignment = self.driver.diagnostics.active.last_encoder_alignment_evidence(
+            self.driver.oid
         )
         if last_encoder_alignment:
             lines.append("-- Last encoder alignment (not persisted) --")
             lines.extend(self._format_last_encoder_alignment(last_encoder_alignment))
 
-        last_inductance = self.driver.diagnostics.active.last_inductance_evidence(
-            self.driver.oid
-        )
+        last_inductance = self.driver.diagnostics.active.last_inductance_evidence(self.driver.oid)
         if last_inductance:
             lines.append("-- Last inductance evidence (not persisted) --")
             lines.extend(self._format_last_inductance_evidence(last_inductance))
 
         lines.append("-- Resistance identification evidence --")
         lines.extend(
-            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in RESISTANCE_IDENTIFICATION_FIELDS
         )
         lines.append(
@@ -451,10 +439,9 @@ class RegisterDumpWorkflow:
         if get_constants is not None:
             constants = get_constants()
         raw = self.fields.get_field("adc_vm_raw", reg_name, reg_value)
-        return "%-30s %08x adc_vm_raw=%s" % (
-            reg_name + ":",
-            reg_value,
-            fmt_adc_vm_raw(raw, constants, self.driver.state.adc_vm_offset_raw),
+        return (
+            f"{reg_name + ':':30} {reg_value:08x} adc_vm_raw="
+            f"{fmt_adc_vm_raw(raw, constants, self.driver.state.adc_vm_offset_raw)}"
         )
 
     def _live_gain_values(self) -> dict[str, int | None]:
@@ -485,22 +472,18 @@ class RegisterDumpWorkflow:
             host_value = active_gains.get(field_name)
             if live_value is None:
                 warnings.append(
-                    "  WARNING: %s live value unavailable host=%s"
-                    % (field_name, self._display_value(host_value))
+                    f"  WARNING: {field_name} live value unavailable host="
+                    f"{self._display_value(host_value)}"
                 )
             elif host_value is None:
                 warnings.append(
-                    "  WARNING: %s host value unavailable live=%s"
-                    % (field_name, self._display_value(live_value))
+                    f"  WARNING: {field_name} host value unavailable live="
+                    f"{self._display_value(live_value)}"
                 )
             elif live_value != host_value:
                 warnings.append(
-                    "  WARNING: %s mismatch live=%s host=%s"
-                    % (
-                        field_name,
-                        self._display_value(live_value),
-                        self._display_value(host_value),
-                    )
+                    f"  WARNING: {field_name} mismatch live={self._display_value(live_value)} "
+                    f"host={self._display_value(host_value)}"
                 )
 
         if warnings:
@@ -510,7 +493,7 @@ class RegisterDumpWorkflow:
     def _format_persisted_inductance_evidence(self) -> list[str]:
         config = self.driver.config
         return [
-            self._format_pair("config.%s" % field_name, getattr(config, field_name))
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in INDUCTANCE_IDENTIFICATION_FIELDS
         ]
 
@@ -581,51 +564,52 @@ class RegisterDumpWorkflow:
         field_names: tuple[str, ...],
     ) -> list[str]:
         return [
-            self._format_pair("%s.%s" % (prefix, field_name), values.get(field_name))
+            self._format_pair(f"{prefix}.{field_name}", values.get(field_name))
             for field_name in field_names
         ]
 
     def _format_current_loop_summary(self) -> list[str]:
         config = self.driver.config
         validation_axes = config.identified_current_validation_axes
+        gains_source_label = self._label_code(
+            config.identified_current_gains_source, CURRENT_GAINS_SOURCE_LABELS
+        )
+        gains_tier_label = self._label_code(
+            config.identified_current_gains_tier, CURRENT_GAINS_TIER_LABELS
+        )
+        failure_reason_label = self._label_code(
+            config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_LABELS
+        )
         return [
-            "  current_gains_source: %s"
-            % self._label_code(
-                config.identified_current_gains_source,
-                CURRENT_GAINS_SOURCE_LABELS,
+            f"  current_gains_source: {gains_source_label}",
+            (
+                f"  axis_split_source: "
+                f"{self._label_code(config.identified_axis_split_source, AXIS_SPLIT_SOURCE_LABELS)}"
             ),
-            "  axis_split_source: %s"
-            % self._label_code(
-                config.identified_axis_split_source,
-                AXIS_SPLIT_SOURCE_LABELS,
+            f"  current_gains_tier: {gains_tier_label}",
+            (
+                f"  current_validation: flux="
+                f"{self._axis_validation_label(validation_axes, CURRENT_VALIDATION_AXIS_FLUX)} "
+                f"torque="
+                f"{self._axis_validation_label(validation_axes, CURRENT_VALIDATION_AXIS_TORQUE)}"
             ),
-            "  current_gains_tier: %s"
-            % self._label_code(
-                config.identified_current_gains_tier,
-                CURRENT_GAINS_TIER_LABELS,
+            (
+                f"  retry_budget_exhausted: "
+                f"{self._bool_code(config.identified_current_retry_budget_exhausted)}"
             ),
-            "  current_validation: flux=%s torque=%s"
-            % (
-                self._axis_validation_label(
-                    validation_axes, CURRENT_VALIDATION_AXIS_FLUX
-                ),
-                self._axis_validation_label(
-                    validation_axes, CURRENT_VALIDATION_AXIS_TORQUE
-                ),
-            ),
-            "  retry_budget_exhausted: %s"
-            % self._bool_code(config.identified_current_retry_budget_exhausted),
-            "  failure_reason: %s"
-            % self._label_code(
-                config.identified_current_failure_reason,
-                CURRENT_LOOP_FAILURE_LABELS,
-            ),
+            f"  failure_reason: {failure_reason_label}",
         ]
 
     def _format_last_current_loop_summary(self, run: dict) -> list[str]:
         validation_axes = run.get("current_validation_axes")
         flux_sample_count = run.get("flux_validation_sample_count")
         torque_sample_count = run.get("torque_validation_sample_count")
+        flux_validation_label = self._axis_validation_label_for_count(
+            validation_axes, CURRENT_VALIDATION_AXIS_FLUX, flux_sample_count
+        )
+        torque_validation_label = self._axis_validation_label_for_count(
+            validation_axes, CURRENT_VALIDATION_AXIS_TORQUE, torque_sample_count
+        )
         return [
             self._format_pair(
                 "last.current_gains_source",
@@ -633,21 +617,15 @@ class RegisterDumpWorkflow:
             ),
             self._format_pair(
                 "last.candidate_gains_source",
-                self._label_code(
-                    run.get("candidate_gains_source"), CURRENT_GAINS_SOURCE_LABELS
-                ),
+                self._label_code(run.get("candidate_gains_source"), CURRENT_GAINS_SOURCE_LABELS),
             ),
             self._format_pair(
                 "last.axis_split_source",
-                self._label_code(
-                    run.get("axis_split_source"), AXIS_SPLIT_SOURCE_LABELS
-                ),
+                self._label_code(run.get("axis_split_source"), AXIS_SPLIT_SOURCE_LABELS),
             ),
             self._format_pair(
                 "last.candidate_axis_split_source",
-                self._label_code(
-                    run.get("candidate_axis_split_source"), AXIS_SPLIT_SOURCE_LABELS
-                ),
+                self._label_code(run.get("candidate_axis_split_source"), AXIS_SPLIT_SOURCE_LABELS),
             ),
             self._format_pair(
                 "last.current_gains_tier",
@@ -655,9 +633,7 @@ class RegisterDumpWorkflow:
             ),
             self._format_pair(
                 "last.candidate_gains_tier",
-                self._label_code(
-                    run.get("candidate_gains_tier"), CURRENT_GAINS_TIER_LABELS
-                ),
+                self._label_code(run.get("candidate_gains_tier"), CURRENT_GAINS_TIER_LABELS),
             ),
             self._format_pair("last.candidate_flux_p", run.get("candidate_flux_p")),
             self._format_pair("last.candidate_flux_i", run.get("candidate_flux_i")),
@@ -666,17 +642,7 @@ class RegisterDumpWorkflow:
             self._format_pair("last.candidate_attempt", run.get("candidate_attempt")),
             self._format_pair(
                 "last.current_validation",
-                "flux=%s torque=%s"
-                % (
-                    self._axis_validation_label_for_count(
-                        validation_axes, CURRENT_VALIDATION_AXIS_FLUX, flux_sample_count
-                    ),
-                    self._axis_validation_label_for_count(
-                        validation_axes,
-                        CURRENT_VALIDATION_AXIS_TORQUE,
-                        torque_sample_count,
-                    ),
-                ),
+                f"flux={flux_validation_label} torque={torque_validation_label}",
             ),
             self._format_pair(
                 "last.retry_budget_exhausted",
@@ -684,9 +650,7 @@ class RegisterDumpWorkflow:
             ),
             self._format_pair(
                 "last.failure_reason",
-                self._label_code(
-                    run.get("failure_reason"), CURRENT_LOOP_FAILURE_LABELS
-                ),
+                self._label_code(run.get("failure_reason"), CURRENT_LOOP_FAILURE_LABELS),
             ),
         ]
 
@@ -694,54 +658,45 @@ class RegisterDumpWorkflow:
         return [
             self._format_hold_pair(
                 "last.hold_status",
-                self._label_code(
-                    evidence.get("hold_status"), CURRENT_LOOP_HOLD_STATUS_LABELS
-                ),
+                self._label_code(evidence.get("hold_status"), CURRENT_LOOP_HOLD_STATUS_LABELS),
             ),
             self._format_hold_pair(
                 "last.hold_samples",
-                "%s @ %s us, elapsed_us=%s"
-                % (
-                    evidence.get("sample_count"),
-                    evidence.get("requested_sample_period_us"),
-                    evidence.get("elapsed_us"),
+                (
+                    f"{evidence.get('sample_count')} @ {evidence.get('requested_sample_period_us')}"
+                    f" us, elapsed_us={evidence.get('elapsed_us')}"
                 ),
             ),
             self._format_hold_pair(
                 "last.hold_position",
-                "span=%s drift=%s"
-                % (
-                    evidence.get("position_span_count"),
-                    evidence.get("position_drift_count"),
+                (
+                    f"span={evidence.get('position_span_count')} drift="
+                    f"{evidence.get('position_drift_count')}"
                 ),
             ),
             self._format_hold_pair(
                 "last.hold_torque",
-                "mean=%s rms=%s span=%s crossings=%s"
-                % (
-                    evidence.get("torque_mean_count"),
-                    evidence.get("torque_rms_count"),
-                    evidence.get("torque_peak_to_peak_count"),
-                    evidence.get("torque_crossing_count"),
+                (
+                    f"mean={evidence.get('torque_mean_count')} rms="
+                    f"{evidence.get('torque_rms_count')} span="
+                    f"{evidence.get('torque_peak_to_peak_count')} crossings="
+                    f"{evidence.get('torque_crossing_count')}"
                 ),
             ),
             self._format_hold_pair(
                 "last.hold_flux",
-                "mean=%s rms=%s span=%s crossings=%s"
-                % (
-                    evidence.get("flux_mean_count"),
-                    evidence.get("flux_rms_count"),
-                    evidence.get("flux_peak_to_peak_count"),
-                    evidence.get("flux_crossing_count"),
+                (
+                    f"mean={evidence.get('flux_mean_count')} rms={evidence.get('flux_rms_count')} "
+                    f"span={evidence.get('flux_peak_to_peak_count')} crossings="
+                    f"{evidence.get('flux_crossing_count')}"
                 ),
             ),
             self._format_hold_pair(
                 "last.hold_status_flags",
-                "or=%s actionable_count=%s warnings=%s"
-                % (
-                    evidence.get("status_flags_or"),
-                    evidence.get("actionable_status_count"),
-                    evidence.get("warning_flags"),
+                (
+                    f"or={evidence.get('status_flags_or')} actionable_count="
+                    f"{evidence.get('actionable_status_count')} warnings="
+                    f"{evidence.get('warning_flags')}"
                 ),
             ),
         ]
@@ -750,19 +705,15 @@ class RegisterDumpWorkflow:
         return [
             self._format_hold_pair(
                 "last.entry_status",
-                self._label_code(
-                    evidence.get("entry_status"), CLOSED_LOOP_ENTRY_STATUS_LABELS
-                ),
+                self._label_code(evidence.get("entry_status"), CLOSED_LOOP_ENTRY_STATUS_LABELS),
             ),
             self._format_hold_pair(
                 "last.entry_position",
-                "pos1=%s pos2=%s"
-                % (evidence.get("position_1"), evidence.get("position_2")),
+                f"pos1={evidence.get('position_1')} pos2={evidence.get('position_2')}",
             ),
             self._format_hold_pair(
                 "last.entry_drift",
-                "drift=%s threshold=%s"
-                % (evidence.get("drift_count"), evidence.get("threshold_count")),
+                f"drift={evidence.get('drift_count')} threshold={evidence.get('threshold_count')}",
             ),
             self._format_hold_pair(
                 "last.entry_runaway",
@@ -774,62 +725,48 @@ class RegisterDumpWorkflow:
         lines = []
         for axis_key in ("flux", "torque"):
             for sample in samples.get(axis_key, []):
-                label = "last.current_validation_sample[%s:%s]" % (
-                    axis_key,
-                    sample.get("sample_index"),
-                )
+                label = f"last.current_validation_sample[{axis_key}:{sample.get('sample_index')}]"
                 value = (
-                    "role=%s delay_ms=%s status=%s response=%s/%s"
-                    " cross=%s cross_peak=%s voltage=%s encoder_delta=%s"
-                    " signed_encoder_delta=%s/%s"
-                    % (
-                        sample.get("gate_role", "unknown"),
-                        sample.get("sample_delay_ms"),
-                        sample.get("status"),
-                        sample.get("positive_response_permille"),
-                        sample.get("negative_response_permille"),
-                        sample.get("cross_axis_permille"),
-                        sample.get(
-                            "cross_axis_peak_permille",
-                            sample.get("cross_axis_permille"),
-                        ),
-                        sample.get("voltage_output_permille"),
-                        sample.get("encoder_delta_counts"),
-                        sample.get("positive_encoder_delta_counts", 0),
-                        sample.get("negative_encoder_delta_counts", 0),
-                    )
+                    f"role={sample.get('gate_role', 'unknown')} delay_ms="
+                    f"{sample.get('sample_delay_ms')} status={sample.get('status')} response="
+                    f"{sample.get('positive_response_permille')}/"
+                    f"{sample.get('negative_response_permille')} cross="
+                    f"{sample.get('cross_axis_permille')} cross_peak="
+                    f"{sample.get('cross_axis_peak_permille', sample.get('cross_axis_permille'))} "
+                    f"voltage={sample.get('voltage_output_permille')} encoder_delta="
+                    f"{sample.get('encoder_delta_counts')} signed_encoder_delta="
+                    f"{sample.get('positive_encoder_delta_counts', 0)}/"
+                    f"{sample.get('negative_encoder_delta_counts', 0)}"
                 )
                 lines.append(self._format_pair(label, value))
         return lines
 
     def _format_last_encoder_alignment(self, evidence: dict) -> list[str]:
-        residual = "%s/%s counts" % (
-            evidence.get("electrical_residual_counts"),
-            evidence.get("counts_per_electrical_rev"),
+        residual = (
+            f"{evidence.get('electrical_residual_counts')}/"
+            f"{evidence.get('counts_per_electrical_rev')} counts"
         )
         return [
-            self._format_pair(
-                "last.encoder_alignment_count", evidence.get("encoder_count")
-            ),
+            self._format_pair("last.encoder_alignment_count", evidence.get("encoder_count")),
             self._format_pair("last.encoder_alignment_residual", residual),
             self._format_pair(
                 "last.encoder_alignment_stability",
-                "%s counts" % evidence.get("stability_counts"),
+                f"{evidence.get('stability_counts')} counts",
             ),
             self._format_pair(
                 "last.encoder_alignment_movement",
-                "%s counts" % evidence.get("movement_counts"),
+                f"{evidence.get('movement_counts')} counts",
             ),
             self._format_pair(
                 "last.encoder_alignment_min_movement",
-                "%s counts" % evidence.get("min_movement_counts"),
+                f"{evidence.get('min_movement_counts')} counts",
             ),
         ]
 
     def _label_code(self, value: int | None, labels: dict[int, str]) -> str:
         if value is None:
             return "unknown"
-        return labels.get(value, "unknown(%d)" % value)
+        return labels.get(value, f"unknown({int(value)})")
 
     def _axis_validation_label(self, axes: int | None, mask: int) -> str:
         if axes is None:
@@ -851,10 +788,10 @@ class RegisterDumpWorkflow:
         return "yes" if value else "no"
 
     def _format_pair(self, name: str, value: object | None) -> str:
-        return "  %-34s = %s" % (name, self._display_value(value))
+        return f"  {name:34} = {self._display_value(value)}"
 
     def _format_hold_pair(self, name: str, value: object | None) -> str:
-        return "  %-32s = %s" % (name, self._display_value(value))
+        return f"  {name:32} = {self._display_value(value)}"
 
     def _display_value(self, value: object | None) -> str:
         if value is None:

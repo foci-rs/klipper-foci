@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from .commissioning import format_inner_warning_flags
 
@@ -68,10 +68,7 @@ def resolve_autotune_readiness(
     resistance_evidence = _resolve_resistance_evidence(driver)
     tau_e_us, inner_warning_flags = _resolve_inner_confidence(driver)
     current_bandwidth_hz = _resolve_current_bandwidth(driver)
-    if (
-        current_loop_evidence["gains_source"] == 2
-        or current_loop_evidence["gains_tier"] == 3
-    ):
+    if current_loop_evidence["gains_source"] == 2 or current_loop_evidence["gains_tier"] == 3:
         inner_warning_flags |= 1 << 5
 
     _classify_current_gains(
@@ -118,13 +115,13 @@ def format_readiness_report(report: AutotuneReadiness, stepper_name: str) -> lis
     """Format a readiness report for DUMP_FOCI TUNING=1."""
     lines = [
         "-- Autotune readiness --",
-        "  FOCI %s autotune readiness:" % stepper_name,
-        "    result: %s" % report.result,
-        "    stage2_policy: %s" % report.stage2_policy,
-        "    blockers: %s" % _format_list(report.blockers),
-        "    warnings: %s" % _format_list(report.warnings),
-        "    trusted_inputs: %s" % _format_list(report.trusted_inputs),
-        "    unavailable_inputs: %s" % _format_list(report.unavailable_inputs),
+        f"  FOCI {stepper_name} autotune readiness:",
+        f"    result: {report.result}",
+        f"    stage2_policy: {report.stage2_policy}",
+        f"    blockers: {_format_list(report.blockers)}",
+        f"    warnings: {_format_list(report.warnings)}",
+        f"    trusted_inputs: {_format_list(report.trusted_inputs)}",
+        f"    unavailable_inputs: {_format_list(report.unavailable_inputs)}",
     ]
     return lines
 
@@ -196,9 +193,7 @@ def _resolve_inductance_evidence(driver) -> dict[str, int | None]:
         ):
             return {
                 "source": result.get("inductance_source"),
-                "reactance_count_ratio_milli": result.get(
-                    "inductance_reactance_count_ratio_milli"
-                ),
+                "reactance_count_ratio_milli": result.get("inductance_reactance_count_ratio_milli"),
                 "saliency_status": result.get("inductance_saliency_status"),
             }
 
@@ -221,9 +216,7 @@ def _resolve_resistance_evidence(driver) -> dict[str, int | None]:
             )
         ):
             return {
-                "selected_count_slope_milli": result.get(
-                    "resistance_selected_count_slope_milli"
-                ),
+                "selected_count_slope_milli": result.get("resistance_selected_count_slope_milli"),
                 "r_count_milli": result.get("r_count_milli"),
             }
 
@@ -248,19 +241,19 @@ def _classify_current_gains(
     for field_name in CURRENT_GAIN_FIELDS:
         active_value = active_gains.get(field_name)
         if active_value is None:
-            blockers.append("active current-loop gain %s unavailable" % field_name)
+            blockers.append(f"active current-loop gain {field_name} unavailable")
             current_gain_blocked = True
             continue
         if live_current_gains is None:
             continue
         live_value = live_current_gains.get(field_name)
         if live_value is None:
-            blockers.append("live current-loop gain %s unavailable" % field_name)
+            blockers.append(f"live current-loop gain {field_name} unavailable")
             current_gain_blocked = True
         elif live_value != active_value:
             blockers.append(
-                "live current-loop gain %s mismatch live=%s host=%s"
-                % (field_name, live_value, active_value)
+                f"live current-loop gain {field_name} mismatch live={live_value} host="
+                f"{active_value}"
             )
             current_gain_blocked = True
 
@@ -277,7 +270,7 @@ def _classify_current_loop_evidence(
         blockers.append("current-loop retry exhausted")
     failure_reason = evidence.get("failure_reason")
     if failure_reason not in (None, 0):
-        blockers.append("current-loop failure reason=%s" % failure_reason)
+        blockers.append(f"current-loop failure reason={failure_reason}")
 
 
 def _classify_inner_warnings(inner_warning_flags: int, warnings: list[str]) -> None:
@@ -285,7 +278,7 @@ def _classify_inner_warnings(inner_warning_flags: int, warnings: list[str]) -> N
         return
     formatted = format_inner_warning_flags(inner_warning_flags)
     if formatted != "none":
-        warnings.append("inner confidence: %s" % formatted)
+        warnings.append(f"inner confidence: {formatted}")
 
 
 def _classify_bandwidth(
@@ -304,10 +297,7 @@ def _classify_inductance(
     trusted_inputs: list[str],
     unavailable_inputs: list[str],
 ) -> None:
-    if (
-        evidence.get("source") == 1
-        or evidence.get("reactance_count_ratio_milli") is not None
-    ):
+    if evidence.get("source") == 1 or evidence.get("reactance_count_ratio_milli") is not None:
         trusted_inputs.append("average_inductance")
     else:
         unavailable_inputs.append("average_inductance")
@@ -338,16 +328,14 @@ def _classify_last_hold_and_entry(
     hold = active.last_current_loop_hold_evidence(driver.oid)
     hold_status = hold.get("hold_status") if hold else None
     if hold_status in CURRENT_HOLD_BLOCKING_STATUSES:
-        blockers.append("sustained-hold hard failure status=%s" % hold_status)
+        blockers.append(f"sustained-hold hard failure status={hold_status}")
     elif hold and hold.get("warning_flags", 0):
-        warnings.append(
-            "bounded sustained-hold warning flags=%s" % hold["warning_flags"]
-        )
+        warnings.append(f"bounded sustained-hold warning flags={hold['warning_flags']}")
 
     entry = active.last_closed_loop_entry_evidence(driver.oid)
     entry_status = entry.get("entry_status") if entry else None
     if entry_status in CLOSED_LOOP_ENTRY_BLOCKING_STATUSES:
-        blockers.append("closed-loop entry hard failure status=%s" % entry_status)
+        blockers.append(f"closed-loop entry hard failure status={entry_status}")
     elif entry_status == CLOSED_LOOP_ENTRY_WARN_DRIFT:
         warnings.append("bounded closed-loop entry drift")
 

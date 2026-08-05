@@ -39,19 +39,10 @@ class ControlsWorkflow:
         )
 
         gcmd.respond_info(
-            "FOCI %s debug gain update requested: vel_p=%d(%s) vel_i=%d(%s)"
-            " pos_p=%d(%s) pos_i=%d(%s)"
-            % (
-                self.driver.name,
-                velocity_p,
-                format_p_gain(velocity_p),
-                velocity_i,
-                format_i_gain(velocity_i),
-                position_p,
-                format_p_gain(position_p),
-                position_i,
-                format_i_gain(position_i),
-            )
+            f"FOCI {self.driver.name} debug gain update requested: vel_p={int(velocity_p)}("
+            f"{format_p_gain(velocity_p)}) vel_i={int(velocity_i)}({format_i_gain(velocity_i)}"
+            f") pos_p={int(position_p)}({format_p_gain(position_p)}) pos_i={int(position_i)}("
+            f"{format_i_gain(position_i)})"
         )
 
     def set_inner_gains(self, gcmd) -> None:
@@ -71,22 +62,10 @@ class ControlsWorkflow:
         self.driver.protocol.set_pid_gains(flux_p, flux_i, torque_p, torque_i)
 
         gcmd.respond_info(
-            "FOCI %s inner gain update requested: flux_p=%d(%s)"
-            " flux_i=%d(%s zero=%d/1048576)"
-            " torque_p=%d(%s) torque_i=%d(%s zero=%d/1048576)"
-            % (
-                self.driver.name,
-                flux_p,
-                format_p_gain(flux_p),
-                flux_i,
-                format_i_gain(flux_i),
-                flux_i,
-                torque_p,
-                format_p_gain(torque_p),
-                torque_i,
-                format_i_gain(torque_i),
-                torque_i,
-            )
+            f"FOCI {self.driver.name} inner gain update requested: flux_p={int(flux_p)}("
+            f"{format_p_gain(flux_p)}) flux_i={int(flux_i)}({format_i_gain(flux_i)} zero="
+            f"{int(flux_i)}/1048576) torque_p={int(torque_p)}({format_p_gain(torque_p)}) "
+            f"torque_i={int(torque_i)}({format_i_gain(torque_i)} zero={int(torque_i)}/1048576)"
         )
 
     def set_filters(self, gcmd) -> None:
@@ -136,17 +115,15 @@ class ControlsWorkflow:
             setattr(self.driver.settings, attr, value)
             if self.driver.state.active_gains is not None:
                 self.driver.state.active_gains[attr] = value
-            applied.append("%s=%dHz" % (label, value))
+            applied.append(f"{label}={int(value)}Hz")
 
         if not applied:
             raise gcmd.error(
-                "FOCI %s filters: specify at least one of "
-                "VELOCITY_HZ, TORQUE_HZ, POSITION_HZ, FLUX_HZ" % self.driver.name
+                f"FOCI {self.driver.name} filters: specify at least one of VELOCITY_HZ, "
+                f"TORQUE_HZ, POSITION_HZ, FLUX_HZ"
             )
 
-        gcmd.respond_info(
-            "FOCI %s filters set: %s" % (self.driver.name, " ".join(applied))
-        )
+        gcmd.respond_info(f"FOCI {self.driver.name} filters set: {' '.join(applied)}")
 
     def set_current(self, gcmd) -> None:
         """Set run current for live bringup debugging.
@@ -155,19 +132,17 @@ class ControlsWorkflow:
         value is applied immediately and kept in memory for the current Klipper
         session, but is not persisted to printer.cfg.
         """
-        run_current = gcmd.get_float(
-            "RUN_CURRENT", minval=0.0, maxval=MAX_RUN_CURRENT_AMPS
-        )
+        run_current = gcmd.get_float("RUN_CURRENT", minval=0.0, maxval=MAX_RUN_CURRENT_AMPS)
         if run_current <= 0.0:
-            raise gcmd.error("FOCI %s: RUN_CURRENT must be above 0" % self.driver.name)
+            raise gcmd.error(f"FOCI {self.driver.name}: RUN_CURRENT must be above 0")
 
         run_ma = int(run_current * 1000.0 + 0.5)
         self.driver.protocol.set_current(run_ma)
         self.driver.settings.run_current = run_current
 
         gcmd.respond_info(
-            "FOCI %s run current set: run_current=%.3fA run_ma=%d"
-            % (self.driver.name, run_current, run_ma)
+            f"FOCI {self.driver.name} run current set: run_current={run_current:.3f}A run_ma="
+            f"{int(run_ma)}"
         )
 
     def tmc_write_register(self, gcmd) -> None:
@@ -176,8 +151,8 @@ class ControlsWorkflow:
         value = gcmd.get_int("VALUE", minval=0, maxval=0xFFFFFFFF)
         self.driver.protocol.dev_tmc_write_register(addr=addr, value=value)
         gcmd.respond_info(
-            "FOCI_TMC_WRITE_REGISTER %s: addr=0x%02x value=0x%08x"
-            % (self.driver.stepper_name, addr, value)
+            f"FOCI_TMC_WRITE_REGISTER {self.driver.stepper_name}: addr=0x{addr:02x} value=0x"
+            f"{value:08x}"
         )
 
     def set_velocity_feedforward(self, gcmd) -> None:
@@ -195,8 +170,8 @@ class ControlsWorkflow:
         self.driver.settings.velocity_feedforward_multiplier = multiplier
 
         gcmd.respond_info(
-            "FOCI %s velocity feedforward set: enable=%d multiplier=%d"
-            % (self.driver.name, enable, multiplier)
+            f"FOCI {self.driver.name} velocity feedforward set: enable={int(enable)} "
+            f"multiplier={int(multiplier)}"
         )
 
     def set_velocity_transient_feedforward(self, gcmd) -> None:
@@ -241,16 +216,9 @@ class ControlsWorkflow:
         self.driver.settings.velocity_transient_rate_hz = rate_hz
 
         gcmd.respond_info(
-            "FOCI %s velocity transient feedforward set: enable=%d"
-            " lead_time_us=%d gain=%d max_offset=%d rate_hz=%d"
-            % (
-                self.driver.name,
-                enable,
-                lead_time_us,
-                gain,
-                max_offset,
-                rate_hz,
-            )
+            f"FOCI {self.driver.name} velocity transient feedforward set: enable={int(enable)} "
+            f"lead_time_us={int(lead_time_us)} gain={int(gain)} max_offset={int(max_offset)} "
+            f"rate_hz={int(rate_hz)}"
         )
 
     def set_accel_feedforward(self, gcmd) -> None:
@@ -261,8 +229,7 @@ class ControlsWorkflow:
         """
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
         split_gain_supplied = (
-            gcmd.get("ACCEL_GAIN", None) is not None
-            or gcmd.get("DECEL_GAIN", None) is not None
+            gcmd.get("ACCEL_GAIN", None) is not None or gcmd.get("DECEL_GAIN", None) is not None
         )
         alias_gain = (
             gcmd.get_int("GAIN", minval=0, maxval=65535)
@@ -298,9 +265,8 @@ class ControlsWorkflow:
         self.driver.settings.accel_feedforward_decel_gain = decel_gain
 
         gcmd.respond_info(
-            "FOCI %s acceleration feedforward set: enable=%d"
-            " accel_gain=%d decel_gain=%d"
-            % (self.driver.name, enable, accel_gain, decel_gain)
+            f"FOCI {self.driver.name} acceleration feedforward set: enable={int(enable)} "
+            f"accel_gain={int(accel_gain)} decel_gain={int(decel_gain)}"
         )
 
     def set_decoupling_feedforward(self, gcmd) -> None:
@@ -361,19 +327,10 @@ class ControlsWorkflow:
         self.driver.settings.decoupling_max_offset = max_offset
 
         gcmd.respond_info(
-            "FOCI %s decoupling feedforward set: enable=%d"
-            " r_int=%d l_int=%d pole_pairs=%d position_units_per_rev=%d"
-            " f_pwm_hz=%d max_offset=%d"
-            % (
-                self.driver.name,
-                enable,
-                r_int,
-                l_int,
-                pole_pairs,
-                position_units_per_rev,
-                f_pwm_hz,
-                max_offset,
-            )
+            f"FOCI {self.driver.name} decoupling feedforward set: enable={int(enable)} r_int="
+            f"{int(r_int)} l_int={int(l_int)} pole_pairs={int(pole_pairs)} "
+            f"position_units_per_rev={int(position_units_per_rev)} f_pwm_hz={int(f_pwm_hz)} "
+            f"max_offset={int(max_offset)}"
         )
 
     def set_position_lead(self, gcmd) -> None:
@@ -402,8 +359,8 @@ class ControlsWorkflow:
         self.driver.settings.position_lead_max_counts = max_counts
 
         gcmd.respond_info(
-            "FOCI %s position lead set: enable=%d gain=%d max_counts=%d"
-            % (self.driver.name, enable, gain, max_counts)
+            f"FOCI {self.driver.name} position lead set: enable={int(enable)} gain={int(gain)} "
+            f"max_counts={int(max_counts)}"
         )
 
     def set_phase_advance(self, gcmd) -> None:
@@ -440,9 +397,8 @@ class ControlsWorkflow:
         self.driver.settings.phase_advance_deadband = deadband
 
         gcmd.respond_info(
-            "FOCI %s phase advance set: enable=%d gain_ppm=%d"
-            " max_counts=%d deadband=%d"
-            % (self.driver.name, enable, gain_ppm, max_counts, deadband)
+            f"FOCI {self.driver.name} phase advance set: enable={int(enable)} gain_ppm="
+            f"{int(gain_ppm)} max_counts={int(max_counts)} deadband={int(deadband)}"
         )
 
     def set_voltage_limit(self, gcmd) -> None:
@@ -461,8 +417,7 @@ class ControlsWorkflow:
         self.driver.settings.voltage_limit = voltage_limit
 
         gcmd.respond_info(
-            "FOCI %s voltage limit set: pidout_uq_ud_limit=%d"
-            % (self.driver.name, voltage_limit)
+            f"FOCI {self.driver.name} voltage limit set: pidout_uq_ud_limit={int(voltage_limit)}"
         )
 
     def _get_p_gain(self, gcmd, key: str) -> int:
@@ -481,7 +436,5 @@ class ControlsWorkflow:
             return None
         value = gcmd.get_int(key, minval=0, maxval=max_hz)
         if value != 0 and value < FILTER_MIN_HZ:
-            raise gcmd.error(
-                "%s must be 0 (disabled) or %d..%d" % (key, FILTER_MIN_HZ, max_hz)
-            )
+            raise gcmd.error(f"{key} must be 0 (disabled) or {int(FILTER_MIN_HZ)}..{int(max_hz)}")
         return value

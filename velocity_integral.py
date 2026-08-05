@@ -274,9 +274,7 @@ class VelocityIntegralAssembler:
         self._require_fragment(params, 2)
         self._require_plan_identity(params)
         if int(params["maximum_workflow_ms"]) < int(params["nominal_workflow_ms"]):
-            raise VelocityIntegralProtocolError(
-                "integral-response maximum is below nominal"
-            )
+            raise VelocityIntegralProtocolError("integral-response maximum is below nominal")
         self._plan_parts.append(dict(params))
 
     def handle_plan_travel(self, params: dict) -> None:
@@ -302,9 +300,7 @@ class VelocityIntegralAssembler:
         """Accept one compact recovery summary after its causal evidence."""
         self._require_plan()
         if int(params.get("stage", -1)) != 1:
-            raise VelocityIntegralProtocolError(
-                "Stage-C recovery summary named the wrong stage"
-            )
+            raise VelocityIntegralProtocolError("Stage-C recovery summary named the wrong stage")
         self._require_run(params)
         rung_index = int(params.get("rung_index", -1))
         if rung_index in self.recoveries:
@@ -313,8 +309,7 @@ class VelocityIntegralAssembler:
         self._require_recovery_identity(params, rung_index, outcome)
         follows_rung = self._last_evidence == ("rung", rung_index)
         observation_count = sum(
-            observation_rung == rung_index
-            for observation_rung, _slot in self.observations
+            observation_rung == rung_index for observation_rung, _slot in self.observations
         )
         follows_partial_positive = (
             int(self.plan["schema_revision"]) >= 5
@@ -340,9 +335,7 @@ class VelocityIntegralAssembler:
 
     def handle_plan_rung(self, params: dict) -> None:
         if self.plan is not None:
-            raise VelocityIntegralProtocolError(
-                "duplicate plan rung after complete plan"
-            )
+            raise VelocityIntegralProtocolError("duplicate plan rung after complete plan")
         self._require_plan_step("plan recovery", 5)
         self._require_plan_identity(params)
         rung_index = int(params.get("rung_index", -1))
@@ -380,9 +373,7 @@ class VelocityIntegralAssembler:
         if direction != expected_direction:
             raise VelocityIntegralProtocolError("reordered rung direction")
         if direction == 1 and not self._rung_direction_complete(0):
-            raise VelocityIntegralProtocolError(
-                "reverse rung preceded forward components"
-            )
+            raise VelocityIntegralProtocolError("reverse rung preceded forward components")
         self._rung_parts.append(dict(params))
         if int(params["component_count"]) == 0:
             self._finish_rung_if_complete()
@@ -418,9 +409,7 @@ class VelocityIntegralAssembler:
         if int(params.get("bookend_available_mask", -1)) & ~0b11:
             raise VelocityIntegralProtocolError("invalid bookend availability mask")
         self._summary = _metadata_free(params)
-        for direction, key in enumerate(
-            ("forward_eligible_mask", "reverse_eligible_mask")
-        ):
+        for direction, key in enumerate(("forward_eligible_mask", "reverse_eligible_mask")):
             mask = int(params[key])
             self._validate_mask(mask)
             self.curves[direction]["eligible_mask"] = mask
@@ -439,9 +428,7 @@ class VelocityIntegralAssembler:
         elif kind == 1:
             rung = int(params["rung_index"])
             if not curve["eligible_mask"] & (1 << rung):
-                raise VelocityIntegralProtocolError(
-                    "curve interval is outside eligible mask"
-                )
+                raise VelocityIntegralProtocolError("curve interval is outside eligible mask")
             if rung in curve["positive"]:
                 raise VelocityIntegralProtocolError("duplicate positive curve interval")
             curve["positive"][rung] = interval
@@ -465,9 +452,7 @@ class VelocityIntegralAssembler:
         if self.stage_b_comparison[direction] is not None:
             raise VelocityIntegralProtocolError("duplicate Stage-B comparison")
         if int(params.get("available", -1)) not in (0, 1):
-            raise VelocityIntegralProtocolError(
-                "invalid Stage-B comparison availability"
-            )
+            raise VelocityIntegralProtocolError("invalid Stage-B comparison availability")
         self.stage_b_comparison[direction] = _metadata_free(params)
 
     def handle_reproduction_core(self, params: dict) -> None:
@@ -477,8 +462,8 @@ class VelocityIntegralAssembler:
         self.reproduction = {
             **_metadata_free(params),
             "masks": {},
-            "reproduced": [dict(), dict()],
-            "divergent": [dict(), dict()],
+            "reproduced": [{}, {}],
+            "divergent": [{}, {}],
         }
 
     def handle_reproduction_mask(self, params: dict) -> None:
@@ -542,9 +527,7 @@ class VelocityIntegralAssembler:
             "rest_boundary_rung_plus_one" not in params
             or "rest_boundary_slot_plus_one" not in params
         ):
-            raise VelocityIntegralProtocolError(
-                "schema-5 terminal omitted rest-boundary reference"
-            )
+            raise VelocityIntegralProtocolError("schema-5 terminal omitted rest-boundary reference")
         if schema_revision >= 6:
             flags = int(params.get("recovery_flags", -1))
             known_flags = (
@@ -555,9 +538,7 @@ class VelocityIntegralAssembler:
             if schema_revision >= 7:
                 known_flags |= TERMINAL_PROBE_CONSTRAINED_TEST_POINT
             if schema_revision >= 8:
-                known_flags |= (
-                    TERMINAL_COMBINED_TARGET_MASK | TERMINAL_COMBINED_WORKFLOW
-                )
+                known_flags |= TERMINAL_COMBINED_TARGET_MASK | TERMINAL_COMBINED_WORKFLOW
             if flags < 0 or flags & ~known_flags:
                 raise VelocityIntegralProtocolError("invalid terminal recovery flags")
         rung = int(params.get("rest_boundary_rung_plus_one", 0))
@@ -568,9 +549,7 @@ class VelocityIntegralAssembler:
         target_code = (
             int(params.get("recovery_flags", 0)) & TERMINAL_COMBINED_TARGET_MASK
         ) >> TERMINAL_COMBINED_TARGET_SHIFT
-        target_reference = (
-            combined and target_code in (1, 2) and rung != 0 and slot == 0
-        )
+        target_reference = combined and target_code in (1, 2) and rung != 0 and slot == 0
         if (rung == 0) != (slot == 0) and not target_reference:
             raise VelocityIntegralProtocolError("partial rest-boundary reference")
         if slot and (
@@ -623,9 +602,7 @@ class VelocityIntegralAssembler:
         terminal["plan_digest"] = self._reported_plan_digest(identity)
         terminal["digest"] = _u64(identity["digest_low"], identity["digest_high"])
         terminal["run_started_us"] = _u64(timing["started_low"], timing["started_high"])
-        terminal["run_completed_us"] = _u64(
-            timing["completed_low"], timing["completed_high"]
-        )
+        terminal["run_completed_us"] = _u64(timing["completed_low"], timing["completed_high"])
         rung = int(core.get("rest_boundary_rung_plus_one", 0))
         slot = int(core.get("rest_boundary_slot_plus_one", 0))
         terminal["rest_boundary"] = (
@@ -638,9 +615,7 @@ class VelocityIntegralAssembler:
             terminal["probe_constrained_test_point"] = True
         elif int(self.plan["schema_revision"]) >= 6:
             flags = int(terminal["recovery_flags"])
-            terminal["recovery_unavailable"] = int(
-                bool(flags & TERMINAL_RECOVERY_UNAVAILABLE)
-            )
+            terminal["recovery_unavailable"] = int(bool(flags & TERMINAL_RECOVERY_UNAVAILABLE))
             terminal["recovered_with_current_headroom"] = bool(
                 flags & TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM
             )
@@ -651,9 +626,7 @@ class VelocityIntegralAssembler:
                 flags & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
             )
             terminal["combined_workflow"] = bool(flags & TERMINAL_COMBINED_WORKFLOW)
-            target_code = (
-                flags & TERMINAL_COMBINED_TARGET_MASK
-            ) >> TERMINAL_COMBINED_TARGET_SHIFT
+            target_code = (flags & TERMINAL_COMBINED_TARGET_MASK) >> TERMINAL_COMBINED_TARGET_SHIFT
             terminal["target_status"] = COMBINED_TARGET_NAMES.get(target_code - 1)
             terminal["target_terminus"] = (
                 rung - 1 if target_code in (1, 2) and rung != 0 and slot == 0 else None
@@ -682,9 +655,7 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("terminal report is incomplete")
         if int(self.terminal["plan_digest"]) != int(self.plan["plan_digest"]):
             raise VelocityIntegralProtocolError("terminal plan digest mismatch")
-        if int(self.terminal["expected_observations"]) != int(
-            self.plan["expected_observations"]
-        ):
+        if int(self.terminal["expected_observations"]) != int(self.plan["expected_observations"]):
             raise VelocityIntegralProtocolError("terminal observation plan changed")
         if int(self.terminal["emitted_observations"]) != len(self.observations):
             raise VelocityIntegralProtocolError("terminal observation count mismatch")
@@ -733,12 +704,8 @@ class VelocityIntegralAssembler:
             if curve["opening"] is None or self.drift[direction] is None:
                 raise VelocityIntegralProtocolError("missing anchor or drift evidence")
             if set(curve["positive"]) != self._mask_bits(curve["eligible_mask"]):
-                raise VelocityIntegralProtocolError(
-                    "curve does not cover eligible mask"
-                )
-            bookend_expected = bool(
-                int(self._summary["bookend_available_mask"]) & (1 << direction)
-            )
+                raise VelocityIntegralProtocolError("curve does not cover eligible mask")
+            bookend_expected = bool(int(self._summary["bookend_available_mask"]) & (1 << direction))
             if (curve["bookend"] is not None) != bookend_expected:
                 raise VelocityIntegralProtocolError("bookend availability mismatch")
             if self.stage_b_comparison[direction] is None:
@@ -767,11 +734,7 @@ class VelocityIntegralAssembler:
         combined_or_breakaway = int(self.plan["schema_revision"]) >= 8 and int(
             self.workflow_plan["shape"]
         ) in (3, 6)
-        if (
-            self.outcome == "complete"
-            and self.reproduction is None
-            and not combined_or_breakaway
-        ):
+        if self.outcome == "complete" and self.reproduction is None and not combined_or_breakaway:
             raise VelocityIntegralProtocolError(
                 "complete integral response omitted reproduction evidence"
             )
@@ -779,31 +742,22 @@ class VelocityIntegralAssembler:
             if bool(self.terminal["recovery_quantization_exposed"]) != bool(
                 self.plan["recovery_quantization_exposed"]
             ):
-                raise VelocityIntegralProtocolError(
-                    "plan and terminal recovery exposure differ"
-                )
-            recovered = any(
-                int(recovery["outcome"]) == 5 for recovery in self.recoveries.values()
-            )
+                raise VelocityIntegralProtocolError("plan and terminal recovery exposure differ")
+            recovered = any(int(recovery["outcome"]) == 5 for recovery in self.recoveries.values())
             if bool(self.terminal["recovered_with_current_headroom"]) != recovered:
                 raise VelocityIntegralProtocolError(
                     "recovered terminal flag lacks causal recovery outcome"
                 )
-        if int(self.plan["schema_revision"]) >= 7:
-            if bool(self.terminal["probe_constrained_test_point"]) != bool(
-                self.plan["probe_constrained_test_point"]
-            ):
-                raise VelocityIntegralProtocolError(
-                    "plan and terminal probe constraint differ"
-                )
+        if int(self.plan["schema_revision"]) >= 7 and bool(
+            self.terminal["probe_constrained_test_point"]
+        ) != bool(self.plan["probe_constrained_test_point"]):
+            raise VelocityIntegralProtocolError("plan and terminal probe constraint differ")
 
     def _finish_plan(self) -> None:
         core, geometry, timing, travel, recovery = self._plan_parts
         plan = self._merge((core, geometry, timing, travel, recovery))
         plan["plan_digest"] = self._reported_plan_digest(core)
-        plan["stage_b_plan_digest"] = _u64(
-            core["stage_b_digest_low"], core["stage_b_digest_high"]
-        )
+        plan["stage_b_plan_digest"] = _u64(core["stage_b_digest_low"], core["stage_b_digest_high"])
         plan["authorities"] = list(self._authorities)
         plan["positive_i"] = [int(rung["i_raw"]) for rung in self._plan_rungs]
         plan["rungs"] = list(self._plan_rungs)
@@ -838,9 +792,7 @@ class VelocityIntegralAssembler:
                     )
                 # Stage-B and Stage-C revisions must be a matching pair. This is a
                 # compatibility check, not a re-derivation of firmware's arithmetic.
-                expected_stage_b = {11: 12, 12: 13, 13: 14}.get(
-                    int(plan["schema_revision"])
-                )
+                expected_stage_b = {11: 12, 12: 13, 13: 14}.get(int(plan["schema_revision"]))
                 if (
                     expected_stage_b is not None
                     and self._combined_stage_b_schema != expected_stage_b
@@ -894,9 +846,7 @@ class VelocityIntegralAssembler:
         if rung_index in self.rungs:
             raise VelocityIntegralProtocolError("duplicate rung")
         if any(int(core["rung_index"]) != rung_index for core in cores):
-            raise VelocityIntegralProtocolError(
-                "rung identity changed between directions"
-            )
+            raise VelocityIntegralProtocolError("rung identity changed between directions")
         directions = []
         for core in cores:
             direction = int(core["direction"])
@@ -937,18 +887,14 @@ class VelocityIntegralAssembler:
 
     def _accept_observation_part(self, params: dict, fragment: int) -> None:
         if len(self._observation_parts) != fragment:
-            raise VelocityIntegralProtocolError(
-                "missing or reordered observation fragment"
-            )
+            raise VelocityIntegralProtocolError("missing or reordered observation fragment")
         self._require_event_identity(params)
         self._require_fragment(params, fragment)
         self._observation_parts.append(dict(params))
 
     def _accept_terminal_part(self, params: dict, fragment: int) -> None:
         if len(self._terminal_parts) != fragment:
-            raise VelocityIntegralProtocolError(
-                "missing or reordered terminal fragment"
-            )
+            raise VelocityIntegralProtocolError("missing or reordered terminal fragment")
         if self.plan is None:
             self._require_run(params)
             if int(params.get("evidence_sequence", -1)) != 0:
@@ -962,9 +908,7 @@ class VelocityIntegralAssembler:
 
     def _accept_failed_admission_core(self, params: dict) -> None:
         if self.workflow_plan is None:
-            raise VelocityIntegralProtocolError(
-                "terminal preceded commissioning workflow plan"
-            )
+            raise VelocityIntegralProtocolError("terminal preceded commissioning workflow plan")
         if int(self.workflow_plan["shape"]) == 0 or self._plan_parts:
             raise VelocityIntegralProtocolError("terminal preceded exact plan")
         self._require_run(params)
@@ -992,13 +936,9 @@ class VelocityIntegralAssembler:
         if terminal is None:
             raise VelocityIntegralProtocolError("terminal report is incomplete")
         if self._summary is not None or self.observations or self.rungs:
-            raise VelocityIntegralProtocolError(
-                "failed admission carried motion evidence"
-            )
+            raise VelocityIntegralProtocolError("failed admission carried motion evidence")
         if int(terminal["plan_digest"]) == 0 or int(terminal["digest"]) != 0:
-            raise VelocityIntegralProtocolError(
-                "failed admission terminal identity is invalid"
-            )
+            raise VelocityIntegralProtocolError("failed admission terminal identity is invalid")
 
     def _require_stage_c_workflow(self, params: dict) -> None:
         if self.workflow_plan is None:
@@ -1016,23 +956,17 @@ class VelocityIntegralAssembler:
     def _require_plan_identity(self, params: dict) -> None:
         self._require_run(params)
         if int(params.get("evidence_sequence", -1)) != 0:
-            raise VelocityIntegralProtocolError(
-                "integral-response plan sequence is not zero"
-            )
+            raise VelocityIntegralProtocolError("integral-response plan sequence is not zero")
 
     def _require_event_identity(self, params: dict) -> None:
         self._require_run(params)
         evidence_sequence = int(params.get("evidence_sequence", -1))
         self._resolve_trace_only_current(evidence_sequence)
         if evidence_sequence != self._next_evidence_sequence:
-            raise VelocityIntegralProtocolError(
-                "integral-response evidence sequence gap"
-            )
+            raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
         self._ordinary_rest_hidden_positions = None
 
-    def _require_recovery_identity(
-        self, params: dict, rung_index: int, outcome: int
-    ) -> None:
+    def _require_recovery_identity(self, params: dict, rung_index: int, outcome: int) -> None:
         self._require_run(params)
         evidence_sequence = int(params.get("evidence_sequence", -1))
         self._resolve_trace_only_current(evidence_sequence)
@@ -1046,14 +980,10 @@ class VelocityIntegralAssembler:
             and pending is not None
             and pending[:2] == (1, rung_index)
         )
-        maximum_hidden_run = (
-            self.MAXIMUM_RECOVERY_HIDDEN_RUN if carries_hidden_evidence else 0
-        )
+        maximum_hidden_run = self.MAXIMUM_RECOVERY_HIDDEN_RUN if carries_hidden_evidence else 0
         hidden_run = evidence_sequence - self._next_evidence_sequence
         if hidden_run < 0 or hidden_run > maximum_hidden_run:
-            raise VelocityIntegralProtocolError(
-                "integral-response evidence sequence gap"
-            )
+            raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
         # Outcomes 1 and 5 are reached only after the settle poll, which always
         # commits a scored-rest selection, so they cannot hide nothing.
         if (
@@ -1083,9 +1013,7 @@ class VelocityIntegralAssembler:
                 self._trace_only_current_pending = False
                 self._ordinary_rest_hidden_positions = 0
             else:
-                raise VelocityIntegralProtocolError(
-                    "integral-response evidence sequence gap"
-                )
+                raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
             return
         if evidence_sequence == self._next_evidence_sequence:
             self._trace_only_current_pending = False
@@ -1107,26 +1035,18 @@ class VelocityIntegralAssembler:
         # Same gating as the original nonzero branch: hidden recovery evidence
         # exists only from schema 11 and only when a rest is pending. Note this
         # method, unlike the recovery path, has no rung identity to check.
-        carries_hidden_evidence = (
-            int(self.plan["schema_revision"]) >= 11 and pending is not None
-        )
-        maximum_hidden_run = (
-            self.MAXIMUM_RECOVERY_HIDDEN_RUN if carries_hidden_evidence else 0
-        )
+        carries_hidden_evidence = int(self.plan["schema_revision"]) >= 11 and pending is not None
+        maximum_hidden_run = self.MAXIMUM_RECOVERY_HIDDEN_RUN if carries_hidden_evidence else 0
         hidden_run = evidence_sequence - self._next_evidence_sequence
         if hidden_run < 0 or hidden_run > maximum_hidden_run:
-            raise VelocityIntegralProtocolError(
-                "integral-response evidence sequence gap"
-            )
+            raise VelocityIntegralProtocolError("integral-response evidence sequence gap")
         self._next_evidence_sequence = evidence_sequence
         if hidden_run:
             self._recovery_rest_pending = (pending[0], pending[1], True)
 
     def _require_summary(self, params: dict) -> None:
         if self._summary is None:
-            raise VelocityIntegralProtocolError(
-                "terminal evidence preceded run summary"
-            )
+            raise VelocityIntegralProtocolError("terminal evidence preceded run summary")
         self._require_run(params)
         if int(params.get("evidence_sequence", -1)) != self._next_evidence_sequence:
             raise VelocityIntegralProtocolError(
@@ -1140,10 +1060,7 @@ class VelocityIntegralAssembler:
         return self.reproduction
 
     def _require_run(self, params: dict) -> None:
-        if (
-            self._run_sequence is None
-            or int(params.get("run_sequence", -1)) != self._run_sequence
-        ):
+        if self._run_sequence is None or int(params.get("run_sequence", -1)) != self._run_sequence:
             raise VelocityIntegralProtocolError("run sequence changed")
 
     def _require_plan(self) -> None:
@@ -1191,9 +1108,7 @@ class VelocityIntegralAssembler:
         for part in parts:
             for key, value in _metadata_free(part).items():
                 if key in merged and merged[key] != value:
-                    raise VelocityIntegralProtocolError(
-                        f"fragment metadata differs for {key}"
-                    )
+                    raise VelocityIntegralProtocolError(f"fragment metadata differs for {key}")
                 merged[key] = value
         return merged
 
@@ -1324,10 +1239,7 @@ class BreakawayCampaignAssembler:
         self._run_sequence = run_sequence
 
     def _require_run(self, params: dict) -> None:
-        if (
-            self._run_sequence is None
-            or int(params.get("run_sequence", -1)) != self._run_sequence
-        ):
+        if self._run_sequence is None or int(params.get("run_sequence", -1)) != self._run_sequence:
             raise BreakawayCampaignProtocolError("run sequence changed")
 
     def _track_sequence(self, params: dict) -> int:
@@ -1335,10 +1247,7 @@ class BreakawayCampaignAssembler:
         sequence = int(params.get("evidence_sequence", -1))
         if sequence < 0:
             raise BreakawayCampaignProtocolError("missing evidence sequence")
-        if (
-            self._last_evidence_sequence is not None
-            and sequence < self._last_evidence_sequence
-        ):
+        if self._last_evidence_sequence is not None and sequence < self._last_evidence_sequence:
             raise BreakawayCampaignProtocolError("evidence sequence went backwards")
         self._last_evidence_sequence = sequence
         return sequence
@@ -1349,9 +1258,7 @@ class BreakawayCampaignAssembler:
 
     def _require_probe_plan(self, params: dict) -> None:
         if self.probe_plan is None:
-            raise BreakawayCampaignProtocolError(
-                "breakaway evidence arrived before the probe plan"
-            )
+            raise BreakawayCampaignProtocolError("breakaway evidence arrived before the probe plan")
         self._require_run(params)
 
     def _require_probe_resolved(self, params: dict) -> None:
@@ -1402,10 +1309,7 @@ class BreakawayCampaignAssembler:
             raise BreakawayCampaignProtocolError("reversed probe search grid")
         if int(params["motion_threshold_counts"]) <= 0:
             raise BreakawayCampaignProtocolError("zero probe motion threshold")
-        if (
-            int(params["max_capture_interval_us"])
-            != BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US
-        ):
+        if int(params["max_capture_interval_us"]) != BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US:
             raise BreakawayCampaignProtocolError(
                 "probe capture interval does not match the fixed contract"
             )
@@ -1423,36 +1327,26 @@ class BreakawayCampaignAssembler:
                 "probe result arrived after a probe failure terminal"
             )
         if self._track_sequence(params) == 0:
-            raise BreakawayCampaignProtocolError(
-                "probe result sequence is not after the plan"
-            )
+            raise BreakawayCampaignProtocolError("probe result sequence is not after the plan")
         if self._reported_plan_digest(params) != self.probe_plan["plan_digest"]:
             raise BreakawayCampaignProtocolError("probe result plan digest mismatch")
         rung_index = int(params["rung_index"])
         if not 0 <= rung_index < int(self.probe_plan["search_count"]):
-            raise BreakawayCampaignProtocolError(
-                "probe result rung is outside the search grid"
-            )
+            raise BreakawayCampaignProtocolError("probe result rung is outside the search grid")
         breakaway = int(params["breakaway_p_raw"])
         if (
             not int(self.probe_plan["p_start_raw"])
             <= breakaway
             <= int(self.probe_plan["p_top_raw"])
         ):
-            raise BreakawayCampaignProtocolError(
-                "probe result gain is outside the search grid"
-            )
+            raise BreakawayCampaignProtocolError("probe result gain is outside the search grid")
         if int(params["motion_threshold_counts"]) != int(
             self.probe_plan["motion_threshold_counts"]
         ):
-            raise BreakawayCampaignProtocolError(
-                "probe result motion threshold mismatch"
-            )
+            raise BreakawayCampaignProtocolError("probe result motion threshold mismatch")
         observations = int(params["observation_count"])
         if not 1 <= observations <= int(self.probe_plan["max_observations"]):
-            raise BreakawayCampaignProtocolError(
-                "invalid probe result observation count"
-            )
+            raise BreakawayCampaignProtocolError("invalid probe result observation count")
         self.probe_result = _metadata_free(params)
 
     def handle_probe_terminal(self, params: dict) -> None:
@@ -1488,9 +1382,7 @@ class BreakawayCampaignAssembler:
 
     def handle_discovery_plan_geometry(self, params: dict) -> None:
         if self._discovery_identity is None:
-            raise BreakawayCampaignProtocolError(
-                "discovery geometry preceded discovery identity"
-            )
+            raise BreakawayCampaignProtocolError("discovery geometry preceded discovery identity")
         if self.discovery_plan is not None:
             raise BreakawayCampaignProtocolError("duplicate discovery plan geometry")
         self._require_run(params)
@@ -1501,9 +1393,7 @@ class BreakawayCampaignAssembler:
                 "discovery geometry evidence sequence does not match its identity"
             )
         if int(params["schema_revision"]) != BREAKAWAY_DISCOVERY_SCHEMA_REVISION:
-            raise BreakawayCampaignProtocolError(
-                "unsupported breakaway discovery evidence schema"
-            )
+            raise BreakawayCampaignProtocolError("unsupported breakaway discovery evidence schema")
         floor = int(params["floor_p_raw"])
         breakaway = int(params["breakaway_p_raw"])
         ceiling = int(params["ceiling_p_raw"])
@@ -1529,13 +1419,9 @@ class BreakawayCampaignAssembler:
         if self.discovery_ceiling_source is not None:
             raise BreakawayCampaignProtocolError("duplicate discovery ceiling source")
         if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
-            raise BreakawayCampaignProtocolError(
-                "discovery ceiling source plan digest mismatch"
-            )
+            raise BreakawayCampaignProtocolError("discovery ceiling source plan digest mismatch")
         if int(params["binding_source"]) not in CEILING_BINDING_SOURCE_NAMES:
-            raise BreakawayCampaignProtocolError(
-                "invalid discovery ceiling binding source"
-            )
+            raise BreakawayCampaignProtocolError("invalid discovery ceiling binding source")
         self.discovery_ceiling_source = _metadata_free(params)
 
     def handle_discovery_rung_zero_diagnostic(self, params: dict) -> None:
@@ -1547,9 +1433,7 @@ class BreakawayCampaignAssembler:
         if self.discovery_rung_zero is not None:
             raise BreakawayCampaignProtocolError("duplicate rung-zero diagnostic")
         if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
-            raise BreakawayCampaignProtocolError(
-                "rung-zero diagnostic plan digest mismatch"
-            )
+            raise BreakawayCampaignProtocolError("rung-zero diagnostic plan digest mismatch")
         self.discovery_rung_zero = _metadata_free(params)
 
     def handle_discovery_terminal(self, params: dict) -> None:
@@ -1562,9 +1446,7 @@ class BreakawayCampaignAssembler:
                 "discovery terminal does not chain from the probe plan"
             )
         if self._reported_plan_digest(params) != self.discovery_plan["plan_digest"]:
-            raise BreakawayCampaignProtocolError(
-                "discovery terminal plan digest mismatch"
-            )
+            raise BreakawayCampaignProtocolError("discovery terminal plan digest mismatch")
         cause = int(params["terminal_cause"])
         if cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES:
             raise BreakawayCampaignProtocolError("invalid discovery terminal cause")
@@ -1603,9 +1485,7 @@ class BreakawayCampaignAssembler:
         if self.confirmation_terminal is not None or (
             self._confirmation_terminal_identity is not None
         ):
-            raise BreakawayCampaignProtocolError(
-                "duplicate confirmation terminal identity"
-            )
+            raise BreakawayCampaignProtocolError("duplicate confirmation terminal identity")
         prior = _u64(params["prior_plan_digest_low"], params["prior_plan_digest_high"])
         if prior != self.discovery_plan["plan_digest"]:
             raise BreakawayCampaignProtocolError(
@@ -1626,9 +1506,7 @@ class BreakawayCampaignAssembler:
                 "confirmation terminal masks preceded its identity"
             )
         if self.confirmation_terminal is not None:
-            raise BreakawayCampaignProtocolError(
-                "duplicate confirmation terminal masks"
-            )
+            raise BreakawayCampaignProtocolError("duplicate confirmation terminal masks")
         self._require_run(params)
         for prefix in ("forward", "reverse"):
             collected = int(params[f"{prefix}_collected_mask"])
@@ -1681,23 +1559,15 @@ class BreakawayCampaignAssembler:
         accepted = int(params.get("accepted", -1))
         if accepted not in (0, 1):
             raise BreakawayCampaignProtocolError("invalid campaign accepted flag")
-        digest = _u64(
-            params["stage_c_plan_digest_low"], params["stage_c_plan_digest_high"]
-        )
+        digest = _u64(params["stage_c_plan_digest_low"], params["stage_c_plan_digest_high"])
         if bool(accepted) != (digest != 0):
             raise BreakawayCampaignProtocolError(
                 "campaign accepted flag disagrees with the Stage-C plan digest"
             )
-        confirmation_accepted = bool(
-            int((self.confirmation_terminal or {}).get("accepted", 0))
-        )
-        if (
-            self.confirmation_terminal is not None
-            and bool(accepted) != confirmation_accepted
-        ):
+        confirmation_accepted = bool(int((self.confirmation_terminal or {}).get("accepted", 0)))
+        if self.confirmation_terminal is not None and bool(accepted) != confirmation_accepted:
             raise BreakawayCampaignProtocolError(
-                "campaign terminal disagrees with the confirmation terminal's "
-                "own acceptance"
+                "campaign terminal disagrees with the confirmation terminal's own acceptance"
             )
         self.campaign_terminal = _metadata_free(params)
         self.accepted = bool(accepted)

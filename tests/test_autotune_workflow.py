@@ -10,13 +10,13 @@ from klipper_foci.velocity_integral import (
 )
 
 from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
+    SAMPLE_COMMISSION_RESULT,
     CommandError,
     MockCartesianKinematics,
     MockGCmd,
     MockNoneKinematics,
     MockPrintStats,
-    SAMPLE_ACTIVE_GAINS,
-    SAMPLE_COMMISSION_RESULT,
     make_driver,
 )
 
@@ -91,8 +91,7 @@ class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(
             stepper_name="stepper_x",
-            kinematics=kinematics
-            or MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
+            kinematics=kinematics or MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
             homed_axes=homed_axes,
         )
         d.state.is_calibrated = True
@@ -128,9 +127,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_terminal_disarm_synchronizes_host_enable_state(self):
         d = self._commissioned_driver()
         toolhead = d.printer.lookup_object("toolhead")
-        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
-            d.stepper_name
-        )
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(toolhead.get_last_move_time())
 
         d.autotune._synchronize_disarmed_workflow_terminal(toolhead)
@@ -344,20 +341,14 @@ class TestAutotuneGates(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         self.assertGreaterEqual(pauses, 2)
-        self.assertTrue(
-            any("proportional response" in message for message in gcmd._responses)
-        )
-        self.assertTrue(
-            any("integral response" in message for message in gcmd._responses)
-        )
+        self.assertTrue(any("proportional response" in message for message in gcmd._responses))
+        self.assertTrue(any("integral response" in message for message in gcmd._responses))
 
     def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
-        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
-            d.stepper_name
-        )
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(0.0)
         pauses = 0
 
@@ -385,9 +376,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(pauses, 1)
         self.assertIsNone(d.autotune.velocity_integral.plan)
         self.assertEqual(d.autotune.velocity_integral.outcome, "failed")
-        self.assertTrue(
-            any("response failed" in message for message in gcmd._responses)
-        )
+        self.assertTrue(any("response failed" in message for message in gcmd._responses))
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(enable_line.is_motor_enabled())
 
@@ -421,12 +410,8 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertIsNone(d.autotune.velocity_integral.plan)
         self.assertEqual(d.autotune.velocity_integral.outcome, "failed")
-        self.assertTrue(
-            any("proportional complete" in message for message in gcmd._responses)
-        )
-        self.assertTrue(
-            any("response failed" in message for message in gcmd._responses)
-        )
+        self.assertTrue(any("proportional complete" in message for message in gcmd._responses))
+        self.assertTrue(any("response failed" in message for message in gcmd._responses))
 
     def test_composite_workflow_finishes_when_recovery_suppresses_continuation(self):
         d = self._commissioned_driver()
@@ -471,9 +456,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        self.assertTrue(
-            any("proportional response" in message for message in gcmd._responses)
-        )
+        self.assertTrue(any("proportional response" in message for message in gcmd._responses))
         self.assertFalse(d.autotune.velocity_integral.done)
 
     def test_composite_rejects_integral_plan_before_proportional_handoff(self):
@@ -582,9 +565,7 @@ class TestAutotuneGates(unittest.TestCase):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
-        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(
-            d.stepper_name
-        )
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(0.0)
 
         def pause_and_report_hard_fault(deadline):
@@ -601,9 +582,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertFalse(enable_line.is_motor_enabled())
         self.assertFalse(d.state.is_calibrated)
         self.assertTrue(d.state.inhibited)
-        self.assertEqual(
-            d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0]
-        )
+        self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 
     def test_safety_fault_reports_outer_envelope_detail(self):
         d = self._commissioned_driver()
@@ -866,9 +845,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d = self._ready_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         invalidate_calls = []
-        d.homing.invalidate_homing = lambda: invalidate_calls.append(
-            "invalidate_homing"
-        )
+        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
         self._install_live_dump(
             d,
             {
@@ -888,9 +865,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d = self._ready_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         invalidate_calls = []
-        d.homing.invalidate_homing = lambda: invalidate_calls.append(
-            "invalidate_homing"
-        )
+        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
         self._install_live_dump(
             d,
             {
@@ -911,9 +886,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.config.identified_l_reactance_count_ratio_milli = None
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         invalidate_calls = []
-        d.homing.invalidate_homing = lambda: invalidate_calls.append(
-            "invalidate_homing"
-        )
+        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
         self._install_live_dump(
             d,
             {
@@ -925,9 +898,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
 
-        self.assertIn(
-            "stage 2 unavailable inputs: average_inductance", str(ctx.exception)
-        )
+        self.assertIn("stage 2 unavailable inputs: average_inductance", str(ctx.exception))
         self.assertIsNone(d.protocol.commands.tune.last_args)
         self.assertEqual(invalidate_calls, [])
 
@@ -1125,9 +1096,7 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
     )
 
 
-def feed_breakaway_confirmation(
-    driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, accepted
-):
+def feed_breakaway_confirmation(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, accepted):
     """Feed a full held-out 8-stroke confirmation block, then the campaign
     closure record -- accepted, or ending in a TargetBandConfirmationInconclusive
     ResponseLocation cause (wire code 15)."""
@@ -1244,10 +1213,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
             reactor._time = deadline
             if d.autotune.velocity_integral.workflow_plan is None:
                 feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
-            elif (
-                d.autotune.breakaway_campaign.discovery_terminal is None
-                and reactor._time >= 5.5
-            ):
+            elif d.autotune.breakaway_campaign.discovery_terminal is None and reactor._time >= 5.5:
                 feed_breakaway_probe_and_discovery(d)
             elif (
                 d.autotune.breakaway_campaign.discovery_terminal is not None
@@ -1257,8 +1223,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                 feed_breakaway_confirmation(d, accepted=True)
                 d.autotune.velocity_integral.plan = {
                     "plan_digest": (
-                        BREAKAWAY_STAGE_C_DIGEST[0]
-                        | (BREAKAWAY_STAGE_C_DIGEST[1] << 32)
+                        BREAKAWAY_STAGE_C_DIGEST[0] | (BREAKAWAY_STAGE_C_DIGEST[1] << 32)
                     )
                 }
                 d.autotune.velocity_integral.outcome = "complete"
@@ -1277,9 +1242,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertTrue(
             any("breakaway campaign accepted" in message for message in gcmd._responses)
         )
-        self.assertTrue(
-            any("integral response" in message for message in gcmd._responses)
-        )
+        self.assertTrue(any("integral response" in message for message in gcmd._responses))
 
     def test_operator_report_relays_geometry_margin_and_confirmation_bounds(self):
         """Brief step 3: the breakaway seed, additive geometry, nomination
@@ -1310,9 +1273,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
         persisted = []
-        d.autotune.persist_tune_results = lambda *args, **kwargs: persisted.append(
-            (args, kwargs)
-        )
+        d.autotune.persist_tune_results = lambda *args, **kwargs: persisted.append((args, kwargs))
 
         def pause_with_inconclusive_confirmation(deadline):
             reactor._time = deadline
@@ -1333,10 +1294,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
         self.assertEqual(persisted, [])
         self.assertTrue(
-            any(
-                "breakaway campaign not accepted" in message
-                for message in gcmd._responses
-            )
+            any("breakaway campaign not accepted" in message for message in gcmd._responses)
         )
 
     def test_dumb_host_never_reissues_a_second_confirmation_after_acceptance(self):
@@ -1376,6 +1334,4 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         )
 
         self.assertIsNotNone(d.autotune.breakaway_campaign_error)
-        self.assertIn(
-            "duplicate confirmation", str(d.autotune.breakaway_campaign_error)
-        )
+        self.assertIn("duplicate confirmation", str(d.autotune.breakaway_campaign_error))

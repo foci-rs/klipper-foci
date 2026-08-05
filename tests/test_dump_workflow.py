@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import pytest
-
 from klipper_foci.registers import REGISTERS
+
 from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
     CommandError,
     MockGCmd,
-    SAMPLE_ACTIVE_GAINS,
     make_config_driver,
     make_config_printer,
     make_driver,
 )
-
 
 DEFAULT_DUMP_VALUES = {
     REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
@@ -39,7 +38,7 @@ class DumpOnlyProtocol:
         self.driver.dump.handle_dump_done({})
 
     def __getattr__(self, name):
-        raise AssertionError("unexpected protocol call: %s" % name)
+        raise AssertionError(f"unexpected protocol call: {name}")
 
 
 class TimeoutDumpProtocol:
@@ -52,7 +51,7 @@ class TimeoutDumpProtocol:
         self.calls.append("dump_registers")
 
     def __getattr__(self, name):
-        raise AssertionError("unexpected protocol call: %s" % name)
+        raise AssertionError(f"unexpected protocol call: {name}")
 
 
 def _install_dump_response(driver, values=None):
@@ -185,9 +184,7 @@ def _configured_driver():
 
 def _registered_handler(driver, command_name):
     gcode = driver.printer.lookup_object("gcode")
-    return next(
-        args[3] for args, _kwargs in gcode._mux_commands if args[0] == command_name
-    )
+    return next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == command_name)
 
 
 def test_default_dump_omits_tuning_section_and_sends_one_dump_request():
@@ -293,9 +290,7 @@ def test_tuning_flag_appends_autotune_readiness_report():
     assert "stage2_policy: normal" in output
     assert "blockers: none" in output
     assert "warnings: none" in output
-    trusted_inputs_line = next(
-        line for line in output.splitlines() if "trusted_inputs:" in line
-    )
+    trusted_inputs_line = next(line for line in output.splitlines() if "trusted_inputs:" in line)
     assert "current_loop_gains" in trusted_inputs_line
     assert "current_bandwidth" in trusted_inputs_line
     assert "unavailable_inputs: none" in output
@@ -597,21 +592,11 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.entry_runaway               = no" in output
     assert "-- Last sustained-hold gate (not persisted) --" in output
     assert "last.hold_status                 = pass" in output
-    assert (
-        "last.hold_samples                = 250 @ 1000 us, elapsed_us=250000" in output
-    )
+    assert "last.hold_samples                = 250 @ 1000 us, elapsed_us=250000" in output
     assert "last.hold_position               = span=1 drift=1" in output
-    assert (
-        "last.hold_torque                 = mean=0 rms=12 span=34 crossings=17"
-        in output
-    )
-    assert (
-        "last.hold_flux                   = mean=0 rms=9 span=21 crossings=11" in output
-    )
-    assert (
-        "last.hold_status_flags           = or=0 actionable_count=0 warnings=0"
-        in output
-    )
+    assert "last.hold_torque                 = mean=0 rms=12 span=34 crossings=17" in output
+    assert "last.hold_flux                   = mean=0 rms=9 span=21 crossings=11" in output
+    assert "last.hold_status_flags           = or=0 actionable_count=0 warnings=0" in output
 
 
 def test_tuning_flag_names_bounded_closed_loop_entry_drift():

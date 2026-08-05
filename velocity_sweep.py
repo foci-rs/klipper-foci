@@ -104,9 +104,7 @@ class VelocitySweepAssembler:
         revision is the authority whenever the plan omits its own field.
         """
         if self.plan is not None:
-            raise VelocitySweepProtocolError(
-                "firmware Stage-B revision arrived after the plan"
-            )
+            raise VelocitySweepProtocolError("firmware Stage-B revision arrived after the plan")
         if schema_revision not in COMBINED_STAGE_B_REVISIONS:
             raise VelocitySweepProtocolError("unknown firmware Stage-B revision")
         self._firmware_stage_b_schema = schema_revision
@@ -128,14 +126,8 @@ class VelocitySweepAssembler:
         """
         if shape not in (0, 1, 2, 3, 6):
             raise VelocitySweepProtocolError("invalid workflow shape")
-        if (
-            self.plan is not None
-            or self._group_parts
-            or self._last_evidence is not None
-        ):
-            raise VelocitySweepProtocolError(
-                "workflow shape arrived after sweep evidence"
-            )
+        if self.plan is not None or self._group_parts or self._last_evidence is not None:
+            raise VelocitySweepProtocolError("workflow shape arrived after sweep evidence")
         if self._workflow_shape is not None:
             raise VelocitySweepProtocolError("duplicate workflow shape")
         if (nominal_workflow_ms is None) != (maximum_workflow_ms is None):
@@ -197,9 +189,7 @@ class VelocitySweepAssembler:
         if self.plan is None:
             raise VelocitySweepProtocolError("recovery summary arrived before plan")
         if int(params.get("stage", -1)) != 0:
-            raise VelocitySweepProtocolError(
-                "Stage-B recovery summary named the wrong stage"
-            )
+            raise VelocitySweepProtocolError("Stage-B recovery summary named the wrong stage")
         self._validate_run(params)
         rung_index = int(params.get("rung_index", -1))
         if rung_index in self.recoveries:
@@ -212,9 +202,7 @@ class VelocitySweepAssembler:
             outcome=outcome,
         )
         if self._last_evidence != ("rung", rung_index):
-            raise VelocitySweepProtocolError(
-                "recovery did not immediately follow its rung"
-            )
+            raise VelocitySweepProtocolError("recovery did not immediately follow its rung")
         if int(params.get("p_raw", -1)) != int(self.rungs[rung_index]["velocity_p"]):
             raise VelocitySweepProtocolError("recovery summary changed the rung gain")
         if int(params.get("binding_source", -1)) not in range(7):
@@ -241,13 +229,9 @@ class VelocitySweepAssembler:
     def handle_rung_consensus_core(self, params: dict) -> None:
         """Start one firmware-authored consensus record group."""
         if self._group_kind is not None:
-            raise VelocitySweepProtocolError(
-                "consensus core interrupted fragment group"
-            )
+            raise VelocitySweepProtocolError("consensus core interrupted fragment group")
         if self._unframed_kind is not None:
-            raise VelocitySweepProtocolError(
-                "consensus core interrupted unframed record"
-            )
+            raise VelocitySweepProtocolError("consensus core interrupted unframed record")
         if self.plan is None:
             raise VelocitySweepProtocolError("rung consensus arrived before plan")
         if int(params.get("fragment", -1)) != 0:
@@ -256,9 +240,7 @@ class VelocitySweepAssembler:
         expected_order = [0]
         for direction, prefix in enumerate(("forward", "reverse")):
             component_count = int(params[prefix + "_component_count"])
-            expected_order.extend(
-                1 + direction * 2 + index for index in range(component_count)
-            )
+            expected_order.extend(1 + direction * 2 + index for index in range(component_count))
             if int(params[prefix + "_class"]) == CONSENSUS_ELIGIBLE:
                 expected_order.append(5 + direction)
         self._start_group("rung consensus", len(expected_order), params)
@@ -289,14 +271,10 @@ class VelocitySweepAssembler:
             raise VelocitySweepProtocolError("structured boundary arrived before plan")
         self._validate_run(params)
         if int(params["evidence_sequence"]) + 1 != self._next_evidence_sequence:
-            raise VelocitySweepProtocolError(
-                "structured boundary does not follow its observation"
-            )
+            raise VelocitySweepProtocolError("structured boundary does not follow its observation")
         key = (int(params["rung_index"]), int(params["slot"]))
         if key not in self.observations:
-            raise VelocitySweepProtocolError(
-                "structured boundary has no owning observation"
-            )
+            raise VelocitySweepProtocolError("structured boundary has no owning observation")
         if any(
             (int(item["rung_index"]), int(item["slot"])) == key
             for item in self.structured_boundaries
@@ -343,10 +321,7 @@ class VelocitySweepAssembler:
         self._accept_unframed("stage b reproduction", 4, params)
 
     def handle_stage_b_reproduction_v4_core(self, params: dict) -> None:
-        if (
-            int(params.get("schema_revision", -1))
-            not in SUPPORTED_STAGE_B_REPRODUCTION_SCHEMAS
-        ):
+        if int(params.get("schema_revision", -1)) not in SUPPORTED_STAGE_B_REPRODUCTION_SCHEMAS:
             raise VelocitySweepProtocolError("unsupported stage b reproduction schema")
         self._accept_unframed("stage b reproduction v4", 0, params)
 
@@ -423,22 +398,17 @@ class VelocitySweepAssembler:
         params: dict,
     ) -> None:
         if self._unframed_kind is not None:
-            raise VelocitySweepProtocolError(
-                "%s interrupted %s" % (kind, self._unframed_kind)
-            )
+            raise VelocitySweepProtocolError(f"{kind} interrupted {self._unframed_kind}")
         fragment = int(params.get("fragment", -1))
         if fragment != expected_fragment:
             raise VelocitySweepProtocolError(
-                "unexpected %s fragment %d (expected %d)"
-                % (kind, fragment, expected_fragment)
+                f"unexpected {kind} fragment {int(fragment)} (expected {int(expected_fragment)})"
             )
         if self._group_kind is None:
             if fragment != 0:
                 raise VelocitySweepProtocolError("fragment group did not start at zero")
             if self.plan is None and kind not in ("plan", "stage b terminal"):
-                raise VelocitySweepProtocolError(
-                    "velocity sweep plan must arrive first"
-                )
+                raise VelocitySweepProtocolError("velocity sweep plan must arrive first")
             if self.plan is not None and kind == "plan":
                 raise VelocitySweepProtocolError("duplicate velocity sweep plan")
             self._start_group(kind, fragment_count, params)
@@ -480,9 +450,7 @@ class VelocitySweepAssembler:
             direction = int(params["direction"])
             prefix = ("forward", "reverse")[direction]
             if int(core[prefix + "_class"]) != CONSENSUS_ELIGIBLE:
-                raise VelocitySweepProtocolError(
-                    "pool supplied for ineligible consensus"
-                )
+                raise VelocitySweepProtocolError("pool supplied for ineligible consensus")
             if int(params["pooled_low_q16"]) > int(params["pooled_high_q16"]):
                 raise VelocitySweepProtocolError("reversed consensus pool interval")
         self._group_parts.append(dict(params))
@@ -505,9 +473,7 @@ class VelocitySweepAssembler:
         if rung_index in self.rungs:
             raise VelocitySweepProtocolError("duplicate rung")
         if int(self.plan["observations_per_direction"]) != 4:
-            raise VelocitySweepProtocolError(
-                "consensus requires four observations per direction"
-            )
+            raise VelocitySweepProtocolError("consensus requires four observations per direction")
         for direction, prefix in enumerate(("forward", "reverse")):
             classification = int(core[prefix + "_class"])
             component_count = int(core[prefix + "_component_count"])
@@ -518,24 +484,18 @@ class VelocitySweepAssembler:
                 CONSENSUS_INCOMPLETE: 0,
             }.get(classification)
             if expected_components is None or component_count != expected_components:
-                raise VelocitySweepProtocolError(
-                    "invalid consensus class/component count"
-                )
+                raise VelocitySweepProtocolError("invalid consensus class/component count")
             collected = int(core[prefix + "_collected_mask"])
             eligible = int(core[prefix + "_eligible_mask"])
             included = int(core[prefix + "_included_mask"])
             if any(mask & ~0x0F for mask in (collected, eligible, included)):
-                raise VelocitySweepProtocolError(
-                    "consensus mask exceeds four observations"
-                )
+                raise VelocitySweepProtocolError("consensus mask exceeds four observations")
             if eligible & ~collected or included & ~eligible:
                 raise VelocitySweepProtocolError("consensus masks are not nested")
             if classification == CONSENSUS_ELIGIBLE and included.bit_count() < 3:
                 raise VelocitySweepProtocolError("eligible consensus lacks three votes")
             if classification != CONSENSUS_ELIGIBLE and included != 0:
-                raise VelocitySweepProtocolError(
-                    "ineligible consensus includes observations"
-                )
+                raise VelocitySweepProtocolError("ineligible consensus includes observations")
             operable_count = int(core[prefix + "_operable_count"])
             if operable_count not in range(5):
                 raise VelocitySweepProtocolError("invalid consensus operable count")
@@ -545,9 +505,7 @@ class VelocitySweepAssembler:
                 if collected & (1 << member)
                 for slot in (2 * member + direction,)
             }
-            if any(
-                (rung_index, slot) not in self.observations for slot in observed_slots
-            ):
+            if any((rung_index, slot) not in self.observations for slot in observed_slots):
                 raise VelocitySweepProtocolError(
                     "rung arrived before its declared collected observations"
                 )
@@ -557,9 +515,7 @@ class VelocitySweepAssembler:
                 if observed_rung == rung_index and slot % 2 == direction
             }
             if actual_slots != observed_slots:
-                raise VelocitySweepProtocolError(
-                    "consensus collected mask disagrees with stream"
-                )
+                raise VelocitySweepProtocolError("consensus collected mask disagrees with stream")
         # Slots per rung is firmware geometry; the plan declares it.
         for slot in range(2 * int(self.plan["observations_per_direction"])):
             observation = self.observations.get((rung_index, slot))
@@ -577,25 +533,19 @@ class VelocitySweepAssembler:
             "stage b reproduction v4": 11,
         }
         if self._group_kind is not None:
-            raise VelocitySweepProtocolError(
-                "%s interrupted a fragmented record" % kind
-            )
+            raise VelocitySweepProtocolError(f"{kind} interrupted a fragmented record")
         if self.plan is None:
-            raise VelocitySweepProtocolError("%s arrived before plan" % kind)
+            raise VelocitySweepProtocolError(f"{kind} arrived before plan")
         if self._unframed_kind is None:
             if expected_part != 0:
-                raise VelocitySweepProtocolError(
-                    "%s record did not start with its first part" % kind
-                )
+                raise VelocitySweepProtocolError(f"{kind} record did not start with its first part")
             self._start_unframed(kind, params)
         else:
             if self._unframed_kind != kind:
-                raise VelocitySweepProtocolError(
-                    "%s interrupted %s" % (kind, self._unframed_kind)
-                )
+                raise VelocitySweepProtocolError(f"{kind} interrupted {self._unframed_kind}")
             self._validate_unframed_identity(params)
             if expected_part != len(self._unframed_parts):
-                raise VelocitySweepProtocolError("reordered %s record" % kind)
+                raise VelocitySweepProtocolError(f"reordered {kind} record")
         self._unframed_parts.append(self._strip_metadata(params))
         if len(self._unframed_parts) == part_counts[kind]:
             self._finish_unframed(kind)
@@ -604,15 +554,13 @@ class VelocitySweepAssembler:
         self._validate_run(params)
         self._resolve_trace_only_current(int(params["evidence_sequence"]))
         if int(params["evidence_sequence"]) != self._next_evidence_sequence:
-            raise VelocitySweepProtocolError("%s evidence sequence gap" % kind)
+            raise VelocitySweepProtocolError(f"{kind} evidence sequence gap")
         self._unframed_kind = kind
 
     def _validate_unframed_identity(self, params: dict) -> None:
         self._validate_run(params)
         if int(params["evidence_sequence"]) != self._next_evidence_sequence:
-            raise VelocitySweepProtocolError(
-                "%s evidence sequence changed" % self._unframed_kind
-            )
+            raise VelocitySweepProtocolError(f"{self._unframed_kind} evidence sequence changed")
 
     def _validate_run(self, params: dict) -> None:
         run_sequence = int(params["run_sequence"])
@@ -624,9 +572,7 @@ class VelocitySweepAssembler:
     @staticmethod
     def _strip_metadata(params: dict) -> dict:
         return {
-            key: value
-            for key, value in params.items()
-            if key != "oid" and not key.startswith("#")
+            key: value for key, value in params.items() if key != "oid" and not key.startswith("#")
         }
 
     def _finish_unframed(self, kind: str) -> None:
@@ -663,8 +609,8 @@ class VelocitySweepAssembler:
             self._accept_recovery_rest_sequence_position(kind, evidence_sequence)
         elif evidence_sequence != self._next_evidence_sequence:
             raise VelocitySweepProtocolError(
-                "evidence sequence gap: got %d, expected %d"
-                % (evidence_sequence, self._next_evidence_sequence)
+                f"evidence sequence gap: got {int(evidence_sequence)}, expected "
+                f"{int(self._next_evidence_sequence)}"
             )
         self._group_kind = kind
         self._group_fragments = fragment_count
@@ -718,9 +664,7 @@ class VelocitySweepAssembler:
                 self._trace_only_current_pending = False
                 return
             else:
-                raise VelocitySweepProtocolError(
-                    f"{kind or 'evidence'} evidence sequence gap"
-                )
+                raise VelocitySweepProtocolError(f"{kind or 'evidence'} evidence sequence gap")
             return
         if evidence_sequence == self._next_evidence_sequence:
             self._trace_only_current_pending = False
@@ -737,15 +681,11 @@ class VelocitySweepAssembler:
         outcome: int | None = None,
     ) -> None:
         hidden_positions = (
-            2
-            if self._combined_stage_b_schema
-            in STAGE_B_SCHEMAS_WITH_TWO_HIDDEN_POSITIONS
-            else 1
+            2 if self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_TWO_HIDDEN_POSITIONS else 1
         )
         if evidence_sequence == self._next_evidence_sequence:
             if (
-                self._combined_stage_b_schema
-                in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
+                self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
                 and kind == "recovery"
                 and outcome == 1
             ):
@@ -762,8 +702,7 @@ class VelocitySweepAssembler:
             and kind in ("recovery", "stage b terminal")
         ):
             if (
-                self._combined_stage_b_schema
-                in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
+                self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
                 and kind == "recovery"
                 and (rung_index != pending[1] or outcome != 1)
             ):
@@ -783,9 +722,7 @@ class VelocitySweepAssembler:
                 if key in ("fragment", "oid") or key.startswith("#"):
                     continue
                 if key in merged and merged[key] != value:
-                    raise VelocitySweepProtocolError(
-                        "fragment metadata differs for %s" % key
-                    )
+                    raise VelocitySweepProtocolError(f"fragment metadata differs for {key}")
                 merged[key] = value
         return merged
 
@@ -805,9 +742,7 @@ class VelocitySweepAssembler:
             elif self._firmware_stage_b_schema is not None:
                 schema_revision = self._firmware_stage_b_schema
             elif self._workflow_duration is not None:
-                schema_revision = COMBINED_STAGE_B_WORKFLOW_SCHEMAS.get(
-                    self._workflow_duration
-                )
+                schema_revision = COMBINED_STAGE_B_WORKFLOW_SCHEMAS.get(self._workflow_duration)
             # Nothing to bind from is not an error here; a consumer that needs
             # the revision reports its own absence more usefully than this can.
             if schema_revision is not None:
@@ -843,9 +778,7 @@ class VelocitySweepAssembler:
             fragment = int(part["fragment"])
             direction = int(part["direction"])
             if fragment in (1, 2, 3, 4):
-                components[direction].append(
-                    (int(part["low_q16"]), int(part["high_q16"]))
-                )
+                components[direction].append((int(part["low_q16"]), int(part["high_q16"])))
             else:
                 pools[direction] = self._strip_metadata(part)
         rung = self._strip_metadata(core)
@@ -906,8 +839,7 @@ class VelocitySweepAssembler:
         matches = [
             region
             for region in self.directional_regions
-            if int(region["direction"]) == direction
-            and int(region["member_mask"]) == member_mask
+            if int(region["direction"]) == direction and int(region["member_mask"]) == member_mask
         ]
         if len(matches) != 1:
             raise VelocitySweepProtocolError(
@@ -920,9 +852,7 @@ class VelocitySweepAssembler:
         if int(core["nominated_p"]) != int(nomination["nominated_p"]):
             raise VelocitySweepProtocolError("stage b nomination changed between parts")
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
-            raise VelocitySweepProtocolError(
-                "stage b directional handoff order mismatch"
-            )
+            raise VelocitySweepProtocolError("stage b directional handoff order mismatch")
         nominated_rung = int(nomination["nominated_rung"])
         selected = []
         for direction, part, key in (
@@ -931,9 +861,7 @@ class VelocitySweepAssembler:
         ):
             membership = int(part["member_mask"])
             if membership != int(core[key]):
-                raise VelocitySweepProtocolError(
-                    "stage b handoff membership changed between parts"
-                )
+                raise VelocitySweepProtocolError("stage b handoff membership changed between parts")
             region = self._find_region(direction, membership)
             expected_class = 1 if region["kind"] == "valid" else 0
             if int(part.get("region_class", -1)) != expected_class:
@@ -947,12 +875,9 @@ class VelocitySweepAssembler:
                 "selected joint component lies outside the reported union"
             )
         if not any(
-            int(region["member_mask"]) == selected_joint_mask
-            for region in self.joint_regions
+            int(region["member_mask"]) == selected_joint_mask for region in self.joint_regions
         ):
-            raise VelocitySweepProtocolError(
-                "stage b nomination names unknown joint component"
-            )
+            raise VelocitySweepProtocolError("stage b nomination names unknown joint component")
         handoff = dict(core)
         for key, value in nomination.items():
             if key not in ("flags", "nominated_p"):
@@ -965,16 +890,12 @@ class VelocitySweepAssembler:
         handoff["directions"] = [forward, reverse]
         self.handoff = handoff
         for region in self.directional_regions:
-            region["covers_nominated_p"] = bool(
-                int(region["member_mask"]) & (1 << nominated_rung)
-            )
+            region["covers_nominated_p"] = bool(int(region["member_mask"]) & (1 << nominated_rung))
 
     def _finish_stage_b_reproduction(self, parts: list[dict]) -> None:
         core, memberships, forward, reverse, digest = parts
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
-            raise VelocitySweepProtocolError(
-                "stage b reproduction direction order mismatch"
-            )
+            raise VelocitySweepProtocolError("stage b reproduction direction order mismatch")
         reproduction = self._merge([core, memberships, digest])
         reproduction["previous_memberships"] = (
             int(memberships["previous_forward_mask"]),
@@ -1018,7 +939,7 @@ class VelocitySweepAssembler:
         ):
             if [int(item["direction"]) for item in values] != [0, 1]:
                 raise VelocitySweepProtocolError(
-                    "stage b reproduction %s direction order mismatch" % label
+                    f"stage b reproduction {label} direction order mismatch"
                 )
         if int(core["reduced_margin"]) not in (0, 1):
             raise VelocitySweepProtocolError("invalid reproduction reduced-margin flag")
@@ -1035,9 +956,7 @@ class VelocitySweepAssembler:
             )
         for key in ("forward_validity", "reverse_validity"):
             if int(core[key]) not in range(5):
-                raise VelocitySweepProtocolError(
-                    "invalid reproduction directional validity"
-                )
+                raise VelocitySweepProtocolError("invalid reproduction directional validity")
         if int(core["outcome"]) not in (1, 2):
             raise VelocitySweepProtocolError("invalid reproduction outcome")
         if int(core["reason_mask"]) & ~0x1F:
@@ -1132,8 +1051,7 @@ class VelocitySweepAssembler:
         if hidden_rest and not (
             selected_rest
             or (
-                self._combined_stage_b_schema
-                in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
+                self._combined_stage_b_schema in STAGE_B_SCHEMAS_WITH_HIDDEN_RECOVERY_REST
                 and ordinary_rest
             )
         ):
@@ -1156,9 +1074,7 @@ class VelocitySweepAssembler:
         self._recovery_rest_pending = None
         self._validate_recovery_completeness(core)
         if int(forward["direction"]) != 0 or int(reverse["direction"]) != 1:
-            raise VelocitySweepProtocolError(
-                "stage b terminal direction order mismatch"
-            )
+            raise VelocitySweepProtocolError("stage b terminal direction order mismatch")
         outcome_code = int(core["outcome"])
         if outcome_code not in OUTCOME_NAMES:
             raise VelocitySweepProtocolError("unknown stage b terminal outcome")
@@ -1169,24 +1085,15 @@ class VelocitySweepAssembler:
         expected_rungs = int(core["expected_rungs"])
         if self.plan is not None:
             planned_rungs = int(self.plan["rung_count"])
-            planned_observations = (
-                planned_rungs * int(self.plan["observations_per_direction"]) * 2
-            )
-            if (
-                expected_rungs != planned_rungs
-                or expected_observations != planned_observations
-            ):
+            planned_observations = planned_rungs * int(self.plan["observations_per_direction"]) * 2
+            if expected_rungs != planned_rungs or expected_observations != planned_observations:
                 raise VelocitySweepProtocolError(
                     "stage b terminal expected counts disagree with plan"
                 )
         elif expected_observations != 0 or expected_rungs != 0:
-            raise VelocitySweepProtocolError(
-                "preflight rejection declared executed evidence"
-            )
+            raise VelocitySweepProtocolError("preflight rejection declared executed evidence")
         if int(core["emitted_observations"]) != len(self.observations):
-            raise VelocitySweepProtocolError(
-                "stage b terminal observation count mismatch"
-            )
+            raise VelocitySweepProtocolError("stage b terminal observation count mismatch")
         if int(core["emitted_rungs"]) != len(self.rungs):
             raise VelocitySweepProtocolError("stage b terminal rung count mismatch")
         counts = {
@@ -1223,15 +1130,11 @@ class VelocitySweepAssembler:
         combined_response = self._workflow_shape == 3
         if outcome_code == 1 and combined_response:
             if self.reproduction is not None:
-                raise VelocitySweepProtocolError(
-                    "combined Stage B carried reproduction evidence"
-                )
+                raise VelocitySweepProtocolError("combined Stage B carried reproduction evidence")
             if int(identity["nominated_p"]) == 0 or any(
                 interval[0] > interval[1] for interval in intervals
             ):
-                raise VelocitySweepProtocolError(
-                    "combined Stage B selected response is invalid"
-                )
+                raise VelocitySweepProtocolError("combined Stage B selected response is invalid")
         elif outcome_code == 1:
             if (
                 self.reproduction is None
@@ -1282,8 +1185,7 @@ class VelocitySweepAssembler:
                     "stage b terminal nomination disagrees with handoff"
                 )
             expected_intervals = tuple(
-                region["pooled_interval_q16"]
-                for region in self.handoff["selected_regions"]
+                region["pooled_interval_q16"] for region in self.handoff["selected_regions"]
             )
             if intervals != expected_intervals:
                 raise VelocitySweepProtocolError(
@@ -1297,14 +1199,9 @@ class VelocitySweepAssembler:
         terminal["plan_digest"] = int(identity["plan_digest_low"]) | (
             int(identity["plan_digest_high"]) << 32
         )
-        terminal["digest"] = int(identity["digest_low"]) | (
-            int(identity["digest_high"]) << 32
-        )
-        if self.plan is None:
-            if terminal["digest"] != 0:
-                raise VelocitySweepProtocolError(
-                    "preflight rejection carried an evidence digest"
-                )
+        terminal["digest"] = int(identity["digest_low"]) | (int(identity["digest_high"]) << 32)
+        if self.plan is None and terminal["digest"] != 0:
+            raise VelocitySweepProtocolError("preflight rejection carried an evidence digest")
         terminal["run_started_us"] = int(forward["started_low"]) | (
             int(forward["started_high"]) << 32
         )
@@ -1317,12 +1214,8 @@ class VelocitySweepAssembler:
             if outcome_code == 2 and int(core["cause"]) == 53
             else OUTCOME_NAMES[outcome_code]
         )
-        reverse_started = int(reverse["started_low"]) | (
-            int(reverse["started_high"]) << 32
-        )
-        reverse_completed = int(reverse["completed_low"]) | (
-            int(reverse["completed_high"]) << 32
-        )
+        reverse_started = int(reverse["started_low"]) | (int(reverse["started_high"]) << 32)
+        reverse_completed = int(reverse["completed_low"]) | (int(reverse["completed_high"]) << 32)
         if (
             reverse_started != terminal["run_started_us"]
             or reverse_completed != terminal["run_completed_us"]
@@ -1346,16 +1239,9 @@ class VelocitySweepAssembler:
         if self.plan is None:
             raise VelocitySweepProtocolError("terminal arrived without plan")
         planned_rungs = int(self.plan["rung_count"])
-        planned_observations = (
-            planned_rungs * int(self.plan["observations_per_direction"]) * 2
-        )
-        if (
-            expected_rungs != planned_rungs
-            or expected_observations != planned_observations
-        ):
-            raise VelocitySweepProtocolError(
-                "terminal expected counts disagree with plan"
-            )
+        planned_observations = planned_rungs * int(self.plan["observations_per_direction"]) * 2
+        if expected_rungs != planned_rungs or expected_observations != planned_observations:
+            raise VelocitySweepProtocolError("terminal expected counts disagree with plan")
         if int(integrity["emitted_observations"]) != len(self.observations):
             raise VelocitySweepProtocolError("terminal observation count mismatch")
         if int(integrity["emitted_rungs"]) != len(self.rungs):
@@ -1363,9 +1249,7 @@ class VelocitySweepAssembler:
         self.full_plan_executed = expected_observations == len(
             self.observations
         ) and expected_rungs == len(self.rungs)
-        integrity["digest"] = int(integrity["digest_low"]) | (
-            int(integrity["digest_high"]) << 32
-        )
+        integrity["digest"] = int(integrity["digest_low"]) | (int(integrity["digest_high"]) << 32)
         outcome_code = int(integrity["outcome"])
         if outcome_code not in LEGACY_OUTCOME_NAMES:
             raise VelocitySweepProtocolError("unknown velocity sweep outcome")
@@ -1398,8 +1282,7 @@ class VelocitySweepAssembler:
         required = {
             rung_index
             for rung_index in self.rungs
-            if sum(key[0] == rung_index for key in self.observations)
-            == observations_per_rung
+            if sum(key[0] == rung_index for key in self.observations) == observations_per_rung
         }
         missing_terminal_recovery_allowed = terminal is not None and (
             int(terminal.get("recovery_unavailable", 0)) == 1
@@ -1416,6 +1299,4 @@ class VelocitySweepAssembler:
                 )
             required.discard(terminal_rung)
         if set(self.recoveries) != required:
-            raise VelocitySweepProtocolError(
-                "recovery records do not match fully acquired rungs"
-            )
+            raise VelocitySweepProtocolError("recovery records do not match fully acquired rungs")

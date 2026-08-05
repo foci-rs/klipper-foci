@@ -101,9 +101,9 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
 
 # Error codes for which the failure message should point at a dedicated
 # troubleshooting doc instead of just the bare error name.
-TROUBLESHOOTING_DOC_LINKS: dict[int, str] = {
-    code: "docs/troubleshooting/resistance-identification.md" for code in range(19, 32)
-}
+TROUBLESHOOTING_DOC_LINKS: dict[int, str] = dict.fromkeys(
+    range(19, 32), "docs/troubleshooting/resistance-identification.md"
+)
 
 # Resistance-identification failures that are not operator-remediable by
 # changing a printer setting. The firmware could not find a safe resistance
@@ -245,9 +245,9 @@ def _decode_i16_pair(packed: int) -> tuple[int, int]:
 
 def format_commission_detail(detail: dict) -> str:
     """Format one structured commissioning diagnostic detail."""
-    phase_name = PHASE_NAMES.get(detail["phase"], "Phase %d" % detail["phase"])
+    phase_name = PHASE_NAMES.get(detail["phase"], f"Phase {int(detail['phase'])}")
     code = detail["code"]
-    name = ELECTRICAL_ID_DETAIL_NAMES.get(code, "diagnostic %d" % code)
+    name = ELECTRICAL_ID_DETAIL_NAMES.get(code, f"diagnostic {int(code)}")
     value0 = detail["value0"]
     value1 = detail["value1"]
     value2 = detail["value2"]
@@ -257,198 +257,107 @@ def format_commission_detail(detail: dict) -> str:
         other = value1 if value1 < 0x8000 else value1 - 0x10000
         status = "FAIL" if detail["status"] else "PASS"
         return (
-            "%s: coil %s sample %s "
-            "(expected=%d counts, other=%d counts, raw=0x%08x)"
-            % (phase_name, coil, status, expected, other, value2)
+            f"{phase_name}: coil {coil} sample {status} (expected={int(expected)} counts, other="
+            f"{int(other)} counts, raw=0x{value2:08x})"
         )
     if detail["phase"] == 4 and code == 1:
-        return "%s: ABN read unstable (samples=%d/%d/%d)" % (
-            phase_name,
-            value0,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: ABN read unstable (samples={int(value0)}/{int(value1)}/{int(value2)})"
         )
     if detail["phase"] == 4 and code == 2:
         status = "FAIL" if detail["status"] else "PASS"
-        return "%s: direction sweep %s (start=%d, end=%d, delta=%d)" % (
-            phase_name,
-            status,
-            value0,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: direction sweep {status} (start={int(value0)}, end={int(value1)}, "
+            f"delta={int(value2)})"
         )
     if detail["phase"] == 16 and code == 1:
         status = "FAIL" if detail["status"] else "PASS"
-        return "%s: alignment movement %s (movement=%d, min=%d, stability=%d)" % (
-            phase_name,
-            status,
-            value0,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: alignment movement {status} (movement={int(value0)}, min={int(value1)}"
+            f", stability={int(value2)})"
         )
     if code == 1:
         return (
-            "%s: %s (voltage_count=%d, legacy_didt_cycles=%d, sample_period=%dus)"
-            % (
-                phase_name,
-                name,
-                value0,
-                value1,
-                value2,
-            )
+            f"{phase_name}: {name} (voltage_count={int(value0)}, legacy_didt_cycles={int(value1)}, "
+            f"sample_period={int(value2)}us)"
         )
     if code in (2, 3):
-        return "%s: %s (avg_current=%d counts, r_count_milli=%d, samples=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: {name} (avg_current={int(value0)} counts, r_count_milli={int(value1)}, "
+            f"samples={int(value2)})"
         )
     if code in (25, 26):
-        return "%s: %s (%d permille, limit=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-        )
+        return f"{phase_name}: {name} ({int(value0)} permille, limit={int(value1)})"
     if code == 28:
         coil = "A" if value0 == 0 else "B"
-        return "%s: %s (coil=%s, usable_points=%d, selected_mask=0x%04x)" % (
-            phase_name,
-            name,
-            coil,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: {name} (coil={coil}, usable_points={int(value1)}, selected_mask=0x"
+            f"{value2:04x})"
         )
     if code == 30:
         coil, point = _decode_coil_point(value0)
-        return "%s: %s (coil=%s point=%d, ud=%d, avg_delta=%d counts)" % (
-            phase_name,
-            name,
-            coil,
-            point,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: {name} (coil={coil} point={int(point)}, ud={int(value1)}, avg_delta="
+            f"{int(value2)} counts)"
         )
     if code == 31:
         coil, point = _decode_coil_point(value0)
-        return "%s: %s (coil=%s point=%d, samples=%d, effective_ud=%d)" % (
-            phase_name,
-            name,
-            coil,
-            point,
-            value1,
-            _signed_u32(value2),
+        return (
+            f"{phase_name}: {name} (coil={coil} point={int(point)}, samples={int(value1)}, "
+            f"effective_ud={int(_signed_u32(value2))})"
         )
     if code == 32:
-        return "%s: %s (realized_frequency_millihz=%d, elapsed_us=%d, samples=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: {name} (realized_frequency_millihz={int(value0)}, elapsed_us="
+            f"{int(value1)}, samples={int(value2)})"
         )
     if code == 33:
-        reason = INDUCTANCE_CAPTURE_REJECT_REASON_NAMES.get(
-            value0, "reason %d" % value0
-        )
+        reason = INDUCTANCE_CAPTURE_REJECT_REASON_NAMES.get(value0, f"reason {int(value0)}")
         if value0 in (1, 2):
             previous_phi, current_phi = _decode_u16_pair(value2)
-            return "%s: %s (reason=%s, samples=%d, previous_phi=%d, current_phi=%d)" % (
-                phase_name,
-                name,
-                reason,
-                value1,
-                previous_phi,
-                current_phi,
+            return (
+                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, previous_phi="
+                f"{int(previous_phi)}, current_phi={int(current_phi)})"
             )
         if value0 in (3, 4, 5, 6):
             id_count, iq_count = _decode_i16_pair(value2)
-            return "%s: %s (reason=%s, samples=%d, id=%d, iq=%d)" % (
-                phase_name,
-                name,
-                reason,
-                value1,
-                id_count,
-                iq_count,
+            return (
+                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, id={int(id_count)}"
+                f", iq={int(iq_count)})"
             )
         if value0 == 7:
             previous_elapsed_us, current_elapsed_us = _decode_u16_pair(value2)
             return (
-                "%s: %s (reason=%s, samples=%d, "
-                "previous_elapsed_us=%d, current_elapsed_us=%d)"
-                % (
-                    phase_name,
-                    name,
-                    reason,
-                    value1,
-                    previous_elapsed_us,
-                    current_elapsed_us,
-                )
+                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, "
+                f"previous_elapsed_us={int(previous_elapsed_us)}, current_elapsed_us="
+                f"{int(current_elapsed_us)})"
             )
         if value0 == 8:
             x_d, x_q = _decode_u16_pair(value2)
-            return "%s: %s (reason=%s, samples=%d, x_d=%d, x_q=%d)" % (
-                phase_name,
-                name,
-                reason,
-                value1,
-                x_d,
-                x_q,
+            return (
+                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, x_d={int(x_d)}, "
+                f"x_q={int(x_q)})"
             )
         if value0 in (9, 10):
             x_average, bound = _decode_u16_pair(value2)
             bound_name = "low" if value0 == 9 else "high"
             return (
-                "%s: %s (reason=%s, saliency_permille=%d, "
-                "x_average=%d, %s_bound=%d)"
-                % (
-                    phase_name,
-                    name,
-                    reason,
-                    value1,
-                    x_average,
-                    bound_name,
-                    bound,
-                )
+                f"{phase_name}: {name} (reason={reason}, saliency_permille={int(value1)}, "
+                f"x_average={int(x_average)}, {bound_name}_bound={int(bound)})"
             )
-        return "%s: %s (reason=%s, samples=%d, aux=%d)" % (
-            phase_name,
-            name,
-            reason,
-            value1,
-            value2,
-        )
+        return f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, aux={int(value2)})"
     if code in (23, 24):
-        return "%s: %s (r_count_milli=%d, limit=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-        )
+        return f"{phase_name}: {name} (r_count_milli={int(value0)}, limit={int(value1)})"
     if code == 22:
-        return "%s: %s (l_count_micro=%d)" % (
-            phase_name,
-            name,
-            value0,
-        )
+        return f"{phase_name}: {name} (l_count_micro={int(value0)})"
     if code == 29:
-        return "%s: %s (theta_us=%d, tau_us=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-        )
+        return f"{phase_name}: {name} (theta_us={int(value0)}, tau_us={int(value1)})"
     if value0 or value1 or value2:
-        return "%s: %s (value0=%d, value1=%d, value2=%d)" % (
-            phase_name,
-            name,
-            value0,
-            value1,
-            value2,
+        return (
+            f"{phase_name}: {name} (value0={int(value0)}, value1={int(value1)}, value2="
+            f"{int(value2)})"
         )
-    return "%s: %s" % (phase_name, name)
+    return f"{phase_name}: {name}"
 
 
 def format_inner_warning_flags(flags: int) -> str:
@@ -471,22 +380,13 @@ def decode_timing_summary(packed: int) -> dict:
 def format_timing_evidence(method_name: str, evidence: dict) -> str:
     """Format one detailed timing reply without changing microsecond units."""
     status = evidence["status"]
-    status_name = TIMING_STATUS_NAMES.get(status, "unknown(%d)" % status)
+    status_name = TIMING_STATUS_NAMES.get(status, f"unknown({int(status)})")
     return (
-        "timing %s: status=%s period_us=%d valid=%d missed=%d "
-        "max_lateness_us=%d max_interval_us=%d max_poll_wall_us=%d "
-        "max_spi_wall_us=%d"
-        % (
-            method_name,
-            status_name,
-            evidence["requested_period_us"],
-            evidence["valid_samples"],
-            evidence["missed_samples"],
-            evidence["max_lateness_us"],
-            evidence["max_interval_us"],
-            evidence["max_poll_wall_us"],
-            evidence["max_spi_wall_us"],
-        )
+        f"timing {method_name}: status={status_name} period_us="
+        f"{int(evidence['requested_period_us'])} valid={int(evidence['valid_samples'])} missed="
+        f"{int(evidence['missed_samples'])} max_lateness_us={int(evidence['max_lateness_us'])} "
+        f"max_interval_us={int(evidence['max_interval_us'])} max_poll_wall_us="
+        f"{int(evidence['max_poll_wall_us'])} max_spi_wall_us={int(evidence['max_spi_wall_us'])}"
     )
 
 
@@ -495,41 +395,32 @@ def format_commission_error_name(code: int) -> str:
     detail_name = format_commission_error_detail_name(code)
     if code in RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES:
         error_name = (
-            "resistance measurement unsupported by current firmware"
-            " (detail: %s)" % detail_name
+            f"resistance measurement unsupported by current firmware (detail: {detail_name})"
         )
     else:
         error_name = detail_name
     doc_link = TROUBLESHOOTING_DOC_LINKS.get(code)
     if doc_link is not None:
-        return "%s (see %s)" % (error_name, doc_link)
+        return f"{error_name} (see {doc_link})"
     return error_name
 
 
 def format_commission_error_detail_name(code: int) -> str:
     """Render the precise firmware status code name without operator grouping."""
-    return COMMISSION_ERROR_NAMES.get(code, "UNKNOWN(%d)" % code)
+    return COMMISSION_ERROR_NAMES.get(code, f"UNKNOWN({int(code)})")
 
 
 def _format_current_axis_sample(sample: dict) -> str:
     status = sample.get("status")
-    status_name = CURRENT_AXIS_STATUS_NAMES.get(status, "status %s" % status)
+    status_name = CURRENT_AXIS_STATUS_NAMES.get(status, f"status {status}")
     return (
-        "%s at delay=%sms"
-        " response=%s/%s permille cross=%s permille"
-        " cross_peak=%s permille voltage=%s permille"
-        " encoder_delta=%s status_flags_or=0x%08x"
-        % (
-            status_name,
-            sample.get("sample_delay_ms"),
-            sample.get("positive_response_permille"),
-            sample.get("negative_response_permille"),
-            sample.get("cross_axis_permille"),
-            sample.get("cross_axis_peak_permille", sample.get("cross_axis_permille")),
-            sample.get("voltage_output_permille"),
-            sample.get("encoder_delta_counts"),
-            sample.get("status_flags_or", 0),
-        )
+        f"{status_name} at delay={sample.get('sample_delay_ms')}ms response="
+        f"{sample.get('positive_response_permille')}/{sample.get('negative_response_permille')} "
+        f"permille cross={sample.get('cross_axis_permille')} permille cross_peak="
+        f"{sample.get('cross_axis_peak_permille', sample.get('cross_axis_permille'))} permille "
+        f"voltage={sample.get('voltage_output_permille')} permille encoder_delta="
+        f"{sample.get('encoder_delta_counts')} status_flags_or=0x"
+        f"{sample.get('status_flags_or', 0):08x}"
     )
 
 
@@ -552,7 +443,7 @@ def format_current_loop_failure_summary(
     reason = run.get("failure_reason")
     if reason in (None, 0):
         return None
-    reason_name = CURRENT_LOOP_FAILURE_NAMES.get(reason, "reason %s" % reason)
+    reason_name = CURRENT_LOOP_FAILURE_NAMES.get(reason, f"reason {reason}")
     parts = [reason_name]
     axis_key = "flux" if reason == 4 else "torque" if reason == 5 else None
     if samples is not None and axis_key is not None:
@@ -562,14 +453,9 @@ def format_current_loop_failure_summary(
     if run.get("retry_budget_exhausted"):
         parts.append("retry budget exhausted")
     parts.append(
-        "candidate_attempt=%s candidate_flux=%s/%s candidate_torque=%s/%s"
-        % (
-            run.get("candidate_attempt"),
-            run.get("candidate_flux_p"),
-            run.get("candidate_flux_i"),
-            run.get("candidate_torque_p"),
-            run.get("candidate_torque_i"),
-        )
+        f"candidate_attempt={run.get('candidate_attempt')} candidate_flux="
+        f"{run.get('candidate_flux_p')}/{run.get('candidate_flux_i')} candidate_torque="
+        f"{run.get('candidate_torque_p')}/{run.get('candidate_torque_i')}"
     )
     return "; ".join(parts)
 
@@ -596,11 +482,9 @@ class CommissioningWorkflow:
         status = params.get("status", 0)
         if phase_id > 0 and status == 0:
             self.last_phase_id = phase_id
-            phase_name = PHASE_NAMES.get(phase_id, "Phase %d" % phase_id)
+            phase_name = PHASE_NAMES.get(phase_id, f"Phase {int(phase_id)}")
             gcode = self.driver.printer.lookup_object("gcode")
-            gcode.respond_info(
-                "FOCI %s autotune: %s" % (self.driver.stepper_name, phase_name)
-            )
+            gcode.respond_info(f"FOCI {self.driver.stepper_name} autotune: {phase_name}")
         elif phase_id == 0 and status != 0:
             self.error_code = status
 
@@ -643,25 +527,21 @@ class CommissioningWorkflow:
             summary_status = summary["statuses"][method]
             if summary_status not in TIMING_STATUS_NAMES:
                 raise ValueError(
-                    "%s timing summary has reserved status %d"
-                    % (method_name, summary_status)
+                    f"{method_name} timing summary has reserved status {int(summary_status)}"
                 )
             detail = details.get(method)
             if summary_status == 0 and detail is None:
                 continue
             if detail is None:
-                raise ValueError("%s timing detail is missing" % method_name)
+                raise ValueError(f"{method_name} timing detail is missing")
             detail_status = detail["status"]
             if detail_status != summary_status:
+                detail_status_name = TIMING_STATUS_NAMES.get(
+                    detail_status, f"unknown({int(detail_status)})"
+                )
                 raise ValueError(
-                    "%s timing status mismatch: detail=%s summary=%s"
-                    % (
-                        method_name,
-                        TIMING_STATUS_NAMES.get(
-                            detail_status, "unknown(%d)" % detail_status
-                        ),
-                        TIMING_STATUS_NAMES[summary_status],
-                    )
+                    f"{method_name} timing status mismatch: "
+                    f"detail={detail_status_name} summary={TIMING_STATUS_NAMES[summary_status]}"
                 )
             if detail_status == 2:
                 rejected = True
@@ -671,12 +551,8 @@ class CommissioningWorkflow:
         if summary["rejected"] != rejected:
             raise ValueError("timing rejection flag does not match method statuses")
         if rejected:
-            method = next(
-                method for method in details if details[method]["status"] == 2
-            )
-            raise ValueError(
-                COMMISSION_ERROR_NAMES[TIMING_REJECTION_ERROR_CODES[method]]
-            )
+            method = next(method for method in details if details[method]["status"] == 2)
+            raise ValueError(COMMISSION_ERROR_NAMES[TIMING_REJECTION_ERROR_CODES[method]])
         return accepted
 
     def commission(self, gcmd) -> None:
@@ -684,15 +560,12 @@ class CommissioningWorkflow:
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         if profile_name not in PROFILE_MAP:
             raise gcmd.error(
-                "Unknown profile '%s'. Options: %s"
-                % (profile_name, ", ".join(PROFILE_MAP.keys()))
+                f"Unknown profile '{profile_name}'. Options: {', '.join(PROFILE_MAP.keys())}"
             )
         profile_code = PROFILE_MAP[profile_name]
 
         if not self.driver.state.try_acquire():
-            raise gcmd.error(
-                "FOCI %s: another FOCI operation is in progress" % self.driver.name
-            )
+            raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         try:
             toolhead = self.driver.printer.lookup_object("toolhead")
             toolhead.wait_moves()
@@ -729,9 +602,7 @@ class CommissioningWorkflow:
             self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
             self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
             self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
-            self.driver.diagnostics.active.clear_last_encoder_alignment_evidence(
-                self.driver.oid
-            )
+            self.driver.diagnostics.active.clear_last_encoder_alignment_evidence(self.driver.oid)
 
             self.driver.protocol.run_commission(profile_code)
 
@@ -743,15 +614,9 @@ class CommissioningWorkflow:
                 if eventtime > timeout:
                     self.on_commission_failure()
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
-                    self.driver.diagnostics.active.clear_inductance_cache(
-                        self.driver.oid
-                    )
-                    self.driver.diagnostics.active.clear_current_loop_cache(
-                        self.driver.oid
-                    )
-                    raise gcmd.error(
-                        "FOCI %s: FOCI_COMMISSION timed out" % self.driver.name
-                    )
+                    self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
+                    self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
+                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_COMMISSION timed out")
                 if self.error_code != 0:
                     error_name = self.format_commission_failure(self.error_code)
                     if self.error_code == 18:
@@ -759,26 +624,20 @@ class CommissioningWorkflow:
                     else:
                         self.on_commission_failure(error_name)
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
-                    self.driver.diagnostics.active.clear_inductance_cache(
-                        self.driver.oid
-                    )
-                    self.driver.diagnostics.active.clear_current_loop_cache(
-                        self.driver.oid
-                    )
+                    self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
+                    self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
                     phase_name = PHASE_NAMES.get(self.last_phase_id or 0, "unknown")
                     if self.details:
                         detail_lines = [
-                            "FOCI %s commissioning diagnostics:"
-                            % self.driver.stepper_name
+                            f"FOCI {self.driver.stepper_name} commissioning diagnostics:"
                         ]
                         detail_lines.extend(
-                            "  %s" % format_commission_detail(detail)
-                            for detail in self.details
+                            f"  {format_commission_detail(detail)}" for detail in self.details
                         )
                         gcmd.respond_info("\n".join(detail_lines))
                     raise gcmd.error(
-                        "FOCI %s: FOCI_COMMISSION failed at %s: %s"
-                        % (self.driver.name, phase_name, error_name)
+                        f"FOCI {self.driver.name}: FOCI_COMMISSION failed at {phase_name}: "
+                        f"{error_name}"
                     )
 
             result = self.result
@@ -798,12 +657,8 @@ class CommissioningWorkflow:
             # here; together these guarantee no stale or partial
             # resistance cache entry ever survives past this method.
             result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
-            result.update(
-                self.driver.diagnostics.active.pop_inductance_cache(self.driver.oid)
-            )
-            result.update(
-                self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid)
-            )
+            result.update(self.driver.diagnostics.active.pop_inductance_cache(self.driver.oid))
+            result.update(self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid))
             try:
                 result["commission_timing"] = self.consume_timing_evidence(
                     result.get("timing_summary", 0)
@@ -811,8 +666,7 @@ class CommissioningWorkflow:
             except ValueError as error:
                 self.on_commission_failure(str(error))
                 raise gcmd.error(
-                    "FOCI %s: FOCI_COMMISSION timing evidence rejected: %s"
-                    % (self.driver.name, error)
+                    f"FOCI {self.driver.name}: FOCI_COMMISSION timing evidence rejected: {error}"
                 ) from error
             status = result.get("status", 255)
             if status > 1:
@@ -821,10 +675,7 @@ class CommissioningWorkflow:
                     self.handle_chip_reset_detected()
                 else:
                     self.on_commission_failure(error_name)
-                raise gcmd.error(
-                    "FOCI %s: FOCI_COMMISSION failed: %s"
-                    % (self.driver.name, error_name)
-                )
+                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_COMMISSION failed: {error_name}")
 
             self.driver.state.is_calibrated = True
             self.driver.state.inhibited = False
@@ -859,28 +710,18 @@ class CommissioningWorkflow:
 
             status_str = "accepted" if status == 0 else "accepted with warnings"
             gcmd.respond_info(
-                "FOCI %s commissioned (%s): "
-                "r_count_milli=%d l_count_micro=%d "
-                "bandwidth_hz=%d current_candidate_attempt=%d"
-                % (
-                    self.driver.name,
-                    status_str,
-                    result["r_count_milli"],
-                    result["l_count_micro"],
-                    result.get("bandwidth_hz", 0),
-                    result.get("current_candidate_attempt", 0),
-                )
+                f"FOCI {self.driver.name} commissioned ({status_str}): r_count_milli="
+                f"{int(result['r_count_milli'])} l_count_micro={int(result['l_count_micro'])} "
+                f"bandwidth_hz={int(result.get('bandwidth_hz', 0))} current_candidate_attempt="
+                f"{int(result.get('current_candidate_attempt', 0))}"
             )
             flags = result.get("inner_warning_flags", 0)
             if flags:
                 gcmd.respond_info(
-                    "FOCI %s inner confidence: %s"
-                    % (self.driver.name, format_inner_warning_flags(flags))
+                    f"FOCI {self.driver.name} inner confidence: {format_inner_warning_flags(flags)}"
                 )
             for method, evidence in result["commission_timing"].items():
-                gcmd.respond_info(
-                    format_timing_evidence(TIMING_METHOD_NAMES[method], evidence)
-                )
+                gcmd.respond_info(format_timing_evidence(TIMING_METHOD_NAMES[method], evidence))
         finally:
             self.clear_timing_evidence()
             self.driver.state.release()
@@ -890,15 +731,11 @@ class CommissioningWorkflow:
         error_name = format_commission_error_name(status)
         if status == 9:
             detail = format_current_loop_failure_summary(
-                self.driver.diagnostics.active.last_current_loop_evidence(
-                    self.driver.oid
-                ),
-                self.driver.diagnostics.active.last_current_loop_samples(
-                    self.driver.oid
-                ),
+                self.driver.diagnostics.active.last_current_loop_evidence(self.driver.oid),
+                self.driver.diagnostics.active.last_current_loop_samples(self.driver.oid),
             )
             if detail is not None:
-                return "%s (%s)" % (error_name, detail)
+                return f"{error_name} ({detail})"
         return error_name
 
     def on_commission_failure(self, failure: str | None = None) -> None:
@@ -926,72 +763,70 @@ class CommissioningWorkflow:
     def persist_commission_results(self, result: dict, profile_name: str) -> None:
         """Persist Stage 1 results to printer.cfg pending SAVE_CONFIG."""
         configfile = self.driver.printer.lookup_object("configfile")
-        configfile.set(self.driver.name, "pid_flux_p", "%d" % result["flux_p"])
-        configfile.set(self.driver.name, "pid_flux_i", "%d" % result["flux_i"])
-        configfile.set(self.driver.name, "pid_torque_p", "%d" % result["torque_p"])
-        configfile.set(self.driver.name, "pid_torque_i", "%d" % result["torque_i"])
+        configfile.set(self.driver.name, "pid_flux_p", f"{int(result['flux_p'])}")
+        configfile.set(self.driver.name, "pid_flux_i", f"{int(result['flux_i'])}")
+        configfile.set(self.driver.name, "pid_torque_p", f"{int(result['torque_p'])}")
+        configfile.set(self.driver.name, "pid_torque_i", f"{int(result['torque_i'])}")
         configfile.set(
             self.driver.name,
             "commissioned_velocity_p",
-            "%d" % result["fallback_velocity_p"],
+            f"{int(result['fallback_velocity_p'])}",
         )
         configfile.set(
             self.driver.name,
             "commissioned_velocity_i",
-            "%d" % result["fallback_velocity_i"],
+            f"{int(result['fallback_velocity_i'])}",
         )
         configfile.set(
             self.driver.name,
             "commissioned_position_p",
-            "%d" % result["fallback_position_p"],
+            f"{int(result['fallback_position_p'])}",
         )
         configfile.set(
             self.driver.name,
             "commissioned_position_i",
-            "%d" % result["fallback_position_i"],
+            f"{int(result['fallback_position_i'])}",
         )
         configfile.set(
             self.driver.name,
             "commissioned_velocity_limit",
-            "%d" % result["fallback_velocity_limit"],
+            f"{int(result['fallback_velocity_limit'])}",
         )
         configfile.set(
             self.driver.name,
             "identified_r_count_milli",
-            "%d" % result["r_count_milli"],
+            f"{int(result['r_count_milli'])}",
         )
         configfile.set(
             self.driver.name,
             "identified_l_count_micro",
-            "%d" % result["l_count_micro"],
+            f"{int(result['l_count_micro'])}",
         )
-        configfile.set(
-            self.driver.name, "identified_lambda_us", "%d" % result["lambda_us"]
-        )
+        configfile.set(self.driver.name, "identified_lambda_us", f"{int(result['lambda_us'])}")
         configfile.set(
             self.driver.name,
             "identified_theta_e_us",
-            "%d" % result["theta_e_us"],
+            f"{int(result['theta_e_us'])}",
         )
         configfile.set(
             self.driver.name,
             "identified_ringing_count",
-            "%d" % result["ringing_count"],
+            f"{int(result['ringing_count'])}",
         )
         configfile.set(
             self.driver.name,
             "identified_bandwidth_hz",
-            "%d" % result["bandwidth_hz"],
+            f"{int(result['bandwidth_hz'])}",
         )
         configfile.set(
             self.driver.name,
             "identified_tau_e_us",
-            "%d" % result.get("tau_e_us", 0),
+            f"{int(result.get('tau_e_us', 0))}",
         )
         configfile.set(
             self.driver.name,
             "identified_inner_warning_flags",
-            "%d" % result.get("inner_warning_flags", 0),
+            f"{int(result.get('inner_warning_flags', 0))}",
         )
         self._persist_resistance_identification(configfile, result)
         self._persist_inductance_identification(configfile, result)
@@ -1018,14 +853,14 @@ class CommissioningWorkflow:
             method_name = TIMING_METHOD_NAMES[method]
             configfile.set(
                 self.driver.name,
-                "identified_timing_%s_status" % method_name,
+                f"identified_timing_{method_name}_status",
                 TIMING_STATUS_NAMES[evidence["status"]],
             )
             for reply_key, config_suffix in key_names.items():
                 configfile.set(
                     self.driver.name,
-                    "identified_timing_%s_%s" % (method_name, config_suffix),
-                    "%d" % evidence[reply_key],
+                    f"identified_timing_{method_name}_{config_suffix}",
+                    f"{int(evidence[reply_key])}",
                 )
 
     # Maps each firmware-reported resistance-identification result key to
@@ -1120,7 +955,7 @@ class CommissioningWorkflow:
         if "resistance_selected_count_slope_milli" not in result:
             return
         for result_key, config_key in self.RESISTANCE_RESULT_KEYS:
-            configfile.set(self.driver.name, config_key, "%d" % result[result_key])
+            configfile.set(self.driver.name, config_key, f"{int(result[result_key])}")
 
     INDUCTANCE_RESULT_KEYS: Sequence[tuple[str, str]] = (
         ("inductance_source", "identified_l_source"),
@@ -1161,7 +996,7 @@ class CommissioningWorkflow:
         if "inductance_reactance_count_ratio_milli" not in result:
             return
         for result_key, config_key in self.INDUCTANCE_RESULT_KEYS:
-            configfile.set(self.driver.name, config_key, "%d" % result[result_key])
+            configfile.set(self.driver.name, config_key, f"{int(result[result_key])}")
 
     CURRENT_LOOP_RESULT_KEYS: tuple[tuple[str, str], ...] = (
         ("current_gains_source", "identified_current_gains_source"),
@@ -1242,4 +1077,4 @@ class CommissioningWorkflow:
         if "current_gains_source" not in result:
             return
         for result_key, config_key in self.CURRENT_LOOP_RESULT_KEYS:
-            configfile.set(self.driver.name, config_key, "%d" % result[result_key])
+            configfile.set(self.driver.name, config_key, f"{int(result[result_key])}")

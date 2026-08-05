@@ -8,9 +8,9 @@ state fields directly and call methods under test.
 from __future__ import annotations
 
 from klipper_foci.autotune import AutotuneWorkflow
-from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
 from klipper_foci.config import FociControlSettings, parse_driver_config
+from klipper_foci.controls import ControlsWorkflow
 from klipper_foci.diagnostics import DiagnosticsWorkflow
 from klipper_foci.driver import FociDriver
 from klipper_foci.dump import RegisterDumpWorkflow
@@ -19,7 +19,6 @@ from klipper_foci.protocol import FociProtocol
 from klipper_foci.registry import FociGlobalConfig
 from klipper_foci.selftest import SelftestWorkflow
 from klipper_foci.state import FociRuntimeState
-
 
 SAMPLE_ACTIVE_GAINS = {
     "flux_p": 256,
@@ -315,25 +314,25 @@ class MockGCmd:
     def get_int(self, key, default=None, minval=None, maxval=None):
         if key not in self._params:
             if default is None:
-                raise CommandError("Missing parameter '%s'" % key)
+                raise CommandError(f"Missing parameter '{key}'")
             return default
         value = int(self._params[key])
         if minval is not None and value < minval:
-            raise CommandError("Parameter '%s' below minimum" % key)
+            raise CommandError(f"Parameter '{key}' below minimum")
         if maxval is not None and value > maxval:
-            raise CommandError("Parameter '%s' above maximum" % key)
+            raise CommandError(f"Parameter '{key}' above maximum")
         return value
 
     def get_float(self, key, default=None, minval=None, maxval=None):
         if key not in self._params:
             if default is None:
-                raise CommandError("Missing parameter '%s'" % key)
+                raise CommandError(f"Missing parameter '{key}'")
             return default
         value = float(self._params[key])
         if minval is not None and value < minval:
-            raise CommandError("Parameter '%s' below minimum" % key)
+            raise CommandError(f"Parameter '{key}' below minimum")
         if maxval is not None and value > maxval:
-            raise CommandError("Parameter '%s' above maximum" % key)
+            raise CommandError(f"Parameter '{key}' above maximum")
         return value
 
     def error(self, msg):
@@ -479,7 +478,7 @@ class MockPins:
         chip_name, pin_name = pin.split(":", 1)
         chip = self._chips[chip_name]
         if chip.allowed_pins is not None and pin_name not in chip.allowed_pins:
-            raise CommandError("Unknown pin %s on chip %s" % (pin_name, chip_name))
+            raise CommandError(f"Unknown pin {pin_name} on chip {chip_name}")
         return {"chip": chip, "pin": pin_name}
 
 
@@ -512,9 +511,9 @@ class MockConfig:
             return None
         value = int(value)
         if minval is not None and value < minval:
-            raise self.error("%s below minimum" % key)
+            raise self.error(f"{key} below minimum")
         if maxval is not None and value > maxval:
-            raise self.error("%s above maximum" % key)
+            raise self.error(f"{key} above maximum")
         return value
 
     def getfloat(self, key, default=None, minval=None, maxval=None, above=None):
@@ -523,11 +522,11 @@ class MockConfig:
             return None
         value = float(value)
         if minval is not None and value < minval:
-            raise self.error("%s below minimum" % key)
+            raise self.error(f"{key} below minimum")
         if maxval is not None and value > maxval:
-            raise self.error("%s above maximum" % key)
+            raise self.error(f"{key} above maximum")
         if above is not None and value <= above:
-            raise self.error("%s must be above %s" % (key, above))
+            raise self.error(f"{key} must be above {above}")
         return value
 
     def getboolean(self, key, default=False):
@@ -541,7 +540,7 @@ class MockConfig:
     def getchoice(self, key, choices, default=None):
         value = self.get(key, default)
         if value not in choices:
-            raise self.error("%s must be one of %s" % (key, sorted(choices)))
+            raise self.error(f"{key} must be one of {sorted(choices)}")
         return choices[value]
 
     def error(self, msg):

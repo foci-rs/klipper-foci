@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from klipper_foci.protocol import FociProtocol
 from klipper_foci.protocol.bindings import (
     MOTION_SCALE_REJECTION_NAMES,
@@ -30,9 +29,7 @@ def response_names(mcu):
 def response_callback(mcu, name):
     serial = getattr(mcu, "_serial", mcu)
     return next(
-        callback
-        for callback, response_name, _oid in serial.responses
-        if response_name == name
+        callback for callback, response_name, _oid in serial.responses if response_name == name
     )
 
 
@@ -195,9 +192,7 @@ def test_last_boot_diagnostic_labels_interrupted_breakaway_without_a_fault(caplo
     ("fault_kind", "fault_name"),
     ((1, "rust_panic"), (2, "hard_fault")),
 )
-def test_last_boot_diagnostic_preserves_fault_labels_and_context(
-    caplog, fault_kind, fault_name
-):
+def test_last_boot_diagnostic_preserves_fault_labels_and_context(caplog, fault_kind, fault_name):
     driver = make_driver()
     mcu = MockMCU()
     driver.protocol = FociProtocol(driver)
@@ -377,15 +372,11 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
 
     register_commissioning_responses(serial, driver, driver.oid)
 
-    registered = {
-        name: callback for callback, name, oid in serial.responses if oid == driver.oid
-    }
+    registered = {name: callback for callback, name, oid in serial.responses if oid == driver.oid}
     expected = {
         "foci_breakaway_probe_plan": driver.autotune.handle_breakaway_probe_plan,
         "foci_breakaway_probe_result": driver.autotune.handle_breakaway_probe_result,
-        "foci_breakaway_probe_terminal": (
-            driver.autotune.handle_breakaway_probe_terminal
-        ),
+        "foci_breakaway_probe_terminal": (driver.autotune.handle_breakaway_probe_terminal),
         "foci_breakaway_discovery_plan_identity": (
             driver.autotune.handle_breakaway_discovery_plan_identity
         ),
@@ -398,21 +389,15 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
         "foci_breakaway_rung_zero_diagnostic": (
             driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic
         ),
-        "foci_breakaway_discovery_terminal": (
-            driver.autotune.handle_breakaway_discovery_terminal
-        ),
-        "foci_breakaway_confirmation_plan": (
-            driver.autotune.handle_breakaway_confirmation_plan
-        ),
+        "foci_breakaway_discovery_terminal": (driver.autotune.handle_breakaway_discovery_terminal),
+        "foci_breakaway_confirmation_plan": (driver.autotune.handle_breakaway_confirmation_plan),
         "foci_breakaway_confirmation_terminal_identity": (
             driver.autotune.handle_breakaway_confirmation_terminal_identity
         ),
         "foci_breakaway_confirmation_terminal_masks": (
             driver.autotune.handle_breakaway_confirmation_terminal_masks
         ),
-        "foci_breakaway_campaign_terminal": (
-            driver.autotune.handle_breakaway_campaign_terminal
-        ),
+        "foci_breakaway_campaign_terminal": (driver.autotune.handle_breakaway_campaign_terminal),
     }
 
     assert len(expected) == 12
@@ -678,9 +663,7 @@ def test_configure_startup_requires_runtime_adc_vm_offset():
         responses={"query_adc_vm_offset": None},
     )
 
-    with pytest.raises(
-        CommandError, match="cached ADC_VM offset query returned no data"
-    ):
+    with pytest.raises(CommandError, match="cached ADC_VM offset query returned no data"):
         driver.protocol.configure_startup(
             current_ma=800,
             voltage_limit=16000,
@@ -811,9 +794,7 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
     )
     driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 2})
     driver.protocol.commands.stepper_stop_stats = MockCommand({"stop_count": 1})
-    driver.protocol.commands.stepper_perf_stats = MockCommand(
-        {"crit_max_cycles": 190000}
-    )
+    driver.protocol.commands.stepper_perf_stats = MockCommand({"crit_max_cycles": 190000})
 
     assert driver.protocol.get_step_position() == {"pos": -19176}
     stats = driver.protocol.get_stepper_stats()
@@ -837,9 +818,7 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
 def test_motion_scale_protocol_sends_only_truthful_scale_values():
     driver = make_driver()
 
-    driver.protocol.set_motion_scale(
-        channel=0, encoder_ppr=1000, planner_steps_per_rev=3200
-    )
+    driver.protocol.set_motion_scale(channel=0, encoder_ppr=1000, planner_steps_per_rev=3200)
 
     assert driver.protocol.commands.set_motion_scale.last_args == [
         driver.oid,
@@ -858,15 +837,11 @@ def test_passive_diagnostic_protocol_methods_preserve_errors():
         driver.protocol.get_step_position()
 
     driver.protocol.commands.stepper_get_position = MockCommand({})
-    with pytest.raises(
-        CommandError, match="FOCI_STEP_POSITION query returned no position"
-    ):
+    with pytest.raises(CommandError, match="FOCI_STEP_POSITION query returned no position"):
         driver.protocol.get_step_position()
 
     driver.protocol.commands.stepper_stats = MockCommand(None)
-    with pytest.raises(
-        CommandError, match="FOCI_STEPPER_STATS stats query returned no data"
-    ):
+    with pytest.raises(CommandError, match="FOCI_STEPPER_STATS stats query returned no data"):
         driver.protocol.get_stepper_stats()
 
 
@@ -1047,9 +1022,7 @@ def test_run_tune_forwards_only_the_explicit_action_selector():
 def test_tune_command_matches_firmware_field_order_without_legacy_budget():
     driver = make_driver()
 
-    formats = [
-        fmt for fmt in driver.mcu.command_formats if fmt.startswith("foci_tune ")
-    ]
+    formats = [fmt for fmt in driver.mcu.command_formats if fmt.startswith("foci_tune ")]
 
     assert formats == [
         "foci_tune oid=%c action=%c profile=%c mode=%c"

@@ -33,13 +33,13 @@ class FociProtocol:
             status = int(response["status"])
             sample_count = int(response["sample_count"])
             offset_raw = int(response["offset_raw"])
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as err:
             raise self.driver.printer.command_error(
                 "FOCI cached ADC_VM offset query returned incomplete data"
-            )
+            ) from err
         if status != 0:
             raise self.driver.printer.command_error(
-                "FOCI cached ADC_VM offset query failed with status=%d" % status
+                f"FOCI cached ADC_VM offset query failed with status={int(status)}"
             )
         if sample_count <= 0:
             raise self.driver.printer.command_error(
@@ -56,9 +56,7 @@ class FociProtocol:
         )
 
     def set_encoder_direction(self, channel: int, encoder_reversed: bool) -> None:
-        self.commands.set_encoder_dir.send(
-            [self.driver.oid, channel, int(encoder_reversed)]
-        )
+        self.commands.set_encoder_dir.send([self.driver.oid, channel, int(encoder_reversed)])
 
     def set_pid_gains(
         self,
@@ -67,9 +65,7 @@ class FociProtocol:
         torque_p: int,
         torque_i: int,
     ) -> None:
-        self.commands.set_pid_gains.send(
-            [self.driver.oid, flux_p, flux_i, torque_p, torque_i]
-        )
+        self.commands.set_pid_gains.send([self.driver.oid, flux_p, flux_i, torque_p, torque_i])
 
     def set_velocity_filter(self, filter_hz: int) -> None:
         self.commands.set_velocity_filter.send([self.driver.oid, filter_hz])
@@ -95,9 +91,7 @@ class FociProtocol:
         )
 
     def set_velocity_feedforward(self, enable: bool, multiplier: int) -> None:
-        self.commands.set_velocity_feedforward.send(
-            [self.driver.oid, int(enable), multiplier]
-        )
+        self.commands.set_velocity_feedforward.send([self.driver.oid, int(enable), multiplier])
 
     def set_velocity_limit(self, velocity_limit: int) -> None:
         self.commands.set_velocity_limit.send([self.driver.oid, velocity_limit])
@@ -164,9 +158,7 @@ class FociProtocol:
         gain: int,
         max_counts: int,
     ) -> None:
-        self.commands.set_position_lead.send(
-            [self.driver.oid, int(enable), gain, max_counts]
-        )
+        self.commands.set_position_lead.send([self.driver.oid, int(enable), gain, max_counts])
 
     def set_phase_advance(
         self,
@@ -191,21 +183,15 @@ class FociProtocol:
 
     def dev_tmc_write_register(self, *, addr: int, value: int) -> None:
         if self.driver.oid is None or self.commands.dev_tmc_write_register is None:
-            raise self.driver.printer.command_error(
-                "FOCI_TMC_WRITE_REGISTER requires dev firmware"
-            )
+            raise self.driver.printer.command_error("FOCI_TMC_WRITE_REGISTER requires dev firmware")
         self.commands.dev_tmc_write_register.send([self.driver.oid, addr, value])
 
     def dev_tmc_read_register(self, *, addr: int) -> dict:
         if self.driver.oid is None or self.commands.dev_tmc_read_register is None:
-            raise self.driver.printer.command_error(
-                "FOCI_TMC_READ_REGISTER requires dev firmware"
-            )
+            raise self.driver.printer.command_error("FOCI_TMC_READ_REGISTER requires dev firmware")
         response = self.commands.dev_tmc_read_register.send([self.driver.oid, addr])
         if response is None:
-            raise self.driver.printer.command_error(
-                "FOCI_TMC_READ_REGISTER query returned no data"
-            )
+            raise self.driver.printer.command_error("FOCI_TMC_READ_REGISTER query returned no data")
         return response
 
     def run_current_step_test(
@@ -274,9 +260,7 @@ class FociProtocol:
         ud_ext: int,
         sample_delay_ms: int,
     ) -> None:
-        self.commands.voltage_step_test.send(
-            [self.driver.oid, uq_ext, ud_ext, sample_delay_ms]
-        )
+        self.commands.voltage_step_test.send([self.driver.oid, uq_ext, ud_ext, sample_delay_ms])
 
     def run_resistance_test(self, *, detail: int = 0) -> None:
         self.commands.resistance_test.send([self.driver.oid, detail])
@@ -336,9 +320,7 @@ class FociProtocol:
     def set_auto_calibrate_on_enable(self, allowed: bool) -> None:
         self.commands.set_auto_calibrate_on_enable.send([self.driver.oid, int(allowed)])
 
-    def preload_active_gains(
-        self, gains: dict[str, int | None], voltage_limit: int
-    ) -> None:
+    def preload_active_gains(self, gains: dict[str, int | None], voltage_limit: int) -> None:
         self.set_voltage_limit(voltage_limit)
         self.set_pid_gains(
             gains["flux_p"],
@@ -361,7 +343,7 @@ class FociProtocol:
             ("position", self.set_position_filter),
             ("flux", self.set_flux_filter),
         ):
-            hz = gains.get("%s_filter_hz" % filter_name)
+            hz = gains.get(f"{filter_name}_filter_hz")
             if hz is not None:
                 setter(hz)
 

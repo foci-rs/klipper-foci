@@ -3,9 +3,9 @@
 import unittest
 
 from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
     CommandError,
     MockGCmd,
-    SAMPLE_ACTIVE_GAINS,
     make_driver,
 )
 
@@ -213,9 +213,7 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 1, 8]
-        )
+        self.assertEqual(d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 1, 8])
         self.assertTrue(d.settings.velocity_feedforward)
         self.assertEqual(d.settings.velocity_feedforward_multiplier, 8)
 
@@ -231,9 +229,7 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 0, 4]
-        )
+        self.assertEqual(d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 0, 4])
         self.assertFalse(d.settings.velocity_feedforward)
         self.assertEqual(d.settings.velocity_feedforward_multiplier, 4)
 
@@ -304,9 +300,7 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 750, 250]
-        )
+        self.assertEqual(d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 750, 250])
         self.assertTrue(d.settings.accel_feedforward)
         self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
         self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
@@ -323,9 +317,7 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 500, 500]
-        )
+        self.assertEqual(d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 500, 500])
         self.assertTrue(d.settings.accel_feedforward)
         self.assertEqual(d.settings.accel_feedforward_accel_gain, 500)
         self.assertEqual(d.settings.accel_feedforward_decel_gain, 500)
@@ -343,9 +335,7 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 0, 750, 250]
-        )
+        self.assertEqual(d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 0, 750, 250])
         self.assertFalse(d.settings.accel_feedforward)
         self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
         self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
@@ -396,9 +386,7 @@ class TestPositionLeadCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            d.protocol.commands.set_position_lead.last_args, [d.oid, 1, 10, 20]
-        )
+        self.assertEqual(d.protocol.commands.set_position_lead.last_args, [d.oid, 1, 10, 20])
         self.assertTrue(d.settings.position_lead)
         self.assertEqual(d.settings.position_lead_gain, 10)
         self.assertEqual(d.settings.position_lead_max_counts, 20)
@@ -410,9 +398,7 @@ class TestPositionLeadCommand(unittest.TestCase):
 
         d.controls.set_position_lead(MockGCmd({"ENABLE": 0}))
 
-        self.assertEqual(
-            d.protocol.commands.set_position_lead.last_args, [d.oid, 0, 10, 20]
-        )
+        self.assertEqual(d.protocol.commands.set_position_lead.last_args, [d.oid, 0, 10, 20])
         self.assertFalse(d.settings.position_lead)
         self.assertEqual(d.settings.position_lead_gain, 10)
         self.assertEqual(d.settings.position_lead_max_counts, 20)
@@ -464,9 +450,7 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
 
         d.controls.set_phase_advance(MockGCmd({}))
 
-        self.assertEqual(
-            d.protocol.commands.set_phase_advance.last_args, [d.oid, 1, 0, 0, 16]
-        )
+        self.assertEqual(d.protocol.commands.set_phase_advance.last_args, [d.oid, 1, 0, 0, 16])
         self.assertTrue(d.settings.phase_advance)
         self.assertEqual(d.settings.phase_advance_gain_ppm, 0)
         self.assertEqual(d.settings.phase_advance_max_counts, 0)
@@ -480,9 +464,7 @@ class TestVoltageLimitCommand(unittest.TestCase):
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 20000})
         d.controls.set_voltage_limit(gcmd)
 
-        self.assertEqual(
-            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000]
-        )
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])
         self.assertIn("pidout_uq_ud_limit=20000", gcmd.last_info)
 
     def test_accepts_voltage_limit_at_chip_max(self):
@@ -491,9 +473,7 @@ class TestVoltageLimitCommand(unittest.TestCase):
         gcmd = MockGCmd({"VOLTAGE_LIMIT": 32767})
         d.controls.set_voltage_limit(gcmd)
 
-        self.assertEqual(
-            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 32767]
-        )
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 32767])
         self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
 
     def test_accepts_voltage_limit_at_chip_min(self):
@@ -512,6 +492,4 @@ class TestVoltageLimitCommand(unittest.TestCase):
         d.controls.set_voltage_limit(MockGCmd({"VOLTAGE_LIMIT": 20000}))
         d.homing.apply_active_gains_to_firmware()
 
-        self.assertEqual(
-            d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000]
-        )
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])

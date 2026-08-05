@@ -145,7 +145,7 @@ def test_expert_mode_registers_trace_diagnostic_only_after_identification():
 
     driver._handle_mcu_identify()
 
-    assert TRACE_COMMANDS <= registered_command_names(printer)
+    assert registered_command_names(printer) >= TRACE_COMMANDS
 
 
 def test_developer_mode_defers_raw_tmc_commands_until_mcu_identify():
@@ -174,11 +174,7 @@ def test_developer_mode_registers_raw_tmc_commands_for_dev_firmware():
     driver._handle_mcu_identify()
 
     assert registered_command_names(printer) == (
-        DEFAULT_COMMANDS
-        | ADVANCED_COMMANDS
-        | EXPERT_COMMANDS
-        | DEVELOPER_COMMANDS
-        | TRACE_COMMANDS
+        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS | DEVELOPER_COMMANDS | TRACE_COMMANDS
     )
 
 
@@ -260,12 +256,8 @@ def test_dump_commands_register_register_dump_workflow_handler():
         if args[0] in {"DUMP_FOCI", "DUMP_TMC"}
     }
 
-    assert dump_handlers["DUMP_FOCI"].__self__.__class__.__name__ == (
-        "RegisterDumpWorkflow"
-    )
-    assert dump_handlers["DUMP_TMC"].__self__.__class__.__name__ == (
-        "RegisterDumpWorkflow"
-    )
+    assert dump_handlers["DUMP_FOCI"].__self__.__class__.__name__ == ("RegisterDumpWorkflow")
+    assert dump_handlers["DUMP_TMC"].__self__.__class__.__name__ == ("RegisterDumpWorkflow")
 
 
 def test_default_control_commands_register_controls_workflow_handlers():
@@ -279,15 +271,12 @@ def test_default_control_commands_register_controls_workflow_handlers():
     }
 
     handlers = {
-        args[0]: args[3]
-        for args, _kwargs in gcode._mux_commands
-        if args[0] in command_names
+        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
     }
 
     assert set(handlers) == command_names
     assert all(
-        handler.__self__.__class__.__name__ == "ControlsWorkflow"
-        for handler in handlers.values()
+        handler.__self__.__class__.__name__ == "ControlsWorkflow" for handler in handlers.values()
     )
 
 
@@ -304,15 +293,12 @@ def test_expert_control_commands_register_controls_workflow_handlers():
     }
 
     handlers = {
-        args[0]: args[3]
-        for args, _kwargs in gcode._mux_commands
-        if args[0] in command_names
+        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
     }
 
     assert set(handlers) == command_names
     assert all(
-        handler.__self__.__class__.__name__ == "ControlsWorkflow"
-        for handler in handlers.values()
+        handler.__self__.__class__.__name__ == "ControlsWorkflow" for handler in handlers.values()
     )
 
 
@@ -341,9 +327,7 @@ def test_commission_registers_commissioning_workflow_handler():
     printer = build_driver_with_mode("default")
     gcode = printer.lookup_object("gcode")
 
-    handler = next(
-        args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_COMMISSION"
-    )
+    handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_COMMISSION")
 
     assert handler.__self__.__class__.__name__ == "CommissioningWorkflow"
 
@@ -352,9 +336,7 @@ def test_selftest_registers_selftest_workflow_handler():
     printer = build_driver_with_mode("default")
     gcode = printer.lookup_object("gcode")
 
-    handler = next(
-        args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_SELFTEST"
-    )
+    handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_SELFTEST")
 
     assert handler.__self__.__class__.__name__ == "SelftestWorkflow"
 
@@ -363,9 +345,7 @@ def test_autotune_registers_autotune_workflow_handler():
     printer = build_driver_with_mode("default")
     gcode = printer.lookup_object("gcode")
 
-    handler = next(
-        args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_AUTOTUNE"
-    )
+    handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_AUTOTUNE")
 
     assert handler.__self__.__class__.__name__ == "AutotuneWorkflow"
 
@@ -380,9 +360,7 @@ def test_observation_diagnostics_register_diagnostics_workflow_handlers():
     }
 
     handlers = {
-        args[0]: args[3]
-        for args, _kwargs in gcode._mux_commands
-        if args[0] in command_names
+        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
     }
 
     assert set(handlers) == command_names
@@ -405,9 +383,7 @@ def test_active_diagnostics_register_diagnostics_workflow_handlers():
     }
 
     handlers = {
-        args[0]: args[3]
-        for args, _kwargs in gcode._mux_commands
-        if args[0] in command_names
+        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
     }
 
     assert set(handlers) == command_names
@@ -481,9 +457,7 @@ def test_same_mcu_dual_channel_response_handlers_use_distinct_oids():
     driver_x._handle_mcu_identify()
     driver_y._handle_mcu_identify()
 
-    response_oids = {
-        (name, oid) for _callback, name, oid in driver_x.mcu._serial.responses
-    }
+    response_oids = {(name, oid) for _callback, name, oid in driver_x.mcu._serial.responses}
     assert ("foci_commission_result", 10) in response_oids
     assert ("foci_commission_result", 12) in response_oids
 

@@ -1,16 +1,14 @@
 """Velocity-integral stream reassembly and integrity tests."""
 
 import pytest
-
 from klipper_foci.velocity_integral import (
-    slot_direction_index,
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
+    slot_direction_index,
 )
-
 
 PLAN_DIGEST = 0x0123_4567_89AB_CDEF
 STAGE_B_DIGEST = 0xFEDC_BA98_7654_3210
@@ -31,9 +29,7 @@ def feed_workflow(assembler, shape=2, maximum_ms=70_000, nominal_ms=None):
         "nominal_workflow_ms": nominal_ms,
         "maximum_workflow_ms": maximum_ms,
     }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(
-        params
-    )
+    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
 
 
@@ -80,9 +76,7 @@ def feed_plan(
             "usable_torque_limit": 2534,
         }
     )
-    for direction, interval in enumerate(
-        ((15_000_000, 17_000_000), (-19_000_000, -17_000_000))
-    ):
+    for direction, interval in enumerate(((15_000_000, 17_000_000), (-19_000_000, -17_000_000))):
         assembler.handle_plan_authority(
             {
                 **common,
@@ -450,9 +444,7 @@ def test_schema_thirteen_pairs_with_stage_b_fourteen():
         (11, 12),
     ],
 )
-def test_combined_schema_rejects_mismatched_stage_b_pairing(
-    stage_b_schema, schema_revision
-):
+def test_combined_schema_rejects_mismatched_stage_b_pairing(stage_b_schema, schema_revision):
     """Stage-B and Stage-C revisions must be a matching pair.
 
     This is a compatibility check on the protocol, not a re-derivation of
@@ -606,9 +598,7 @@ def stage_c_12_recovery_assembler():
         (5, "sequence gap"),
     ),
 )
-def test_stage_c_12_ordinary_rest_uses_exact_two_hidden_positions(
-    second_sequence, error
-):
+def test_stage_c_12_ordinary_rest_uses_exact_two_hidden_positions(second_sequence, error):
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
     assembler.bind_combined_stage_b_schema(13)
@@ -877,9 +867,7 @@ def feed_full_evidence(assembler, recovery_outcomes=None, *, rung_count=None):
     return sequence
 
 
-def feed_full_evidence_omitting(
-    assembler, omit, recovery_outcomes=None, *, rung_count=None
-):
+def feed_full_evidence_omitting(assembler, omit, recovery_outcomes=None, *, rung_count=None):
     """Feed every rung's evidence like feed_full_evidence, but skip one record.
 
     `omit` names exactly one record to withhold entirely:
@@ -909,11 +897,7 @@ def feed_full_evidence_omitting(
     for rung_index, i_raw in enumerate(rung_values):
         omit_rung = kind == "rung" and rung_index == omit_rung_index
         for slot in range(8):
-            if (
-                kind == "observation"
-                and rung_index == omit_rung_index
-                and slot == omit_slot
-            ):
+            if kind == "observation" and rung_index == omit_rung_index and slot == omit_slot:
                 continue
             feed_observation(assembler, sequence, rung_index, slot, i_raw)
             sequence += 2
@@ -923,16 +907,10 @@ def feed_full_evidence_omitting(
                 sequence,
                 rung_index,
                 i_raw,
-                0
-                if rung_index == 0
-                else 2
-                if rung_index == len(rung_values) - 1
-                else 1,
+                0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
             )
             sequence += 1
-        omit_recovery = omit_rung or (
-            kind == "recovery" and rung_index == omit_rung_index
-        )
+        omit_recovery = omit_rung or (kind == "recovery" and rung_index == omit_rung_index)
         if not omit_recovery:
             feed_recovery(
                 assembler,
@@ -1095,9 +1073,7 @@ def feed_terminal(
             }
         )
     if reproduction:
-        assembler.handle_reproduction_core(
-            {**common, "outcome": 1, "direction_mask": 0b11}
-        )
+        assembler.handle_reproduction_core({**common, "outcome": 1, "direction_mask": 0b11})
         for direction in range(2):
             assembler.handle_reproduction_mask(
                 {
@@ -1473,9 +1449,7 @@ def schema_six_recovery_fault_prefix(*, outcome=3, missing_recoveries=(6,)):
         assembler.recoveries.pop(rung_index)
     final_rung = emitted_rungs - 1
     assembler._last_evidence = (
-        ("rung", final_rung)
-        if final_rung in missing_recoveries
-        else ("recovery", final_rung)
+        ("rung", final_rung) if final_rung in missing_recoveries else ("recovery", final_rung)
     )
     feed_terminal(
         assembler,
@@ -1524,9 +1498,7 @@ def test_stage_c_terminal_reconciliation_catches_an_omitted_observation():
     assembler = schema_six_assembler()
     sequence = feed_full_evidence_omitting(assembler, ("observation", 1, 0))
 
-    with pytest.raises(
-        VelocityIntegralProtocolError, match="terminal observation count mismatch"
-    ):
+    with pytest.raises(VelocityIntegralProtocolError, match="terminal observation count mismatch"):
         feed_terminal(assembler, sequence)
 
 
@@ -1534,9 +1506,7 @@ def test_stage_c_terminal_reconciliation_catches_an_omitted_rung():
     assembler = schema_six_assembler()
     sequence = feed_full_evidence_omitting(assembler, ("rung", 1))
 
-    with pytest.raises(
-        VelocityIntegralProtocolError, match="terminal rung count mismatch"
-    ):
+    with pytest.raises(VelocityIntegralProtocolError, match="terminal rung count mismatch"):
         feed_terminal(assembler, sequence)
 
 
@@ -1610,9 +1580,7 @@ def test_stage_c_11_complete_run_accepts_a_bounded_recovery_sequence_shift():
     assert _without_evidence_sequence(exact.observations) == _without_evidence_sequence(
         shifted.observations
     )
-    assert _without_evidence_sequence(exact.rungs) == _without_evidence_sequence(
-        shifted.rungs
-    )
+    assert _without_evidence_sequence(exact.rungs) == _without_evidence_sequence(shifted.rungs)
     assert _without_evidence_sequence(exact.recoveries) == _without_evidence_sequence(
         shifted.recoveries
     )
@@ -1749,9 +1717,7 @@ def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():
         (5, 11, 0, "terminal preceded exact plan"),
     ),
 )
-def test_no_transition_rejects_any_other_terminal_only_shape(
-    outcome, cause, flags, message
-):
+def test_no_transition_rejects_any_other_terminal_only_shape(outcome, cause, flags, message):
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=2, maximum_ms=182_512)
 
@@ -1937,9 +1903,7 @@ def test_schema_fourteen_requires_breakaway_workflow():
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="breakaway workflow"):
-        feed_plan(
-            assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0
-        )
+        feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
 
 
 def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
@@ -1947,9 +1911,7 @@ def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
     feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="combined workflow"):
-        feed_plan(
-            assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0
-        )
+        feed_plan(assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0)
 
 
 def test_schema_fourteen_terminal_core_does_not_require_a_combined_marker():
@@ -2042,9 +2004,7 @@ def test_schema_fourteen_complete_outcome_does_not_require_reproduction():
     assembler.validate_complete()  # must not raise despite reproduction is None
 
 
-def feed_foc213_transport_validated_replay(
-    assembler, rung_values, *, centred_rung_index
-):
+def feed_foc213_transport_validated_replay(assembler, rung_values, *, centred_rung_index):
     """Feed the wire-visible pattern the foc213-transport-validated capture
     demonstrates.
 
@@ -2170,9 +2130,7 @@ CONFIRMATION_DIGEST = (0x5555_5555, 0x6666_6666)
 STAGE_C_DIGEST = (0x7777_7777, 0x8888_8888)
 
 
-def feed_probe_plan(
-    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST
-):
+def feed_probe_plan(assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST):
     low, high = digest
     assembler.handle_probe_plan(
         {
@@ -2191,9 +2149,7 @@ def feed_probe_plan(
     )
 
 
-def feed_probe_result(
-    assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST
-):
+def feed_probe_result(assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST):
     low, high = digest
     assembler.handle_probe_result(
         {
@@ -2418,9 +2374,7 @@ def test_breakaway_discovery_rejects_a_missing_probe_result():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
 
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="resolved probe breakaway"
-    ):
+    with pytest.raises(BreakawayCampaignProtocolError, match="resolved probe breakaway"):
         feed_discovery_plan(assembler)
 
 
@@ -2478,9 +2432,7 @@ def test_breakaway_probe_terminal_rejects_reserved_causes(cause):
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
 
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="invalid probe terminal cause"
-    ):
+    with pytest.raises(BreakawayCampaignProtocolError, match="invalid probe terminal cause"):
         assembler.handle_probe_terminal(
             {
                 "oid": 0,
@@ -2531,9 +2483,7 @@ def test_breakaway_discovery_geometry_rejects_gains_out_of_order():
         }
     )
 
-    with pytest.raises(
-        BreakawayCampaignProtocolError, match="floor<=breakaway<=ceiling"
-    ):
+    with pytest.raises(BreakawayCampaignProtocolError, match="floor<=breakaway<=ceiling"):
         assembler.handle_discovery_plan_geometry(
             {
                 "oid": 0,
@@ -2686,9 +2636,7 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
 
     assert assembler.done
     assert assembler.accepted is True
-    assert assembler.stage_c_plan_digest == (
-        STAGE_C_DIGEST[0] | (STAGE_C_DIGEST[1] << 32)
-    )
+    assert assembler.stage_c_plan_digest == (STAGE_C_DIGEST[0] | (STAGE_C_DIGEST[1] << 32))
     # The confirmed gain is the exact confirmation candidate, never a
     # host-reselected value.
     assert (
@@ -2740,9 +2688,7 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
         "decide",
         "reselect",
     )
-    surface = [
-        name for name in dir(BreakawayCampaignAssembler) if not name.startswith("_")
-    ]
+    surface = [name for name in dir(BreakawayCampaignAssembler) if not name.startswith("_")]
     assert surface, "expected a nonempty public surface to scan"
     for name in surface:
         assert name.startswith("handle_") or name in (
@@ -2761,6 +2707,4 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
             "done",
         ), f"unexpected non-relay method on the assembler: {name}"
         for verb in banned_verbs:
-            assert verb not in name.lower(), (
-                f"{name} looks like a decision, not a relay"
-            )
+            assert verb not in name.lower(), f"{name} looks like a decision, not a relay"

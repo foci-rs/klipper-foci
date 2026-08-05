@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
@@ -71,8 +72,7 @@ def parse_autotune_action(value: str | None) -> int:
         return ACTION_CODES[name]
     except KeyError as err:
         raise AcceptanceMatrixProtocolError(
-            "unknown ACTION '%s' (expected: %s)"
-            % (name, ", ".join(sorted(ACTION_CODES)))
+            f"unknown ACTION '{name}' (expected: {', '.join(sorted(ACTION_CODES))})"
         ) from err
 
 
@@ -88,14 +88,14 @@ def _raw_payload(params: dict, kind: str) -> bytes:
     try:
         return bytes(params["payload"])
     except (KeyError, TypeError, ValueError) as err:
-        raise AcceptanceMatrixProtocolError("%s payload is missing" % kind) from err
+        raise AcceptanceMatrixProtocolError(f"{kind} payload is missing") from err
 
 
 def _payload(params: dict, size: int, kind: str) -> bytes:
     payload = _raw_payload(params, kind)
     if len(payload) != size:
         raise AcceptanceMatrixProtocolError(
-            "%s payload has %d bytes, expected %d" % (kind, len(payload), size)
+            f"{kind} payload has {len(payload)} bytes, expected {int(size)}"
         )
     return payload
 
@@ -198,8 +198,7 @@ class AcceptanceMatrixAssembler:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if len(payload) != plan_struct.size:
             raise AcceptanceMatrixProtocolError(
-                "matrix plan payload has %d bytes, expected %d"
-                % (len(payload), plan_struct.size)
+                f"matrix plan payload has {len(payload)} bytes, expected {int(plan_struct.size)}"
             )
         unpacked = plan_struct.unpack(payload)
         (
@@ -216,9 +215,7 @@ class AcceptanceMatrixAssembler:
         family_size, observations, amplitude_count, nominal_ms, maximum_ms = tail[
             MATRIX_AMPLITUDE_COUNT : MATRIX_AMPLITUDE_COUNT + 5
         ]
-        recovery_lower_rate_q = (
-            None if schema == 1 else tuple(tail[MATRIX_AMPLITUDE_COUNT + 5 :])
-        )
+        recovery_lower_rate_q = None if schema == 1 else tuple(tail[MATRIX_AMPLITUDE_COUNT + 5 :])
         # From schema 5 the amplitude order occupies the low nibble and the slot
         # order the high one. Forward-first encodes as zero, so earlier schemas
         # decode unchanged.
@@ -229,34 +226,24 @@ class AcceptanceMatrixAssembler:
         if slot_order not in (SLOT_ORDER_FORWARD_FIRST, SLOT_ORDER_REVERSE_FIRST):
             raise AcceptanceMatrixProtocolError("invalid matrix slot order")
         order = amplitude_order
-        expected_order = WORKFLOW_SHAPE_TO_MATRIX_ORDER[
-            int(self.workflow_plan["shape"])
-        ]
+        expected_order = WORKFLOW_SHAPE_TO_MATRIX_ORDER[int(self.workflow_plan["shape"])]
         if run_sequence != self.workflow_plan["run_sequence"]:
             raise AcceptanceMatrixProtocolError("matrix plan run sequence changed")
         if order != expected_order:
             raise AcceptanceMatrixProtocolError("matrix order disagrees with workflow")
         ordered = (
-            all(left < right for left, right in zip(targets, targets[1:]))
+            all(left < right for left, right in itertools.pairwise(targets))
             if order == MATRIX_ORDER_ASCENDING
-            else all(left > right for left, right in zip(targets, targets[1:]))
+            else all(left > right for left, right in itertools.pairwise(targets))
         )
         if not ordered or any(target <= 0 for target in targets):
             raise AcceptanceMatrixProtocolError("invalid matrix target order")
-        if (
-            plan_digest == 0
-            or acceptance_digest == 0
-            or selected_p == 0
-            or selected_i == 0
-        ):
+        if plan_digest == 0 or acceptance_digest == 0 or selected_p == 0 or selected_i == 0:
             raise AcceptanceMatrixProtocolError("matrix authority is incomplete")
         if schema >= 2 and (
-            recovery_lower_rate_q is None
-            or any(value == 0 for value in recovery_lower_rate_q)
+            recovery_lower_rate_q is None or any(value == 0 for value in recovery_lower_rate_q)
         ):
-            raise AcceptanceMatrixProtocolError(
-                "matrix recovery authority is incomplete"
-            )
+            raise AcceptanceMatrixProtocolError("matrix recovery authority is incomplete")
         self.plan = {
             "schema_revision": schema,
             "run_sequence": run_sequence,
@@ -294,9 +281,7 @@ class AcceptanceMatrixAssembler:
         if schema not in MATRIX_SCHEMA_REVISIONS:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
         if self.plan is not None and schema != self.plan["schema_revision"]:
-            raise AcceptanceMatrixProtocolError(
-                "matrix terminal schema disagrees with plan"
-            )
+            raise AcceptanceMatrixProtocolError("matrix terminal schema disagrees with plan")
         if outcome not in OUTCOME_NAMES or cause not in CAUSE_NAMES:
             raise AcceptanceMatrixProtocolError("invalid matrix terminal taxonomy")
         expected_causes = {
@@ -318,17 +303,10 @@ class AcceptanceMatrixAssembler:
             if eligible[direction] & ~attempted[direction]:
                 raise AcceptanceMatrixProtocolError("eligible mask was not attempted")
             if current[direction] & ~attempted[direction]:
-                raise AcceptanceMatrixProtocolError(
-                    "current-terminus mask was not attempted"
-                )
+                raise AcceptanceMatrixProtocolError("current-terminus mask was not attempted")
             if attempted[direction] & unattempted[direction]:
-                raise AcceptanceMatrixProtocolError(
-                    "attempted and unattempted masks overlap"
-                )
-            if (
-                outcome != 3
-                and attempted[direction] | unattempted[direction] != MATRIX_MASK
-            ):
+                raise AcceptanceMatrixProtocolError("attempted and unattempted masks overlap")
+            if outcome != 3 and attempted[direction] | unattempted[direction] != MATRIX_MASK:
                 raise AcceptanceMatrixProtocolError(
                     "attempted and unattempted masks do not cover the plan"
                 )
@@ -339,37 +317,23 @@ class AcceptanceMatrixAssembler:
 
         if outcome == 3:
             if self.workflow_plan is not None or self.plan is not None:
-                raise AcceptanceMatrixProtocolError(
-                    "pre-motion failure followed matrix disclosure"
-                )
+                raise AcceptanceMatrixProtocolError("pre-motion failure followed matrix disclosure")
             if plan_digest != 0 or digest != 0:
-                raise AcceptanceMatrixProtocolError(
-                    "pre-motion failure carried evidence digests"
-                )
+                raise AcceptanceMatrixProtocolError("pre-motion failure carried evidence digests")
             if any(masks) or emitted_observations or emitted_amplitudes:
-                raise AcceptanceMatrixProtocolError(
-                    "pre-motion failure carried matrix evidence"
-                )
+                raise AcceptanceMatrixProtocolError("pre-motion failure carried matrix evidence")
         else:
             if self.workflow_plan is None or self.plan is None:
-                raise AcceptanceMatrixProtocolError(
-                    "matrix terminal arrived before plan"
-                )
+                raise AcceptanceMatrixProtocolError("matrix terminal arrived before plan")
             if run_sequence != self.plan["run_sequence"]:
-                raise AcceptanceMatrixProtocolError(
-                    "matrix terminal run sequence changed"
-                )
+                raise AcceptanceMatrixProtocolError("matrix terminal run sequence changed")
             if plan_digest != self.plan["plan_digest"]:
                 raise AcceptanceMatrixProtocolError("matrix plan digest changed")
             if outcome == 0 and any(mask.bit_count() < 3 for mask in eligible):
-                raise AcceptanceMatrixProtocolError(
-                    "complete matrix lacks directional floor"
-                )
+                raise AcceptanceMatrixProtocolError("complete matrix lacks directional floor")
 
         outcome_name = (
-            "InconclusiveRest"
-            if outcome == 1 and cause == 53
-            else OUTCOME_NAMES[outcome]
+            "InconclusiveRest" if outcome == 1 and cause == 53 else OUTCOME_NAMES[outcome]
         )
         self.terminal = {
             "schema_revision": schema,
