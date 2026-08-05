@@ -707,8 +707,15 @@ class AutotuneWorkflow:
             reason_code,
             f"unknown_{int(reason_code)}",
         )
+        # The velocity check evaluates a sliding two-interval window and reports
+        # that window's summed counts and elapsed time; every other reason
+        # evaluates a single observation. Label them apart so a window total is
+        # not read as one long observation.
+        windowed = reason == "velocity"
+        delta_label = "window_delta_counts" if windowed else "delta_counts"
+        dt_label = "window_dt_us" if windowed else "dt_us"
         return (
-            f"outer safety {reason}: delta_counts={int(fault.get('delta_counts', 0))} dt_us="
+            f"outer safety {reason}: {delta_label}={int(fault.get('delta_counts', 0))} {dt_label}="
             f"{int(fault.get('dt_us', 0))} velocity_counts_per_ms="
             f"{int(fault.get('velocity_counts_per_ms', 0))} cap_counts_per_ms="
             f"{int(fault.get('velocity_cap_counts_per_ms', 0))} position_counts="

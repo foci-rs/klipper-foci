@@ -619,8 +619,10 @@ class TestAutotuneGates(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("safety fault: safety envelope violation", message)
         self.assertIn("outer safety velocity", message)
-        self.assertIn("delta_counts=-125", message)
-        self.assertIn("dt_us=4000", message)
+        # The velocity check evaluates a sliding two-interval window and reports
+        # that window's totals, so the labels must not read as one observation.
+        self.assertIn("window_delta_counts=-125", message)
+        self.assertIn("window_dt_us=4000", message)
         self.assertIn("velocity_counts_per_ms=-31", message)
         self.assertIn("cap_counts_per_ms=24", message)
         self.assertIn("position_counts=-373/3000", message)
