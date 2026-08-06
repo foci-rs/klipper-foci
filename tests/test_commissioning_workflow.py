@@ -429,6 +429,27 @@ class TestResistanceIdFailed(unittest.TestCase):
         self.assertIn("docs/troubleshooting/resistance-identification.md", message)
         self.assertTrue(d.state.inhibited)
 
+    def test_commission_resistance_nonpositive_slope_names_and_links_doc(self):
+        d = make_driver()
+        d.state.is_calibrated = True
+        d.state.inhibited = False
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        def drive_nonpositive_slope(_args):
+            d.commissioning.error_code = 73
+            d.commissioning.last_phase_id = 5
+
+        d.protocol.commands.commission.send = drive_nonpositive_slope
+
+        with self.assertRaises(CommandError) as ctx:
+            d.commissioning.commission(gcmd)
+
+        message = str(ctx.exception)
+        self.assertNotIn("UNKNOWN(73)", message)
+        self.assertIn(COMMISSION_ERROR_NAMES[73], message)
+        self.assertIn("docs/troubleshooting/resistance-identification.md", message)
+        self.assertTrue(d.state.inhibited)
+
 
 class TestCommissioningStateTransitions(unittest.TestCase):
     def test_commission_failure_sets_inhibited(self):

@@ -97,12 +97,13 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     70: "safety primitive already open",
     71: "primitive start timestamp is in the future",
     72: "origin recovery start offset mismatch",
+    73: "resistance nonpositive slope (reversed current polarity or sign error)",
 }
 
 # Error codes for which the failure message should point at a dedicated
 # troubleshooting doc instead of just the bare error name.
 TROUBLESHOOTING_DOC_LINKS: dict[int, str] = dict.fromkeys(
-    range(19, 32), "docs/troubleshooting/resistance-identification.md"
+    [*range(19, 32), 73], "docs/troubleshooting/resistance-identification.md"
 )
 
 # Resistance-identification failures that are not operator-remediable by
