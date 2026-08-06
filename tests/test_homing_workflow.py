@@ -98,6 +98,44 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         self.assertIn("start=123", gcode._responses[0])
         self.assertIn("delta=0", gcode._responses[0])
 
+    def test_calibration_failure_reports_closed_loop_entry_diagnostics(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        reactor = d.printer.get_reactor()
+        reactor.completion_result = {
+            "oid": d.oid,
+            "status": 9,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 0,
+        }
+
+        def send_calibrate(_args):
+            d.commissioning.handle_commission_detail(
+                {
+                    "phase": 17,
+                    "code": 1,
+                    "status": 3,
+                    "value0": 0,
+                    "value1": 65,
+                    "value2": 65,
+                }
+            )
+
+        d.protocol.commands.calibrate.send = send_calibrate
+
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+
+        self.assertIn("CLOSED_LOOP_ENTRY_UNSTABLE", str(ctx.exception))
+        gcode = d.printer.lookup_object("gcode")
+        self.assertEqual(len(gcode._responses), 1)
+        self.assertIn("calibration diagnostics", gcode._responses[0])
+        self.assertIn("Closed-loop entry: drift FAIL", gcode._responses[0])
+        self.assertIn("position_1=0", gcode._responses[0])
+        self.assertIn("position_2=65", gcode._responses[0])
+        self.assertIn("drift=65", gcode._responses[0])
+
     def test_calibration_success_reports_retained_diagnostics(self):
         d = make_driver()
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()

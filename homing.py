@@ -21,6 +21,7 @@ class HomingWorkflow:
         6: "INTERNAL_ERROR",
         7: "CONFIG_FAULT (run-time configuration missing)",
         8: "ENCODER_FAULT (encoder did not report expected calibration movement)",
+        9: "CLOSED_LOOP_ENTRY_UNSTABLE (position hold runaway or excess drift)",
     }
 
     # Kinematics coupling map: in coupled kinematics a single motor affects
