@@ -210,6 +210,7 @@ class HomingWorkflow:
                     "FOCI %s: already calibrated (firmware auto-cal)",
                     self.driver.name,
                 )
+                self._report_calibration_details()
                 return
             if status != 0:
                 msg = self.format_calibration_status(status)
@@ -219,6 +220,7 @@ class HomingWorkflow:
                 raise self.driver.printer.command_error(
                     f"FOCI {self.driver.name} calibration failed: {msg}"
                 )
+            self._report_calibration_details()
             self.driver.state.is_calibrated = True
             logging.info(
                 "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",

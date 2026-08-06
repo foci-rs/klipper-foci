@@ -98,6 +98,63 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         self.assertIn("start=123", gcode._responses[0])
         self.assertIn("delta=0", gcode._responses[0])
 
+    def test_calibration_success_reports_retained_diagnostics(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        reactor = d.printer.get_reactor()
+        reactor.completion_result = {
+            "oid": d.oid,
+            "status": 0,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 123,
+        }
+
+        def send_calibrate(_args):
+            # Simulates a bounded direction-sweep retry: the first attempt
+            # found no movement but a later attempt recovered, so the
+            # calibrate call still succeeds overall.
+            d.commissioning.handle_commission_detail(
+                {
+                    "phase": 4,
+                    "code": 2,
+                    "status": 1,
+                    "value0": 123,
+                    "value1": 123,
+                    "value2": 0,
+                }
+            )
+
+        d.protocol.commands.calibrate.send = send_calibrate
+
+        d.homing.ensure_calibrated()
+
+        self.assertTrue(d.state.is_calibrated)
+        gcode = d.printer.lookup_object("gcode")
+        self.assertEqual(len(gcode._responses), 1)
+        self.assertIn("calibration diagnostics", gcode._responses[0])
+        self.assertIn("Encoder check: direction sweep FAIL", gcode._responses[0])
+        self.assertIn("start=123", gcode._responses[0])
+        self.assertIn("delta=0", gcode._responses[0])
+
+    def test_calibration_success_reports_nothing_when_no_diagnostics(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        reactor = d.printer.get_reactor()
+        reactor.completion_result = {
+            "oid": d.oid,
+            "status": 0,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 123,
+        }
+
+        d.homing.ensure_calibrated()
+
+        self.assertTrue(d.state.is_calibrated)
+        gcode = d.printer.lookup_object("gcode")
+        self.assertEqual(gcode._responses, [])
+
 
 class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_delegates_initial_homing_state(self):
