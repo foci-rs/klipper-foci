@@ -2,6 +2,7 @@
 
 import unittest
 
+from klipper_foci.autotune import OUTER_SAFETY_FAULT_NAMES
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.registers import REGISTERS
 from klipper_foci.velocity_integral import (
@@ -671,6 +672,64 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("velocity sweep fault (cause=17)", message)
         self.assertIn("outer safety observation_gap", message)
         self.assertIn("dt_us=2137", message)
+
+    def test_recovery_wrong_way_fault_is_named_not_unknown(self):
+        # Regression case: reason 10
+        # (OUTER_SAFETY_FAULT_RECOVERY_WRONG_WAY) printed as "unknown_10",
+        # costing real investigation time resolving the code by hand.
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report_safety_fault(deadline):
+            reactor._time = deadline
+            d.autotune.handle_outer_safety_fault(
+                {
+                    "reason": 10,
+                    "max_travel_mrev": 750,
+                    "max_velocity_mrev_s": 6000,
+                    "max_duration_ms": 3000,
+                    "direction_mask": 3,
+                    "delta_counts": 2,
+                    "dt_us": 0,
+                }
+            )
+            d.autotune.handle_tune_result({"status": 17})
+            return reactor._time
+
+        reactor.pause = pause_and_report_safety_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertNotIn("unknown_10", message)
+        self.assertIn("outer safety recovery_wrong_way", message)
+
+
+class TestOuterSafetyFaultNames(unittest.TestCase):
+    # Mirrors the OUTER_SAFETY_FAULT_* constants in
+    # foci-firmware/src/commissioning/types.rs:1776-1796. Firmware and host
+    # can drift independently -- there is no shared source of truth across
+    # Rust and Python here -- so this list must be updated by hand whenever
+    # the firmware adds, removes, or renumbers a constant. That is exactly
+    # what this test exists to catch: a code present in the map above but
+    # missing here (or vice versa) is a drift the loop below turns into a
+    # loud test failure instead of a silent unknown_N at runtime.
+    KNOWN_FIRMWARE_CODES = frozenset(range(0, 11))
+
+    def test_every_known_firmware_code_has_a_name(self):
+        for code in self.KNOWN_FIRMWARE_CODES:
+            self.assertIn(code, OUTER_SAFETY_FAULT_NAMES, f"code {code} has no host-side name")
+
+    def test_names_map_has_no_codes_outside_the_known_set(self):
+        unexpected = set(OUTER_SAFETY_FAULT_NAMES) - self.KNOWN_FIRMWARE_CODES
+        self.assertEqual(
+            unexpected,
+            set(),
+            "OUTER_SAFETY_FAULT_NAMES has codes not in KNOWN_FIRMWARE_CODES -- "
+            "update this test's known-code list to match types.rs",
+        )
 
 
 class TestAutotuneStateTransitions(unittest.TestCase):

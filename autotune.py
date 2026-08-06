@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 # TEMPORARY DIAGNOSTIC -- remove before committing.
 # Logs Stage-C evidence sequence accounting so the "integral-response evidence
 # sequence gap" refusal can be located: what arrived, what the assembler
@@ -61,6 +63,7 @@ COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S = 5.0
 COMMISSIONING_WORKFLOW_COMMS_MARGIN_S = 5.0
 
 OUTER_SAFETY_FAULT_NAMES = {
+    0: "none",
     1: "invalid_budget",
     2: "unusable_budget",
     3: "duration",
@@ -70,6 +73,7 @@ OUTER_SAFETY_FAULT_NAMES = {
     7: "observation_gap",
     8: "quarter_turn",
     9: "current",
+    10: "recovery_wrong_way",
 }
 
 
@@ -703,10 +707,14 @@ class AutotuneWorkflow:
         if not fault:
             return ""
         reason_code = int(fault.get("reason", 0))
-        reason = OUTER_SAFETY_FAULT_NAMES.get(
-            reason_code,
-            f"unknown_{int(reason_code)}",
-        )
+        reason = OUTER_SAFETY_FAULT_NAMES.get(reason_code)
+        if reason is None:
+            logging.warning(
+                "FOCI: unmapped OUTER_SAFETY_FAULT_ code %d -- "
+                "OUTER_SAFETY_FAULT_NAMES is out of sync with firmware",
+                reason_code,
+            )
+            reason = f"unknown_{reason_code}"
         # The velocity check evaluates a sliding two-interval window and reports
         # that window's summed counts and elapsed time; every other reason
         # evaluates a single observation. Label them apart so a window total is
