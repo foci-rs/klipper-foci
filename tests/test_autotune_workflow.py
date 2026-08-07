@@ -300,7 +300,11 @@ class TestAutotuneGates(unittest.TestCase):
 
         reactor.pause = pause_with_plan
 
-        d.autotune.autotune(gcmd)
+        # status 2 is a terminal failure here only to end the reactor.pause
+        # loop after the timeout workflow runs; it now raises like any
+        # other non-accepted terminal status.
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(gcmd)
 
         self.assertGreaterEqual(reactor._time, 6.0)
 
@@ -706,6 +710,36 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn("unknown_10", message)
         self.assertIn("outer safety recovery_wrong_way", message)
 
+    def test_soft_failure_raises_command_error_instead_of_reporting_success(self):
+        # Klipper's gcode dispatcher propagates any CommandError raised from
+        # a command handler identically whether FOCI_AUTOTUNE was invoked
+        # interactively or from a macro/script, so raising gcmd.error here
+        # (like every other terminal-status branch already does) is what
+        # makes a calling macro/script see failure instead of silently
+        # continuing as if a tune had been accepted.
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report_soft_failure(deadline):
+            reactor._time = deadline
+            d.autotune.handle_tune_result({"status": 43})
+            return reactor._time
+
+        reactor.pause = pause_and_report_soft_failure
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("FOCI_AUTOTUNE failed", message)
+        self.assertIn("closed-loop entry stability failed", message)
+        self.assertIn("motor holding with entry gains", message)
+        # The disposition message moved entirely into the raised error
+        # rather than being printed as an info message a script wouldn't
+        # see as a failure.
+        self.assertEqual(gcmd._responses, [])
+
 
 class TestOuterSafetyFaultNames(unittest.TestCase):
     # Mirrors the OUTER_SAFETY_FAULT_* constants in
@@ -889,6 +923,22 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
             "stiffness_timebase=50ms search_stop=1 flags=0x00",
             gcmd._responses,
         )
+
+    def test_accepted_with_warnings_still_succeeds(self):
+        d = self._ready_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        toolhead._kinematics = MockCartesianKinematics([["stepper_x"], ["stepper_y"]])
+        toolhead._kinematics.rails[0].get_steppers()[0]._step_dist = 0.01
+        toolhead._homed_axes = "xy"
+        toolhead.set_bounds(x_min=0.0, x_max=120.0, y_min=0.0, y_max=120.0)
+        toolhead.set_position(x=10.0, y=20.0)
+        d.printer._objects["configfile"] = MockConfigFile()
+        self._finish_tune_on_next_pause(d, {"status": 1, "warning_code": 1})
+
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(d.state.runtime_status, "tuned_conservative")
 
     def test_autotune_refuses_unsupported_kinematics_before_tune(self):
         d = self._ready_driver()

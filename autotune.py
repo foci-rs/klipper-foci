@@ -1035,11 +1035,10 @@ class AutotuneWorkflow:
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE safety fault: {error_name}"
                         f"{detail_suffix} (motor disabled by firmware)"
                     )
-                gcmd.respond_info(
+                raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name} (motor "
                     f"holding with entry gains)"
                 )
-                return
 
             warning_code = result.get("warning_code", 0)
             if status == 1 or warning_code != 0:
