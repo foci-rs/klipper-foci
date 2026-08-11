@@ -49,8 +49,8 @@ def test_cartesian_x_budget_applies_margin_and_rotation_distance():
     assert budget.stepper_role == "x"
     assert budget.safe_x == pytest.approx(60.0)
     assert budget.safe_y == pytest.approx(60.0)
-    assert budget.max_travel_mm == pytest.approx(30.0)
-    assert budget.max_stroke_travel_mrev == 1000
+    assert budget.max_travel_mm == pytest.approx(50.0)
+    assert budget.max_stroke_travel_mrev == 1500
     assert budget.settle_travel_reserve_mrev == 250
     assert budget.negative_position_headroom_mrev == 1250
     assert budget.positive_position_headroom_mrev == 1250
@@ -82,7 +82,90 @@ def test_budget_resolves_rotation_distance_from_get_rails_kinematics():
 
     budget = compute_autotune_motion_budget(driver, MockGCmd({}))
 
-    assert budget.max_stroke_travel_mrev == 1000
+    assert budget.max_stroke_travel_mrev == 1500
+
+
+def test_default_travel_uses_the_machine_budget_bounded_by_headroom():
+    """No TRAVEL parameter takes the machine's own budget, not a fixed figure.
+
+    CoreXY at the centre of a 120 mm bed offers 2 * min(60, 60) = 120 mm of
+    kinematic travel, but only 120 - 20 = 100 mm of absolute position headroom
+    after the CoreXY-domain margin. The moving stroke follows the headroom, so
+    the full stroke is 110 and moving travel is 100.
+    """
+    driver = ready_driver("stepper_x", MockCoreXYKinematics())
+    stepper = driver.printer.lookup_object("toolhead").get_kinematics().rails[0].get_steppers()[0]
+    stepper._step_dist = 0.01
+
+    budget = compute_autotune_motion_budget(driver, MockGCmd({}))
+
+    assert budget.max_travel_mm == pytest.approx(100.0)
+    assert budget.max_stroke_travel_mrev == 2750
+
+
+def test_default_moving_stroke_fits_inside_the_position_window():
+    """The planned moving stroke never exceeds the runtime position guard.
+
+    Firmware plans travel velocity from `max_stroke_travel_mrev` less
+    `settle_travel_reserve_mrev`, while the headroom fields bound the
+    non-faulting position window. The first must not exceed the second, or the
+    default relies on a safety guard to contain motion it planned.
+    """
+    for kinematics in (MockCartesianKinematics(), MockCoreXYKinematics()):
+        driver = ready_driver("stepper_x", kinematics)
+        toolhead = driver.printer.lookup_object("toolhead")
+        toolhead.get_kinematics().rails[0].get_steppers()[0]._step_dist = 0.01
+
+        budget = compute_autotune_motion_budget(driver, MockGCmd({}))
+
+        moving_allowance = budget.max_stroke_travel_mrev - budget.settle_travel_reserve_mrev
+        assert moving_allowance <= budget.negative_position_headroom_mrev
+        assert moving_allowance <= budget.positive_position_headroom_mrev
+
+
+def test_default_travel_is_bounded_by_the_safety_cap():
+    """A machine with more travel than the cap still stops at the cap."""
+    driver = ready_driver("stepper_x", MockCoreXYKinematics())
+    toolhead = driver.printer.lookup_object("toolhead")
+    toolhead.set_bounds(x_min=0.0, x_max=400.0, y_min=0.0, y_max=400.0)
+    toolhead.set_position(x=200.0, y=200.0)
+    stepper = toolhead.get_kinematics().rails[0].get_steppers()[0]
+    stepper._step_dist = 0.01
+
+    budget = compute_autotune_motion_budget(driver, MockGCmd({}))
+
+    assert budget.max_travel_mm == pytest.approx(110.0)
+    assert budget.max_stroke_travel_mrev == 3000
+
+
+def test_default_travel_enforces_the_invariant_after_integer_conversion():
+    """A millimetre-domain bound can still overshoot the window by one mrev.
+
+    Each field is floored independently, so when the rotation distance does not
+    divide the settle margin cleanly the moving allowance can exceed the
+    position window by one unit. Here rd = 32 mm makes the margin 312.5 mrev,
+    and the clamp must land on the integer fields rather than the millimetres.
+    """
+    driver = ready_driver("stepper_x", MockCoreXYKinematics())
+    toolhead = driver.printer.lookup_object("toolhead")
+    toolhead.set_bounds(x_min=0.0, x_max=120.02, y_min=0.0, y_max=120.02)
+    toolhead.get_kinematics().rails[0].get_steppers()[0]._step_dist = 0.008
+
+    budget = compute_autotune_motion_budget(driver, MockGCmd({}))
+
+    moving_allowance = budget.max_stroke_travel_mrev - budget.settle_travel_reserve_mrev
+    assert moving_allowance == budget.negative_position_headroom_mrev
+    assert moving_allowance <= budget.positive_position_headroom_mrev
+
+
+def test_explicit_travel_beyond_the_position_window_is_rejected():
+    """An explicit TRAVEL past the window is refused, not silently clamped."""
+    driver = ready_driver("stepper_x", MockCoreXYKinematics())
+    stepper = driver.printer.lookup_object("toolhead").get_kinematics().rails[0].get_steppers()[0]
+    stepper._step_dist = 0.01
+
+    with pytest.raises(AutotuneBudgetError, match="absolute-position window"):
+        compute_autotune_motion_budget(driver, MockGCmd({"TRAVEL": "120"}))
 
 
 def test_explicit_tune_velocity_is_converted_to_motor_space():

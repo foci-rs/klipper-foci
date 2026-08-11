@@ -916,7 +916,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertEqual(gcode._scripts, ["G0 X60.000 Y60.000"])
         self.assertEqual(
             d.protocol.commands.tune.last_args[-8:],
-            [5000, 7500, 1, 1000, 250, 1250, 1250, 3000],
+            [5000, 7500, 1, 1500, 250, 1250, 1250, 3000],
         )
         self.assertIn(
             "FOCI foci stepper_x autotune evidence: budget=750mrev "
