@@ -237,6 +237,10 @@ class VelocityIntegralAssembler:
             12,
             13,
             14,
+            # BREAKAWAY_STAGE_C_SCHEMA_REVISION: differs from 14 only in that the
+            # stationarity walk continues past a rejected suffix. No record
+            # layout or sequencing changed, so every behavior gate below holds.
+            15,
         ):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
@@ -559,12 +563,11 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("invalid rest-boundary reference")
         if combined and target_code not in range(5):
             raise VelocityIntegralProtocolError("invalid combined target status")
-        # The breakaway campaign's Stage-C continuation (schema 14) is not a
-        # "combined" plan (StageCAuthority.new_breakaway never fills
-        # combined_selected_response), so its terminal never carries the
-        # combined-workflow marker. Only the classic combined schema range
-        # (8-13, exclusive of 14, enforced pairwise with shape 3 in
-        # _finish_plan) requires it.
+        # The breakaway campaign's Stage-C continuation is not a "combined" plan
+        # (StageCAuthority.new_breakaway never fills combined_selected_response),
+        # so its terminal never carries the combined-workflow marker. Only the
+        # classic combined schema range (8-13, below every breakaway revision,
+        # enforced pairwise with shape 3 in _finish_plan) requires it.
         if 8 <= schema_revision <= 13 and not combined:
             raise VelocityIntegralProtocolError(
                 "schema-8 terminal omitted combined workflow marker"
@@ -781,7 +784,7 @@ class VelocityIntegralAssembler:
             )
         if int(plan["schema_revision"]) >= 8:
             workflow_shape = int(self.workflow_plan["shape"])
-            if int(plan["schema_revision"]) == 14:
+            if int(plan["schema_revision"]) >= BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION:
                 # The breakaway campaign's Stage-C continuation has no
                 # reproduced Stage-B sweep plan to pair against -- Stage C is
                 # authorized by the accepted confirmation digest instead (see
@@ -1266,7 +1269,16 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 
 # Firmware's `combined_plan::BREAKAWAY_STAGE_B_SCHEMA_REVISION`: the only
 # discovery-plan-geometry schema this host currently understands.
-BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 15
+# Current firmware revisions, used when this host authors a request.
+BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 16
+BREAKAWAY_STAGE_C_SCHEMA_REVISION = 15
+# First revision of each breakaway stream. These are boundaries, not sets: every
+# revision at or above them is a breakaway plan, and Stage-C 8-13 below the
+# boundary stays combined. The upper end stays bounded by the current revision
+# above, so a stream from firmware newer than this host is refused rather than
+# mis-parsed against rules that may no longer hold.
+BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION = 15
+BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION = 14
 
 BREAKAWAY_PROBE_MAX_OBSERVATIONS = 128
 BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US = 2_000
@@ -1471,7 +1483,11 @@ class BreakawayCampaignAssembler:
             raise BreakawayCampaignProtocolError(
                 "discovery geometry evidence sequence does not match its identity"
             )
-        if int(params["schema_revision"]) != BREAKAWAY_DISCOVERY_SCHEMA_REVISION:
+        if not (
+            BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION
+            <= int(params["schema_revision"])
+            <= BREAKAWAY_DISCOVERY_SCHEMA_REVISION
+        ):
             raise BreakawayCampaignProtocolError("unsupported breakaway discovery evidence schema")
         floor = int(params["floor_p_raw"])
         breakaway = int(params["breakaway_p_raw"])
