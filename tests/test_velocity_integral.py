@@ -1732,6 +1732,32 @@ def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():
     assert assembler.terminal["probe_constrained_test_point"] is True
 
 
+def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
+    """Resuming breakaway authority replays a breakaway-schema plan.
+
+    Schema 14 was previously exclusive to the campaign workflow, because that
+    was the only way to reach it. A resume regenerates the same exact plan from
+    retained authority, so it carries the same schema under the resume shape.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=2, nominal_ms=49_920, maximum_ms=49_920)
+
+    feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
+
+    assert assembler.plan["schema_revision"] == 14
+
+
+# Shape 0 is proportional-only and is refused earlier, by the gate that rejects
+# any exact plan under a Stage-B-only workflow.
+@pytest.mark.parametrize("shape", (1, 3))
+def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=shape, nominal_ms=49_920, maximum_ms=49_920)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="requires breakaway"):
+        feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
+
+
 def test_refused_resume_is_accepted_without_a_workflow_envelope():
     """A refusal declares no workflow because it never started one.
 

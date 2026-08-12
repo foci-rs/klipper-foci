@@ -787,7 +787,11 @@ class VelocityIntegralAssembler:
                 # authorized by the accepted confirmation digest instead (see
                 # BreakawayCampaignAssembler), not by a Stage-B/Stage-C schema
                 # pairing. Only the workflow shape is exclusive here.
-                if workflow_shape != 6:
+                #
+                # A resume replays that same exact plan from retained authority,
+                # so it carries the breakaway schema under the resume shape. The
+                # campaign is no longer the only way to reach schema 14.
+                if workflow_shape not in (6, 2):
                     raise VelocityIntegralProtocolError(
                         "breakaway Stage-C plan requires breakaway workflow"
                     )
