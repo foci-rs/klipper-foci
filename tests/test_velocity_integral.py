@@ -1732,6 +1732,23 @@ def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():
     assert assembler.terminal["probe_constrained_test_point"] is True
 
 
+def test_refused_resume_is_accepted_without_a_workflow_envelope():
+    """A refusal declares no workflow because it never started one.
+
+    The envelope exists to give the host a timeout, and firmware has no honest
+    duration for a command it refused before planning. The refusal arrives well
+    inside the plan timeout, so nothing downstream needs the envelope either.
+    """
+    assembler = VelocityIntegralAssembler()
+
+    feed_no_transition_terminal(assembler, cause=12, flags=0, plan_digest=0)
+
+    assert assembler.workflow_plan is None
+    assert assembler.done is True
+    assert assembler.outcome == "failed"
+    assert assembler.terminal["cause"] == 12
+
+
 def test_resume_plan_mismatch_accepts_a_terminal_naming_the_retained_plan():
     """A resume refused against retained authority moves the motor not at all.
 

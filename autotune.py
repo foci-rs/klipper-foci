@@ -353,7 +353,10 @@ class AutotuneWorkflow:
             return True
         workflow = self.velocity_integral.workflow_plan
         if workflow is None:
-            return False
+            # Only a refusal can complete without an envelope: the exact-plan
+            # path refuses to assemble until a Stage-C workflow has arrived. Its
+            # terminal is still terminal, and nothing else will follow it.
+            return self.velocity_integral.done
         shape = int(workflow["shape"])
         if shape == 0:
             return self.velocity_sweep.done

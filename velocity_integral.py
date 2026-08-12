@@ -913,10 +913,20 @@ class VelocityIntegralAssembler:
         self._terminal_parts.append(dict(params))
 
     def _accept_failed_admission_core(self, params: dict) -> None:
-        if self.workflow_plan is None:
-            raise VelocityIntegralProtocolError("terminal preceded commissioning workflow plan")
-        if int(self.workflow_plan["shape"]) == 0 or self._plan_parts:
+        # A request refused before it was planned declares no workflow envelope.
+        # The envelope's only content is a duration, and firmware cannot state
+        # one for a command it never started; the wait loop does not need it
+        # either, because the refusal arrives well inside the plan timeout. When
+        # an envelope did arrive, it still has to name a Stage-C shape.
+        if self.workflow_plan is not None and int(self.workflow_plan["shape"]) == 0:
             raise VelocityIntegralProtocolError("terminal preceded exact plan")
+        if self._plan_parts:
+            raise VelocityIntegralProtocolError("terminal preceded exact plan")
+        if self._run_sequence is None:
+            # Normally the workflow envelope establishes the run. A refusal that
+            # declares none is the run's first and only message, so its core
+            # sets the sequence the remaining two fragments are checked against.
+            self._run_sequence = int(params["run_sequence"])
         self._require_run(params)
         cause = int(params.get("cause", -1))
         if cause not in STAGE_C_FAILED_ADMISSION_CAUSES:

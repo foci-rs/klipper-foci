@@ -418,6 +418,19 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertTrue(any("proportional complete" in message for message in gcmd._responses))
         self.assertTrue(any("response failed" in message for message in gcmd._responses))
 
+    def test_workflow_finishes_for_a_refusal_that_declared_no_envelope(self):
+        """A Stage-C terminal is terminal whether or not an envelope preceded it.
+
+        A request refused before planning declares no workflow, and without this
+        the wait loop has nothing to complete on and times out waiting for a plan
+        that firmware will never send.
+        """
+        d = self._commissioned_driver()
+        d.autotune.velocity_integral.done = True
+
+        self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
+        self.assertTrue(d.autotune._workflow_finished())
+
     def test_composite_workflow_finishes_when_recovery_suppresses_continuation(self):
         d = self._commissioned_driver()
         d.autotune.velocity_integral.workflow_plan = {"shape": 1}
