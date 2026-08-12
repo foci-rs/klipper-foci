@@ -612,7 +612,13 @@ class VelocityIntegralAssembler:
             terminal["recovery_unavailable"] = 0
             terminal["recovered_with_current_headroom"] = False
             terminal["recovery_quantization_exposed"] = False
-            terminal["probe_constrained_test_point"] = True
+            # Read the flag rather than assuming it. Only the probe-clamp
+            # refusal reached a test point to constrain; a refused resume never
+            # got that far, and claiming otherwise sends the operator after a
+            # clamp that was never applied.
+            terminal["probe_constrained_test_point"] = bool(
+                int(terminal["recovery_flags"]) & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
+            )
         elif int(self.plan["schema_revision"]) >= 6:
             flags = int(terminal["recovery_flags"])
             terminal["recovery_unavailable"] = int(bool(flags & TERMINAL_RECOVERY_UNAVAILABLE))
@@ -912,20 +918,18 @@ class VelocityIntegralAssembler:
         if int(self.workflow_plan["shape"]) == 0 or self._plan_parts:
             raise VelocityIntegralProtocolError("terminal preceded exact plan")
         self._require_run(params)
-        # A resume refused for want of retained authority never reached a plan,
-        # so it reports neither the probe-clamp qualifier nor a plan digest. The
-        # other failed admissions rejected a plan they could identify.
-        missing_authority = int(params.get("cause", -1)) == STAGE_C_CAUSE_NO_RETAINED_AUTHORITY
+        cause = int(params.get("cause", -1))
+        if cause not in STAGE_C_FAILED_ADMISSION_CAUSES:
+            raise VelocityIntegralProtocolError("terminal preceded exact plan")
+        # Only the probe-clamp refusal reached a plan far enough to carry its
+        # qualifier. A resume refused before planning carries none.
+        probe_clamped = cause == STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT
         expected = {
             "evidence_sequence": 0,
             "fragment": 0,
             "outcome": 5,
-            "cause": (
-                STAGE_C_CAUSE_NO_RETAINED_AUTHORITY
-                if missing_authority
-                else STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT
-            ),
-            "recovery_flags": 0 if missing_authority else TERMINAL_PROBE_CONSTRAINED_TEST_POINT,
+            "cause": cause,
+            "recovery_flags": TERMINAL_PROBE_CONSTRAINED_TEST_POINT if probe_clamped else 0,
             "rest_boundary_rung_plus_one": 0,
             "rest_boundary_slot_plus_one": 0,
             "expected_observations": 0,
@@ -1172,9 +1176,25 @@ STAGE_C_TERMINAL_CAUSE_NAMES = {
     STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_stage_c_authority",
 }
 
+# Causes a Stage-C terminal may carry when it arrives with no exact plan: the
+# probe clamp left no operating point, the request disagreed with what was
+# retained, or there was nothing retained to resume. Every other cause implies a
+# plan the assembler should already have seen.
+STAGE_C_FAILED_ADMISSION_CAUSES = frozenset(
+    (
+        STAGE_C_CAUSE_PLAN_MISMATCH,
+        STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT,
+        STAGE_C_CAUSE_NO_RETAINED_AUTHORITY,
+    )
+)
+
 STAGE_C_TERMINAL_CAUSE_REMEDIATION = {
     STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: (
         "no retained Stage C authority; run a campaign first, in this power cycle"
+    ),
+    STAGE_C_CAUSE_PLAN_MISMATCH: (
+        "request does not reproduce the retained Stage C plan; reissue with the "
+        "parameters the campaign ran with, or run a new campaign"
     ),
 }
 

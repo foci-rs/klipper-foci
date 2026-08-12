@@ -1712,6 +1712,7 @@ def test_missing_retained_authority_resume_accepts_a_terminal_without_a_plan():
     assert assembler.terminal["cause"] == 12
     assert assembler.terminal["plan_digest"] == 0
     assert assembler.terminal["digest"] == 0
+    assert assembler.terminal["probe_constrained_test_point"] is False
     assert STAGE_C_TERMINAL_CAUSE_NAMES[12] == "no_retained_stage_c_authority"
 
 
@@ -1731,12 +1732,47 @@ def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():
     assert assembler.terminal["probe_constrained_test_point"] is True
 
 
+def test_resume_plan_mismatch_accepts_a_terminal_naming_the_retained_plan():
+    """A resume refused against retained authority moves the motor not at all.
+
+    It is refused before any Stage-C stroke, so it arrives in the same
+    zero-motion shape as the other failed admissions. Unlike the empty-slot
+    refusal it does have a plan to name: the retained one it disagreed with.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=2, maximum_ms=182_512)
+
+    feed_no_transition_terminal(assembler, cause=7, flags=0)
+
+    assert assembler.plan is None
+    assert assembler.done is True
+    assert assembler.outcome == "failed"
+    assert assembler.terminal["cause"] == 7
+    assert assembler.terminal["plan_digest"] == PLAN_DIGEST
+    assert assembler.terminal["digest"] == 0
+    assert assembler.terminal["probe_constrained_test_point"] is False
+
+
+def test_resume_plan_mismatch_without_a_retained_digest_is_rejected():
+    """Only the empty slot may report no plan at all.
+
+    A mismatch that names no plan is indistinguishable from having nothing
+    retained, which is the distinction the operator needs to act on.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=2, maximum_ms=182_512)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="terminal identity is invalid"):
+        feed_no_transition_terminal(assembler, cause=7, flags=0, plan_digest=0)
+
+
 @pytest.mark.parametrize(
     ("outcome", "cause", "flags", "message"),
     (
         (4, 11, 0b1000, "terminal preceded exact plan"),
         (5, 10, 0b1000, "terminal preceded exact plan"),
         (5, 11, 0, "terminal preceded exact plan"),
+        (5, 7, 0b1000, "terminal preceded exact plan"),
     ),
 )
 def test_no_transition_rejects_any_other_terminal_only_shape(outcome, cause, flags, message):
