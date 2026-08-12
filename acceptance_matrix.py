@@ -37,6 +37,11 @@ ACTION_CODES = {
     "combined_mirrored": 5,
     "combined_paired": 6,
     "breakaway_seeded": 7,
+    # Replays one retained Stage-C plan so a sufficient run can reproduce and
+    # promote to Complete. Retention is RAM-only, so this only succeeds in the
+    # same power cycle as the run that produced the candidate, and any campaign
+    # in between resets the slot.
+    "stage_c_resume": 8,
 }
 OUTCOME_NAMES = {
     0: "complete",

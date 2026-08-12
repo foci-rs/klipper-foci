@@ -3,6 +3,7 @@
 import pytest
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
+    STAGE_C_TERMINAL_CAUSE_NAMES,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
@@ -1650,7 +1651,8 @@ def test_schema_seven_requires_matching_probe_constrained_terminal_flag():
         feed_terminal(assembler, sequence, recovery_flags=0)
 
 
-def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000):
+def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000, plan_digest=None):
+    plan_digest = PLAN_DIGEST if plan_digest is None else plan_digest
     common = {
         "oid": 0,
         "run_sequence": RUN_SEQUENCE,
@@ -1675,8 +1677,8 @@ def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000)
         {
             **common,
             "fragment": 1,
-            "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
-            "plan_digest_high": PLAN_DIGEST >> 32,
+            "plan_digest_low": plan_digest & 0xFFFF_FFFF,
+            "plan_digest_high": plan_digest >> 32,
             "digest_low": 0,
             "digest_high": 0,
         }
@@ -1691,6 +1693,26 @@ def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000)
             "completed_high": 0,
         }
     )
+
+
+def test_missing_retained_authority_resume_accepts_a_terminal_without_a_plan():
+    """A resume with nothing retained has no exact plan to name.
+
+    Every other failed admission rejects a plan it can identify, so it carries a
+    digest. This one is refused before any plan exists, and reporting a
+    fabricated digest to satisfy that contract would invent evidence.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=2, maximum_ms=182_512)
+
+    feed_no_transition_terminal(assembler, cause=12, flags=0, plan_digest=0)
+
+    assert assembler.done is True
+    assert assembler.outcome == "failed"
+    assert assembler.terminal["cause"] == 12
+    assert assembler.terminal["plan_digest"] == 0
+    assert assembler.terminal["digest"] == 0
+    assert STAGE_C_TERMINAL_CAUSE_NAMES[12] == "no_retained_stage_c_authority"
 
 
 def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():

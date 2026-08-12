@@ -912,12 +912,20 @@ class VelocityIntegralAssembler:
         if int(self.workflow_plan["shape"]) == 0 or self._plan_parts:
             raise VelocityIntegralProtocolError("terminal preceded exact plan")
         self._require_run(params)
+        # A resume refused for want of retained authority never reached a plan,
+        # so it reports neither the probe-clamp qualifier nor a plan digest. The
+        # other failed admissions rejected a plan they could identify.
+        missing_authority = int(params.get("cause", -1)) == STAGE_C_CAUSE_NO_RETAINED_AUTHORITY
         expected = {
             "evidence_sequence": 0,
             "fragment": 0,
             "outcome": 5,
-            "cause": 11,
-            "recovery_flags": TERMINAL_PROBE_CONSTRAINED_TEST_POINT,
+            "cause": (
+                STAGE_C_CAUSE_NO_RETAINED_AUTHORITY
+                if missing_authority
+                else STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT
+            ),
+            "recovery_flags": 0 if missing_authority else TERMINAL_PROBE_CONSTRAINED_TEST_POINT,
             "rest_boundary_rung_plus_one": 0,
             "rest_boundary_slot_plus_one": 0,
             "expected_observations": 0,
@@ -937,7 +945,20 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("terminal report is incomplete")
         if self._summary is not None or self.observations or self.rungs:
             raise VelocityIntegralProtocolError("failed admission carried motion evidence")
-        if int(terminal["plan_digest"]) == 0 or int(terminal["digest"]) != 0:
+        # A missing-authority refusal has no plan to name, so it is the one
+        # failed admission whose plan digest is legitimately zero. Requiring one
+        # would force firmware to fabricate a digest for a plan that was never
+        # built.
+        missing_authority = int(terminal["cause"]) == STAGE_C_CAUSE_NO_RETAINED_AUTHORITY
+        plan_digest = int(terminal["plan_digest"])
+        if int(terminal["digest"]) != 0:
+            raise VelocityIntegralProtocolError("failed admission terminal identity is invalid")
+        if missing_authority:
+            if plan_digest != 0:
+                raise VelocityIntegralProtocolError(
+                    "missing retained authority reported an exact plan"
+                )
+        elif plan_digest == 0:
             raise VelocityIntegralProtocolError("failed admission terminal identity is invalid")
 
     def _require_stage_c_workflow(self, params: dict) -> None:
@@ -1132,6 +1153,30 @@ class VelocityIntegralAssembler:
 # tests/test_velocity_integral.py's dumb-host proof tests.
 
 BREAKAWAY_PHASE_NAMES = {0: "probe", 1: "discovery", 2: "confirmation"}
+
+STAGE_C_CAUSE_EVIDENCE_INTEGRITY = 4
+STAGE_C_CAUSE_REPRODUCTION_MISMATCH = 6
+STAGE_C_CAUSE_PLAN_MISMATCH = 7
+STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT = 11
+STAGE_C_CAUSE_NO_RETAINED_AUTHORITY = 12
+
+# Dispatch-namespace causes attached to a Stage-C terminal. These share their
+# numeric range with the engine's own `INTEGRAL_CAUSE_*` values and with
+# `CommissionError::status_code()`; a value is
+# only unambiguous once the reader knows which producer emitted it.
+STAGE_C_TERMINAL_CAUSE_NAMES = {
+    STAGE_C_CAUSE_EVIDENCE_INTEGRITY: "evidence_integrity",
+    STAGE_C_CAUSE_REPRODUCTION_MISMATCH: "reproduction_mismatch",
+    STAGE_C_CAUSE_PLAN_MISMATCH: "plan_mismatch",
+    STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT: ("no_transition_capable_operating_point"),
+    STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_stage_c_authority",
+}
+
+STAGE_C_TERMINAL_CAUSE_REMEDIATION = {
+    STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: (
+        "no retained Stage C authority; run a campaign first, in this power cycle"
+    ),
+}
 
 BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     0: "none",

@@ -32,6 +32,8 @@ from .velocity_integral import (
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
     BREAKAWAY_TERMINAL_REMEDIATION,
     FLOOR_ORIGIN_NAMES,
+    STAGE_C_TERMINAL_CAUSE_NAMES,
+    STAGE_C_TERMINAL_CAUSE_REMEDIATION,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
@@ -75,6 +77,17 @@ OUTER_SAFETY_FAULT_NAMES = {
     9: "current",
     10: "recovery_wrong_way",
 }
+
+
+def _stage_c_cause_text(cause: int) -> str:
+    """Render a Stage-C terminal cause as its number and dispatch name.
+
+    The number stays because `cause` shares its numeric range with the engine's
+    own causes and with `CommissionError` status codes, so the name only
+    identifies the value when the dispatch namespace is the producer.
+    """
+    name = STAGE_C_TERMINAL_CAUSE_NAMES.get(cause)
+    return str(cause) if name is None else f"{cause} ({name})"
 
 
 class AutotuneWorkflow:
@@ -628,8 +641,11 @@ class AutotuneWorkflow:
             f"{summary.get('bookend_available_mask', 0):02x} current_terminus="
             f"{int(summary.get('current_terminus_plus_one', 0))} namespace="
             f"{terminal.get('outcome_namespace', 'stage_c')} cause="
-            f"{int((response.terminal or {}).get('cause', 0))}"
+            f"{_stage_c_cause_text(int(terminal.get('cause', 0)))}"
         )
+        remediation = STAGE_C_TERMINAL_CAUSE_REMEDIATION.get(int(terminal.get("cause", 0)))
+        if remediation is not None:
+            message = f"{message}; {remediation}"
         if response.reproduction is not None:
             masks = response.reproduction.get("masks", {})
             mask_text = []
