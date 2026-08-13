@@ -551,7 +551,16 @@ class VelocityIntegralAssembler:
         target_code = (
             int(params.get("recovery_flags", 0)) & TERMINAL_COMBINED_TARGET_MASK
         ) >> TERMINAL_COMBINED_TARGET_SHIFT
-        target_reference = combined and target_code in (1, 2) and rung != 0 and slot == 0
+        # A breakaway acceptance terminal (schema 16) discloses its terminus
+        # through the rest-boundary reference alone -- it carries no
+        # recovery_flags target bits (Task 2), so it cannot satisfy the
+        # combined `target_code` check above. Accept the same non-partial
+        # (rung != 0, slot == 0) shape without requiring `combined` or a
+        # `target_code` for that one schema.
+        breakaway_reference = schema_revision == 16 and rung != 0 and slot == 0
+        target_reference = (
+            combined and target_code in (1, 2) and rung != 0 and slot == 0
+        ) or breakaway_reference
         if (rung == 0) != (slot == 0) and not target_reference:
             raise VelocityIntegralProtocolError("partial rest-boundary reference")
         if slot and (
@@ -635,9 +644,22 @@ class VelocityIntegralAssembler:
             terminal["combined_workflow"] = bool(flags & TERMINAL_COMBINED_WORKFLOW)
             target_code = (flags & TERMINAL_COMBINED_TARGET_MASK) >> TERMINAL_COMBINED_TARGET_SHIFT
             terminal["target_status"] = COMBINED_TARGET_NAMES.get(target_code - 1)
-            terminal["target_terminus"] = (
-                rung - 1 if target_code in (1, 2) and rung != 0 and slot == 0 else None
-            )
+            if int(self.plan["schema_revision"]) == 16:
+                # Breakaway acceptance terminal: firmware sets no
+                # recovery_flags target bits (Task 2), so the terminus is
+                # derived from the rest-boundary reference alone, not
+                # target_code. combined_workflow above is already correct
+                # (breakaway never sets TERMINAL_COMBINED_WORKFLOW).
+                terminal["target_terminus"] = rung - 1 if rung != 0 and slot == 0 else None
+                terminal["selected_i"] = (
+                    int(self.plan["positive_i"][rung - 1])
+                    if terminal["target_terminus"] is not None
+                    else None
+                )
+            else:
+                terminal["target_terminus"] = (
+                    rung - 1 if target_code in (1, 2) and rung != 0 and slot == 0 else None
+                )
         terminal["outcome_namespace"] = "stage_c"
         terminal["outcome_name"] = (
             "InconclusiveRest"
@@ -744,6 +766,23 @@ class VelocityIntegralAssembler:
         if self.outcome == "complete" and self.reproduction is None and not combined_or_breakaway:
             raise VelocityIntegralProtocolError(
                 "complete integral response omitted reproduction evidence"
+            )
+        # The general exemption above is deliberately broad: shape 6 has no
+        # reproduced Stage-B directional model to compare against. But a
+        # breakaway (schema 16) Complete that carries acceptance authority
+        # (a disclosed target_terminus) is a narrower case -- it mirrors the
+        # firmware invariant that the acceptance point installs only on a
+        # reproduced Complete, so it still requires reproduction evidence
+        # even though the general exemption above would otherwise let it
+        # through.
+        if (
+            int(self.plan["schema_revision"]) == 16
+            and self.outcome == "complete"
+            and self.terminal.get("target_terminus") is not None
+            and self.reproduction is None
+        ):
+            raise VelocityIntegralProtocolError(
+                "breakaway acceptance complete omitted reproduction"
             )
         if int(self.plan["schema_revision"]) >= 6:
             if bool(self.terminal["recovery_quantization_exposed"]) != bool(

@@ -2105,6 +2105,135 @@ def test_schema_fourteen_complete_outcome_does_not_require_reproduction():
     assembler.validate_complete()  # must not raise despite reproduction is None
 
 
+# ============================================================================
+# Breakaway native acceptance terminal: schema-16
+# ============================================================================
+
+BREAKAWAY_ACCEPTANCE_POSITIVE_I = (10, 40, 96, 200)
+
+
+def test_breakaway_schema_sixteen_reproduced_complete_exposes_terminus_and_selected_i():
+    """A reproduced breakaway Complete discloses its terminus via the
+    rest-boundary reference alone, not via recovery_flags target bits --
+    breakaway emits none (Task 2). target_code=0 (recovery_flags=0) is
+    deliberate: a reader that still (wrongly) reads the combined-target bits
+    would see target_code 0 and report no terminus at all, which this test
+    would catch.
+    """
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler,
+        schema_revision=16,
+        positive_i=BREAKAWAY_ACCEPTANCE_POSITIVE_I,
+        joint_membership=0,
+    )
+    rung_values = (0, *BREAKAWAY_ACCEPTANCE_POSITIVE_I, 0)
+    sequence = feed_foc213_transport_validated_replay(assembler, rung_values, centred_rung_index=0)
+
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=True,
+        outcome=1,
+        recovery_flags=0,
+        rest_boundary=(3, 0),
+    )
+
+    assert assembler.done
+    assert assembler.outcome == "complete"
+    assert assembler.reproduction is not None
+    assert assembler.terminal["combined_workflow"] is False
+    assert assembler.terminal["target_terminus"] == 2
+    assert assembler.terminal["selected_i"] == BREAKAWAY_ACCEPTANCE_POSITIVE_I[2]
+
+
+def test_breakaway_schema_sixteen_first_candidate_is_not_accepted_as_authority():
+    """The first sufficient run emits complete_candidate, not complete --
+    only a reproduced run gets to install as acceptance authority."""
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler,
+        schema_revision=16,
+        positive_i=BREAKAWAY_ACCEPTANCE_POSITIVE_I,
+        joint_membership=0,
+    )
+    rung_values = (0, *BREAKAWAY_ACCEPTANCE_POSITIVE_I, 0)
+    sequence = feed_foc213_transport_validated_replay(assembler, rung_values, centred_rung_index=0)
+
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        outcome=0,
+        recovery_flags=0,
+        rest_boundary=(3, 0),
+    )
+
+    assert assembler.terminal["outcome"] == 0
+    assert assembler.outcome == "complete_candidate"
+    assert assembler.reproduction is None
+
+
+def test_breakaway_schema_sixteen_complete_without_reproduction_is_rejected():
+    """A breakaway Complete that carries acceptance authority (a disclosed
+    target_terminus) must have arrived via reproduction, mirroring the
+    firmware invariant that the acceptance point installs only on a
+    reproduced Complete."""
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler,
+        schema_revision=16,
+        positive_i=BREAKAWAY_ACCEPTANCE_POSITIVE_I,
+        joint_membership=0,
+    )
+    rung_values = (0, *BREAKAWAY_ACCEPTANCE_POSITIVE_I, 0)
+    sequence = feed_foc213_transport_validated_replay(assembler, rung_values, centred_rung_index=0)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="breakaway acceptance"):
+        feed_terminal(
+            assembler,
+            sequence,
+            reproduction=False,
+            outcome=1,
+            recovery_flags=0,
+            rest_boundary=(3, 0),
+        )
+
+
+def test_combined_schema_eight_still_reads_target_code_from_flags():
+    """Regression guard: the breakaway (schema 16) branch above must not
+    disturb the combined (schema 8-13) terminus derivation, which still
+    reads target_code from recovery_flags rather than the rest-boundary
+    reference alone."""
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
+    feed_plan(
+        assembler,
+        schema_revision=8,
+        positive_i=COMBINED_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=177_751,
+        maximum_workflow_ms=195_496,
+        final_p=1024,
+        joint_membership=0,
+    )
+    sequence = feed_full_evidence(assembler)
+
+    feed_terminal(
+        assembler,
+        sequence,
+        reproduction=False,
+        outcome=1,
+        recovery_flags=0x90,  # combined workflow bit + raw target_code 1 (target_reached)
+        rest_boundary=(3, 0),
+    )
+
+    assert assembler.terminal["combined_workflow"] is True
+    assert assembler.terminal["target_terminus"] == 2
+
+
 def feed_foc213_transport_validated_replay(assembler, rung_values, *, centred_rung_index):
     """Feed the wire-visible pattern the foc213-transport-validated capture
     demonstrates.
