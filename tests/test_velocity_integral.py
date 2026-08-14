@@ -1881,14 +1881,13 @@ def test_schema_fourteen_terminal_core_does_not_require_a_combined_marker():
 
 
 def test_schema_fourteen_complete_outcome_does_not_require_reproduction():
-    """Neither shape 3 nor shape 6 ever has a reproduced Stage-B model.
+    """A shape-6, schema-14 Complete outcome is exempt from the
+    reproduction-required check in `validate_complete`.
 
-    This targets the `combined_or_breakaway` exemption in `validate_complete`
-    directly: the completeness state is synthesized rather than streamed
-    through the full observation/rung/terminal handler sequence (already
-    exercised by the schema<12 combined-flow tests above and unaffected by
-    this change), because schema >= 12's two-hidden-position sequencing is
-    orthogonal to what this test targets.
+    The completeness state here is synthesized rather than streamed through
+    the full observation/rung/terminal handler sequence, because schema >=
+    12's two-hidden-position sequencing is orthogonal to what this test
+    targets.
     """
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=6, nominal_ms=49_920, maximum_ms=49_920)
