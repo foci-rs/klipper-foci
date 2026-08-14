@@ -1830,10 +1830,12 @@ def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
 
 
 def test_schema_fourteen_terminal_core_does_not_require_a_combined_marker():
-    """Firmware never sets TERMINAL_COMBINED_WORKFLOW for a breakaway plan.
+    """Firmware never sets the combined-workflow recovery-flags bit for a
+    breakaway plan.
 
-    `data.plan.combined_workflow` (and therefore the wire marker) is only
-    `true` when `combined_selected_response` was built, which
+    That bit (and the wire marker it fed, now removed with the rest of the
+    combined-terminal handling) was only ever set when
+    `combined_selected_response` was built, which
     StageCAuthority::new_breakaway never does. Before this fix, the old
     unconditional `schema_revision >= 8` gate rejected every schema-14
     terminal outright.
