@@ -74,28 +74,11 @@ def _stage_c_cause_text(cause: int) -> str:
 class AutotuneWorkflow:
     """Run installed Stage 2 tuning after commissioning and homing."""
 
-    def _new_velocity_sweep_assembler(self) -> VelocitySweepAssembler:
-        """Build a sweep assembler bound to the connected firmware's Stage-B revision.
-
-        Stage-B plan records carry no schema field and revisions 12 and 13 share
-        one workflow duration, so the MCU-published revision is the only thing
-        that distinguishes them. Firmware that does not publish it keeps the
-        historical duration-derived behavior.
-        """
-        assembler = VelocitySweepAssembler()
-        mcu = getattr(self.driver, "mcu", None)
-        get_constants = getattr(mcu, "get_constants", None)
-        constants = get_constants() if get_constants is not None else {}
-        revision = constants.get("STAGE_B_EVIDENCE_SCHEMA_REVISION")
-        if revision is not None:
-            assembler.bind_firmware_stage_b_schema(int(revision))
-        return assembler
-
     def __init__(self, driver) -> None:
         self.driver = driver
         self.result: dict | None = None
         self.outer_safety_fault: dict | None = None
-        self.velocity_sweep = self._new_velocity_sweep_assembler()
+        self.velocity_sweep = VelocitySweepAssembler()
         self.velocity_sweep_error: VelocitySweepProtocolError | None = None
         self.velocity_integral = VelocityIntegralAssembler()
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
@@ -141,29 +124,13 @@ class AutotuneWorkflow:
         if (
             method_name == "handle_plan_core"
             and workflow is not None
-            and int(workflow["shape"]) in (1, 3)
+            and int(workflow["shape"]) == 1
             and (not self.velocity_sweep.done or self.velocity_sweep.outcome != "complete")
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
                 "integral-response plan arrived before proportional handoff"
             )
             return
-        if (
-            method_name == "handle_plan_core"
-            and workflow is not None
-            and int(workflow["shape"]) == 3
-        ):
-            stage_b_schema = self.velocity_sweep.combined_stage_b_schema
-            if stage_b_schema is None:
-                self.velocity_integral_error = VelocityIntegralProtocolError(
-                    "combined Stage-C plan has no Stage-B duration binding"
-                )
-                return
-            try:
-                self.velocity_integral.bind_combined_stage_b_schema(stage_b_schema)
-            except VelocityIntegralProtocolError as err:
-                self.velocity_integral_error = err
-                return
         if (
             method_name == "handle_plan_core"
             and workflow is not None
@@ -850,7 +817,7 @@ class AutotuneWorkflow:
             self.done = False
             self.result = None
             self.outer_safety_fault = None
-            self.velocity_sweep = self._new_velocity_sweep_assembler()
+            self.velocity_sweep = VelocitySweepAssembler()
             self.velocity_sweep_error = None
             self.velocity_integral = VelocityIntegralAssembler()
             self.velocity_integral_error = None

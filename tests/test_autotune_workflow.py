@@ -511,74 +511,6 @@ class TestAutotuneGates(unittest.TestCase):
             str(d.autotune.velocity_integral_error),
         )
 
-    def test_combined_workflow_rejects_integral_plan_before_selected_response(self):
-        d = self._commissioned_driver()
-        params = {
-            "run_sequence": 14,
-            "shape": 3,
-            "nominal_workflow_ms": 449_173,
-            "maximum_workflow_ms": 494_128,
-        }
-        low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-        d.autotune.handle_commissioning_workflow_plan(
-            {**params, "digest_low": low, "digest_high": high}
-        )
-
-        d.autotune.handle_velocity_integral_plan_core(
-            {
-                "run_sequence": 14,
-                "evidence_sequence": 0,
-                "fragment": 0,
-                "plan_digest_low": 1,
-                "plan_digest_high": 0,
-                "stage_b_digest_low": 2,
-                "stage_b_digest_high": 0,
-                "build_revision": 1,
-                "schema_revision": 8,
-                "channel": 0,
-                "final_p": 1024,
-            }
-        )
-
-        self.assertIn(
-            "before proportional handoff",
-            str(d.autotune.velocity_integral_error),
-        )
-
-    def test_combined_stage_c_binds_the_selected_recovery_stage_b_plan(self):
-        d = self._commissioned_driver()
-        params = {
-            "run_sequence": 14,
-            "shape": 3,
-            "nominal_workflow_ms": 452_073,
-            "maximum_workflow_ms": 496_528,
-        }
-        low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-        d.autotune.handle_commissioning_workflow_plan(
-            {**params, "digest_low": low, "digest_high": high}
-        )
-        d.autotune.velocity_sweep._combined_stage_b_schema = 11
-        d.autotune.velocity_sweep.done = True
-        d.autotune.velocity_sweep.outcome = "complete"
-
-        d.autotune.handle_velocity_integral_plan_core(
-            {
-                "run_sequence": 14,
-                "evidence_sequence": 0,
-                "fragment": 0,
-                "plan_digest_low": 1,
-                "plan_digest_high": 0,
-                "stage_b_digest_low": 2,
-                "stage_b_digest_high": 0,
-                "build_revision": 1,
-                "schema_revision": 10,
-                "channel": 0,
-                "final_p": 1024,
-            }
-        )
-
-        self.assertEqual(d.autotune.velocity_integral.combined_stage_b_schema, 11)
-
     def test_hard_fault_inhibits_future_raw_enable(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
@@ -1069,32 +1001,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
         self.assertEqual(args[8], 1 << 5)
-
-
-class TestVelocitySweepFirmwareSchemaBinding(unittest.TestCase):
-    """The sweep assembler must learn Stage-B revision from the connected MCU."""
-
-    def test_sweep_assembler_binds_stage_b_schema_published_by_firmware(self):
-        from tests.test_velocity_sweep import feed_firmware_combined_stage_b_plan
-
-        d = make_driver()
-        d.mcu.constants["STAGE_B_EVIDENCE_SCHEMA_REVISION"] = 13
-
-        assembler = d.autotune._new_velocity_sweep_assembler()
-        feed_firmware_combined_stage_b_plan(assembler)
-
-        self.assertEqual(assembler.combined_stage_b_schema, 13)
-
-    def test_sweep_assembler_falls_back_when_firmware_omits_revision(self):
-        from tests.test_velocity_sweep import feed_firmware_combined_stage_b_plan
-
-        d = make_driver()
-        d.mcu.constants.pop("STAGE_B_EVIDENCE_SCHEMA_REVISION", None)
-
-        assembler = d.autotune._new_velocity_sweep_assembler()
-        feed_firmware_combined_stage_b_plan(assembler)
-
-        self.assertEqual(assembler.combined_stage_b_schema, 12)
 
 
 # ============================================================================

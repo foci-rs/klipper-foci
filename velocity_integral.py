@@ -51,15 +51,6 @@ TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
 TERMINAL_PROBE_CONSTRAINED_TEST_POINT = 1 << 3
-TERMINAL_COMBINED_TARGET_SHIFT = 4
-TERMINAL_COMBINED_TARGET_MASK = 0b111 << TERMINAL_COMBINED_TARGET_SHIFT
-TERMINAL_COMBINED_WORKFLOW = 1 << 7
-COMBINED_TARGET_NAMES = {
-    0: "target_reached",
-    1: "target_reached_sparse",
-    2: "current_headroom",
-    3: "target_not_reached_at_cap",
-}
 INTEGRAL_CAUSE_TOO_FEW_RUNGS = 1
 INTEGRAL_CAUSE_CURRENT_AFTER_SUFFICIENCY = 3
 INTEGRAL_CAUSE_BOOKEND_UNAVAILABLE = 8
@@ -126,7 +117,6 @@ class VelocityIntegralAssembler:
         self._next_evidence_sequence = 1
         self._trace_only_current_pending = False
         self._ordinary_rest_hidden_positions: int | None = None
-        self._combined_stage_b_schema: int | None = None
         self._recovery_rest_pending: tuple[int, int, bool] | None = None
 
     @staticmethod
@@ -149,26 +139,6 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is None:
             return None
         return int(self.workflow_plan["maximum_workflow_ms"]) / 1000.0
-
-    @property
-    def combined_stage_b_schema(self) -> int | None:
-        """Return the Stage-B compatibility revision bound to this combined plan."""
-        return self._combined_stage_b_schema
-
-    def bind_combined_stage_b_schema(self, schema_revision: int) -> None:
-        """Bind a combined Stage-C plan to its already assembled Stage-B plan."""
-        if self._plan_parts or self.plan is not None:
-            raise VelocityIntegralProtocolError(
-                "combined Stage-B schema arrived after Stage-C evidence"
-            )
-        if schema_revision not in (8, 10, 11, 12, 13, 14):
-            raise VelocityIntegralProtocolError("unsupported combined Stage-B schema")
-        if (
-            self._combined_stage_b_schema is not None
-            and self._combined_stage_b_schema != schema_revision
-        ):
-            raise VelocityIntegralProtocolError("combined Stage-B schema changed")
-        self._combined_stage_b_schema = schema_revision
 
     @property
     def report(self) -> dict:
@@ -230,12 +200,6 @@ class VelocityIntegralAssembler:
             5,
             6,
             7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
             14,
             15,
             16,
@@ -539,28 +503,13 @@ class VelocityIntegralAssembler:
             )
             if schema_revision >= 7:
                 known_flags |= TERMINAL_PROBE_CONSTRAINED_TEST_POINT
-            if schema_revision >= 8:
-                known_flags |= TERMINAL_COMBINED_TARGET_MASK | TERMINAL_COMBINED_WORKFLOW
             if flags < 0 or flags & ~known_flags:
                 raise VelocityIntegralProtocolError("invalid terminal recovery flags")
         rung = int(params.get("rest_boundary_rung_plus_one", 0))
         slot = int(params.get("rest_boundary_slot_plus_one", 0))
-        combined = schema_revision >= 8 and bool(
-            int(params.get("recovery_flags", 0)) & TERMINAL_COMBINED_WORKFLOW
-        )
-        target_code = (
-            int(params.get("recovery_flags", 0)) & TERMINAL_COMBINED_TARGET_MASK
-        ) >> TERMINAL_COMBINED_TARGET_SHIFT
         # A breakaway acceptance terminal (schema 16) discloses its terminus
-        # through the rest-boundary reference alone -- it carries no
-        # recovery_flags target bits (Task 2), so it cannot satisfy the
-        # combined `target_code` check above. Accept the same non-partial
-        # (rung != 0, slot == 0) shape without requiring `combined` or a
-        # `target_code` for that one schema.
-        breakaway_reference = schema_revision == 16 and rung != 0 and slot == 0
-        target_reference = (
-            combined and target_code in (1, 2) and rung != 0 and slot == 0
-        ) or breakaway_reference
+        # through the rest-boundary reference alone.
+        target_reference = schema_revision == 16 and rung != 0 and slot == 0
         if (rung == 0) != (slot == 0) and not target_reference:
             raise VelocityIntegralProtocolError("partial rest-boundary reference")
         if slot and (
@@ -568,17 +517,6 @@ class VelocityIntegralAssembler:
             or slot not in range(1, 9)
         ):
             raise VelocityIntegralProtocolError("invalid rest-boundary reference")
-        if combined and target_code not in range(5):
-            raise VelocityIntegralProtocolError("invalid combined target status")
-        # The breakaway campaign's Stage-C continuation is not a "combined" plan
-        # (StageCAuthority.new_breakaway never fills combined_selected_response),
-        # so its terminal never carries the combined-workflow marker. Only the
-        # classic combined schema range (8-13, below every breakaway revision,
-        # enforced pairwise with shape 3 in _finish_plan) requires it.
-        if 8 <= schema_revision <= 13 and not combined:
-            raise VelocityIntegralProtocolError(
-                "schema-8 terminal omitted combined workflow marker"
-            )
         pending = self._recovery_rest_pending
         hidden_rest = pending is not None and pending[2]
         rest_not_confirmed = int(params.get("cause", -1)) == 53
@@ -641,24 +579,15 @@ class VelocityIntegralAssembler:
             terminal["probe_constrained_test_point"] = bool(
                 flags & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
             )
-            terminal["combined_workflow"] = bool(flags & TERMINAL_COMBINED_WORKFLOW)
-            target_code = (flags & TERMINAL_COMBINED_TARGET_MASK) >> TERMINAL_COMBINED_TARGET_SHIFT
-            terminal["target_status"] = COMBINED_TARGET_NAMES.get(target_code - 1)
             if int(self.plan["schema_revision"]) == 16:
                 # Breakaway acceptance terminal: firmware sets no
                 # recovery_flags target bits (Task 2), so the terminus is
-                # derived from the rest-boundary reference alone, not
-                # target_code. combined_workflow above is already correct
-                # (breakaway never sets TERMINAL_COMBINED_WORKFLOW).
+                # derived from the rest-boundary reference alone.
                 terminal["target_terminus"] = rung - 1 if rung != 0 and slot == 0 else None
                 terminal["selected_i"] = (
                     int(self.plan["positive_i"][rung - 1])
                     if terminal["target_terminus"] is not None
                     else None
-                )
-            else:
-                terminal["target_terminus"] = (
-                    rung - 1 if target_code in (1, 2) and rung != 0 and slot == 0 else None
                 )
         terminal["outcome_namespace"] = "stage_c"
         terminal["outcome_name"] = (
@@ -753,17 +682,13 @@ class VelocityIntegralAssembler:
                     int(masks["divergent_mask"])
                 ):
                     raise VelocityIntegralProtocolError("missing divergent intervals")
-        # Neither the classic combined flow (shape 3) nor the breakaway
-        # campaign's Stage-C continuation (shape 6) ever has a reproduced
-        # Stage-B directional model to compare against -- the combined flow
-        # because its Stage-B response was selected live in the same command,
-        # the breakaway campaign because StageCAuthority.new_breakaway leaves
-        # every directional field empty/zero by construction. Both are
-        # therefore exempt from the reproduction-required rule below.
-        combined_or_breakaway = int(self.plan["schema_revision"]) >= 8 and int(
-            self.workflow_plan["shape"]
-        ) in (3, 6)
-        if self.outcome == "complete" and self.reproduction is None and not combined_or_breakaway:
+        # The breakaway campaign's Stage-C continuation (shape 6) never has a
+        # reproduced Stage-B directional model to compare against --
+        # StageCAuthority.new_breakaway leaves every directional field
+        # empty/zero by construction. It is therefore exempt from the
+        # reproduction-required rule below.
+        breakaway = int(self.plan["schema_revision"]) >= 8 and int(self.workflow_plan["shape"]) == 6
+        if self.outcome == "complete" and self.reproduction is None and not breakaway:
             raise VelocityIntegralProtocolError(
                 "complete integral response omitted reproduction evidence"
             )
@@ -820,36 +745,22 @@ class VelocityIntegralAssembler:
                 int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
             )
         if int(plan["schema_revision"]) >= 8:
+            # Every reachable schema here is >= BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION
+            # (handle_plan_core no longer admits the classic combined range 8-13).
+            # The breakaway campaign's Stage-C continuation has no reproduced
+            # Stage-B sweep plan to pair against -- Stage C is authorized by the
+            # accepted confirmation digest instead (see BreakawayCampaignAssembler),
+            # not by a Stage-B/Stage-C schema pairing. Only the workflow shape is
+            # exclusive here.
+            #
+            # A resume replays that same exact plan from retained authority, so it
+            # carries the breakaway schema under the resume shape. The campaign is
+            # no longer the only way to reach schema 14.
             workflow_shape = int(self.workflow_plan["shape"])
-            if int(plan["schema_revision"]) >= BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION:
-                # The breakaway campaign's Stage-C continuation has no
-                # reproduced Stage-B sweep plan to pair against -- Stage C is
-                # authorized by the accepted confirmation digest instead (see
-                # BreakawayCampaignAssembler), not by a Stage-B/Stage-C schema
-                # pairing. Only the workflow shape is exclusive here.
-                #
-                # A resume replays that same exact plan from retained authority,
-                # so it carries the breakaway schema under the resume shape. The
-                # campaign is no longer the only way to reach schema 14.
-                if workflow_shape not in (6, 2):
-                    raise VelocityIntegralProtocolError(
-                        "breakaway Stage-C plan requires breakaway workflow"
-                    )
-            else:
-                if workflow_shape != 3:
-                    raise VelocityIntegralProtocolError(
-                        "combined Stage-C plan requires combined workflow"
-                    )
-                # Stage-B and Stage-C revisions must be a matching pair. This is a
-                # compatibility check, not a re-derivation of firmware's arithmetic.
-                expected_stage_b = {11: 12, 12: 13, 13: 14}.get(int(plan["schema_revision"]))
-                if (
-                    expected_stage_b is not None
-                    and self._combined_stage_b_schema != expected_stage_b
-                ):
-                    raise VelocityIntegralProtocolError(
-                        "Stage-B and Stage-C schema revisions are not a matching pair"
-                    )
+            if workflow_shape not in (6, 2):
+                raise VelocityIntegralProtocolError(
+                    "breakaway Stage-C plan requires breakaway workflow"
+                )
         self.plan = plan
 
     @property
@@ -1310,10 +1221,11 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
 BREAKAWAY_STAGE_C_SCHEMA_REVISION = 16
 # First revision of each breakaway stream. These are boundaries, not sets: every
-# revision at or above them is a breakaway plan, and Stage-C 8-13 below the
-# boundary stays combined. The upper end stays bounded by the current revision
-# above, so a stream from firmware newer than this host is refused rather than
-# mis-parsed against rules that may no longer hold.
+# revision at or above them is a breakaway plan. Stage-C 8-13 was the classic
+# combined schema range; firmware never emits it after Stage 2, and
+# handle_plan_core no longer admits it. The upper end stays bounded by the
+# current revision above, so a stream from firmware newer than this host is
+# refused rather than mis-parsed against rules that may no longer hold.
 BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION = 15
 BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION = 14
 

@@ -324,164 +324,21 @@ def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
     assert assembler.plan["probe_constrained_test_point"] is True
 
 
-def test_schema_eight_assembles_the_combined_response_plan():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
-    feed_plan(
-        assembler,
-        schema_revision=8,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=177_751,
-        maximum_workflow_ms=195_496,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    assert assembler.plan["positive_i"] == list(COMBINED_Q4_12_POSITIVE_I)
-    assert assembler.plan["family_size"] == 60
-    assert assembler.plan["expected_observations"] == 120
-    assert assembler.plan["slot_count"] == 15
-    assert assembler.maximum_duration_s == 494.128
-
-
-def test_schema_nine_accepts_the_corrected_combined_duration_envelope():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=451_573, maximum_ms=496_528)
-    feed_plan(
-        assembler,
-        schema_revision=9,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=180_151,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    assert assembler.plan["schema_revision"] == 9
-    assert assembler.plan["nominal_workflow_ms"] == 180_151
-    assert assembler.plan["maximum_workflow_ms"] == 197_896
-    assert assembler.maximum_duration_s == 496.528
-
-
-def test_schema_ten_preserves_the_corrected_combined_duration_envelope():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=451_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(10)
-    feed_plan(
-        assembler,
-        schema_revision=10,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=180_151,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    assert assembler.plan["schema_revision"] == 10
-    assert assembler.maximum_duration_s == 496.528
-
-
-def test_schema_ten_accepts_the_selected_recovery_combined_duration_envelope():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=452_073, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(11)
-    feed_plan(
-        assembler,
-        schema_revision=10,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=180_151,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    assert assembler.plan["schema_revision"] == 10
-    assert assembler.maximum_duration_s == 496.528
-
-
-def test_schema_eleven_accepts_recovery_wide_combined_duration_envelope():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(12)
-    feed_plan(
-        assembler,
-        schema_revision=11,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    assert assembler.plan["schema_revision"] == 11
-    assert assembler.maximum_duration_s == 496.528
-
-
-def test_schema_thirteen_pairs_with_stage_b_fourteen():
-    """Each schema gate fails closed and silently, so this asserts acceptance
-    of the current firmware revision pair rather than the absence of a
-    crash."""
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(14)
-    feed_plan(
-        assembler,
-        schema_revision=13,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    assert assembler.plan["schema_revision"] == 13
-
-
-@pytest.mark.parametrize(
-    ("stage_b_schema", "schema_revision"),
-    [
-        (11, 11),  # Stage-C 11 pairs with Stage-B 12
-        (12, 12),  # Stage-C 12 pairs with Stage-B 13
-        (11, 12),
-    ],
-)
-def test_combined_schema_rejects_mismatched_stage_b_pairing(stage_b_schema, schema_revision):
-    """Stage-B and Stage-C revisions must be a matching pair.
-
-    This is a compatibility check on the protocol, not a re-derivation of
-    firmware's workflow arithmetic. Durations are firmware-authored and the host
-    consumes them; it no longer asserts them.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(stage_b_schema)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="matching pair"):
-        feed_plan(
-            assembler,
-            schema_revision=schema_revision,
-            positive_i=COMBINED_Q4_12_POSITIVE_I,
-            nominal_workflow_ms=187_651,
-            maximum_workflow_ms=197_896,
-            final_p=1024,
-            joint_membership=0,
-        )
-
-
 def test_firmware_authored_durations_are_consumed_not_asserted():
     """A schedule change must not require a host edit.
 
     Durations are derived by firmware from stroke, settle, and rung counts. The
     host previously memorised the answers per schema, so any timing change broke
-    it, and duration was even used to infer the Stage-B revision, which aborted a
-    run in session 3 when two schemas deliberately shared a duration.
+    it. Re-hosted on the breakaway continuation (shape 6, schema 14) now that the
+    classic combined schema range (8-13) is no longer accepted -- the
+    firmware-authored-duration guarantee this pins is generic Stage-C behaviour,
+    not combined-specific.
     """
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(13)
+    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
-        schema_revision=12,
+        schema_revision=14,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=999_999,
         maximum_workflow_ms=1_000_000,
@@ -553,12 +410,21 @@ def stage_c_recovery_assembler():
 
 
 def stage_c_11_recovery_assembler():
+    """Exercise the schema>=11 bounded-hidden-run grammar on the breakaway
+    continuation (shape 6, schema 14) -- schema 11 itself is no longer
+    accepted now that the classic combined range (8-13) is gone, but 14 still
+    trips the same >=11 gate this helper is named for.
+
+    Schema 14 is also >=12, so (unlike the retired schema-11 plan) its
+    observation stream must use the two-hidden-position advance, exactly as
+    stage_c_12_recovery_assembler does below -- there is no longer a
+    reachable schema that is >=11 but not >=12.
+    """
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(12)
+    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
-        schema_revision=11,
+        schema_revision=14,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=187_651,
         maximum_workflow_ms=197_896,
@@ -566,18 +432,21 @@ def stage_c_11_recovery_assembler():
         joint_membership=0,
     )
     for slot in range(8):
-        feed_observation(assembler, 2 * slot + 1, 0, slot, 0)
-    feed_rung(assembler, 17, 0, 0, 0)
+        feed_observation(assembler, 3 * slot + 1, 0, slot, 0)
+    feed_rung(assembler, 25, 0, 0, 0)
     return assembler
 
 
 def stage_c_12_recovery_assembler():
+    """Exercise the schema>=12 two-hidden-position grammar on the breakaway
+    continuation (shape 6, schema 14) -- schema 12 itself is no longer
+    accepted now that the classic combined range (8-13) is gone, but 14 still
+    trips the same >=12 gate this helper is named for."""
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(13)
+    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
-        schema_revision=12,
+        schema_revision=14,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=187_651,
         maximum_workflow_ms=197_896,
@@ -601,11 +470,10 @@ def stage_c_12_recovery_assembler():
 )
 def test_stage_c_12_ordinary_rest_uses_exact_two_hidden_positions(second_sequence, error):
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    assembler.bind_combined_stage_b_schema(13)
+    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
-        schema_revision=12,
+        schema_revision=14,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=187_651,
         maximum_workflow_ms=197_896,
@@ -645,11 +513,11 @@ def test_stage_c_recovery_summary_is_causal_and_compact():
 @pytest.mark.parametrize(
     ("sequence", "outcome", "error"),
     (
-        (19, 1, None),
-        (20, 1, None),
-        (18, 0, None),
-        (18, 1, "hidden recovery-rest"),
-        (21, 1, "sequence gap"),
+        (27, 1, None),
+        (28, 1, None),
+        (26, 0, None),
+        (26, 1, "hidden recovery-rest"),
+        (29, 1, "sequence gap"),
     ),
 )
 def test_stage_c_11_recovery_accepts_a_bounded_hidden_run(sequence, outcome, error):
@@ -714,7 +582,7 @@ def feed_stage_c_terminal_start(assembler, sequence, cause, outcome=3):
             "emitted_observations": 8,
             "expected_rungs": 15,
             "emitted_rungs": 1,
-            "recovery_flags": 0x80,
+            "recovery_flags": 0,
         }
     )
 
@@ -722,7 +590,7 @@ def feed_stage_c_terminal_start(assembler, sequence, cause, outcome=3):
 def test_stage_c_11_accepts_hidden_rest_before_completed_rest_terminal():
     assembler = stage_c_11_recovery_assembler()
 
-    feed_stage_c_terminal_start(assembler, 19, cause=53)
+    feed_stage_c_terminal_start(assembler, 27, cause=53)
 
     assert len(assembler._terminal_parts) == 1
 
@@ -731,23 +599,22 @@ def test_stage_c_11_rejects_completed_rest_terminal_without_hidden_sequence():
     assembler = stage_c_11_recovery_assembler()
 
     with pytest.raises(VelocityIntegralProtocolError, match="omitted hidden"):
-        feed_stage_c_terminal_start(assembler, 18, cause=53)
+        feed_stage_c_terminal_start(assembler, 26, cause=53)
 
 
 def test_stage_c_11_rejects_hidden_rest_before_unrelated_fault():
     assembler = stage_c_11_recovery_assembler()
 
     with pytest.raises(VelocityIntegralProtocolError, match="completed-rest"):
-        feed_stage_c_terminal_start(assembler, 19, cause=11)
+        feed_stage_c_terminal_start(assembler, 27, cause=11)
 
 
 def test_stage_c_12_rest_terminal_requires_exact_hidden_positions():
     accepted = VelocityIntegralAssembler()
-    feed_workflow(accepted, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    accepted.bind_combined_stage_b_schema(13)
+    feed_workflow(accepted, shape=6, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         accepted,
-        schema_revision=12,
+        schema_revision=14,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=187_651,
         maximum_workflow_ms=197_896,
@@ -758,11 +625,10 @@ def test_stage_c_12_rest_terminal_requires_exact_hidden_positions():
     feed_stage_c_terminal_start(accepted, 4, cause=53, outcome=2)
 
     omitted = VelocityIntegralAssembler()
-    feed_workflow(omitted, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-    omitted.bind_combined_stage_b_schema(13)
+    feed_workflow(omitted, shape=6, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         omitted,
-        schema_revision=12,
+        schema_revision=14,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=187_651,
         maximum_workflow_ms=197_896,
@@ -935,6 +801,11 @@ def feed_full_evidence_with_recovery_shift(
     place it, and every later record is renumbered to follow from there, the
     same way real firmware's own sequence counter would after leaving a
     bounded number of positions unreported.
+
+    Only used by the schema>=12 (breakaway, schema 14) recovery-shift test, so
+    the observation stride leaves the two-hidden-position gap that schema
+    requires -- unlike feed_full_evidence's single-hidden-position stride,
+    which schema 14 would reject as a sequence gap.
     """
     sequence = 1
     rung_values = (0, *assembler.plan["positive_i"], 0)
@@ -944,7 +815,7 @@ def feed_full_evidence_with_recovery_shift(
     for rung_index, i_raw in enumerate(rung_values):
         for slot in range(8):
             feed_observation(assembler, sequence, rung_index, slot, i_raw)
-            sequence += 2
+            sequence += 3
         feed_rung(
             assembler,
             sequence,
@@ -1161,11 +1032,11 @@ def feed_terminal(
     )
 
 
-@pytest.mark.parametrize("shape", [0, 1, 2, 3])
+@pytest.mark.parametrize("shape", [0, 1, 2])
 def test_workflow_shapes_preserve_exact_digest_and_duration(shape):
     assembler = VelocityIntegralAssembler()
-    maximum_ms = 494_128 if shape == 3 else 300_000 + shape
-    nominal_ms = 449_173 if shape == 3 else maximum_ms
+    maximum_ms = 300_000 + shape
+    nominal_ms = maximum_ms
 
     feed_workflow(assembler, shape=shape, nominal_ms=nominal_ms, maximum_ms=maximum_ms)
 
@@ -1180,69 +1051,6 @@ def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
     feed_workflow(assembler, shape=1, maximum_ms=389_520)
 
     assert assembler.maximum_duration_s == 389.52
-
-
-def test_combined_complete_reports_target_without_reproduction():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
-    feed_plan(
-        assembler,
-        schema_revision=8,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=177_751,
-        maximum_workflow_ms=195_496,
-        final_p=1024,
-        joint_membership=0,
-    )
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        outcome=1,
-        recovery_flags=0xC0,
-    )
-
-    assert assembler.done
-    assert assembler.outcome == "complete"
-    assert assembler.reproduction is None
-    assert assembler.terminal["combined_workflow"] is True
-    assert assembler.terminal["target_status"] == "target_not_reached_at_cap"
-    assert assembler.terminal["target_terminus"] is None
-
-
-def test_combined_complete_relays_firmware_terminal_without_target_status():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
-    feed_plan(
-        assembler,
-        schema_revision=8,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=177_751,
-        maximum_workflow_ms=195_496,
-        final_p=1_024,
-        joint_membership=0,
-    )
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        outcome=1,
-        cause=10,
-        rest_boundary=(9, 1),
-        recovery_flags=0x80,
-    )
-
-    assert assembler.done
-    assert assembler.outcome == "complete"
-    assert assembler.terminal["target_status"] is None
-    assert assembler.terminal["rest_boundary"] == {
-        "positive_rung_index": 8,
-        "slot": 0,
-    }
 
 
 def test_assembles_exact_curves_sparse_masks_and_divergence_records():
@@ -1542,7 +1350,7 @@ def test_stage_c_fault_terminal_masks_an_omitted_final_recovery():
 def test_stage_c_11_complete_run_accepts_a_bounded_recovery_sequence_shift():
     """Pin the fourth guarantee end to end, not just at the recovery step.
 
-    Build two otherwise identical schema-11 streams -- the same rungs,
+    Build two otherwise identical schema>=11 streams -- the same rungs,
     observations, and recovery outcomes -- that differ only in how many
     positions rung 0's recovery appears to have hidden: zero (an exact
     sequence) versus two (the bound's ceiling). Neither stream omits a
@@ -1554,15 +1362,18 @@ def test_stage_c_11_complete_run_accepts_a_bounded_recovery_sequence_shift():
     genuinely different shift from an exact sequence once every record has
     actually arrived -- not just that one recovery call accepts it in
     isolation.
+
+    Re-hosted on the breakaway continuation (shape 6, schema 14) -- schema 11
+    itself is no longer accepted now that the classic combined range (8-13)
+    is gone, but 14 still trips the same >=11 gate this test is named for.
     """
 
     def build(hidden_run):
         assembler = VelocityIntegralAssembler()
-        feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
-        assembler.bind_combined_stage_b_schema(12)
+        feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
         feed_plan(
             assembler,
-            schema_revision=11,
+            schema_revision=14,
             positive_i=COMBINED_Q4_12_POSITIVE_I,
             nominal_workflow_ms=187_651,
             maximum_workflow_ms=197_896,
@@ -1570,7 +1381,7 @@ def test_stage_c_11_complete_run_accepts_a_bounded_recovery_sequence_shift():
             joint_membership=0,
         )
         sequence = feed_full_evidence_with_recovery_shift(assembler, 0, hidden_run)
-        feed_terminal(assembler, sequence, recovery_flags=0x80)
+        feed_terminal(assembler, sequence, recovery_flags=0)
         return assembler
 
     exact = build(hidden_run=0)
@@ -2008,10 +1819,13 @@ def test_schema_fourteen_requires_breakaway_workflow():
 
 
 def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
+    """Schema 13 is below the breakaway floor and, since the classic combined
+    range (8-13) is no longer accepted at all, is now rejected at the plan-core
+    schema gate rather than at the later shape-pairing check."""
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
 
-    with pytest.raises(VelocityIntegralProtocolError, match="combined workflow"):
+    with pytest.raises(VelocityIntegralProtocolError, match="unsupported Stage-C evidence schema"):
         feed_plan(assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0)
 
 
@@ -2143,7 +1957,6 @@ def test_breakaway_schema_sixteen_reproduced_complete_exposes_terminus_and_selec
     assert assembler.done
     assert assembler.outcome == "complete"
     assert assembler.reproduction is not None
-    assert assembler.terminal["combined_workflow"] is False
     assert assembler.terminal["target_terminus"] == 2
     assert assembler.terminal["selected_i"] == BREAKAWAY_ACCEPTANCE_POSITIVE_I[2]
 
@@ -2201,37 +2014,6 @@ def test_breakaway_schema_sixteen_complete_without_reproduction_is_rejected():
             recovery_flags=0,
             rest_boundary=(3, 0),
         )
-
-
-def test_combined_schema_eight_still_reads_target_code_from_flags():
-    """Regression guard: the breakaway (schema 16) branch above must not
-    disturb the combined (schema 8-13) terminus derivation, which still
-    reads target_code from recovery_flags rather than the rest-boundary
-    reference alone."""
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=449_173, maximum_ms=494_128)
-    feed_plan(
-        assembler,
-        schema_revision=8,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=177_751,
-        maximum_workflow_ms=195_496,
-        final_p=1024,
-        joint_membership=0,
-    )
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        outcome=1,
-        recovery_flags=0x90,  # combined workflow bit + raw target_code 1 (target_reached)
-        rest_boundary=(3, 0),
-    )
-
-    assert assembler.terminal["combined_workflow"] is True
-    assert assembler.terminal["target_terminus"] == 2
 
 
 def feed_foc213_transport_validated_replay(assembler, rung_values, *, centred_rung_index):
