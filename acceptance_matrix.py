@@ -28,14 +28,11 @@ WORKFLOW_SHAPE_TO_MATRIX_ORDER = {
 # shared floor and would then function as a favourable re-roll of a spent
 # retention lifecycle, so leaving it unreachable from the host is a safety
 # boundary rather than a convention. Stage C carries the same slot-order
-# confound and is not lifecycle-limited, so combined_mirrored is the
-# measurement path.
+# confound and is not lifecycle-limited, so breakaway_seeded is the
+# production and measurement path.
 ACTION_CODES = {
-    "combined": 0,
     "matrix_ascending": 1,
     "matrix_descending": 2,
-    "combined_mirrored": 5,
-    "combined_paired": 6,
     "breakaway_seeded": 7,
     # Replays one retained Stage-C plan so a sufficient run can reproduce and
     # promote to Complete. Retention is RAM-only, so this only succeeds in the
@@ -72,7 +69,7 @@ class AcceptanceMatrixProtocolError(Exception):
 
 def parse_autotune_action(value: str | None) -> int:
     """Map the sole host-authored selector to its firmware wire value."""
-    name = "combined" if value is None else str(value).lower()
+    name = "breakaway_seeded" if value is None else str(value).lower()
     try:
         return ACTION_CODES[name]
     except KeyError as err:

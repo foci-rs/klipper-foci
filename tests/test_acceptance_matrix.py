@@ -135,8 +135,7 @@ def terminal_payload(
 @pytest.mark.parametrize(
     ("value", "expected"),
     (
-        (None, 0),
-        ("combined", 0),
+        (None, 7),
         ("matrix_ascending", 1),
         ("matrix_descending", 2),
         ("stage_c_resume", 8),
@@ -149,6 +148,18 @@ def test_action_mapping_is_selector_only(value, expected):
 def test_unknown_action_is_rejected():
     with pytest.raises(AcceptanceMatrixProtocolError, match="unknown ACTION"):
         parse_autotune_action("pick_p_1024")
+
+
+@pytest.mark.parametrize("name", ("combined", "combined_mirrored", "combined_paired"))
+def test_removed_combined_actions_are_rejected(name):
+    """The combined acquisition path is retired.
+
+    Firmware rejects wire actions 0/5/6 outright; the host mirrors that by
+    dropping the names from ACTION_CODES entirely, so they now fail the same
+    unknown-ACTION path as any other unrecognized selector.
+    """
+    with pytest.raises(AcceptanceMatrixProtocolError, match="unknown ACTION"):
+        parse_autotune_action(name)
 
 
 def test_unknown_action_rejects_before_any_mcu_command():
@@ -446,22 +457,6 @@ def recovery_wide_workflow(assembler, shape=4):
     }
     params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
-
-
-def test_combined_mirrored_is_requestable_but_a_mirrored_matrix_is_not():
-    """Stage C is where the mirrored slot order is measured.
-
-    Firmware also defines mirrored matrix actions, but the host deliberately does
-    not expose them: a mirrored matrix run could produce a better shared floor and
-    so would function as a favourable re-roll of a spent lifecycle. Leaving them
-    unexposed makes that unreachable rather than merely discouraged.
-    """
-    assert parse_autotune_action("combined_mirrored") == 5
-    assert parse_autotune_action("combined_paired") == 6
-    assert parse_autotune_action("combined") == 0
-    for unreachable in ("matrix_ascending_mirrored", "matrix_descending_mirrored"):
-        with pytest.raises(AcceptanceMatrixProtocolError):
-            parse_autotune_action(unreachable)
 
 
 def test_breakaway_seeded_action_resolves_to_firmware_wire_code_seven():
