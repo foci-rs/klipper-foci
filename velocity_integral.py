@@ -1190,7 +1190,7 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
 }
 
 # Advisory text only -- relays what the disclosed cause means, not a
-# host-computed remedy. Mirrors velocity_sweep.py's INCONCLUSIVE_REMEDIATION.
+# host-computed remedy.
 BREAKAWAY_TERMINAL_REMEDIATION = {
     1: "no rung showed repeatable motion within the probe's authority; check current limits",
     5: "probe authority was exhausted before repeatable motion resolved",
