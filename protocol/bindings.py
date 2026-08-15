@@ -88,109 +88,8 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_commissioning_workflow_plan",
         ),
         (
-            driver.autotune.handle_velocity_sweep_plan_limits,
-            "foci_velocity_sweep_plan_limits",
-        ),
-        (
-            driver.autotune.handle_velocity_sweep_plan_geometry,
-            "foci_velocity_sweep_plan_geometry",
-        ),
-        (
-            driver.autotune.handle_velocity_sweep_plan_timing,
-            "foci_velocity_sweep_plan_timing",
-        ),
-        (
-            driver.autotune.handle_velocity_sweep_plan_recovery,
-            "foci_velocity_sweep_plan_recovery",
-        ),
-        (
             driver.autotune.handle_rung_origin_recovery_summary,
             "foci_rung_origin_recovery_summary",
-        ),
-        (
-            driver.autotune.handle_velocity_observation_core,
-            "foci_velocity_observation_core",
-        ),
-        (
-            driver.autotune.handle_velocity_observation_rate,
-            "foci_velocity_observation_rate",
-        ),
-        (
-            driver.autotune.handle_velocity_observation_stationarity,
-            "foci_velocity_observation_stationarity",
-        ),
-        (
-            driver.autotune.handle_velocity_observation_disturbance,
-            "foci_velocity_observation_disturbance",
-        ),
-        (
-            driver.autotune.handle_velocity_rung_consensus_core,
-            "foci_velocity_rung_consensus_core",
-        ),
-        (
-            driver.autotune.handle_velocity_rung_consensus_component,
-            "foci_velocity_rung_consensus_component",
-        ),
-        (
-            driver.autotune.handle_velocity_rung_consensus_pool,
-            "foci_velocity_rung_consensus_pool",
-        ),
-        (
-            driver.autotune.handle_velocity_structured_boundary,
-            "foci_velocity_structured_boundary",
-        ),
-        (
-            driver.autotune.handle_velocity_directional_region_core,
-            "foci_velocity_directional_region_core",
-        ),
-        (
-            driver.autotune.handle_velocity_directional_region_model,
-            "foci_velocity_directional_region_model",
-        ),
-        (
-            driver.autotune.handle_velocity_directional_region_rates,
-            "foci_velocity_directional_region_rates",
-        ),
-        (
-            driver.autotune.handle_velocity_directional_region_boundary,
-            "foci_velocity_directional_region_boundary",
-        ),
-        (driver.autotune.handle_velocity_joint_region, "foci_velocity_joint_region"),
-        (
-            driver.autotune.handle_velocity_stage_b_handoff_core,
-            "foci_velocity_stage_b_handoff_core",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_nomination,
-            "foci_velocity_stage_b_nomination",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_directional_handoff,
-            "foci_velocity_stage_b_directional_handoff",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_reproduction_v4_core,
-            "foci_velocity_stage_b_reproduction_v4_core",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_reproduction_v4_membership,
-            "foci_velocity_stage_b_reproduction_v4_membership",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_reproduction_v4_pooled,
-            "foci_velocity_stage_b_reproduction_v4_pooled",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_reproduction_v4_common,
-            "foci_velocity_stage_b_reproduction_v4_common",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_reproduction_v4_coverage,
-            "foci_velocity_stage_b_reproduction_v4_coverage",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_reproduction_v4_digest,
-            "foci_velocity_stage_b_reproduction_v4_digest",
         ),
         (
             driver.autotune.handle_velocity_stage_b_terminal_core,
@@ -204,15 +103,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             driver.autotune.handle_velocity_stage_b_terminal_interval,
             "foci_velocity_stage_b_terminal_interval",
         ),
-        (
-            driver.autotune.handle_velocity_sweep_terminal_direction,
-            "foci_velocity_sweep_terminal_direction",
-        ),
-        (
-            driver.autotune.handle_velocity_sweep_terminal_integrity,
-            "foci_velocity_sweep_terminal_integrity",
-        ),
-        (driver.autotune.handle_outer_inconclusive, "foci_outer_inconclusive"),
         (
             driver.autotune.handle_velocity_integral_plan_core,
             "foci_velocity_integral_plan_core",

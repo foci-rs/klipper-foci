@@ -79,21 +79,10 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_outer_safety_fault", driver.oid) in registrations
     for name in (
         "foci_commissioning_workflow_plan",
-        "foci_velocity_sweep_plan_limits",
-        "foci_velocity_sweep_plan_geometry",
-        "foci_velocity_sweep_plan_timing",
-        "foci_velocity_sweep_plan_recovery",
         "foci_rung_origin_recovery_summary",
-        "foci_velocity_observation_core",
-        "foci_velocity_observation_rate",
-        "foci_velocity_observation_stationarity",
-        "foci_velocity_observation_disturbance",
-        "foci_velocity_rung_consensus_core",
-        "foci_velocity_rung_consensus_component",
-        "foci_velocity_rung_consensus_pool",
-        "foci_velocity_sweep_terminal_direction",
-        "foci_velocity_sweep_terminal_integrity",
-        "foci_outer_inconclusive",
+        "foci_velocity_stage_b_terminal_core",
+        "foci_velocity_stage_b_terminal_identity",
+        "foci_velocity_stage_b_terminal_interval",
         "foci_velocity_integral_plan_core",
         "foci_velocity_integral_plan_geometry",
         "foci_velocity_integral_plan_authority",
@@ -343,24 +332,6 @@ def test_commissioning_registers_timing_reply():
     register_commissioning_responses(serial, driver, driver.oid)
 
     assert ("foci_commission_timing", driver.oid) in response_names(serial)
-
-
-def test_commissioning_registers_only_stage_b_schema8_reproduction_group():
-    driver = make_driver()
-    serial = MockSerial()
-
-    register_commissioning_responses(serial, driver, driver.oid)
-
-    registrations = response_names(serial)
-    for suffix in ("core", "membership", "pooled", "common", "coverage", "digest"):
-        assert (
-            f"foci_velocity_stage_b_reproduction_v4_{suffix}",
-            driver.oid,
-        ) in registrations
-        assert (
-            f"foci_velocity_stage_b_reproduction_v3_{suffix}",
-            driver.oid,
-        ) not in registrations
 
 
 def test_breakaway_replies_are_registered_and_routed_to_their_handlers():

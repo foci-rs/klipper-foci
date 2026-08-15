@@ -345,86 +345,8 @@ class AutotuneWorkflow:
             f"{terminal.get('eligible_masks', (0, 0))})"
         )
 
-    def handle_velocity_sweep_plan_limits(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_plan_limits", params)
-
-    def handle_velocity_sweep_plan_geometry(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_plan_geometry", params)
-
-    def handle_velocity_sweep_plan_timing(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_plan_timing", params)
-
-    def handle_velocity_sweep_plan_recovery(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_plan_recovery", params)
-
     def handle_rung_origin_recovery_summary(self, params: dict) -> None:
         self._handle_recovery_summary(params)
-
-    def handle_velocity_observation_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_observation_core", params)
-
-    def handle_velocity_observation_rate(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_observation_rate", params)
-
-    def handle_velocity_observation_stationarity(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_observation_stationarity", params)
-
-    def handle_velocity_observation_disturbance(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_observation_disturbance", params)
-
-    def handle_velocity_rung_consensus_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_rung_consensus_core", params)
-
-    def handle_velocity_rung_consensus_component(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_rung_consensus_component", params)
-
-    def handle_velocity_rung_consensus_pool(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_rung_consensus_pool", params)
-
-    def handle_velocity_structured_boundary(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_structured_boundary", params)
-
-    def handle_velocity_directional_region_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_directional_region_core", params)
-
-    def handle_velocity_directional_region_model(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_directional_region_model", params)
-
-    def handle_velocity_directional_region_rates(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_directional_region_rates", params)
-
-    def handle_velocity_directional_region_boundary(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_directional_region_boundary", params)
-
-    def handle_velocity_joint_region(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_joint_region", params)
-
-    def handle_velocity_stage_b_handoff_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_handoff_core", params)
-
-    def handle_velocity_stage_b_nomination(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_nomination", params)
-
-    def handle_velocity_stage_b_directional_handoff(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_directional_handoff", params)
-
-    def handle_velocity_stage_b_reproduction_v4_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_v4_core", params)
-
-    def handle_velocity_stage_b_reproduction_v4_membership(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_v4_membership", params)
-
-    def handle_velocity_stage_b_reproduction_v4_pooled(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_v4_pooled", params)
-
-    def handle_velocity_stage_b_reproduction_v4_common(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_v4_common", params)
-
-    def handle_velocity_stage_b_reproduction_v4_coverage(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_v4_coverage", params)
-
-    def handle_velocity_stage_b_reproduction_v4_digest(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_reproduction_v4_digest", params)
 
     def handle_velocity_stage_b_terminal_core(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_stage_b_terminal_core", params)
@@ -434,15 +356,6 @@ class AutotuneWorkflow:
 
     def handle_velocity_stage_b_terminal_interval(self, params: dict) -> None:
         self._handle_velocity_sweep("handle_stage_b_terminal_interval", params)
-
-    def handle_velocity_sweep_terminal_direction(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_terminal_direction", params)
-
-    def handle_velocity_sweep_terminal_integrity(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_terminal_integrity", params)
-
-    def handle_outer_inconclusive(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_outer_inconclusive", params)
 
     def handle_velocity_integral_plan_core(self, params: dict) -> None:
         self._handle_velocity_integral("handle_plan_core", params)
