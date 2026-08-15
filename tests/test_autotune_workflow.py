@@ -136,18 +136,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(enable_line.is_motor_enabled())
 
-    def test_stage_b_candidate_retains_and_reissues_exact_request_fields(self):
-        d = self._commissioned_driver()
-        request = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
-        d.autotune.velocity_sweep.outcome = "complete_candidate"
-        d.autotune.velocity_sweep.terminal = {"cause": 0}
-
-        d.autotune._retain_stage_b_request_from_terminal(request)
-        reissued = d.autotune._request_for_stage_b_dispatch(dict(request))
-
-        self.assertEqual(reissued, request)
-        self.assertIsNot(reissued, request)
-
     def test_stage_b_changed_request_is_not_normalized_to_retained_plan(self):
         d = self._commissioned_driver()
         retained = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
@@ -157,19 +145,6 @@ class TestAutotuneGates(unittest.TestCase):
         dispatched = d.autotune._request_for_stage_b_dispatch(changed)
 
         self.assertEqual(dispatched, changed)
-
-    def test_stage_b_plan_mismatch_preserves_original_reissue_fields(self):
-        d = self._commissioned_driver()
-        retained = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
-        d.autotune._stage_b_candidate_request = dict(retained)
-        d.autotune.velocity_sweep.outcome = "rejected_plan_mismatch"
-        d.autotune.velocity_sweep.terminal = {"cause": 6}
-
-        d.autotune._retain_stage_b_request_from_terminal(
-            {"profile_code": 1, "requested_velocity_mrev_s": 3000}
-        )
-
-        self.assertEqual(d.autotune._stage_b_candidate_request, retained)
 
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()
@@ -267,7 +242,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("commissioning already running", str(ctx.exception))
         self.assertNotIn("timed out", str(ctx.exception))
 
-    def test_missing_velocity_sweep_plan_uses_short_setup_timeout(self):
+    def test_missing_workflow_plan_uses_short_setup_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
 
@@ -308,47 +283,6 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertGreaterEqual(reactor._time, 6.0)
 
-    def test_composite_workflow_waits_for_integral_terminal(self):
-        d = self._commissioned_driver()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        reactor = d.printer.get_reactor()
-        pauses = 0
-
-        d.autotune._format_velocity_sweep_result = lambda: "proportional response"
-        d.autotune._format_velocity_integral_result = lambda: "integral response"
-
-        def pause_with_composite_results(deadline):
-            nonlocal pauses
-            pauses += 1
-            reactor._time = deadline
-            if d.autotune.velocity_integral.workflow_plan is None:
-                params = {
-                    "run_sequence": 9,
-                    "shape": 1,
-                    "nominal_workflow_ms": 250_000,
-                    "maximum_workflow_ms": 300_000,
-                }
-                low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-                d.autotune.handle_commissioning_workflow_plan(
-                    {**params, "digest_low": low, "digest_high": high}
-                )
-                d.autotune.velocity_sweep.outcome = "complete"
-                d.autotune.velocity_sweep.terminal = {"cause": 0}
-                d.autotune.velocity_sweep.done = True
-            elif pauses == 2:
-                d.autotune.velocity_integral.outcome = "complete_candidate"
-                d.autotune.velocity_integral.terminal = {"cause": 0}
-                d.autotune.velocity_integral.done = True
-            return reactor._time
-
-        reactor.pause = pause_with_composite_results
-
-        d.autotune.autotune(gcmd)
-
-        self.assertGreaterEqual(pauses, 2)
-        self.assertTrue(any("proportional response" in message for message in gcmd._responses))
-        self.assertTrue(any("integral response" in message for message in gcmd._responses))
-
     def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
@@ -385,39 +319,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(enable_line.is_motor_enabled())
 
-    def test_no_transition_continuation_relays_both_ordered_terminals(self):
-        d = self._commissioned_driver()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        reactor = d.printer.get_reactor()
-        d.autotune._format_velocity_sweep_result = lambda: "proportional complete"
-
-        def pause_with_failed_continuation(deadline):
-            reactor._time = deadline
-            params = {
-                "run_sequence": 18,
-                "shape": 1,
-                "nominal_workflow_ms": 400_000,
-                "maximum_workflow_ms": 400_000,
-            }
-            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-            d.autotune.handle_commissioning_workflow_plan(
-                {**params, "digest_low": low, "digest_high": high}
-            )
-            d.autotune.velocity_sweep.outcome = "complete"
-            d.autotune.velocity_sweep.terminal = {"cause": 0}
-            d.autotune.velocity_sweep.done = True
-            feed_no_transition_terminal(d.autotune, 18)
-            return reactor._time
-
-        reactor.pause = pause_with_failed_continuation
-
-        d.autotune.autotune(gcmd)
-
-        self.assertIsNone(d.autotune.velocity_integral.plan)
-        self.assertEqual(d.autotune.velocity_integral.outcome, "failed")
-        self.assertTrue(any("proportional complete" in message for message in gcmd._responses))
-        self.assertTrue(any("response failed" in message for message in gcmd._responses))
-
     def test_workflow_finishes_for_a_refusal_that_declared_no_envelope(self):
         """A Stage-C terminal is terminal whether or not an envelope preceded it.
 
@@ -430,86 +331,6 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
         self.assertTrue(d.autotune._workflow_finished())
-
-    def test_composite_workflow_finishes_when_recovery_suppresses_continuation(self):
-        d = self._commissioned_driver()
-        d.autotune.velocity_integral.workflow_plan = {"shape": 1}
-        d.autotune.velocity_sweep.outcome = "complete"
-        d.autotune.velocity_sweep.terminal = {
-            "cause": 0,
-            "recovery_unavailable": 1,
-        }
-        d.autotune.velocity_sweep.done = True
-
-        self.assertTrue(d.autotune._workflow_finished())
-        self.assertFalse(d.autotune.velocity_integral.done)
-
-    def test_suppressed_composite_continuation_returns_stage_b_result(self):
-        d = self._commissioned_driver()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        reactor = d.printer.get_reactor()
-        d.autotune._format_velocity_sweep_result = lambda: "proportional response"
-
-        def pause_with_suppressed_continuation(deadline):
-            reactor._time = deadline
-            params = {
-                "run_sequence": 10,
-                "shape": 1,
-                "nominal_workflow_ms": 300_000,
-                "maximum_workflow_ms": 390_000,
-            }
-            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-            d.autotune.handle_commissioning_workflow_plan(
-                {**params, "digest_low": low, "digest_high": high}
-            )
-            d.autotune.velocity_sweep.outcome = "complete"
-            d.autotune.velocity_sweep.terminal = {
-                "cause": 0,
-                "recovery_unavailable": 1,
-            }
-            d.autotune.velocity_sweep.done = True
-            return reactor._time
-
-        reactor.pause = pause_with_suppressed_continuation
-
-        d.autotune.autotune(gcmd)
-
-        self.assertTrue(any("proportional response" in message for message in gcmd._responses))
-        self.assertFalse(d.autotune.velocity_integral.done)
-
-    def test_composite_rejects_integral_plan_before_proportional_handoff(self):
-        d = self._commissioned_driver()
-        params = {
-            "run_sequence": 13,
-            "shape": 1,
-            "nominal_workflow_ms": 250_000,
-            "maximum_workflow_ms": 300_000,
-        }
-        low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-        d.autotune.handle_commissioning_workflow_plan(
-            {**params, "digest_low": low, "digest_high": high}
-        )
-
-        d.autotune.handle_velocity_integral_plan_core(
-            {
-                "run_sequence": 13,
-                "evidence_sequence": 0,
-                "fragment": 0,
-                "plan_digest_low": 1,
-                "plan_digest_high": 0,
-                "stage_b_digest_low": 2,
-                "stage_b_digest_high": 0,
-                "build_revision": 1,
-                "schema_revision": 2,
-                "channel": 0,
-                "final_p": 1448,
-            }
-        )
-
-        self.assertIn(
-            "before proportional handoff",
-            str(d.autotune.velocity_integral_error),
-        )
 
     def test_hard_fault_inhibits_future_raw_enable(self):
         d = self._commissioned_driver()
@@ -578,49 +399,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("position_counts=-373/3000", message)
         self.assertIn("elapsed_us=120000/3000000", message)
         self.assertIn("budget=750mrev/6000mrev_s/3000ms dir=0x03", message)
-
-    def test_velocity_sweep_fault_reports_outer_envelope_detail(self):
-        d = self._commissioned_driver()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        reactor = d.printer.get_reactor()
-
-        def pause_and_report_sweep_fault(deadline):
-            reactor._time = deadline
-            params = {
-                "run_sequence": 11,
-                "shape": 0,
-                "nominal_workflow_ms": 45_000,
-                "maximum_workflow_ms": 49_728,
-            }
-            low, high = VelocityIntegralAssembler.workflow_digest_halves(params)
-            d.autotune.handle_commissioning_workflow_plan(
-                {**params, "digest_low": low, "digest_high": high}
-            )
-            d.autotune.handle_outer_safety_fault(
-                {
-                    "reason": 7,
-                    "dt_us": 2_137,
-                    "max_travel_mrev": 750,
-                    "max_velocity_mrev_s": 6000,
-                    "max_duration_ms": 3000,
-                    "direction_mask": 3,
-                }
-            )
-            d.autotune.velocity_sweep.plan = {"maximum_workflow_ms": 49_728}
-            d.autotune.velocity_sweep.integrity = {"cause": 17}
-            d.autotune.velocity_sweep.outcome = "fault"
-            d.autotune.velocity_sweep.done = True
-            return reactor._time
-
-        reactor.pause = pause_and_report_sweep_fault
-
-        with self.assertRaises(CommandError) as ctx:
-            d.autotune.autotune(gcmd)
-
-        message = str(ctx.exception)
-        self.assertIn("velocity sweep fault (cause=17)", message)
-        self.assertIn("outer safety observation_gap", message)
-        self.assertIn("dt_us=2137", message)
 
     def test_recovery_wrong_way_fault_is_named_not_unknown(self):
         # Regression case: reason 10

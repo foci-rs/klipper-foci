@@ -92,18 +92,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_rung_origin_recovery_summary",
         ),
         (
-            driver.autotune.handle_velocity_stage_b_terminal_core,
-            "foci_velocity_stage_b_terminal_core",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_terminal_identity,
-            "foci_velocity_stage_b_terminal_identity",
-        ),
-        (
-            driver.autotune.handle_velocity_stage_b_terminal_interval,
-            "foci_velocity_stage_b_terminal_interval",
-        ),
-        (
             driver.autotune.handle_velocity_integral_plan_core,
             "foci_velocity_integral_plan_core",
         ),

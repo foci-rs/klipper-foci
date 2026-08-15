@@ -33,7 +33,6 @@ from .velocity_integral import (
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
 )
-from .velocity_sweep import VelocitySweepAssembler, VelocitySweepProtocolError
 
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
@@ -78,8 +77,6 @@ class AutotuneWorkflow:
         self.driver = driver
         self.result: dict | None = None
         self.outer_safety_fault: dict | None = None
-        self.velocity_sweep = VelocitySweepAssembler()
-        self.velocity_sweep_error: VelocitySweepProtocolError | None = None
         self.velocity_integral = VelocityIntegralAssembler()
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
         self.acceptance_matrix = AcceptanceMatrixAssembler()
@@ -98,39 +95,10 @@ class AutotuneWorkflow:
         """Handle foci_outer_safety_fault from firmware."""
         self.outer_safety_fault = dict(params)
 
-    def _handle_velocity_sweep(self, method_name: str, params: dict) -> None:
-        if self.velocity_sweep_error is not None:
-            return
-        workflow = self.velocity_integral.workflow_plan
-        if workflow is None:
-            self.velocity_sweep_error = VelocitySweepProtocolError(
-                "velocity sweep preceded commissioning workflow plan"
-            )
-            return
-        if int(workflow["shape"]) == 2:
-            self.velocity_sweep_error = VelocitySweepProtocolError(
-                "integral-response resume emitted velocity-sweep evidence"
-            )
-            return
-        try:
-            getattr(self.velocity_sweep, method_name)(params)
-        except VelocitySweepProtocolError as err:
-            self.velocity_sweep_error = err
-
     def _handle_velocity_integral(self, method_name: str, params: dict) -> None:
         if self.velocity_integral_error is not None:
             return
         workflow = self.velocity_integral.workflow_plan
-        if (
-            method_name == "handle_plan_core"
-            and workflow is not None
-            and int(workflow["shape"]) == 1
-            and (not self.velocity_sweep.done or self.velocity_sweep.outcome != "complete")
-        ):
-            self.velocity_integral_error = VelocityIntegralProtocolError(
-                "integral-response plan arrived before proportional handoff"
-            )
-            return
         if (
             method_name == "handle_plan_core"
             and workflow is not None
@@ -179,19 +147,17 @@ class AutotuneWorkflow:
 
     def _handle_recovery_summary(self, params: dict) -> None:
         stage = int(params.get("stage", -1))
-        if stage not in (0, 1):
-            self.velocity_sweep_error = VelocitySweepProtocolError(
+        if stage != 1:
+            self.velocity_integral_error = VelocityIntegralProtocolError(
                 "recovery summary named an invalid stage"
             )
             return
-        target = self.velocity_sweep if stage == 0 else self.velocity_integral
-        error_attr = "velocity_sweep_error" if stage == 0 else "velocity_integral_error"
-        if getattr(self, error_attr) is not None:
+        if self.velocity_integral_error is not None:
             return
         try:
-            target.handle_recovery_summary(params)
-        except (VelocitySweepProtocolError, VelocityIntegralProtocolError) as err:
-            setattr(self, error_attr, err)
+            self.velocity_integral.handle_recovery_summary(params)
+        except VelocityIntegralProtocolError as err:
+            self.velocity_integral_error = err
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         if int(params.get("shape", -1)) in (4, 5):
@@ -201,15 +167,6 @@ class AutotuneWorkflow:
                 self.acceptance_matrix_error = err
             return
         self._handle_velocity_integral("handle_workflow_plan", params)
-        if self.velocity_integral_error is None:
-            try:
-                self.velocity_sweep.configure_workflow_shape(
-                    int(params["shape"]),
-                    int(params["nominal_workflow_ms"]),
-                    int(params["maximum_workflow_ms"]),
-                )
-            except VelocitySweepProtocolError as err:
-                self.velocity_sweep_error = err
 
     def handle_acceptance_matrix_plan(self, params: dict) -> None:
         """Relay one compact firmware-authored matrix plan."""
@@ -274,25 +231,15 @@ class AutotuneWorkflow:
             return dict(self._stage_b_candidate_request)
         return request_fields
 
-    def _retain_stage_b_request_from_terminal(self, request_fields: dict) -> None:
-        """Mirror firmware candidate lifetime without interpreting its evidence."""
-        outcome = self.velocity_sweep.outcome
-        cause = int((self.velocity_sweep.terminal or {}).get("cause", 0))
-        if outcome == "complete_candidate" or (outcome == "inconclusive" and cause == 5):
+    def _retain_request_from_terminal(self, request_fields: dict) -> None:
+        """Mirror firmware's retained authority/evidence request identity."""
+        if not self.velocity_integral.done:
+            return
+        outcome = self.velocity_integral.outcome
+        if outcome in ("complete_candidate", "inconclusive"):
             self._stage_b_candidate_request = dict(request_fields)
         elif outcome != "rejected_plan_mismatch":
             self._stage_b_candidate_request = None
-
-    def _retain_request_from_terminal(self, request_fields: dict) -> None:
-        """Mirror firmware's retained authority/evidence request identity."""
-        if self.velocity_integral.done:
-            outcome = self.velocity_integral.outcome
-            if outcome in ("complete_candidate", "inconclusive"):
-                self._stage_b_candidate_request = dict(request_fields)
-            elif outcome != "rejected_plan_mismatch":
-                self._stage_b_candidate_request = None
-            return
-        self._retain_stage_b_request_from_terminal(request_fields)
 
     def _workflow_finished(self) -> bool:
         """Whether the disclosed firmware workflow reached its terminal stage."""
@@ -305,27 +252,18 @@ class AutotuneWorkflow:
             # terminal is still terminal, and nothing else will follow it.
             return self.velocity_integral.done
         shape = int(workflow["shape"])
-        if shape == 0:
-            return self.velocity_sweep.done
-        if shape == 2:
-            return self.velocity_integral.done
         if shape == 6:
-            # The breakaway campaign never touches velocity_sweep at all (no
-            # Stage-B evidence exists for it); its own campaign terminal is
-            # the only phase-independent completion signal. A non-accept
-            # terminal ends the workflow immediately; an accepted one only
-            # finishes once the handed-off classic Stage-C evidence completes.
+            # The breakaway campaign's own campaign terminal is the only
+            # phase-independent completion signal. A non-accept terminal ends
+            # the workflow immediately; an accepted one only finishes once the
+            # handed-off classic Stage-C evidence completes.
             if not self.breakaway_campaign.done:
                 return False
             if not self.breakaway_campaign.accepted:
                 return True
             return self.velocity_integral.done
-        if not self.velocity_sweep.done:
-            return False
-        if self.velocity_sweep.outcome != "complete":
-            return True
-        if int((self.velocity_sweep.terminal or {}).get("recovery_unavailable", 0)) == 1:
-            return True
+        # Stage-C resume (shape 2) and any other enveloped workflow complete on
+        # the integral-response terminal.
         return self.velocity_integral.done
 
     def _synchronize_disarmed_workflow_terminal(self, toolhead) -> None:
@@ -347,15 +285,6 @@ class AutotuneWorkflow:
 
     def handle_rung_origin_recovery_summary(self, params: dict) -> None:
         self._handle_recovery_summary(params)
-
-    def handle_velocity_stage_b_terminal_core(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_terminal_core", params)
-
-    def handle_velocity_stage_b_terminal_identity(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_terminal_identity", params)
-
-    def handle_velocity_stage_b_terminal_interval(self, params: dict) -> None:
-        self._handle_velocity_sweep("handle_stage_b_terminal_interval", params)
 
     def handle_velocity_integral_plan_core(self, params: dict) -> None:
         self._handle_velocity_integral("handle_plan_core", params)
@@ -425,70 +354,6 @@ class AutotuneWorkflow:
 
     def handle_velocity_integral_terminal_timing(self, params: dict) -> None:
         self._handle_velocity_integral("handle_terminal_timing", params)
-
-    def _format_velocity_sweep_result(self) -> str:
-        sweep = self.velocity_sweep
-        plan = sweep.plan or {}
-        if sweep.terminal is not None:
-            outcome_name = sweep.terminal.get("outcome_name", sweep.outcome)
-            outcome_namespace = sweep.terminal.get("outcome_namespace", "stage_b")
-            valid_regions = [
-                region for region in sweep.directional_regions if region["kind"] == "valid"
-            ]
-            region_text = []
-            for direction, name in ((0, "forward"), (1, "reverse")):
-                selected = [
-                    region
-                    for region in valid_regions
-                    if int(region["direction"]) == direction
-                    and int(region["member_mask"])
-                    == int(sweep.terminal["selected_memberships"][direction])
-                ]
-                if selected:
-                    region = selected[0]
-                    region_text.append(
-                        f"{name} mask=0x{region['member_mask']:08x} D_eq=["
-                        f"{int(region['pooled_low_q16'])},{int(region['pooled_high_q16'])}] "
-                        f"common=[{int(region['common_low_q16'])},"
-                        f"{int(region['common_high_q16'])}]"
-                    )
-            message = (
-                f"stage b {outcome_name}: nominated_P={int(sweep.terminal['nominated_p'])} "
-                f"model_mask=0x{sweep.terminal['model_direction_mask']:02x} coverage=0x"
-                f"{sweep.terminal['coverage_mask']:02x} regions="
-                f"{int(sweep.terminal['forward_region_count'])}/"
-                f"{int(sweep.terminal['reverse_region_count'])} fragments="
-                f"{int(sweep.terminal['forward_fragment_count'])}/"
-                f"{int(sweep.terminal['reverse_fragment_count'])} namespace={outcome_namespace} "
-                f"cause={int(sweep.terminal['cause'])}"
-            )
-            if region_text:
-                message += "; " + "; ".join(region_text)
-            if sweep.remediation:
-                message += f"; remediation: {sweep.remediation}"
-            return message
-        directions = sweep.terminal_directions
-        direction_text = []
-        for name, report in zip(("forward", "reverse"), directions, strict=False):
-            direction_text.append(
-                f"{name} P={int(report.get('p_low', 0))}..{int(report.get('p_high', 0))} D_eq="
-                f"{int(report.get('pooled_q16', 0))} [{int(report.get('pooled_low_q16', 0))},"
-                f"{int(report.get('pooled_high_q16', 0))}] quality=["
-                f"{int(report.get('common_low_q16', 0))},"
-                f"{int(report.get('common_high_q16', 0))}]"
-            )
-        message = (
-            f"velocity sweep {sweep.outcome}: requested="
-            f"{int(plan.get('requested_velocity_mrev_s', 0))}mrev/s planned="
-            f"{int(plan.get('planned_velocity_mrev_s', 0))}mrev/s target="
-            f"{int(plan.get('target_velocity_rpm', 0))}RPM clamp=0x{plan.get('clamp_flags', 0):04x}"
-            f" binding={int(plan.get('binding_source', 0))} runtime="
-            f"{int(plan.get('maximum_workflow_ms', 0))}ms rungs={int(plan.get('rung_count', 0))} "
-            f"cause={int((sweep.integrity or {}).get('cause', 0))}; {'; '.join(direction_text)}"
-        )
-        if sweep.remediation:
-            message += f"; remediation: {sweep.remediation}"
-        return message
 
     def _format_velocity_integral_result(self) -> str:
         response = self.velocity_integral
@@ -730,8 +595,6 @@ class AutotuneWorkflow:
             self.done = False
             self.result = None
             self.outer_safety_fault = None
-            self.velocity_sweep = VelocitySweepAssembler()
-            self.velocity_sweep_error = None
             self.velocity_integral = VelocityIntegralAssembler()
             self.velocity_integral_error = None
             self.acceptance_matrix = AcceptanceMatrixAssembler()
@@ -774,11 +637,6 @@ class AutotuneWorkflow:
             workflow_timeout_armed = False
             while not self.done and not self._workflow_finished():
                 eventtime = reactor.pause(eventtime + 0.1)
-                if self.velocity_sweep_error is not None:
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: velocity sweep transport failure: "
-                        f"{self.velocity_sweep_error}"
-                    )
                 if self.velocity_integral_error is not None:
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: velocity integral transport failure: "
@@ -860,22 +718,6 @@ class AutotuneWorkflow:
                             )
                     return
                 self._retain_request_from_terminal(request_fields)
-                workflow = self.velocity_integral.workflow_plan or {}
-                shape = int(workflow.get("shape", 0))
-                if self.velocity_sweep.done:
-                    gcmd.respond_info(
-                        f"FOCI {self.driver.name}: {self._format_velocity_sweep_result()}"
-                    )
-                    if self.velocity_sweep.outcome == "fault":
-                        safety_detail = self._format_outer_safety_fault()
-                        detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                        raise gcmd.error(
-                            f"FOCI {self.driver.name}: velocity sweep fault (cause="
-                            f"{int(self.velocity_sweep.integrity.get('cause', 0))})"
-                            f"{detail_suffix}"
-                        )
-                    if shape == 0 or self.velocity_sweep.outcome != "complete":
-                        return
                 if self.velocity_integral.done:
                     gcmd.respond_info(
                         f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"

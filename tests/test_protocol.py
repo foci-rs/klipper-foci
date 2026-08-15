@@ -80,9 +80,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     for name in (
         "foci_commissioning_workflow_plan",
         "foci_rung_origin_recovery_summary",
-        "foci_velocity_stage_b_terminal_core",
-        "foci_velocity_stage_b_terminal_identity",
-        "foci_velocity_stage_b_terminal_interval",
         "foci_velocity_integral_plan_core",
         "foci_velocity_integral_plan_geometry",
         "foci_velocity_integral_plan_authority",
@@ -922,7 +919,7 @@ def test_core_workflow_methods_send_existing_payloads():
     assert commands.dump_registers.last_args == [driver.oid]
 
 
-def test_run_tune_sends_velocity_sweep_planning_payload():
+def test_run_tune_sends_planning_payload():
     driver = make_driver()
 
     driver.protocol.run_tune(
