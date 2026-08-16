@@ -32,6 +32,7 @@ ROBUSTNESS_CAUSE_NAMES = {
     5: "no_accepted_candidate",
     6: "safety_fault",
     7: "evidence_integrity",
+    8: "internal_fault",
 }
 
 _HEADER = "<HIBBHHi"
