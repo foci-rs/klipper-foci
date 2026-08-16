@@ -270,6 +270,8 @@ class AutotuneWorkflow:
 
     def _workflow_finished(self) -> bool:
         """Whether the disclosed firmware workflow reached its terminal stage."""
+        if self.robustness_reversal_terminal is not None:
+            return True
         if self.acceptance_matrix.done:
             return True
         workflow = self.velocity_integral.workflow_plan
@@ -315,7 +317,8 @@ class AutotuneWorkflow:
         directions = terminal.get("directions") or ({}, {})
         direction_text = "; ".join(
             f"dir{index}: reconvergence={int(direction.get('reconvergence_time_us', 0))}us "
-            f"ratio_ppm={int(direction.get('reconvergence_ratio_ppm', 0))} residual="
+            f"ratio_ppm={int(direction.get('reconvergence_ratio_ppm', 0))} "
+            f"forward_settle_time_us={int(direction.get('forward_settle_time_us', 0))} residual="
             f"{int(direction.get('settled_residual_q', 0))} iae="
             f"{int(direction.get('recovery_iae_qs', 0))} tripped=0x"
             f"{int(direction.get('tripped', 0)):02x} retries="
@@ -650,6 +653,8 @@ class AutotuneWorkflow:
             self.acceptance_matrix_error = None
             self.breakaway_campaign = BreakawayCampaignAssembler()
             self.breakaway_campaign_error = None
+            self.robustness_reversal_terminal = None
+            self.robustness_reversal_error = None
             self.driver.commissioning.error_code = 0
 
             request_fields = self._request_for_stage_b_dispatch(
@@ -701,6 +706,11 @@ class AutotuneWorkflow:
                         f"FOCI {self.driver.name}: breakaway campaign transport failure: "
                         f"{self.breakaway_campaign_error}"
                     )
+                if self.robustness_reversal_error is not None:
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: robustness reversal transport failure: "
+                        f"{self.robustness_reversal_error}"
+                    )
                 if (
                     self.velocity_integral.workflow_plan is not None
                     or self.acceptance_matrix.workflow_plan is not None
@@ -736,6 +746,11 @@ class AutotuneWorkflow:
                             f"FOCI {self.driver.name}: velocity confidence matrix "
                             f"{self.acceptance_matrix.outcome}"
                         )
+                    return
+                if self.robustness_reversal_terminal is not None:
+                    gcmd.respond_info(
+                        f"FOCI {self.driver.name}: {self._format_robustness_reversal_result()}"
+                    )
                     return
                 if self.breakaway_campaign.done:
                     gcmd.respond_info(

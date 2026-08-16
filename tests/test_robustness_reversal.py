@@ -3,6 +3,7 @@
 import struct
 
 import pytest
+from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
     ROBUSTNESS_CAUSE_NAMES,
     ROBUSTNESS_OUTCOME_NAMES,
@@ -11,7 +12,13 @@ from klipper_foci.robustness_reversal import (
     handle_terminal,
 )
 
-from tests.mocks import make_driver
+from tests.mocks import (
+    SAMPLE_ACTIVE_GAINS,
+    CommandError,
+    MockCartesianKinematics,
+    MockGCmd,
+    make_driver,
+)
 
 RUN_SEQUENCE = 0x1122_3344
 
@@ -245,3 +252,89 @@ def test_formatted_message_names_cause_and_reports_derived_ratio():
     assert "robustness reversal: rejected" in message
     assert "cause=1 (reconvergence_time_exceeded)" in message
     assert "ratio_ppm=3000000" in message
+    assert "forward_settle_time_us=30000" in message
+
+
+def ready_driver():
+    """Build a driver that passes FOCI_AUTOTUNE's readiness gates.
+
+    Mirrors `ready_driver()` in `test_acceptance_matrix.py`: the robustness
+    reversal terminal reaches the same wait/report loop in `autotune()`, so
+    exercising it end to end needs the same commissioned/calibrated setup.
+    """
+    driver = make_driver(
+        stepper_name="stepper_x",
+        kinematics=MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
+        homed_axes="xyz",
+    )
+    driver.state.is_calibrated = True
+    driver.state.runtime_status = "commissioned"
+    driver.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+    driver.config.identified_lambda_us = 700
+    driver.config.identified_tau_e_us = 730
+    driver.config.identified_theta_e_us = 160
+    driver.config.identified_ringing_count = 7
+    driver.config.identified_bandwidth_hz = 1600
+    driver.config.identified_inner_warning_flags = 0
+    driver.config.identified_current_gains_source = 1
+    driver.config.identified_current_gains_tier = 1
+    driver.config.identified_current_retry_budget_exhausted = 0
+    driver.config.identified_current_failure_reason = 0
+    driver.config.identified_l_source = 1
+    driver.config.identified_l_reactance_count_ratio_milli = 8600
+    driver.config.identified_l_saliency_status = 1
+    driver.config.identified_r_count_slope_milli = 1042
+
+    def dump_registers():
+        for addr, value in {
+            REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
+            REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
+        }.items():
+            driver.dump.handle_dump_value({"addr": addr, "value": value})
+        driver.dump.handle_dump_done({})
+
+    driver.protocol.dump_registers = dump_registers
+    return driver
+
+
+def test_autotune_reports_the_robustness_reversal_terminal():
+    driver = ready_driver()
+    reactor = driver.printer.get_reactor()
+
+    def finish_robustness(deadline):
+        reactor._time = deadline
+        payload = build_robustness_payload(
+            outcome=1,
+            cause=1,
+            forward={"reconvergence_time_us": 90_000, "forward_settle_time_us": 30_000},
+        )
+        driver.autotune.handle_robustness_reversal_terminal({"oid": driver.oid, "payload": payload})
+        return reactor._time
+
+    reactor.pause = finish_robustness
+    gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+    driver.autotune.autotune(gcmd)
+
+    assert "robustness reversal: rejected" in gcmd.last_info
+    assert "cause=1 (reconvergence_time_exceeded)" in gcmd.last_info
+    assert "forward_settle_time_us=30000" in gcmd.last_info
+
+
+def test_autotune_raises_on_robustness_reversal_transport_failure():
+    """A parse error must surface as a command error, not hang to timeout."""
+    driver = ready_driver()
+    reactor = driver.printer.get_reactor()
+
+    def fail_robustness(deadline):
+        reactor._time = deadline
+        bad_payload = build_robustness_payload()[:-1]
+        driver.autotune.handle_robustness_reversal_terminal(
+            {"oid": driver.oid, "payload": bad_payload}
+        )
+        return reactor._time
+
+    reactor.pause = fail_robustness
+    gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+
+    with pytest.raises(CommandError, match="robustness reversal transport failure"):
+        driver.autotune.autotune(gcmd)
