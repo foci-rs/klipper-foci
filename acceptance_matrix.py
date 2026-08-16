@@ -39,6 +39,7 @@ ACTION_CODES = {
     # same power cycle as the run that produced the candidate, and any campaign
     # in between resets the slot.
     "stage_c_resume": 8,
+    "robustness_reversal": 9,
 }
 OUTCOME_NAMES = {
     0: "complete",

@@ -21,6 +21,11 @@ from .commissioning import (
     format_inner_warning_flags,
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
+from .robustness_reversal import (
+    ROBUSTNESS_CAUSE_NAMES,
+    RobustnessReversalProtocolError,
+)
+from .robustness_reversal import handle_terminal as parse_robustness_reversal_terminal
 from .velocity_integral import (
     BREAKAWAY_PHASE_NAMES,
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
@@ -70,6 +75,12 @@ def _stage_c_cause_text(cause: int) -> str:
     return str(cause) if name is None else f"{cause} ({name})"
 
 
+def _robustness_reversal_cause_text(cause: int) -> str:
+    """Render a robustness-reversal terminal cause as its number and name."""
+    name = ROBUSTNESS_CAUSE_NAMES.get(cause)
+    return str(cause) if name is None else f"{cause} ({name})"
+
+
 class AutotuneWorkflow:
     """Run installed Stage 2 tuning after commissioning and homing."""
 
@@ -83,6 +94,8 @@ class AutotuneWorkflow:
         self.acceptance_matrix_error: AcceptanceMatrixProtocolError | None = None
         self.breakaway_campaign = BreakawayCampaignAssembler()
         self.breakaway_campaign_error: BreakawayCampaignProtocolError | None = None
+        self.robustness_reversal_terminal: dict | None = None
+        self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
         self._stage_b_candidate_request: dict | None = None
         self.done = False
 
@@ -186,6 +199,20 @@ class AutotuneWorkflow:
         except AcceptanceMatrixProtocolError as err:
             self.acceptance_matrix_error = err
 
+    def handle_robustness_reversal_terminal(self, params: dict) -> None:
+        """Parse one compact firmware-authored robustness-reversal terminal."""
+        if self.robustness_reversal_error is not None:
+            return
+        if self.robustness_reversal_terminal is not None:
+            self.robustness_reversal_error = RobustnessReversalProtocolError(
+                "duplicate robustness reversal terminal"
+            )
+            return
+        try:
+            self.robustness_reversal_terminal = parse_robustness_reversal_terminal(params)
+        except RobustnessReversalProtocolError as err:
+            self.robustness_reversal_error = err
+
     def handle_breakaway_probe_plan(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_probe_plan", params)
 
@@ -281,6 +308,28 @@ class AutotuneWorkflow:
             f"{terminal.get('cause_name', 'unknown')} attempted="
             f"{terminal.get('attempted_masks', (0, 0))} eligible="
             f"{terminal.get('eligible_masks', (0, 0))})"
+        )
+
+    def _format_robustness_reversal_result(self) -> str:
+        terminal = self.robustness_reversal_terminal or {}
+        directions = terminal.get("directions") or ({}, {})
+        direction_text = "; ".join(
+            f"dir{index}: reconvergence={int(direction.get('reconvergence_time_us', 0))}us "
+            f"ratio_ppm={int(direction.get('reconvergence_ratio_ppm', 0))} residual="
+            f"{int(direction.get('settled_residual_q', 0))} iae="
+            f"{int(direction.get('recovery_iae_q', 0))} tripped=0x"
+            f"{int(direction.get('tripped', 0)):02x} retries="
+            f"{int(direction.get('retry_count', 0))} inconclusive="
+            f"{bool(direction.get('inconclusive', False))}"
+            for index, direction in enumerate(directions)
+        )
+        return (
+            f"robustness reversal: {terminal.get('outcome_name', 'unknown')} (namespace="
+            f"{terminal.get('outcome_namespace', 'robustness_reversal')} cause="
+            f"{_robustness_reversal_cause_text(int(terminal.get('cause', 0)))} selected_p="
+            f"{int(terminal.get('selected_p', 0))} selected_i="
+            f"{int(terminal.get('selected_i', 0))} target_velocity_rpm="
+            f"{int(terminal.get('target_velocity_rpm', 0))}); {direction_text}"
         )
 
     def handle_rung_origin_recovery_summary(self, params: dict) -> None:

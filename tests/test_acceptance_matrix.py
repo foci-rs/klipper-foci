@@ -139,6 +139,7 @@ def terminal_payload(
         ("matrix_ascending", 1),
         ("matrix_descending", 2),
         ("stage_c_resume", 8),
+        ("robustness_reversal", 9),
     ),
 )
 def test_action_mapping_is_selector_only(value, expected):
