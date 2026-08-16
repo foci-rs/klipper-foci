@@ -63,7 +63,7 @@ def _direction_from_fields(fields: tuple) -> dict:
     (
         reconvergence_time_us,
         settled_residual_q,
-        recovery_iae_q,
+        recovery_iae_qs,
         forward_settle_time_us,
         tripped,
         retry_count,
@@ -77,7 +77,9 @@ def _direction_from_fields(fields: tuple) -> dict:
     return {
         "reconvergence_time_us": reconvergence_time_us,
         "settled_residual_q": settled_residual_q,
-        "recovery_iae_q": recovery_iae_q,
+        # rate-Q seconds: firmware divides its rate-Q-microsecond integral by
+        # 1_000_000 before the i32 wire clamp.
+        "recovery_iae_qs": recovery_iae_qs,
         "forward_settle_time_us": forward_settle_time_us,
         "reconvergence_ratio_ppm": reconvergence_ratio_ppm,
         "tripped": tripped,

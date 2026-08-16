@@ -18,7 +18,7 @@ RUN_SEQUENCE = 0x1122_3344
 _DIRECTION_DEFAULTS = {
     "reconvergence_time_us": 12_345,
     "settled_residual_q": 250,
-    "recovery_iae_q": 9_000_000,
+    "recovery_iae_qs": 9_000_000,
     "forward_settle_time_us": 8_765,
     "tripped": 0b0000_0101,
     "retry_count": 2,
@@ -32,7 +32,7 @@ def _direction_bytes(overrides: dict | None = None) -> bytes:
         "<IiiIBBB",
         fields["reconvergence_time_us"],
         fields["settled_residual_q"],
-        fields["recovery_iae_q"],
+        fields["recovery_iae_qs"],
         fields["forward_settle_time_us"],
         fields["tripped"],
         fields["retry_count"],
@@ -107,7 +107,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
             forward={
                 "reconvergence_time_us": 11_111,
                 "settled_residual_q": 250,
-                "recovery_iae_q": 9_000_000,
+                "recovery_iae_qs": 9_000_000,
                 "forward_settle_time_us": 8_765,
                 "tripped": 0b0000_0101,
                 "retry_count": 2,
@@ -116,7 +116,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
             reverse={
                 "reconvergence_time_us": 22_222,
                 "settled_residual_q": -250,
-                "recovery_iae_q": -9_000_000,
+                "recovery_iae_qs": -9_000_000,
                 "forward_settle_time_us": 8_765,
                 "tripped": 0b0000_0011,
                 "retry_count": 1,
@@ -128,7 +128,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
     forward, reverse = terminal["directions"]
     assert forward["reconvergence_time_us"] == 11_111
     assert forward["settled_residual_q"] == 250
-    assert forward["recovery_iae_q"] == 9_000_000
+    assert forward["recovery_iae_qs"] == 9_000_000
     assert forward["forward_settle_time_us"] == 8_765
     assert forward["tripped"] == 0b0000_0101
     assert forward["retry_count"] == 2
@@ -136,7 +136,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
 
     assert reverse["reconvergence_time_us"] == 22_222
     assert reverse["settled_residual_q"] == -250
-    assert reverse["recovery_iae_q"] == -9_000_000
+    assert reverse["recovery_iae_qs"] == -9_000_000
     assert reverse["tripped"] == 0b0000_0011
     assert reverse["retry_count"] == 1
     assert reverse["inconclusive"] is True

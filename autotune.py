@@ -317,7 +317,7 @@ class AutotuneWorkflow:
             f"dir{index}: reconvergence={int(direction.get('reconvergence_time_us', 0))}us "
             f"ratio_ppm={int(direction.get('reconvergence_ratio_ppm', 0))} residual="
             f"{int(direction.get('settled_residual_q', 0))} iae="
-            f"{int(direction.get('recovery_iae_q', 0))} tripped=0x"
+            f"{int(direction.get('recovery_iae_qs', 0))} tripped=0x"
             f"{int(direction.get('tripped', 0)):02x} retries="
             f"{int(direction.get('retry_count', 0))} inconclusive="
             f"{bool(direction.get('inconclusive', False))}"
