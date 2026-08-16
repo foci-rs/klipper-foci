@@ -142,10 +142,11 @@ def test_terminal_parse_decodes_per_direction_metrics():
     assert reverse["inconclusive"] is True
 
 
-def test_cause_names_cover_firmware_values_zero_through_eight():
-    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(9))
+def test_cause_names_cover_firmware_values_zero_through_nine():
+    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(10))
     assert ROBUSTNESS_CAUSE_NAMES[7] == "evidence_integrity"
     assert ROBUSTNESS_CAUSE_NAMES[8] == "internal_fault"
+    assert ROBUSTNESS_CAUSE_NAMES[9] == "rest_not_confirmed"
 
 
 def test_outcome_names_cover_firmware_values_zero_through_three():
@@ -188,7 +189,7 @@ def test_terminal_rejects_invalid_outcome():
 
 def test_terminal_rejects_invalid_cause():
     with pytest.raises(RobustnessReversalProtocolError, match="taxonomy"):
-        handle_and_return(build_robustness_payload(cause=9))
+        handle_and_return(build_robustness_payload(cause=10))
 
 
 def test_terminal_rejects_unsupported_schema():

@@ -33,6 +33,7 @@ ROBUSTNESS_CAUSE_NAMES = {
     6: "safety_fault",
     7: "evidence_integrity",
     8: "internal_fault",
+    9: "rest_not_confirmed",
 }
 
 _HEADER = "<HIBBHHi"
