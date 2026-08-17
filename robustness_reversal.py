@@ -6,11 +6,14 @@ match firmware's `encode_robustness_terminal_reply` in
 byte-for-byte: a 15-byte header, then two 12-byte per-direction summary
 blocks.
 
-The per-cycle evidence reply is a separate, per-direction 40-byte message
+The per-cycle evidence reply is a separate, per-direction 47-byte message
 (`encode_robustness_cycle_evidence` in the same firmware module) that
-carries up to `ROBUSTNESS_CYCLES_PER_DIRECTION` individual cycle samples.
-Unfilled slots are the sentinel 0xFFFF on all three per-cycle fields and are
-elided from the parsed `cycles` list rather than surfaced as zeros.
+carries up to `ROBUSTNESS_CYCLES_PER_DIRECTION` individual cycle samples,
+plus a trailing tail count and displaced-tail triple (the cycle bumped out
+of the K-cycle window by a grace-tail retry). Unfilled cycle slots and an
+absent displaced tail both use the sentinel 0xFFFF on all three per-cycle
+fields, and are elided/`None` in the parsed result rather than surfaced as
+zeros.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import struct
 
 ROBUSTNESS_SCHEMA_REVISION = 2
 ROBUSTNESS_TERMINAL_REPLY_BYTES = 39
-ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES = 40
+ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES = 47
 ROBUSTNESS_CYCLES_PER_DIRECTION = 5
 
 ROBUSTNESS_OUTCOME_NAMES = {
@@ -51,7 +54,10 @@ _DIRECTION_FIELD_COUNT = 8
 _CYCLE_EVIDENCE_HEADER = "<BBii"
 _CYCLE_FIELDS_PER_SLOT = 3
 _CYCLE_EVIDENCE = struct.Struct(
-    _CYCLE_EVIDENCE_HEADER + "H" * (_CYCLE_FIELDS_PER_SLOT * ROBUSTNESS_CYCLES_PER_DIRECTION)
+    _CYCLE_EVIDENCE_HEADER
+    + "H" * (_CYCLE_FIELDS_PER_SLOT * ROBUSTNESS_CYCLES_PER_DIRECTION)
+    + "B"
+    + "H" * _CYCLE_FIELDS_PER_SLOT
 )
 _CYCLE_SENTINEL = 0xFFFF
 
@@ -155,43 +161,56 @@ def handle_terminal(params: dict) -> dict:
     }
 
 
+def _cycle_slot_or_none(fields: tuple) -> dict | None:
+    """Decode one `(reconvergence_ms, overshoot_counts, forward_settle_ms)` slot.
+
+    Returns `None` when all three fields are the 0xFFFF sentinel -- the
+    shared "not filled" encoding for both an unfilled cycle slot and an
+    absent displaced tail.
+    """
+    reconvergence_ms, overshoot_counts, forward_settle_ms = fields
+    if (
+        reconvergence_ms == _CYCLE_SENTINEL
+        and overshoot_counts == _CYCLE_SENTINEL
+        and forward_settle_ms == _CYCLE_SENTINEL
+    ):
+        return None
+    return {
+        "reconvergence_ms": reconvergence_ms,
+        "overshoot_counts": overshoot_counts,
+        "forward_settle_ms": forward_settle_ms,
+    }
+
+
 def handle_cycle_evidence(params: dict) -> dict:
     """Parse one compact robustness-reversal per-cycle evidence reply.
 
-    Unfilled cycle slots (all three fields equal to the 0xFFFF sentinel) are
-    elided from the returned `cycles` list rather than surfaced as zeros.
+    Unfilled cycle slots and an absent displaced tail (all three fields
+    equal to the 0xFFFF sentinel) are elided/`None` in the returned result
+    rather than surfaced as zeros.
     """
     unpacked = _CYCLE_EVIDENCE.unpack(_cycle_evidence_payload(params))
-    (
-        direction,
-        schema,
-        residual_median_q,
-        iae_median_qs,
-        *cycle_fields,
-    ) = unpacked
+    direction, schema, residual_median_q, iae_median_qs = unpacked[:4]
     if schema != ROBUSTNESS_SCHEMA_REVISION:
         raise RobustnessReversalProtocolError("unsupported robustness cycle evidence schema")
+    if direction > 1:
+        raise RobustnessReversalProtocolError("invalid robustness cycle evidence direction")
+    cycle_span = _CYCLE_FIELDS_PER_SLOT * ROBUSTNESS_CYCLES_PER_DIRECTION
+    cycle_fields = unpacked[4 : 4 + cycle_span]
+    tail_count = unpacked[4 + cycle_span]
+    displaced_tail_fields = unpacked[4 + cycle_span + 1 :]
     cycles = []
     for index in range(ROBUSTNESS_CYCLES_PER_DIRECTION):
-        reconvergence_ms, overshoot_counts, forward_settle_ms = cycle_fields[
-            index * _CYCLE_FIELDS_PER_SLOT : (index + 1) * _CYCLE_FIELDS_PER_SLOT
-        ]
-        if (
-            reconvergence_ms == _CYCLE_SENTINEL
-            and overshoot_counts == _CYCLE_SENTINEL
-            and forward_settle_ms == _CYCLE_SENTINEL
-        ):
-            continue
-        cycles.append(
-            {
-                "reconvergence_ms": reconvergence_ms,
-                "overshoot_counts": overshoot_counts,
-                "forward_settle_ms": forward_settle_ms,
-            }
+        slot = _cycle_slot_or_none(
+            cycle_fields[index * _CYCLE_FIELDS_PER_SLOT : (index + 1) * _CYCLE_FIELDS_PER_SLOT]
         )
+        if slot is not None:
+            cycles.append(slot)
     return {
         "direction": direction,
         "residual_median_q": residual_median_q,
         "iae_median_qs": iae_median_qs,
         "cycles": cycles,
+        "tail_count": tail_count,
+        "displaced_tail": _cycle_slot_or_none(displaced_tail_fields),
     }

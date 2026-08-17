@@ -93,13 +93,16 @@ def build_cycle_evidence_payload(
     residual_median_q=125,
     iae_median_qs=45_000,
     cycles=None,
+    tail_count=0,
+    displaced_tail=None,
 ) -> bytes:
-    """Build a 40-byte schema-2 cycle-evidence payload for tests.
+    """Build a 47-byte schema-2 cycle-evidence payload for tests.
 
     `cycles` fills slots in order (each a `(reconvergence_ms, overshoot_counts,
     forward_settle_ms)` triple); any of the 5 slots left uncovered pack as the
     0xFFFF sentinel on all three fields, matching firmware's unfilled-slot
-    encoding.
+    encoding. `displaced_tail` is a single such triple, or `None` for the
+    all-0xFFFF no-grace-tail sentinel.
     """
     cycles = list(cycles or [])
     if len(cycles) > ROBUSTNESS_CYCLES_PER_DIRECTION:
@@ -110,13 +113,20 @@ def build_cycle_evidence_payload(
             slots.extend(cycles[index])
         else:
             slots.extend((CYCLE_SENTINEL, CYCLE_SENTINEL, CYCLE_SENTINEL))
+    displaced_tail_fields = (
+        displaced_tail
+        if displaced_tail is not None
+        else (CYCLE_SENTINEL, CYCLE_SENTINEL, CYCLE_SENTINEL)
+    )
     return struct.pack(
-        "<BBii" + "H" * (3 * ROBUSTNESS_CYCLES_PER_DIRECTION),
+        "<BBii" + "H" * (3 * ROBUSTNESS_CYCLES_PER_DIRECTION) + "B" + "H" * 3,
         direction,
         schema_revision,
         residual_median_q,
         iae_median_qs,
         *slots,
+        tail_count,
+        *displaced_tail_fields,
     )
 
 
@@ -231,8 +241,8 @@ def test_terminal_rejects_unsupported_schema():
         handle_and_return(build_terminal_payload(schema_revision=1))
 
 
-def test_cycle_evidence_wire_layout_is_forty_bytes():
-    assert len(build_cycle_evidence_payload()) == 40
+def test_cycle_evidence_wire_layout_is_forty_seven_bytes():
+    assert len(build_cycle_evidence_payload()) == 47
 
 
 def test_cycle_evidence_round_trip_elides_sentinel_slots():
@@ -270,6 +280,35 @@ def test_cycle_evidence_round_trip_with_no_filled_slots_returns_empty_list():
     assert evidence["cycles"] == []
 
 
+def test_cycle_evidence_round_trip_decodes_tail_count_and_displaced_tail():
+    evidence = handle_cycle_evidence(
+        {
+            "oid": 1,
+            "payload": build_cycle_evidence_payload(
+                direction=0,
+                tail_count=2,
+                displaced_tail=(50, 1, 45),
+            ),
+        }
+    )
+
+    assert evidence["tail_count"] == 2
+    assert evidence["displaced_tail"] == {
+        "reconvergence_ms": 50,
+        "overshoot_counts": 1,
+        "forward_settle_ms": 45,
+    }
+
+
+def test_cycle_evidence_round_trip_with_no_grace_tail_returns_none():
+    evidence = handle_cycle_evidence(
+        {"oid": 1, "payload": build_cycle_evidence_payload(direction=0, tail_count=0)}
+    )
+
+    assert evidence["tail_count"] == 0
+    assert evidence["displaced_tail"] is None
+
+
 def test_cycle_evidence_rejects_wrong_size_payload():
     with pytest.raises(RobustnessReversalProtocolError, match="expected"):
         handle_cycle_evidence({"oid": 1, "payload": build_cycle_evidence_payload()[:-1]})
@@ -285,6 +324,11 @@ def test_cycle_evidence_rejects_unsupported_schema():
         handle_cycle_evidence(
             {"oid": 1, "payload": build_cycle_evidence_payload(schema_revision=1)}
         )
+
+
+def test_cycle_evidence_rejects_invalid_direction():
+    with pytest.raises(RobustnessReversalProtocolError, match="direction"):
+        handle_cycle_evidence({"oid": 1, "payload": build_cycle_evidence_payload(direction=2)})
 
 
 def test_robustness_reply_handlers_are_registered():
