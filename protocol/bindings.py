@@ -192,6 +192,10 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_acceptance_matrix_terminal",
         ),
         (
+            driver.autotune.handle_robustness_cycle_evidence,
+            "foci_robustness_cycle_evidence",
+        ),
+        (
             driver.autotune.handle_robustness_reversal_terminal,
             "foci_robustness_reversal_terminal",
         ),

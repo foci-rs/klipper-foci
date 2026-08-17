@@ -287,14 +287,31 @@ def test_cycle_evidence_rejects_unsupported_schema():
         )
 
 
-def test_robustness_reversal_terminal_is_registered():
+def test_robustness_reply_handlers_are_registered():
+    """Guard against a reply handler existing but never reaching the wire.
+
+    `handle_robustness_cycle_evidence` previously existed without a matching
+    `serial.register_response(...)` call in `protocol/bindings.py`, so
+    firmware's `foci_robustness_cycle_evidence` replies would silently never
+    reach it. This asserts both robustness reply names are registered for
+    the driver's oid, and that each maps to its expected handler method.
+    """
     driver = make_driver()
     registrations = {
-        name
-        for _callback, name, oid in driver.mcu._serial.responses
-        if oid == driver.oid and "robustness_reversal" in name
+        name: callback
+        for callback, name, oid in driver.mcu._serial.responses
+        if oid == driver.oid and "robustness" in name
     }
-    assert registrations == {"foci_robustness_reversal_terminal"}
+    assert set(registrations) == {
+        "foci_robustness_reversal_terminal",
+        "foci_robustness_cycle_evidence",
+    }
+    assert registrations["foci_robustness_reversal_terminal"] == (
+        driver.autotune.handle_robustness_reversal_terminal
+    )
+    assert registrations["foci_robustness_cycle_evidence"] == (
+        driver.autotune.handle_robustness_cycle_evidence
+    )
 
 
 def test_autotune_router_stores_the_parsed_terminal():
