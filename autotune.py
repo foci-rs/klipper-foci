@@ -125,6 +125,7 @@ class AutotuneWorkflow:
         self.robustness_reversal_terminal: dict | None = None
         self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
         self.robustness_cycle_evidence: dict[int, dict] = {}
+        self.robustness_workflow_plan: dict | None = None
         self._stage_b_candidate_request: dict | None = None
         self.done = False
 
