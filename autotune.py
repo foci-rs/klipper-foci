@@ -25,6 +25,7 @@ from .robustness_reversal import (
     ROBUSTNESS_CAUSE_NAMES,
     RobustnessReversalProtocolError,
 )
+from .robustness_reversal import handle_cycle_evidence as parse_robustness_cycle_evidence
 from .robustness_reversal import handle_terminal as parse_robustness_reversal_terminal
 from .velocity_integral import (
     BREAKAWAY_PHASE_NAMES,
@@ -82,6 +83,32 @@ def _robustness_reversal_cause_text(cause: int) -> str:
     return str(cause) if name is None else f"{cause} ({name})"
 
 
+def _robustness_direction_text(index: int, direction: dict) -> str:
+    """Render one robustness-reversal direction summary.
+
+    A `valid_cycles == 0` direction (the fault/early-abort paths still
+    produce these) must render as "not measured", never as zero-millisecond
+    medians -- firmware never wrote those fields for an unmeasured direction.
+    """
+    valid_cycles = int(direction.get("valid_cycles", 0))
+    trip_count = int(direction.get("trip_count", 0))
+    retry_count = int(direction.get("retry_count", 0))
+    inconclusive = bool(direction.get("inconclusive", False))
+    if valid_cycles == 0:
+        return (
+            f"dir{index}: not measured (trip_count={trip_count} retries={retry_count} "
+            f"inconclusive={inconclusive})"
+        )
+    return (
+        f"dir{index}: median_reconvergence={int(direction.get('median_reconvergence_ms', 0))}ms "
+        f"max_reconvergence={int(direction.get('max_reconvergence_ms', 0))}ms "
+        f"median_forward_settle={int(direction.get('median_forward_settle_ms', 0))}ms "
+        f"overshoot_peak={int(direction.get('overshoot_peak_counts', 0))}counts "
+        f"valid_cycles={valid_cycles} trip_count={trip_count} retries={retry_count} "
+        f"inconclusive={inconclusive}"
+    )
+
+
 class AutotuneWorkflow:
     """Run installed Stage 2 tuning after commissioning and homing."""
 
@@ -97,6 +124,7 @@ class AutotuneWorkflow:
         self.breakaway_campaign_error: BreakawayCampaignProtocolError | None = None
         self.robustness_reversal_terminal: dict | None = None
         self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
+        self.robustness_cycle_evidence: dict[int, dict] = {}
         self._stage_b_candidate_request: dict | None = None
         self.done = False
 
@@ -214,6 +242,17 @@ class AutotuneWorkflow:
         except RobustnessReversalProtocolError as err:
             self.robustness_reversal_error = err
 
+    def handle_robustness_cycle_evidence(self, params: dict) -> None:
+        """Parse one compact firmware-authored robustness per-cycle evidence reply."""
+        if self.robustness_reversal_error is not None:
+            return
+        try:
+            evidence = parse_robustness_cycle_evidence(params)
+        except RobustnessReversalProtocolError as err:
+            self.robustness_reversal_error = err
+            return
+        self.robustness_cycle_evidence[evidence["direction"]] = evidence
+
     def handle_breakaway_probe_plan(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_probe_plan", params)
 
@@ -317,14 +356,7 @@ class AutotuneWorkflow:
         terminal = self.robustness_reversal_terminal or {}
         directions = terminal.get("directions") or ({}, {})
         direction_text = "; ".join(
-            f"dir{index}: reconvergence={int(direction.get('reconvergence_time_us', 0))}us "
-            f"ratio_ppm={int(direction.get('reconvergence_ratio_ppm', 0))} "
-            f"forward_settle_time_us={int(direction.get('forward_settle_time_us', 0))} residual="
-            f"{int(direction.get('settled_residual_q', 0))} iae="
-            f"{int(direction.get('recovery_iae_qs', 0))} tripped=0x"
-            f"{int(direction.get('tripped', 0)):02x} retries="
-            f"{int(direction.get('retry_count', 0))} inconclusive="
-            f"{bool(direction.get('inconclusive', False))}"
+            _robustness_direction_text(index, direction)
             for index, direction in enumerate(directions)
         )
         return (
@@ -656,6 +688,7 @@ class AutotuneWorkflow:
             self.breakaway_campaign_error = None
             self.robustness_reversal_terminal = None
             self.robustness_reversal_error = None
+            self.robustness_cycle_evidence = {}
             self.driver.commissioning.error_code = 0
 
             request_fields = self._request_for_stage_b_dispatch(
