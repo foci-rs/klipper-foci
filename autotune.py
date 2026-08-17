@@ -748,8 +748,11 @@ class AutotuneWorkflow:
                         )
                     return
                 if self.robustness_reversal_terminal is not None:
+                    safety_detail = self._format_outer_safety_fault()
+                    detail_suffix = f"; {safety_detail}" if safety_detail else ""
                     gcmd.respond_info(
-                        f"FOCI {self.driver.name}: {self._format_robustness_reversal_result()}"
+                        f"FOCI {self.driver.name}: "
+                        f"{self._format_robustness_reversal_result()}{detail_suffix}"
                     )
                     return
                 if self.breakaway_campaign.done:

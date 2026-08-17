@@ -320,6 +320,53 @@ def test_autotune_reports_the_robustness_reversal_terminal():
     assert "forward_settle_time_us=30000" in gcmd.last_info
 
 
+def test_robustness_safety_fault_reports_outer_envelope_detail():
+    """A cause=6 robustness terminal must surface the outer-envelope detail.
+
+    Regression guard for the reporting gap: the robustness gate's most
+    important failure mode (safety_fault) previously reached the host with
+    only `cause=6` and no evidence of which envelope check tripped.
+    """
+    driver = ready_driver()
+    reactor = driver.printer.get_reactor()
+
+    def finish_with_safety_fault(deadline):
+        reactor._time = deadline
+        driver.autotune.handle_outer_safety_fault(
+            {
+                "reason": 4,
+                "max_travel_mrev": 750,
+                "max_velocity_mrev_s": 6000,
+                "max_duration_ms": 3000,
+                "direction_mask": 3,
+                "delta_counts": -125,
+                "dt_us": 4000,
+                "velocity_counts_per_ms": -31,
+                "velocity_cap_counts_per_ms": 24,
+                "position_counts": -373,
+                "position_window_counts": 3000,
+                "elapsed_us": 120000,
+                "duration_cap_us": 3000000,
+            }
+        )
+        payload = build_robustness_payload(outcome=3, cause=6, inconclusive=1)
+        driver.autotune.handle_robustness_reversal_terminal({"oid": driver.oid, "payload": payload})
+        return reactor._time
+
+    reactor.pause = finish_with_safety_fault
+    gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+    driver.autotune.autotune(gcmd)
+
+    message = gcmd.last_info
+    assert "robustness reversal: failed" in message
+    assert "cause=6 (safety_fault)" in message
+    assert "outer safety velocity" in message
+    assert "window_delta_counts=-125" in message
+    assert "velocity_counts_per_ms=-31" in message
+    assert "cap_counts_per_ms=24" in message
+    assert "budget=750mrev/6000mrev_s/3000ms dir=0x03" in message
+
+
 def test_autotune_raises_on_robustness_reversal_transport_failure():
     """A parse error must surface as a command error, not hang to timeout."""
     driver = ready_driver()
