@@ -283,6 +283,48 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertGreaterEqual(reactor._time, 6.0)
 
+    def test_robustness_workflow_arms_extended_timeout_past_setup_window(self):
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_robustness_plan(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                # The firmware discloses the run duration before any motion.
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            # The terminal only arrives well past the 5 s initial plan window;
+            # without the extended arming this run would already have timed out.
+            if reactor._time >= 6.0:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=0, cause=0)}
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_robustness_plan
+
+        d.autotune.autotune(gcmd)
+
+        self.assertGreaterEqual(reactor._time, 6.0)
+        self.assertIsNotNone(d.autotune.robustness_reversal_terminal)
+        self.assertIsNone(d.autotune.robustness_reversal_error)
+        # The robustness plan alone armed the extended timeout, not the
+        # acceptance-matrix or velocity-integral paths.
+        self.assertIsNotNone(d.autotune.robustness_workflow_plan)
+        self.assertIsNone(d.autotune.acceptance_matrix.workflow_plan)
+        self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
+
     def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})

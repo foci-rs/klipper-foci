@@ -202,11 +202,18 @@ class AutotuneWorkflow:
             self.velocity_integral_error = err
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
-        if int(params.get("shape", -1)) in (4, 5):
+        shape = int(params.get("shape", -1))
+        if shape in (4, 5):
             try:
                 self.acceptance_matrix.handle_workflow_plan(params)
             except AcceptanceMatrixProtocolError as err:
                 self.acceptance_matrix_error = err
+            return
+        if shape == 7:
+            # Robustness reversal: record the run's worst-case duration so the
+            # wait loop arms its extended timeout. It does not feed the
+            # acceptance-matrix or velocity-integral assemblers.
+            self.robustness_workflow_plan = params
             return
         self._handle_velocity_integral("handle_workflow_plan", params)
 
@@ -689,6 +696,7 @@ class AutotuneWorkflow:
             self.robustness_reversal_terminal = None
             self.robustness_reversal_error = None
             self.robustness_cycle_evidence = {}
+            self.robustness_workflow_plan = None
             self.driver.commissioning.error_code = 0
 
             request_fields = self._request_for_stage_b_dispatch(
@@ -748,12 +756,16 @@ class AutotuneWorkflow:
                 if (
                     self.velocity_integral.workflow_plan is not None
                     or self.acceptance_matrix.workflow_plan is not None
+                    or self.robustness_workflow_plan is not None
                 ) and not workflow_timeout_armed:
-                    maximum_duration_s = (
-                        self.acceptance_matrix.maximum_duration_s
-                        if self.acceptance_matrix.workflow_plan is not None
-                        else self.velocity_integral.maximum_duration_s
-                    )
+                    if self.robustness_workflow_plan is not None:
+                        maximum_duration_s = (
+                            int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
+                        )
+                    elif self.acceptance_matrix.workflow_plan is not None:
+                        maximum_duration_s = self.acceptance_matrix.maximum_duration_s
+                    else:
+                        maximum_duration_s = self.velocity_integral.maximum_duration_s
                     timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
                     workflow_timeout_armed = True
                 if eventtime > timeout:
