@@ -473,7 +473,7 @@ class TestOuterSafetyFaultNames(unittest.TestCase):
     # what this test exists to catch: a code present in the map above but
     # missing here (or vice versa) is a drift the loop below turns into a
     # loud test failure instead of a silent unknown_N at runtime.
-    KNOWN_FIRMWARE_CODES = frozenset(range(0, 11))
+    KNOWN_FIRMWARE_CODES = frozenset(range(0, 12))
 
     def test_every_known_firmware_code_has_a_name(self):
         for code in self.KNOWN_FIRMWARE_CODES:

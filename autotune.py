@@ -61,6 +61,7 @@ OUTER_SAFETY_FAULT_NAMES = {
     8: "quarter_turn",
     9: "current",
     10: "recovery_wrong_way",
+    11: "position_local",
 }
 
 
