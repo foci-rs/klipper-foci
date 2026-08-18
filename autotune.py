@@ -616,7 +616,8 @@ class AutotuneWorkflow:
 
         try:
             if self.driver.state.inhibited:
-                raise gcmd.error(f"FOCI {self.driver.name}: inhibited after failed FOCI_COMMISSION")
+                reason = self.driver.state.last_commission_failure or "failed FOCI_COMMISSION"
+                raise gcmd.error(f"FOCI {self.driver.name}: inhibited: {reason}")
             if self.driver.state.runtime_status == "uncommissioned":
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: not commissioned. Run FOCI_COMMISSION first."

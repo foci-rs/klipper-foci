@@ -720,6 +720,17 @@ class TestAutotuneStateTransitions(unittest.TestCase):
             d.autotune.autotune(gcmd)
         self.assertIn("inhibited", str(ctx.exception))
 
+    def test_inhibit_message_names_robustness_fault(self):
+        d = make_driver()
+        d.state.inhibited = True
+        d.state.last_commission_failure = "robustness safety fault"
+        d.state.runtime_status = "tuned"
+        d.state.is_calibrated = True
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+        self.assertIn("robustness safety fault", str(ctx.exception))
+
 
 class InnerWarningFlagFormattingTests(unittest.TestCase):
     """Phase 1 inner-warning flag formatting."""
