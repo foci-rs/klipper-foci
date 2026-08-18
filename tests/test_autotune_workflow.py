@@ -325,6 +325,50 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIsNone(d.autotune.acceptance_matrix.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
 
+    def test_robustness_reject_preserves_prior_gains_and_skips_persistence(self):
+        """A rejected robustness-reversal terminal validates an already-accepted
+        candidate from an earlier tune; it must never write gains itself, so a
+        reject leaves whatever gains were active (and the config) untouched."""
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+        reactor = d.printer.get_reactor()
+        persisted = []
+        d.autotune.persist_tune_results = lambda *args, **kwargs: persisted.append((args, kwargs))
+
+        def pause_with_rejected_robustness(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=1, cause=3)}
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_rejected_robustness
+
+        d.autotune.autotune(gcmd)
+
+        self.assertIsNotNone(d.autotune.robustness_reversal_terminal)
+        self.assertEqual(d.autotune.robustness_reversal_terminal["outcome_name"], "rejected")
+        self.assertIsNone(d.autotune.robustness_reversal_error)
+        self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
+        self.assertEqual(persisted, [])
+        self.assertTrue(
+            any("robustness reversal: rejected" in message for message in gcmd._responses)
+        )
+
     def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
