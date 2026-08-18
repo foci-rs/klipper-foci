@@ -699,6 +699,21 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertEqual(args[8], 0x40)
         self.assertIn("inner confidence", gcmd.last_info)
 
+    def test_tune_captures_pre_tune_snapshot_before_overwrite(self):
+        d = self._ready_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.config.autotune_mode = None
+        prior_gains = d.state.active_gains.copy()
+        self._finish_tune_on_next_pause(d)
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        d.autotune.autotune(gcmd)
+        snap = d.state.pre_tune_snapshot
+        self.assertIsNotNone(snap)
+        self.assertEqual(snap["active_gains"], prior_gains)
+        self.assertEqual(snap["runtime_status"], "commissioned")
+        self.assertIsNone(snap["autotune_mode"])
+        self.assertNotEqual(d.state.active_gains, prior_gains)
+
     def test_autotune_moves_to_safe_pose_and_sends_budget(self):
         d = self._ready_driver()
         toolhead = d.printer.lookup_object("toolhead")

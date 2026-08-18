@@ -36,6 +36,7 @@ class FociRuntimeState:
     last_commission_failure: str | None = None
     commissioned_result: dict[str, int] | None = None
     active_gains: dict[str, int | None] | None = None
+    pre_tune_snapshot: dict | None = None
     adc_vm_offset_raw: int | None = None
     runtime_status: RuntimeStatus = "uncommissioned"
     operation_lock: bool = False

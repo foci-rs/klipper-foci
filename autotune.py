@@ -890,6 +890,7 @@ class AutotuneWorkflow:
             else:
                 tune_status = "tuned"
 
+            self.driver.state.pre_tune_snapshot = self._snapshot_pre_tune_state()
             active_gains = self.driver.state.active_gains
             self.driver.state.active_gains = {
                 "flux_p": active_gains["flux_p"],
@@ -929,6 +930,21 @@ class AutotuneWorkflow:
                 )
         finally:
             self.driver.state.release()
+
+    def _snapshot_pre_tune_state(self) -> dict:
+        """Capture the pre-tune state before acceptance overwrites active_gains.
+
+        Sourced from live runtime state, not the connect-time config: within a
+        session persist_tune_results stages autotune_status via configfile.set
+        without updating driver.config, so config.autotune_status is stale while
+        runtime_status tracks same-session tunes.
+        """
+        gains = self.driver.state.active_gains
+        return {
+            "active_gains": dict(gains) if gains is not None else None,
+            "runtime_status": self.driver.state.runtime_status,
+            "autotune_mode": self.driver.config.autotune_mode,
+        }
 
     def persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
         """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
