@@ -363,10 +363,17 @@ class AutotuneWorkflow:
     def _format_robustness_reversal_result(self) -> str:
         terminal = self.robustness_reversal_terminal or {}
         directions = terminal.get("directions") or ({}, {})
-        direction_text = "; ".join(
-            _robustness_direction_text(index, direction)
-            for index, direction in enumerate(directions)
-        )
+        parts = []
+        for index, direction in enumerate(directions):
+            text = _robustness_direction_text(index, direction)
+            evidence = self.robustness_cycle_evidence.get(index)
+            if evidence is not None:
+                text += (
+                    f" iae_median_qs={int(evidence.get('iae_median_qs', 0))}"
+                    f" residual_median_q={int(evidence.get('residual_median_q', 0))}"
+                )
+            parts.append(text)
+        direction_text = "; ".join(parts)
         return (
             f"robustness reversal: {terminal.get('outcome_name', 'unknown')} (namespace="
             f"{terminal.get('outcome_namespace', 'robustness_reversal')} cause="
