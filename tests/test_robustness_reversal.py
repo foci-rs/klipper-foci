@@ -61,11 +61,13 @@ def build_terminal_payload(
     selected_p=1_024,
     selected_i=512,
     target_velocity_rpm=-1_500,
+    plant_rate_q=60_000,
+    iae_max_q_qs=120_000,
     forward=None,
     reverse=None,
     **shared_direction_overrides,
 ) -> bytes:
-    """Build a 39-byte schema-2 robustness-terminal payload for tests.
+    """Build a 51-byte schema-3 robustness-terminal payload for tests.
 
     `forward`/`reverse` override one direction only; any keyword also present
     in `_DIRECTION_DEFAULTS` (e.g. `valid_cycles`) is applied to both
@@ -83,7 +85,8 @@ def build_terminal_payload(
     )
     forward_overrides = {**shared_direction_overrides, **(forward or {})}
     reverse_overrides = {**shared_direction_overrides, **(reverse or {})}
-    return header + _direction_bytes(forward_overrides) + _direction_bytes(reverse_overrides)
+    tail = struct.pack("<qi", plant_rate_q, iae_max_q_qs)
+    return header + _direction_bytes(forward_overrides) + _direction_bytes(reverse_overrides) + tail
 
 
 def build_cycle_evidence_payload(
@@ -134,8 +137,8 @@ def handle_and_return(payload: bytes) -> dict:
     return handle_terminal({"oid": 1, "payload": payload})
 
 
-def test_wire_layout_is_thirty_nine_bytes():
-    assert len(build_terminal_payload()) == 39
+def test_wire_layout_is_fifty_one_bytes():
+    assert len(build_terminal_payload()) == 51
 
 
 def test_terminal_parse_decodes_header_and_namespace():
@@ -201,6 +204,15 @@ def test_terminal_parse_decodes_per_direction_metrics():
     assert reverse["trip_count"] == 0
     assert reverse["retry_count"] == 1
     assert reverse["inconclusive"] is True
+
+
+def test_terminal_parse_decodes_plant_rate_and_iae_max():
+    terminal = handle_and_return(
+        build_terminal_payload(plant_rate_q=4_200_000, iae_max_q_qs=8_400_000)
+    )
+
+    assert terminal["plant_rate_q"] == 4_200_000
+    assert terminal["iae_max_q_qs"] == 8_400_000
 
 
 def test_cause_names_cover_firmware_values_zero_through_ten():
@@ -441,6 +453,24 @@ def test_formatted_message_reports_direction_medians_and_overshoot():
     assert "median_forward_settle=30ms" in message
     assert "overshoot_peak=14counts" in message
     assert "valid_cycles=5" in message
+
+
+def test_formatted_message_reports_the_constructed_plant_rate_and_iae_max():
+    """`plant_rate_q`/`iae_max_q` are the gate's constructed threshold inputs.
+
+    They are run-level (identical for both reversal directions), so they
+    render once on the result line rather than per-direction -- captured for
+    a later on-target calibration pass to read back what the gate actually
+    used.
+    """
+    driver = make_driver()
+    payload = build_terminal_payload(plant_rate_q=4_200_000, iae_max_q_qs=8_400_000)
+    driver.autotune.handle_robustness_reversal_terminal({"oid": driver.oid, "payload": payload})
+
+    message = driver.autotune._format_robustness_reversal_result()
+
+    assert "plant_rate_q=4200000" in message
+    assert "iae_max_q_qs=8400000" in message
 
 
 def test_formatted_message_renders_unmeasured_direction_as_not_measured():

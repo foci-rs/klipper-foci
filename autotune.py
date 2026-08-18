@@ -380,7 +380,9 @@ class AutotuneWorkflow:
             f"{_robustness_reversal_cause_text(int(terminal.get('cause', 0)))} selected_p="
             f"{int(terminal.get('selected_p', 0))} selected_i="
             f"{int(terminal.get('selected_i', 0))} target_velocity_rpm="
-            f"{int(terminal.get('target_velocity_rpm', 0))}); {direction_text}"
+            f"{int(terminal.get('target_velocity_rpm', 0))} plant_rate_q="
+            f"{int(terminal.get('plant_rate_q', 0))} iae_max_q_qs="
+            f"{int(terminal.get('iae_max_q_qs', 0))}); {direction_text}"
         )
 
     def handle_rung_origin_recovery_summary(self, params: dict) -> None:

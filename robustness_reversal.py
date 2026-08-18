@@ -1,10 +1,13 @@
 """Strict relay for the reversal-standstill robustness terminal and evidence replies.
 
-The terminal wire layout is frozen at 39 bytes (schema revision 2) and must
+The terminal wire layout is frozen at 51 bytes (schema revision 3) and must
 match firmware's `encode_robustness_terminal_reply` in
 `foci-firmware/src/commissioning/outer/velocity/robustness_reporting.rs`
-byte-for-byte: a 15-byte header, then two 12-byte per-direction summary
-blocks.
+byte-for-byte: a 15-byte header, two 12-byte per-direction summary blocks,
+then a 12-byte run-level tail carrying the gate's constructed `plant_rate_q`
+(rate-Q units, unscaled) and `iae_max_q` (scaled to rate-Q seconds, matching
+`iae_median_qs` below so the two compare directly) -- diagnostic fields for
+an on-target calibration pass, not consumed by gate logic.
 
 The per-cycle evidence reply is a separate, per-direction 47-byte message
 (`encode_robustness_cycle_evidence` in the same firmware module) that
@@ -20,8 +23,8 @@ from __future__ import annotations
 
 import struct
 
-ROBUSTNESS_SCHEMA_REVISION = 2
-ROBUSTNESS_TERMINAL_REPLY_BYTES = 39
+ROBUSTNESS_SCHEMA_REVISION = 3
+ROBUSTNESS_TERMINAL_REPLY_BYTES = 51
 ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES = 47
 ROBUSTNESS_CYCLES_PER_DIRECTION = 5
 
@@ -48,7 +51,8 @@ ROBUSTNESS_CAUSE_NAMES = {
 
 _HEADER = "<BIBBHHi"
 _DIRECTION = "HHHHBBBB"
-_TERMINAL = struct.Struct(_HEADER + _DIRECTION * 2)
+_TERMINAL_TAIL = "qi"
+_TERMINAL = struct.Struct(_HEADER + _DIRECTION * 2 + _TERMINAL_TAIL)
 _DIRECTION_FIELD_COUNT = 8
 
 _CYCLE_EVIDENCE_HEADER = "<BBii"
@@ -130,12 +134,15 @@ def handle_terminal(params: dict) -> dict:
         selected_p,
         selected_i,
         target_velocity_rpm,
-        *direction_fields,
+        *direction_and_tail_fields,
     ) = unpacked
     if schema != ROBUSTNESS_SCHEMA_REVISION:
         raise RobustnessReversalProtocolError("unsupported robustness reversal schema")
     if outcome not in ROBUSTNESS_OUTCOME_NAMES or cause not in ROBUSTNESS_CAUSE_NAMES:
         raise RobustnessReversalProtocolError("invalid robustness reversal terminal taxonomy")
+    direction_span = _DIRECTION_FIELD_COUNT * 2
+    direction_fields = direction_and_tail_fields[:direction_span]
+    plant_rate_q, iae_max_q_qs = direction_and_tail_fields[direction_span:]
     directions = [
         _direction_from_fields(
             tuple(
@@ -158,6 +165,8 @@ def handle_terminal(params: dict) -> dict:
         "selected_i": selected_i,
         "target_velocity_rpm": target_velocity_rpm,
         "directions": directions,
+        "plant_rate_q": plant_rate_q,
+        "iae_max_q_qs": iae_max_q_qs,
     }
 
 
