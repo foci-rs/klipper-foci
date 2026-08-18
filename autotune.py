@@ -810,6 +810,7 @@ class AutotuneWorkflow:
                         f"FOCI {self.driver.name}: "
                         f"{self._format_robustness_reversal_result()}{detail_suffix}"
                     )
+                    self._handle_robustness_verdict(gcmd)
                     return
                 if self.breakaway_campaign.done:
                     gcmd.respond_info(
@@ -945,6 +946,89 @@ class AutotuneWorkflow:
             "runtime_status": self.driver.state.runtime_status,
             "autotune_mode": self.driver.config.autotune_mode,
         }
+
+    def _handle_robustness_verdict(self, gcmd) -> None:
+        """Revert the deployed gain and config on a non-pass robustness verdict.
+
+        Runs in the separate robustness invocation. Reads the pre-tune snapshot
+        captured during the acceptance run; with no snapshot there is nothing to
+        revert (report only), except a safety fault, which still inhibits.
+        """
+        terminal = self.robustness_reversal_terminal
+        outcome = int(terminal["outcome"])
+        cause = int(terminal["cause"])
+        if outcome == 0:  # complete / pass
+            self.driver.state.pre_tune_snapshot = None
+            return
+        if outcome == 3 and cause == 6:  # failed / safety_fault
+            self._handle_robustness_safety_fault(gcmd)
+            return
+        snapshot = self.driver.state.pre_tune_snapshot
+        if snapshot is None:
+            return
+        self._revert_runtime_and_config(snapshot)
+        if outcome == 3:  # evidence-integrity / internal fault (cause 7/8)
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: robustness evidence-integrity fault; "
+                f"retained the pre-tune gain"
+            )
+        if snapshot["runtime_status"] == "commissioned":
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: robustness reject, no robust gain "
+                f"deployed; retained commissioned gains"
+            )
+        detail = "inconclusive - re-run" if outcome == 2 else "reject"
+        gcmd.respond_info(
+            f"FOCI {self.driver.name}: robustness {detail}; retained the pre-tune gain"
+        )
+
+    def _handle_robustness_safety_fault(self, gcmd) -> None:
+        """Revert config and block in-session enable without re-pushing.
+
+        Chip state is unknown after a mid-run safety fault, so the runtime
+        re-push is skipped; the prior gain returns on the next startup from the
+        reverted config. The enable-inhibit blocks the in-session leak.
+        """
+        snapshot = self.driver.state.pre_tune_snapshot
+        if snapshot is not None:
+            self._revert_config_only(snapshot)
+        self.driver.state.inhibited = True
+        self.driver.state.last_commission_failure = "robustness safety fault"
+        self.driver.homing.set_auto_calibrate_on_enable_allowed(False)
+        raise gcmd.error(
+            f"FOCI {self.driver.name}: robustness safety fault; motor enable "
+            f"inhibited until restart"
+        )
+
+    def _revert_config_only(self, snapshot: dict) -> None:
+        restage_keys = {
+            "velocity_p": "pid_velocity_p",
+            "velocity_i": "pid_velocity_i",
+            "position_p": "pid_position_p",
+            "position_i": "pid_position_i",
+            "velocity_limit": "pid_velocity_limit",
+            "velocity_filter_hz": "velocity_filter_hz",
+            "torque_filter_hz": "torque_filter_hz",
+            "position_filter_hz": "position_filter_hz",
+            "flux_filter_hz": "flux_filter_hz",
+        }
+        gains = snapshot["active_gains"]
+        configfile = self.driver.printer.lookup_object("configfile")
+        if gains is not None:
+            for gain_key, config_key in restage_keys.items():
+                value = gains.get(gain_key)
+                if value is not None:
+                    configfile.set(self.driver.name, config_key, f"{int(value)}")
+        if snapshot.get("autotune_mode") is not None:
+            configfile.set(self.driver.name, "autotune_mode", snapshot["autotune_mode"])
+        configfile.set(self.driver.name, "autotune_status", snapshot["runtime_status"])
+
+    def _revert_runtime_and_config(self, snapshot: dict) -> None:
+        gains = snapshot["active_gains"]
+        self.driver.state.active_gains = dict(gains) if gains is not None else None
+        self.driver.state.runtime_status = snapshot["runtime_status"]
+        self.driver.homing.apply_active_gains_to_firmware()
+        self._revert_config_only(snapshot)
 
     def persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
         """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""

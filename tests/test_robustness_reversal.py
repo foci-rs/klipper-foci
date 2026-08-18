@@ -561,11 +561,13 @@ def test_autotune_reports_the_robustness_reversal_terminal():
 
 
 def test_robustness_safety_fault_reports_outer_envelope_detail():
-    """A cause=6 robustness terminal must surface the outer-envelope detail.
+    """A cause=6 robustness terminal must surface the outer-envelope detail and
+    inhibit motor enable until restart.
 
     Regression guard for the reporting gap: the robustness gate's most
     important failure mode (safety_fault) previously reached the host with
-    only `cause=6` and no evidence of which envelope check tripped.
+    only `cause=6` and no evidence of which envelope check tripped. It now also
+    blocks in-session enable (chip state is unknown after a safety fault).
     """
     driver = ready_driver()
     reactor = driver.printer.get_reactor()
@@ -595,7 +597,8 @@ def test_robustness_safety_fault_reports_outer_envelope_detail():
 
     reactor.pause = finish_with_safety_fault
     gcmd = MockGCmd({"ACTION": "robustness_reversal"})
-    driver.autotune.autotune(gcmd)
+    with pytest.raises(CommandError, match="robustness safety fault"):
+        driver.autotune.autotune(gcmd)
 
     message = gcmd.last_info
     assert "robustness reversal: failed" in message
@@ -605,6 +608,7 @@ def test_robustness_safety_fault_reports_outer_envelope_detail():
     assert "velocity_counts_per_ms=-31" in message
     assert "cap_counts_per_ms=24" in message
     assert "budget=750mrev/6000mrev_s/3000ms dir=0x03" in message
+    assert driver.state.inhibited
 
 
 def test_autotune_raises_on_robustness_reversal_transport_failure():

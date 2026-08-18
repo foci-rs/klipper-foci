@@ -369,6 +369,140 @@ class TestAutotuneGates(unittest.TestCase):
             any("robustness reversal: rejected" in message for message in gcmd._responses)
         )
 
+    def _tuned_snapshot(self, velocity_p=999):
+        return {
+            "active_gains": {**SAMPLE_ACTIVE_GAINS, "velocity_p": velocity_p},
+            "runtime_status": "tuned",
+            "autotune_mode": "balanced",
+        }
+
+    def _run_robustness(self, d, outcome, cause):
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=outcome, cause=cause)}
+                )
+            return reactor._time
+
+        reactor.pause = pause
+        d.autotune.autotune(gcmd)
+        return gcmd
+
+    def test_reject_retune_reverts_full_set(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.state.runtime_status = "tuned"
+        cfg = d.printer.lookup_object("configfile")
+        gcmd = self._run_robustness(d, outcome=1, cause=3)
+        self.assertEqual(d.state.active_gains["velocity_p"], 999)
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "999")
+        self.assertEqual(
+            cfg.values[(d.name, "pid_velocity_limit")],
+            f"{int(SAMPLE_ACTIVE_GAINS['velocity_limit'])}",
+        )
+        self.assertEqual(
+            cfg.values[(d.name, "position_filter_hz")],
+            f"{int(SAMPLE_ACTIVE_GAINS['position_filter_hz'])}",
+        )
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+        self.assertEqual(cfg.values[(d.name, "autotune_mode")], "balanced")
+        self.assertTrue(any("retained the pre-tune gain" in m for m in gcmd._responses))
+
+    def test_reject_first_tune_errors_and_reverts_to_commissioned(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = {
+            "active_gains": {**SAMPLE_ACTIVE_GAINS, "velocity_p": 555},
+            "runtime_status": "commissioned",
+            "autotune_mode": None,
+        }
+        d.state.runtime_status = "tuned"
+        cfg = d.printer.lookup_object("configfile")
+        with self.assertRaises(CommandError):
+            self._run_robustness(d, outcome=1, cause=3)
+        self.assertEqual(d.state.active_gains["velocity_p"], 555)
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "commissioned")
+        self.assertFalse(d.state.inhibited)
+
+    def test_inconclusive_reverts_and_advises_rerun(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        gcmd = self._run_robustness(d, outcome=2, cause=4)
+        self.assertEqual(d.state.active_gains["velocity_p"], 999)
+        self.assertTrue(any("inconclusive" in m for m in gcmd._responses))
+
+    def test_evidence_integrity_failed_errors_on_retune(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        with self.assertRaises(CommandError):
+            self._run_robustness(d, outcome=3, cause=7)
+        self.assertEqual(d.state.active_gains["velocity_p"], 999)
+
+    def test_complete_clears_snapshot(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        self._run_robustness(d, outcome=0, cause=0)
+        self.assertIsNone(d.state.pre_tune_snapshot)
+
+    def test_snapshot_retained_across_reject(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        self._run_robustness(d, outcome=1, cause=3)
+        # Retained (not cleared) so a later re-run still has a revert target.
+        self.assertIsNotNone(d.state.pre_tune_snapshot)
+        self.assertEqual(d.state.pre_tune_snapshot["active_gains"]["velocity_p"], 999)
+
+    def test_reject_without_snapshot_reports_only(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = None
+        before = d.state.active_gains.copy()
+        gcmd = self._run_robustness(d, outcome=1, cause=3)
+        self.assertEqual(d.state.active_gains, before)
+        self.assertTrue(any("robustness reversal" in m for m in gcmd._responses))
+
+    def test_safety_fault_inhibits_without_repush(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        pushes = []
+        d.homing.apply_active_gains_to_firmware = lambda: pushes.append(True)
+        cfg = d.printer.lookup_object("configfile")
+        with self.assertRaises(CommandError):
+            self._run_robustness(d, outcome=3, cause=6)
+        self.assertTrue(d.state.inhibited)
+        self.assertEqual(pushes, [])
+        self.assertIsNotNone(d.state.last_commission_failure)
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+
+    def test_safety_fault_inhibits_without_snapshot(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = None
+        with self.assertRaises(CommandError):
+            self._run_robustness(d, outcome=3, cause=6)
+        self.assertTrue(d.state.inhibited)
+
     def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
