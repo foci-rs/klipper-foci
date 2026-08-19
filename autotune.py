@@ -639,8 +639,47 @@ class AutotuneWorkflow:
         self._retain_request_from_terminal(request_fields)
         return self.velocity_integral.outcome
 
-    def _run_one_dispatch(self, gcmd, action_code: int, request_fields: dict, toolhead) -> str:
+    def _rehome_and_center(self, gcmd, toolhead, safe_pose_move: str) -> None:
+        """Re-home the FOCI axes, re-align the encoder, and re-center.
+
+        Homing runs through Klipper's ``G28``; its calibrate-on-enable hook
+        re-runs FOCI encoder alignment. Only X and Y are re-homed -- the FOCI
+        axes -- because a breakaway terminal unhomes exactly those, while Z is
+        homed separately and re-homing it would add an unneeded probe cycle
+        between dispatches. The G28 homing hook re-acquires this driver's
+        operation lock, so release it across the re-home and take it back
+        afterward, matching the manual workflow where G28 ran with no FOCI lock
+        held. ``invalidate_homing`` then lands after the re-home so the axes are
+        left unhomed once the dispatch moves the motor in raw motor space.
+        """
+        gcode = self.driver.printer.lookup_object("gcode")
+        had_lock = self.driver.state.operation_lock
+        if had_lock:
+            self.driver.state.release()
+        try:
+            gcode.run_script_from_command("G28 X Y")
+        finally:
+            if had_lock and not self.driver.state.try_acquire():
+                raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
+        gcode.run_script_from_command(safe_pose_move)
+        toolhead.wait_moves()
+        self.driver.homing.invalidate_homing()
+
+    def _run_one_dispatch(
+        self,
+        gcmd,
+        action_code: int,
+        request_fields: dict,
+        toolhead,
+        safe_pose_move: str,
+    ) -> str:
         """Issue one firmware dispatch and wait for its terminal.
+
+        Every dispatch first re-homes and re-centers: a breakaway terminal
+        unhomes the axes and re-zeroes the encoder, so a chained dispatch would
+        otherwise run against an unaligned encoder and fail with "encoder not
+        aligned". The re-home runs unconditionally so it covers the first
+        dispatch, the auto-issued stage_c_resume, and any future chained stage.
 
         Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
         Returns the velocity-integral outcome name (for example
@@ -650,6 +689,7 @@ class AutotuneWorkflow:
         handled inline -- including raising on fault -- and returns its own
         marker, since none of those retry through a second dispatch.
         """
+        self._rehome_and_center(gcmd, toolhead, safe_pose_move)
         dispatch_fields = dict(request_fields, action=action_code)
         self.driver.protocol.run_tune(**dispatch_fields)
 
@@ -856,16 +896,15 @@ class AutotuneWorkflow:
                     f"{', '.join(readiness.unavailable_inputs)}"
                 )
 
+            safe_pose_move = format_safe_pose_move(motion_budget)
             gcode = self.driver.printer.lookup_object("gcode")
-            gcode.run_script_from_command(format_safe_pose_move(motion_budget))
+            gcode.run_script_from_command(safe_pose_move)
             toolhead.wait_moves()
             if not self.driver.state.is_calibrated:
                 raise gcmd.error(f"FOCI {self.driver.name}: calibration lost during safe-pose move")
             kin_status = toolhead.get_status(toolhead.get_last_move_time())
             if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
                 raise gcmd.error(f"FOCI {self.driver.name}: homing lost during safe-pose move")
-
-            self.driver.homing.invalidate_homing()
 
             if self.driver.state.commissioned_result is not None:
                 inner_lambda = self.driver.state.commissioned_result["lambda_us"]
@@ -910,7 +949,7 @@ class AutotuneWorkflow:
                 }
             )
 
-            outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead)
+            outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead, safe_pose_move)
             if outcome == "complete_candidate":
                 # The accepted candidate has not yet reproduced. Re-dispatch the
                 # exact same request under stage_c_resume so firmware rebuilds
@@ -921,6 +960,7 @@ class AutotuneWorkflow:
                     ACTION_CODES["stage_c_resume"],
                     request_fields,
                     toolhead,
+                    safe_pose_move,
                 )
                 if outcome != "tune_result":
                     raise gcmd.error(

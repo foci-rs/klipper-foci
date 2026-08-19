@@ -285,6 +285,74 @@ class TestAutotuneGates(unittest.TestCase):
             [ACTION_CODES["breakaway_seeded"], ACTION_CODES["stage_c_resume"]],
         )
 
+    def test_run_one_dispatch_rehomes_and_recenters_before_run_tune(self):
+        """The breakaway terminal unhomes the axes and re-zeroes the encoder,
+        so every firmware stage dispatch must re-home (G28, which also re-runs
+        calibrate-on-enable) and re-center before it issues run_tune."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcode = d.printer.lookup_object("gcode")
+        gcmd = MockGCmd({})
+        events = []
+        gcode.run_script_from_command = lambda command: events.append(("script", command))
+        d.protocol.run_tune = lambda **kw: events.append(("run_tune", kw["action"]))
+
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            _feed_dispatch_terminal(d.autotune, "tune_result")
+            return reactor._time
+
+        reactor.pause = pause
+        d.state.operation_lock = True  # autotune() holds the lock across dispatches
+
+        request_fields = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
+        d.autotune._run_one_dispatch(
+            gcmd,
+            ACTION_CODES["breakaway_seeded"],
+            request_fields,
+            toolhead,
+            "G0 X100.000 Y100.000",
+        )
+
+        self.assertEqual(events[0], ("script", "G28 X Y"))
+        self.assertEqual(events[1], ("script", "G0 X100.000 Y100.000"))
+        self.assertEqual(events[2], ("run_tune", ACTION_CODES["breakaway_seeded"]))
+
+    def test_each_stage_dispatch_is_preceded_by_a_rehome(self):
+        """Both the breakaway_seeded dispatch and the auto-issued stage_c_resume
+        dispatch must be preceded by their own G28 re-home -- the chained
+        resume otherwise runs against the encoder the first dispatch re-zeroed."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        gcode = d.printer.lookup_object("gcode")
+        events = []
+        gcode.run_script_from_command = lambda command: events.append(("script", command))
+        d.protocol.run_tune = lambda **kw: events.append(("run_tune", kw["action"]))
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_complete_candidate",
+            second_terminal="tune_result",
+        )
+
+        d.autotune.autotune(gcmd)
+
+        rehomed_since_dispatch = False
+        dispatches = 0
+        for kind, value in events:
+            if kind == "script" and value == "G28 X Y":
+                rehomed_since_dispatch = True
+            elif kind == "run_tune":
+                self.assertTrue(
+                    rehomed_since_dispatch,
+                    "stage dispatch was not preceded by a re-home",
+                )
+                dispatches += 1
+                rehomed_since_dispatch = False
+        self.assertEqual(dispatches, 2)
+
     def test_resume_inconclusive_errors_and_skips_persistence(self):
         d = self._commissioned_driver()
         persisted = []
@@ -1208,7 +1276,11 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         gcode = d.printer.lookup_object("gcode")
-        self.assertEqual(gcode._scripts, ["G0 X60.000 Y60.000"])
+        # Up-front safe-pose move, then the dispatch's own re-home + re-center.
+        self.assertEqual(
+            gcode._scripts,
+            ["G0 X60.000 Y60.000", "G28 X Y", "G0 X60.000 Y60.000"],
+        )
         self.assertEqual(
             d.protocol.commands.tune.last_args[-8:],
             [5000, 7500, 1, 1500, 250, 1250, 1250, 3000],
@@ -1645,7 +1717,11 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         request_fields = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
         outcome = d.autotune._run_one_dispatch(
-            gcmd, ACTION_CODES["breakaway_seeded"], request_fields, toolhead
+            gcmd,
+            ACTION_CODES["breakaway_seeded"],
+            request_fields,
+            toolhead,
+            "G0 X100.000 Y100.000",
         )
 
         self.assertEqual(outcome, "complete_candidate")
