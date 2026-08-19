@@ -121,6 +121,31 @@ SAMPLE_TUNE_RESULT = {
     "b_eff": 9,
 }
 
+# Production breakaway path: real provenance, zero-filled mechanical-ID
+# fields -- mirrors `robustness_pass_outer_result` in firmware, which never
+# runs mechanical identification.
+SAMPLE_TUNE_RESULT_WITH_PROVENANCE = {
+    "status": 0,
+    "warning_code": 0,
+    "velocity_p": 863,
+    "velocity_i": 12,
+    "position_p": 480,
+    "position_i": 4,
+    "velocity_limit": 400000,
+    "velocity_filter_hz": 120,
+    "torque_filter_hz": 200,
+    "position_filter_hz": 60,
+    "flux_filter_hz": 200,
+    "j_eff": 0,
+    "b_eff": 0,
+    "probed_velocity_mrev_s": 5366,
+    "d_eq_q": 1234,
+    "confidence_q": 5000,
+    "band_lower_percent": 70,
+    "band_upper_percent": 80,
+    "band_position_q": 3000,
+}
+
 
 def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     """Inject the terminal named by ``terminal`` into one dispatch's assemblers.
@@ -282,6 +307,42 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(d.state.active_gains["velocity_p"], 863)
         self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "863")
         self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+
+    def test_persist_writes_provenance_block(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT_WITH_PROVENANCE, "nominal", "tuned")
+        self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
+        self.assertEqual(cfg.values[(d.name, "autotune_d_eq_q")], "1234")
+        self.assertEqual(cfg.values[(d.name, "autotune_confidence_q")], "5000")
+        self.assertEqual(cfg.values[(d.name, "autotune_band_lower_percent")], "70")
+        self.assertEqual(cfg.values[(d.name, "autotune_band_upper_percent")], "80")
+        self.assertEqual(cfg.values[(d.name, "autotune_band_position_q")], "3000")
+
+    def test_persist_skips_identified_fields_for_production_provenance(self):
+        """Nonzero probed_velocity_mrev_s marks the breakaway path, which never
+        runs mechanical ID -- j_eff/b_eff are meaningless zeros there, so they
+        must not be written."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT_WITH_PROVENANCE, "nominal", "tuned")
+        self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
+        self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
+
+    def test_persist_writes_identified_fields_for_legacy_result(self):
+        """SAMPLE_TUNE_RESULT carries no provenance keys (legacy mechanical-ID
+        path, matching `step_commit`'s zero-filled TuneProvenance): the real
+        j_eff/b_eff must still land in printer.cfg, and no provenance keys."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT, "nominal", "tuned")
+        self.assertEqual(cfg.values[(d.name, "identified_j_eff")], "33")
+        self.assertEqual(cfg.values[(d.name, "identified_b_eff")], "9")
+        self.assertNotIn((d.name, "autotune_probed_velocity_mrev_s"), cfg.values)
+        self.assertNotIn((d.name, "autotune_band_lower_percent"), cfg.values)
 
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()

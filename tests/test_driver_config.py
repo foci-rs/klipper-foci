@@ -153,6 +153,12 @@ CONFIG_FIELD_NAMES = {
     "autotune_profile",
     "autotune_mode",
     "autotune_status",
+    "autotune_probed_velocity_mrev_s",
+    "autotune_d_eq_q",
+    "autotune_confidence_q",
+    "autotune_band_lower_percent",
+    "autotune_band_upper_percent",
+    "autotune_band_position_q",
 }
 
 

@@ -153,6 +153,12 @@ class FociDriverConfig:
     autotune_profile: str | None
     autotune_mode: str | None
     autotune_status: str | None
+    autotune_probed_velocity_mrev_s: int | None
+    autotune_d_eq_q: int | None
+    autotune_confidence_q: int | None
+    autotune_band_lower_percent: int | None
+    autotune_band_upper_percent: int | None
+    autotune_band_position_q: int | None
 
 
 @dataclass
@@ -510,6 +516,20 @@ def parse_driver_config(config) -> FociDriverConfig:
     autotune_profile = config.get("autotune_profile", None)
     autotune_mode = config.get("autotune_mode", None)
     autotune_status = config.get("autotune_status", None)
+    autotune_probed_velocity_mrev_s = config.getint(
+        "autotune_probed_velocity_mrev_s", None, minval=0
+    )
+    autotune_d_eq_q = config.getint("autotune_d_eq_q", None)
+    autotune_confidence_q = config.getint("autotune_confidence_q", None, minval=0, maxval=0xFFFF)
+    autotune_band_lower_percent = config.getint(
+        "autotune_band_lower_percent", None, minval=0, maxval=100
+    )
+    autotune_band_upper_percent = config.getint(
+        "autotune_band_upper_percent", None, minval=0, maxval=100
+    )
+    autotune_band_position_q = config.getint(
+        "autotune_band_position_q", None, minval=0, maxval=0xFFFF
+    )
 
     if not config.has_section(stepper_name):
         raise config.error(f"[{name}] cannot find stepper section for '{stepper_name}'")
@@ -687,6 +707,12 @@ def parse_driver_config(config) -> FociDriverConfig:
         autotune_profile=autotune_profile,
         autotune_mode=autotune_mode,
         autotune_status=autotune_status,
+        autotune_probed_velocity_mrev_s=autotune_probed_velocity_mrev_s,
+        autotune_d_eq_q=autotune_d_eq_q,
+        autotune_confidence_q=autotune_confidence_q,
+        autotune_band_lower_percent=autotune_band_lower_percent,
+        autotune_band_upper_percent=autotune_band_upper_percent,
+        autotune_band_position_q=autotune_band_position_q,
     )
 
 

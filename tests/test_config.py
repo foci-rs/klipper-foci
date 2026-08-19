@@ -723,6 +723,59 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
     assert driver.config.autotune_status == "commissioned"
 
 
+def test_config_reads_optional_provenance():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    sections["foci stepper_x"].update(
+        {
+            "autotune_status": "tuned",
+            "autotune_probed_velocity_mrev_s": "5366",
+            "autotune_d_eq_q": "1234",
+            "autotune_confidence_q": "5000",
+            "autotune_band_lower_percent": "70",
+            "autotune_band_upper_percent": "80",
+            "autotune_band_position_q": "3000",
+        }
+    )
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    assert driver.config.autotune_probed_velocity_mrev_s == 5366
+    assert driver.config.autotune_d_eq_q == 1234
+    assert driver.config.autotune_confidence_q == 5000
+    assert driver.config.autotune_band_lower_percent == 70
+    assert driver.config.autotune_band_upper_percent == 80
+    assert driver.config.autotune_band_position_q == 3000
+
+
+def test_config_provenance_defaults_to_none_when_absent():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    assert driver.config.autotune_probed_velocity_mrev_s is None
+    assert driver.config.autotune_d_eq_q is None
+    assert driver.config.autotune_confidence_q is None
+    assert driver.config.autotune_band_lower_percent is None
+    assert driver.config.autotune_band_upper_percent is None
+    assert driver.config.autotune_band_position_q is None
+
+
 def test_saved_resistance_identification_fields_are_accepted_on_restart():
     printer, _chips, sections = make_config_printer(
         {

@@ -1125,7 +1125,34 @@ class AutotuneWorkflow:
             "torque_filter_hz",
             f"{int(result['torque_filter_hz'])}",
         )
-        configfile.set(self.driver.name, "identified_j_eff", f"{int(result['j_eff'])}")
-        configfile.set(self.driver.name, "identified_b_eff", f"{int(result['b_eff'])}")
+        probed_velocity_mrev_s = int(result.get("probed_velocity_mrev_s", 0))
+        if probed_velocity_mrev_s:
+            # Breakaway-seeded production path: real provenance, no mechanical
+            # ID ever ran, so j_eff/b_eff are meaningless zeros -- skip them.
+            configfile.set(
+                self.driver.name,
+                "autotune_probed_velocity_mrev_s",
+                f"{probed_velocity_mrev_s}",
+            )
+            configfile.set(self.driver.name, "autotune_d_eq_q", f"{int(result['d_eq_q'])}")
+            configfile.set(
+                self.driver.name, "autotune_confidence_q", f"{int(result['confidence_q'])}"
+            )
+            configfile.set(
+                self.driver.name,
+                "autotune_band_lower_percent",
+                f"{int(result['band_lower_percent'])}",
+            )
+            configfile.set(
+                self.driver.name,
+                "autotune_band_upper_percent",
+                f"{int(result['band_upper_percent'])}",
+            )
+            configfile.set(
+                self.driver.name, "autotune_band_position_q", f"{int(result['band_position_q'])}"
+            )
+        else:
+            configfile.set(self.driver.name, "identified_j_eff", f"{int(result['j_eff'])}")
+            configfile.set(self.driver.name, "identified_b_eff", f"{int(result['b_eff'])}")
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)
