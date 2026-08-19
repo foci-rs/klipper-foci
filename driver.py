@@ -11,6 +11,7 @@ from .commissioning import (
 )
 from .config import (
     FociControlSettings,
+    check_autotune_staleness,
     parse_driver_config,
     validate_runtime_config,
 )
@@ -215,7 +216,27 @@ class FociDriver:
         validation = validate_runtime_config(self.config)
         self.state.runtime_status = validation.runtime_status
         self.state.active_gains = validation.active_gains
+        self._warn_if_tuned_below_operating_range()
         self.homing.apply_initial_state()
+
+    def _warn_if_tuned_below_operating_range(self) -> None:
+        """Compare the configured operating velocity against the probed tune.
+
+        Advisory only: this runs inside a ``klippy:connect`` handler, where
+        Klipper's connect dispatcher treats any raised exception as a fatal
+        "Internal error during connect" and aborts startup. A malformed or
+        unavailable toolhead status must therefore degrade to "no warning",
+        never to a startup failure.
+        """
+        toolhead = self.printer.lookup_object("toolhead", None)
+        if toolhead is None:
+            return
+        try:
+            status = toolhead.get_status(toolhead.get_last_move_time())
+            operating_velocity_mm_s = float(status["max_velocity"])
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return
+        check_autotune_staleness(self.config, operating_velocity_mm_s)
 
     def _report_motion_scale_mapping(self) -> None:
         """Explain the deterministic startup mapping without overriding firmware."""

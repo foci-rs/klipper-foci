@@ -1,6 +1,7 @@
 """Tests for FOCI MCU config-build command emission."""
 
 import pytest
+from klipper_foci.config import velocity_mm_s_to_mrev_s
 
 from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
 
@@ -911,3 +912,136 @@ def test_resistance_test_registers_in_expert_mode():
     printer = build_driver_with_mode("expert")
 
     assert "FOCI_RESISTANCE_TEST" in registered_command_names(printer)
+
+
+def test_velocity_mm_s_to_mrev_s_converts_via_rotation_distance():
+    # rotation_distance=40mm/rev, 300mm/s -> 7.5rev/s -> 7500mrev/s
+    assert velocity_mm_s_to_mrev_s(300.0, 40.0) == pytest.approx(7500.0)
+
+
+def test_staleness_warns_when_operating_exceeds_probed(caplog):
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "rotation_distance": 40.0,
+            },
+        }
+    )
+    sections["foci stepper_x"]["autotune_status"] = "tuned"
+    sections["foci stepper_x"]["autotune_probed_velocity_mrev_s"] = "5366"
+    printer._objects["toolhead"].max_velocity = 300.0  # 7500mrev/s, well above probed
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert "tuned below operating range" in caplog.text
+    assert "FOCI_AUTOTUNE" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("probed_mrev_s", "max_velocity_mm_s", "case"),
+    (
+        (8000, 300.0, "below_probed"),  # 7500mrev/s < 8000mrev/s
+        (7500, 300.0, "equal_to_probed"),  # 7500mrev/s == 7500mrev/s
+        (1000, 44.0, "exactly_at_margin_threshold"),  # 1100mrev/s == 1000 * 1.10
+    ),
+)
+def test_staleness_does_not_warn_at_or_within_margin_boundary(
+    caplog, probed_mrev_s, max_velocity_mm_s, case
+):
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "rotation_distance": 40.0,
+            },
+        }
+    )
+    sections["foci stepper_x"]["autotune_status"] = "tuned"
+    sections["foci stepper_x"]["autotune_probed_velocity_mrev_s"] = str(probed_mrev_s)
+    printer._objects["toolhead"].max_velocity = max_velocity_mm_s
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert "tuned below operating range" not in caplog.text, case
+
+
+def test_staleness_does_not_raise_or_warn_when_max_velocity_is_non_numeric(caplog):
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "rotation_distance": 40.0,
+            },
+        }
+    )
+    sections["foci stepper_x"]["autotune_status"] = "tuned"
+    sections["foci stepper_x"]["autotune_probed_velocity_mrev_s"] = "5366"
+    printer._objects["toolhead"].max_velocity = "not-a-number"
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()  # must not raise
+
+    assert "tuned below operating range" not in caplog.text
+
+
+def test_staleness_does_not_raise_or_warn_when_toolhead_status_raises(caplog):
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "rotation_distance": 40.0,
+            },
+        }
+    )
+    sections["foci stepper_x"]["autotune_status"] = "tuned"
+    sections["foci stepper_x"]["autotune_probed_velocity_mrev_s"] = "5366"
+
+    def _raise_get_status(_time):
+        raise AttributeError("toolhead status unavailable")
+
+    printer._objects["toolhead"].get_status = _raise_get_status
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()  # must not raise
+
+    assert "tuned below operating range" not in caplog.text
+
+
+def test_staleness_does_not_warn_when_probed_velocity_absent(caplog):
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+                "rotation_distance": 40.0,
+            },
+        }
+    )
+    printer._objects["toolhead"].max_velocity = 300.0
+
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert "tuned below operating range" not in caplog.text

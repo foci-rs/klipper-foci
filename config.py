@@ -813,3 +813,45 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
         status,
     )
     return RuntimeValidationResult(status, active_gains)
+
+
+# Operating velocity must clear the probed velocity by this percentage before
+# FOCI warns of a stale tune. A pure equality check would fire on ordinary
+# rounding/unit-conversion noise between nominally-equal probed and operating
+# velocities; 10% is large enough to absorb that noise while still catching a
+# genuine increase in configured operating range.
+AUTOTUNE_STALENESS_MARGIN_PERCENT = 10
+
+
+def velocity_mm_s_to_mrev_s(velocity_mm_s: float, rotation_distance_mm: float) -> float:
+    """Convert a printer-space linear velocity (mm/s) to motor mrev/s.
+
+    ``rev/s = mm_s / rotation_distance``, ``mrev_s = rev/s * 1000``.
+    """
+    return (velocity_mm_s / rotation_distance_mm) * 1000.0
+
+
+def check_autotune_staleness(config: FociDriverConfig, operating_velocity_mm_s: float) -> None:
+    """Warn when the configured operating velocity outruns the probed tune.
+
+    ``autotune_probed_velocity_mrev_s`` records the highest velocity
+    FOCI_AUTOTUNE actually probed while producing the deployed gain. If the
+    operating velocity now exceeds that by more than
+    ``AUTOTUNE_STALENESS_MARGIN_PERCENT``, the gain was never validated up
+    there. This is advisory only: it never raises and never blocks startup.
+    Silent when the driver has no recorded probe velocity (untuned, or a
+    tune saved before this provenance field existed).
+    """
+    probed_mrev_s = config.autotune_probed_velocity_mrev_s
+    if probed_mrev_s is None:
+        return
+    operating_mrev_s = velocity_mm_s_to_mrev_s(operating_velocity_mm_s, config.rotation_distance)
+    threshold_mrev_s = probed_mrev_s * (100 + AUTOTUNE_STALENESS_MARGIN_PERCENT) / 100.0
+    if operating_mrev_s > threshold_mrev_s:
+        logging.warning(
+            "FOCI %s: tuned below operating range (probed up to %dmrev_s, operating at "
+            "%.0fmrev_s); re-run FOCI_AUTOTUNE to retune for the current velocity",
+            config.name,
+            probed_mrev_s,
+            operating_mrev_s,
+        )
