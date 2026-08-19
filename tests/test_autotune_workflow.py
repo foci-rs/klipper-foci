@@ -105,19 +105,36 @@ SAMPLE_STAGE_C_RESUME_RESULT = {
     "b_eff": 11,
 }
 
+SAMPLE_TUNE_RESULT = {
+    "status": 0,
+    "warning_code": 0,
+    "velocity_p": 863,
+    "velocity_i": 12,
+    "position_p": 480,
+    "position_i": 4,
+    "velocity_limit": 400000,
+    "velocity_filter_hz": 120,
+    "torque_filter_hz": 200,
+    "position_filter_hz": 60,
+    "flux_filter_hz": 200,
+    "j_eff": 33,
+    "b_eff": 9,
+}
 
-def _feed_dispatch_terminal(workflow, terminal):
+
+def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     """Inject the terminal named by ``terminal`` into one dispatch's assemblers.
 
-    "tune_result" delivers a full firmware TuneResult (``handle_tune_result``).
-    Any other name is treated as a velocity-integral outcome and is stamped
-    directly onto the assembler -- the same lightweight pattern already used by
-    ``test_workflow_finishes_for_a_refusal_that_declared_no_envelope`` -- since
-    these orchestration tests only care that ``autotune()`` reacts to the right
-    outcome name, not that the underlying evidence is wire-valid.
+    "tune_result" delivers a full firmware TuneResult (``handle_tune_result``),
+    defaulting to ``SAMPLE_STAGE_C_RESUME_RESULT`` unless ``tune_result`` names a
+    different payload. Any other name is treated as a velocity-integral outcome
+    and is stamped directly onto the assembler -- the same lightweight pattern
+    already used by ``test_workflow_finishes_for_a_refusal_that_declared_no_envelope``
+    -- since these orchestration tests only care that ``autotune()`` reacts to
+    the right outcome name, not that the underlying evidence is wire-valid.
     """
     if terminal == "tune_result":
-        workflow.handle_tune_result(dict(SAMPLE_STAGE_C_RESUME_RESULT))
+        workflow.handle_tune_result(dict(tune_result or SAMPLE_STAGE_C_RESUME_RESULT))
         return
     outcome = "inconclusive" if terminal == "velocity_integral_inconclusive" else terminal
     workflow.velocity_integral.outcome = outcome
@@ -125,14 +142,16 @@ def _feed_dispatch_terminal(workflow, terminal):
     workflow.velocity_integral.done = True
 
 
-def drive_two_dispatch_scenario(d, *, first_terminal, second_terminal):
+def drive_two_dispatch_scenario(d, *, first_terminal, second_terminal, tune_result=None):
     """Feed a two-dispatch FOCI_AUTOTUNE scenario through the mocked reactor.
 
     Each firmware dispatch gets exactly one simulated ``reactor.pause``: the
     first delivers ``first_terminal``, the second (issued only when the first
     was "complete_candidate") delivers ``second_terminal``. This wraps whatever
     ``run_tune`` is already installed (tests may replace it beforehand to
-    observe the dispatched actions) purely to count dispatches.
+    observe the dispatched actions) purely to count dispatches. ``tune_result``
+    is forwarded to ``_feed_dispatch_terminal`` when either terminal is
+    "tune_result", letting callers assert on distinguishable field values.
     """
     reactor = d.printer.get_reactor()
     previous_run_tune = d.protocol.run_tune
@@ -147,7 +166,7 @@ def drive_two_dispatch_scenario(d, *, first_terminal, second_terminal):
     def pause(deadline):
         reactor._time = deadline
         terminal = first_terminal if dispatch_count["n"] == 1 else second_terminal
-        _feed_dispatch_terminal(d.autotune, terminal)
+        _feed_dispatch_terminal(d.autotune, terminal, tune_result)
         return reactor._time
 
     reactor.pause = pause
@@ -242,6 +261,27 @@ class TestAutotuneGates(unittest.TestCase):
             d.autotune.autotune(MockGCmd({}))
 
         self.assertEqual(persisted, [])
+
+    def test_production_tune_result_deploys_and_persists(self):
+        """The promoted resume dispatch emits no host-terminal velocity-integral
+        or robustness reply (Tasks 3-4); the wait loop must exit on
+        ``self.done`` (set by ``handle_tune_result``) and fall through to the
+        same deploy + persist tail a standalone accepted run already uses."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="complete_candidate",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(d.state.active_gains["velocity_p"], 863)
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "863")
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
 
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()
@@ -465,6 +505,121 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertTrue(
             any("robustness reversal: rejected" in message for message in gcmd._responses)
         )
+
+    def test_standalone_robustness_still_reports_only(self):
+        """ACTION=robustness_reversal is the standalone diagnostic: a reject
+        must keep formatting the report-only result, exactly as before the
+        production-path disambiguation was added, and must not persist."""
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+        reactor = d.printer.get_reactor()
+        persisted = []
+        d.autotune.persist_tune_results = lambda *args, **kwargs: persisted.append((args, kwargs))
+
+        def pause_with_rejected_robustness(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=1, cause=3)}
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_rejected_robustness
+
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(persisted, [])
+        self.assertTrue(
+            any("robustness reversal: rejected" in message for message in gcmd._responses)
+        )
+
+    def test_production_path_robustness_terminal_raises(self):
+        """The inline production dispatch (default ACTION=breakaway_seeded)
+        promotes straight to a TuneResult on a robustness pass, so a
+        RobustnessReversalTerminal reaching this dispatch at all is a fault.
+        It must raise instead of taking the standalone report-only path."""
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded
+        reactor = d.printer.get_reactor()
+
+        def pause_with_rejected_robustness(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=1, cause=3)}
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_rejected_robustness
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+        self.assertIn("robustness reversal", str(ctx.exception))
+
+    def test_production_path_safety_fault_inhibits_enable(self):
+        """A safety-fault robustness terminal (outcome=3, cause=6) on the inline
+        production dispatch must still inhibit motor enable, exactly as the
+        standalone diagnostic does -- chip state is unknown after a mid-run
+        safety fault regardless of which ACTION triggered the run, and no
+        terminal-owned motor_disable follows this path (unlike status>1 hard
+        faults), so the inhibit is the only thing blocking a re-energize."""
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded
+        reactor = d.printer.get_reactor()
+
+        def pause_with_safety_fault(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=3, cause=6)}
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_safety_fault
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(gcmd)
+
+        self.assertTrue(d.state.inhibited)
 
     def _tuned_snapshot(self, velocity_p=999):
         return {

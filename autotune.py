@@ -703,6 +703,26 @@ class AutotuneWorkflow:
                 f"FOCI {self.driver.name}: "
                 f"{self._format_robustness_reversal_result()}{detail_suffix}"
             )
+            if action_code != ACTION_CODES["robustness_reversal"]:
+                # The production dispatch (breakaway_seeded / stage_c_resume)
+                # promotes straight to a TuneResult on a robustness pass, so a
+                # terminal reaching here at all means robustness rejected or
+                # faulted mid-dispatch. The report-only verdict below is for the
+                # standalone diagnostic; the production path must fail loudly.
+                terminal = self.robustness_reversal_terminal
+                if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
+                    # Safety fault: chip state is unknown afterward and this
+                    # path issues no terminal-owned motor_disable, so the
+                    # enable-inhibit is the only thing blocking a subsequent
+                    # SET_STEPPER_ENABLE from re-energizing blind. Raises on
+                    # its own.
+                    self._handle_robustness_safety_fault(gcmd)
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
+                    f"the production path: {terminal.get('outcome_name', 'unknown')} "
+                    f"(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
+                    f"{detail_suffix}"
+                )
             self._handle_robustness_verdict(gcmd)
             return "robustness_reversal"
         if self.breakaway_campaign.done:
