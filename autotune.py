@@ -616,6 +616,29 @@ class AutotuneWorkflow:
         self.robustness_workflow_plan = None
         self.driver.commissioning.error_code = 0
 
+    def _finish_velocity_integral_terminal(self, gcmd, request_fields: dict) -> str:
+        """Report a velocity-integral terminal, raise on fault, and retain
+        the request identity for a possible stage_c_resume dispatch.
+
+        Firmware emits this terminal from two places that must resolve
+        identically: a plain Stage-C dispatch, and an accepted breakaway
+        campaign (where it lands in the same dispatch as the campaign's own
+        acceptance terminal). Both call this helper so the returned outcome
+        -- for example "complete_candidate" -- always reaches the caller
+        instead of being masked by a workflow-specific marker.
+        """
+        gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}")
+        if self.velocity_integral.outcome == "fault":
+            safety_detail = self._format_outer_safety_fault()
+            detail_suffix = f"; {safety_detail}" if safety_detail else ""
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: velocity integral response fault (cause="
+                f"{int(self.velocity_integral.terminal.get('cause', 0))})"
+                f"{detail_suffix}"
+            )
+        self._retain_request_from_terminal(request_fields)
+        return self.velocity_integral.outcome
+
     def _run_one_dispatch(self, gcmd, action_code: int, request_fields: dict, toolhead) -> str:
         """Issue one firmware dispatch and wait for its terminal.
 
@@ -741,30 +764,18 @@ class AutotuneWorkflow:
                 # active_gains assignment below.
                 return "breakaway_campaign"
             if self.velocity_integral.done:
-                gcmd.respond_info(
-                    f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"
-                )
-                if self.velocity_integral.outcome == "fault":
-                    safety_detail = self._format_outer_safety_fault()
-                    detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: velocity integral response fault "
-                        f"(cause={int(self.velocity_integral.terminal.get('cause', 0))}"
-                        f"){detail_suffix}"
-                    )
+                # An accepted breakaway campaign reaches its
+                # velocity-integral terminal in the SAME dispatch as this
+                # campaign-acceptance terminal -- resolve it the same way
+                # the non-breakaway path below does, so a complete_candidate
+                # outcome still drives the caller's stage_c_resume dispatch
+                # instead of being masked by the generic marker below.
+                return self._finish_velocity_integral_terminal(gcmd, request_fields)
+            # Accepted with no velocity-integral terminal in this dispatch
+            # yet: a degenerate, rare shape with nothing further to report.
             return "breakaway_campaign"
-        self._retain_request_from_terminal(request_fields)
         if self.velocity_integral.done:
-            gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}")
-            if self.velocity_integral.outcome == "fault":
-                safety_detail = self._format_outer_safety_fault()
-                detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: velocity integral response fault (cause="
-                    f"{int(self.velocity_integral.terminal.get('cause', 0))})"
-                    f"{detail_suffix}"
-                )
-            return self.velocity_integral.outcome
+            return self._finish_velocity_integral_terminal(gcmd, request_fields)
         return "velocity_integral_incomplete"
 
     def autotune(self, gcmd) -> None:

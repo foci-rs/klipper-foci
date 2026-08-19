@@ -161,6 +161,17 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     if terminal == "tune_result":
         workflow.handle_tune_result(dict(tune_result or SAMPLE_STAGE_C_RESUME_RESULT))
         return
+    if terminal == "breakaway_accepted_complete_candidate":
+        # Real firmware behavior: an accepted breakaway_seeded run reaches
+        # its velocity-integral terminal in the SAME dispatch as the
+        # breakaway campaign's own acceptance terminal -- both terminals
+        # land together, not one after the other.
+        workflow.breakaway_campaign.done = True
+        workflow.breakaway_campaign.accepted = True
+        workflow.velocity_integral.outcome = "complete_candidate"
+        workflow.velocity_integral.terminal = {"cause": 0}
+        workflow.velocity_integral.done = True
+        return
     outcome = "inconclusive" if terminal == "velocity_integral_inconclusive" else terminal
     workflow.velocity_integral.outcome = outcome
     workflow.velocity_integral.terminal = {"cause": 0}
@@ -262,7 +273,9 @@ class TestAutotuneGates(unittest.TestCase):
         issued = []
         d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
         drive_two_dispatch_scenario(
-            d, first_terminal="complete_candidate", second_terminal="tune_result"
+            d,
+            first_terminal="breakaway_accepted_complete_candidate",
+            second_terminal="tune_result",
         )
 
         d.autotune.autotune(gcmd)
@@ -278,7 +291,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.autotune.persist_tune_results = lambda *a, **k: persisted.append((a, k))
         drive_two_dispatch_scenario(
             d,
-            first_terminal="complete_candidate",
+            first_terminal="breakaway_accepted_complete_candidate",
             second_terminal="velocity_integral_inconclusive",
         )
 
@@ -297,7 +310,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.printer._objects["configfile"] = cfg
         drive_two_dispatch_scenario(
             d,
-            first_terminal="complete_candidate",
+            first_terminal="breakaway_accepted_complete_candidate",
             second_terminal="tune_result",
             tune_result=SAMPLE_TUNE_RESULT,
         )
@@ -1610,6 +1623,33 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
             any("breakaway campaign accepted" in message for message in gcmd._responses)
         )
         self.assertTrue(any("integral response" in message for message in gcmd._responses))
+
+    def test_accepted_breakaway_dual_terminal_returns_candidate_outcome(self):
+        """Real firmware behavior: an accepted breakaway_seeded run reaches
+        its velocity-integral terminal in the SAME dispatch as the
+        breakaway campaign's own acceptance terminal, both done together.
+        The dispatch must surface the velocity-integral outcome (so the
+        orchestrator can auto-issue stage_c_resume) and retain the request
+        identity, not fall back to the generic "breakaway_campaign" marker
+        that only applies when no velocity-integral terminal arrived yet."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcmd = MockGCmd({})
+        d.protocol.run_tune = lambda **kw: None
+
+        d.autotune.breakaway_campaign.done = True
+        d.autotune.breakaway_campaign.accepted = True
+        d.autotune.velocity_integral.outcome = "complete_candidate"
+        d.autotune.velocity_integral.terminal = {"cause": 0}
+        d.autotune.velocity_integral.done = True
+
+        request_fields = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
+        outcome = d.autotune._run_one_dispatch(
+            gcmd, ACTION_CODES["breakaway_seeded"], request_fields, toolhead
+        )
+
+        self.assertEqual(outcome, "complete_candidate")
+        self.assertEqual(d.autotune._stage_b_candidate_request, request_fields)
 
     def test_operator_report_relays_geometry_margin_and_confirmation_bounds(self):
         """Brief step 3: the breakaway seed, additive geometry, nomination
