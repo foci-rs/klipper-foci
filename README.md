@@ -95,14 +95,16 @@ result is expected and not a regression, and the command is simply re-run.
 Confirm for each axis:
 
 - The command completes without error and reports a full pass, not a
-  robustness reject or fault. A reject or fault persists nothing and inhibits
-  motor enable until re-commissioned.
-- `printer.cfg` (or the `SAVE_CONFIG` autosave block) now carries
-  `autotune_status = tuned` or `tuned_conservative` for that stepper, the
-  tuned outer gains, and the provenance block
-  (`autotune_probed_velocity_mrev_s`, `autotune_d_eq_q`,
+  robustness reject or fault. A reject or fault persists nothing and fails
+  the command, and firmware de-energizes the motor; only a robustness safety
+  fault additionally inhibits motor enable until re-commissioned.
+- After `SAVE_CONFIG` (which restarts the firmware), `printer.cfg` (or the
+  `SAVE_CONFIG` autosave block) carries `autotune_status = tuned` or
+  `tuned_conservative` for that stepper, the tuned outer gains, and the
+  provenance block (`autotune_probed_velocity_mrev_s`, `autotune_d_eq_q`,
   `autotune_confidence_q`, `autotune_band_lower_percent`/`_upper_percent`,
-  `autotune_band_position_q`).
+  `autotune_band_position_q`). `FOCI_AUTOTUNE` only stages these values via
+  `configfile.set()`; they are not on disk until `SAVE_CONFIG` runs.
 
 ### 2. Production motion matrix
 
