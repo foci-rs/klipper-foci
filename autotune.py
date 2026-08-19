@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from .acceptance_matrix import (
+    ACTION_CODES,
     AcceptanceMatrixAssembler,
     AcceptanceMatrixProtocolError,
     parse_autotune_action,
@@ -592,6 +593,160 @@ class AutotuneWorkflow:
                 f"{state or 'unknown'})"
             )
 
+    def _reset_dispatch_state(self) -> None:
+        """Clear the per-dispatch assemblers before issuing one firmware dispatch.
+
+        Runs once before each ``_run_one_dispatch`` call, including the second
+        one auto-issued after a CompleteCandidate terminal, so the resume
+        dispatch assembles its own evidence rather than mixing state left over
+        from the candidate run.
+        """
+        self.done = False
+        self.result = None
+        self.outer_safety_fault = None
+        self.velocity_integral = VelocityIntegralAssembler()
+        self.velocity_integral_error = None
+        self.acceptance_matrix = AcceptanceMatrixAssembler()
+        self.acceptance_matrix_error = None
+        self.breakaway_campaign = BreakawayCampaignAssembler()
+        self.breakaway_campaign_error = None
+        self.robustness_reversal_terminal = None
+        self.robustness_reversal_error = None
+        self.robustness_cycle_evidence = {}
+        self.robustness_workflow_plan = None
+        self.driver.commissioning.error_code = 0
+
+    def _run_one_dispatch(self, gcmd, action_code: int, request_fields: dict, toolhead) -> str:
+        """Issue one firmware dispatch and wait for its terminal.
+
+        Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
+        Returns the velocity-integral outcome name (for example
+        "complete_candidate" or "inconclusive") when the workflow finished via a
+        plain Stage-C evidence terminal instead. Any other workflow (velocity
+        confidence matrix, robustness reversal, or breakaway campaign) is fully
+        handled inline -- including raising on fault -- and returns its own
+        marker, since none of those retry through a second dispatch.
+        """
+        dispatch_fields = dict(request_fields, action=action_code)
+        self.driver.protocol.run_tune(**dispatch_fields)
+
+        reactor = self.driver.printer.get_reactor()
+        eventtime = reactor.monotonic()
+        timeout = eventtime + COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S
+        workflow_timeout_armed = False
+        while not self.done and not self._workflow_finished():
+            eventtime = reactor.pause(eventtime + 0.1)
+            if self.velocity_integral_error is not None:
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: velocity integral transport failure: "
+                    f"{self.velocity_integral_error}"
+                )
+            if self.acceptance_matrix_error is not None:
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: velocity confidence transport failure: "
+                    f"{self.acceptance_matrix_error}"
+                )
+            if self.breakaway_campaign_error is not None:
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: breakaway campaign transport failure: "
+                    f"{self.breakaway_campaign_error}"
+                )
+            if self.robustness_reversal_error is not None:
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: robustness reversal transport failure: "
+                    f"{self.robustness_reversal_error}"
+                )
+            if (
+                self.velocity_integral.workflow_plan is not None
+                or self.acceptance_matrix.workflow_plan is not None
+                or self.robustness_workflow_plan is not None
+            ) and not workflow_timeout_armed:
+                if self.robustness_workflow_plan is not None:
+                    maximum_duration_s = (
+                        int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
+                    )
+                elif self.acceptance_matrix.workflow_plan is not None:
+                    maximum_duration_s = self.acceptance_matrix.maximum_duration_s
+                else:
+                    maximum_duration_s = self.velocity_integral.maximum_duration_s
+                timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
+                workflow_timeout_armed = True
+            if eventtime > timeout:
+                phase = "run" if workflow_timeout_armed else "waiting for plan"
+                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE timed out {phase}")
+            if self.driver.commissioning.error_code != 0:
+                error_name = COMMISSION_ERROR_NAMES.get(
+                    self.driver.commissioning.error_code,
+                    f"UNKNOWN({int(self.driver.commissioning.error_code)})",
+                )
+                self.driver.commissioning.maybe_clear_calibration_for_chip_reset(
+                    self.driver.commissioning.error_code
+                )
+                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
+
+        if not self._workflow_finished():
+            return "tune_result"
+
+        self._synchronize_disarmed_workflow_terminal(toolhead)
+        if self.acceptance_matrix.done:
+            gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_acceptance_matrix_result()}")
+            if self.acceptance_matrix.outcome in ("fault", "failed"):
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: velocity confidence matrix "
+                    f"{self.acceptance_matrix.outcome}"
+                )
+            return "acceptance_matrix"
+        if self.robustness_reversal_terminal is not None:
+            safety_detail = self._format_outer_safety_fault()
+            detail_suffix = f"; {safety_detail}" if safety_detail else ""
+            gcmd.respond_info(
+                f"FOCI {self.driver.name}: "
+                f"{self._format_robustness_reversal_result()}{detail_suffix}"
+            )
+            self._handle_robustness_verdict(gcmd)
+            return "robustness_reversal"
+        if self.breakaway_campaign.done:
+            gcmd.respond_info(
+                f"FOCI {self.driver.name}: {self._format_breakaway_campaign_result()}"
+            )
+            if self._breakaway_campaign_has_safety_fault():
+                safety_detail = self._format_outer_safety_fault()
+                detail_suffix = f"; {safety_detail}" if safety_detail else ""
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: breakaway campaign safety fault{detail_suffix}"
+                )
+            if not self.breakaway_campaign.accepted:
+                # No previously commissioned P is touched here: this
+                # branch never reaches persist_tune_results or the
+                # active_gains assignment below.
+                return "breakaway_campaign"
+            if self.velocity_integral.done:
+                gcmd.respond_info(
+                    f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"
+                )
+                if self.velocity_integral.outcome == "fault":
+                    safety_detail = self._format_outer_safety_fault()
+                    detail_suffix = f"; {safety_detail}" if safety_detail else ""
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: velocity integral response fault "
+                        f"(cause={int(self.velocity_integral.terminal.get('cause', 0))}"
+                        f"){detail_suffix}"
+                    )
+            return "breakaway_campaign"
+        self._retain_request_from_terminal(request_fields)
+        if self.velocity_integral.done:
+            gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}")
+            if self.velocity_integral.outcome == "fault":
+                safety_detail = self._format_outer_safety_fault()
+                detail_suffix = f"; {safety_detail}" if safety_detail else ""
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: velocity integral response fault (cause="
+                    f"{int(self.velocity_integral.terminal.get('cause', 0))})"
+                    f"{detail_suffix}"
+                )
+            return self.velocity_integral.outcome
+        return "velocity_integral_incomplete"
+
     def autotune(self, gcmd) -> None:
         """Stage 2: installed tuning after commissioning and homing."""
         try:
@@ -695,20 +850,7 @@ class AutotuneWorkflow:
 
             inner_warning_flags = readiness.inner_warning_flags
 
-            self.done = False
-            self.result = None
-            self.outer_safety_fault = None
-            self.velocity_integral = VelocityIntegralAssembler()
-            self.velocity_integral_error = None
-            self.acceptance_matrix = AcceptanceMatrixAssembler()
-            self.acceptance_matrix_error = None
-            self.breakaway_campaign = BreakawayCampaignAssembler()
-            self.breakaway_campaign_error = None
-            self.robustness_reversal_terminal = None
-            self.robustness_reversal_error = None
-            self.robustness_cycle_evidence = {}
-            self.robustness_workflow_plan = None
-            self.driver.commissioning.error_code = 0
+            self._reset_dispatch_state()
 
             request_fields = self._request_for_stage_b_dispatch(
                 {
@@ -736,125 +878,25 @@ class AutotuneWorkflow:
                     "max_duration_ms": motion_budget.max_duration_ms,
                 }
             )
-            self.driver.protocol.run_tune(**request_fields)
 
-            reactor = self.driver.printer.get_reactor()
-            eventtime = reactor.monotonic()
-            timeout = eventtime + COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S
-            workflow_timeout_armed = False
-            while not self.done and not self._workflow_finished():
-                eventtime = reactor.pause(eventtime + 0.1)
-                if self.velocity_integral_error is not None:
+            outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead)
+            if outcome == "complete_candidate":
+                # The accepted candidate has not yet reproduced. Re-dispatch the
+                # exact same request under stage_c_resume so firmware rebuilds
+                # the identical plan digest against its retained authority.
+                self._reset_dispatch_state()
+                outcome = self._run_one_dispatch(
+                    gcmd,
+                    ACTION_CODES["stage_c_resume"],
+                    request_fields,
+                    toolhead,
+                )
+                if outcome != "tune_result":
                     raise gcmd.error(
-                        f"FOCI {self.driver.name}: velocity integral transport failure: "
-                        f"{self.velocity_integral_error}"
+                        f"FOCI {self.driver.name}: stage-C resume did not reproduce the "
+                        f"accepted candidate (outcome={outcome})"
                     )
-                if self.acceptance_matrix_error is not None:
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: velocity confidence transport failure: "
-                        f"{self.acceptance_matrix_error}"
-                    )
-                if self.breakaway_campaign_error is not None:
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: breakaway campaign transport failure: "
-                        f"{self.breakaway_campaign_error}"
-                    )
-                if self.robustness_reversal_error is not None:
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: robustness reversal transport failure: "
-                        f"{self.robustness_reversal_error}"
-                    )
-                if (
-                    self.velocity_integral.workflow_plan is not None
-                    or self.acceptance_matrix.workflow_plan is not None
-                    or self.robustness_workflow_plan is not None
-                ) and not workflow_timeout_armed:
-                    if self.robustness_workflow_plan is not None:
-                        maximum_duration_s = (
-                            int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
-                        )
-                    elif self.acceptance_matrix.workflow_plan is not None:
-                        maximum_duration_s = self.acceptance_matrix.maximum_duration_s
-                    else:
-                        maximum_duration_s = self.velocity_integral.maximum_duration_s
-                    timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
-                    workflow_timeout_armed = True
-                if eventtime > timeout:
-                    phase = "run" if workflow_timeout_armed else "waiting for plan"
-                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE timed out {phase}")
-                if self.driver.commissioning.error_code != 0:
-                    error_name = COMMISSION_ERROR_NAMES.get(
-                        self.driver.commissioning.error_code,
-                        f"UNKNOWN({int(self.driver.commissioning.error_code)})",
-                    )
-                    self.driver.commissioning.maybe_clear_calibration_for_chip_reset(
-                        self.driver.commissioning.error_code
-                    )
-                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
-
-            if self._workflow_finished():
-                self._synchronize_disarmed_workflow_terminal(toolhead)
-                if self.acceptance_matrix.done:
-                    gcmd.respond_info(
-                        f"FOCI {self.driver.name}: {self._format_acceptance_matrix_result()}"
-                    )
-                    if self.acceptance_matrix.outcome in ("fault", "failed"):
-                        raise gcmd.error(
-                            f"FOCI {self.driver.name}: velocity confidence matrix "
-                            f"{self.acceptance_matrix.outcome}"
-                        )
-                    return
-                if self.robustness_reversal_terminal is not None:
-                    safety_detail = self._format_outer_safety_fault()
-                    detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                    gcmd.respond_info(
-                        f"FOCI {self.driver.name}: "
-                        f"{self._format_robustness_reversal_result()}{detail_suffix}"
-                    )
-                    self._handle_robustness_verdict(gcmd)
-                    return
-                if self.breakaway_campaign.done:
-                    gcmd.respond_info(
-                        f"FOCI {self.driver.name}: {self._format_breakaway_campaign_result()}"
-                    )
-                    if self._breakaway_campaign_has_safety_fault():
-                        safety_detail = self._format_outer_safety_fault()
-                        detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                        raise gcmd.error(
-                            f"FOCI {self.driver.name}: breakaway campaign safety fault"
-                            f"{detail_suffix}"
-                        )
-                    if not self.breakaway_campaign.accepted:
-                        # No previously commissioned P is touched here: this
-                        # branch never reaches persist_tune_results or the
-                        # active_gains assignment below.
-                        return
-                    if self.velocity_integral.done:
-                        gcmd.respond_info(
-                            f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"
-                        )
-                        if self.velocity_integral.outcome == "fault":
-                            safety_detail = self._format_outer_safety_fault()
-                            detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                            raise gcmd.error(
-                                f"FOCI {self.driver.name}: velocity integral response fault "
-                                f"(cause={int(self.velocity_integral.terminal.get('cause', 0))}"
-                                f"){detail_suffix}"
-                            )
-                    return
-                self._retain_request_from_terminal(request_fields)
-                if self.velocity_integral.done:
-                    gcmd.respond_info(
-                        f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}"
-                    )
-                    if self.velocity_integral.outcome == "fault":
-                        safety_detail = self._format_outer_safety_fault()
-                        detail_suffix = f"; {safety_detail}" if safety_detail else ""
-                        raise gcmd.error(
-                            f"FOCI {self.driver.name}: velocity integral response fault (cause="
-                            f"{int(self.velocity_integral.terminal.get('cause', 0))})"
-                            f"{detail_suffix}"
-                        )
+            elif outcome != "tune_result":
                 return
 
             result = self.result

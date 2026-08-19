@@ -2,6 +2,7 @@
 
 import unittest
 
+from klipper_foci.acceptance_matrix import ACTION_CODES
 from klipper_foci.autotune import OUTER_SAFETY_FAULT_NAMES
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.registers import REGISTERS
@@ -88,6 +89,70 @@ def feed_no_transition_terminal(workflow, run_sequence):
     )
 
 
+SAMPLE_STAGE_C_RESUME_RESULT = {
+    "status": 0,
+    "warning_code": 0,
+    "velocity_p": 1152,
+    "velocity_i": 0,
+    "position_p": 640,
+    "position_i": 0,
+    "velocity_limit": 500000,
+    "velocity_filter_hz": 0,
+    "torque_filter_hz": 0,
+    "position_filter_hz": 0,
+    "flux_filter_hz": 0,
+    "j_eff": 42,
+    "b_eff": 11,
+}
+
+
+def _feed_dispatch_terminal(workflow, terminal):
+    """Inject the terminal named by ``terminal`` into one dispatch's assemblers.
+
+    "tune_result" delivers a full firmware TuneResult (``handle_tune_result``).
+    Any other name is treated as a velocity-integral outcome and is stamped
+    directly onto the assembler -- the same lightweight pattern already used by
+    ``test_workflow_finishes_for_a_refusal_that_declared_no_envelope`` -- since
+    these orchestration tests only care that ``autotune()`` reacts to the right
+    outcome name, not that the underlying evidence is wire-valid.
+    """
+    if terminal == "tune_result":
+        workflow.handle_tune_result(dict(SAMPLE_STAGE_C_RESUME_RESULT))
+        return
+    outcome = "inconclusive" if terminal == "velocity_integral_inconclusive" else terminal
+    workflow.velocity_integral.outcome = outcome
+    workflow.velocity_integral.terminal = {"cause": 0}
+    workflow.velocity_integral.done = True
+
+
+def drive_two_dispatch_scenario(d, *, first_terminal, second_terminal):
+    """Feed a two-dispatch FOCI_AUTOTUNE scenario through the mocked reactor.
+
+    Each firmware dispatch gets exactly one simulated ``reactor.pause``: the
+    first delivers ``first_terminal``, the second (issued only when the first
+    was "complete_candidate") delivers ``second_terminal``. This wraps whatever
+    ``run_tune`` is already installed (tests may replace it beforehand to
+    observe the dispatched actions) purely to count dispatches.
+    """
+    reactor = d.printer.get_reactor()
+    previous_run_tune = d.protocol.run_tune
+    dispatch_count = {"n": 0}
+
+    def counting_run_tune(**kwargs):
+        dispatch_count["n"] += 1
+        return previous_run_tune(**kwargs)
+
+    d.protocol.run_tune = counting_run_tune
+
+    def pause(deadline):
+        reactor._time = deadline
+        terminal = first_terminal if dispatch_count["n"] == 1 else second_terminal
+        _feed_dispatch_terminal(d.autotune, terminal)
+        return reactor._time
+
+    reactor.pause = pause
+
+
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(
@@ -145,6 +210,38 @@ class TestAutotuneGates(unittest.TestCase):
         dispatched = d.autotune._request_for_stage_b_dispatch(changed)
 
         self.assertEqual(dispatched, changed)
+
+    def test_complete_candidate_auto_issues_stage_c_resume(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded
+        issued = []
+        d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
+        drive_two_dispatch_scenario(
+            d, first_terminal="complete_candidate", second_terminal="tune_result"
+        )
+
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(
+            issued,
+            [ACTION_CODES["breakaway_seeded"], ACTION_CODES["stage_c_resume"]],
+        )
+
+    def test_resume_inconclusive_errors_and_skips_persistence(self):
+        d = self._commissioned_driver()
+        persisted = []
+        d.autotune.persist_tune_results = lambda *a, **k: persisted.append((a, k))
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="complete_candidate",
+            second_terminal="velocity_integral_inconclusive",
+        )
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(persisted, [])
 
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()
