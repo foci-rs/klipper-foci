@@ -74,6 +74,88 @@ kept reserved/deprecated because successful current-validation retry is reported
 through current-loop evidence, not `inner_warning_flags`. Persisted outer gains
 from an earlier tune remain unchanged until retuned.
 
+## Production-Motion Validation
+
+Before accepting the production autotune path for a printer profile, run the
+profile through this recipe on the live machine. It combines a per-axis tune
+with a production motion matrix and an explicit robustness-gate confirmation;
+a bench-only or single-axis tune is not a substitute before committing a
+profile to production use.
+
+### 1. Per-axis autotune
+
+Run `FOCI_AUTOTUNE STEPPER=stepper_x` and `FOCI_AUTOTUNE STEPPER=stepper_y`
+separately (no `ACTION=` needed for the production path), each after the
+normal commissioning and homing prerequisites. Each invocation drives both
+firmware dispatches internally -- `breakaway_seeded`, then an auto-issued
+`stage_c_resume` -- and, on a full pass, deploys the conservative gain and
+persists it. Stage-C reproduction is stochastic; an occasional `inconclusive`
+result is expected and not a regression, and the command is simply re-run.
+
+Confirm for each axis:
+
+- The command completes without error and reports a full pass, not a
+  robustness reject or fault. A reject or fault persists nothing and inhibits
+  motor enable until re-commissioned.
+- `printer.cfg` (or the `SAVE_CONFIG` autosave block) now carries
+  `autotune_status = tuned` or `tuned_conservative` for that stepper, the
+  tuned outer gains, and the provenance block
+  (`autotune_probed_velocity_mrev_s`, `autotune_d_eq_q`,
+  `autotune_confidence_q`, `autotune_band_lower_percent`/`_upper_percent`,
+  `autotune_band_position_q`).
+
+### 2. Production motion matrix
+
+With both axes tuned, exercise production motion on the live CoreXY, not just
+the autotune's own probe motion:
+
+- X-only and Y-only straight moves.
+- CoreXY diagonal moves (both axes commanded together).
+- Direction reversals on each axis.
+- Multiple commanded speeds and multiple accelerations, spanning the range the
+  profile is expected to run at in production, not only the autotune's probed
+  operating point.
+- Both a warm state (immediately after tuning, motors already at temperature)
+  and a cold state (after an idle/cool-down period, or after a fresh
+  `FIRMWARE_RESTART` and re-home).
+
+Across this matrix, watch for loss of sync between encoder and commanded
+position, following-error faults, and any robustness safety fault.
+
+### 3. Confirm the gate accepts the natural candidate
+
+The robustness gate's IAE coefficient is a provisional, single-machine
+calibration. As part of this run, explicitly confirm the gate accepts the
+autotune's own natural candidate: the per-axis `FOCI_AUTOTUNE` runs above must
+complete with a robustness pass, not a reject, on the gains the autotune
+itself proposes (this is the on-target confirmation that the calibration
+accepts a genuinely good candidate rather than spuriously rejecting one). If
+the gate rejects a candidate that the motion matrix otherwise shows to be
+sound, that is a finding to recalibrate the gate, not a reason to work around
+it.
+
+### Pass criteria
+
+A profile is validated when, for both axes:
+
+- `FOCI_AUTOTUNE` completes and persists `autotune_status = tuned` or
+  `tuned_conservative` with a full provenance block.
+- Production motion across the full speed, acceleration, and warm/cold matrix
+  runs without loss-of-sync, following-error, or safety-fault events.
+- No spurious robustness rejection of the natural candidate occurs.
+- No connect-time "tuned below operating range" staleness warning is logged
+  for the profile's actual operating velocity -- the probed velocity covers
+  the configured operating range within the staleness margin.
+
+### Where results are recorded
+
+Record the run in the session logbook (`docs/logbook/YYYY-MM-DD.md`): which
+axes and profile were tuned, the motion matrix exercised, and the gate
+acceptance confirmation. The persisted outcome itself lives in `printer.cfg`'s
+`[foci <stepper>]` sections -- `autotune_status`, the tuned outer gains, and
+the provenance fields listed above -- which is the durable record read back at
+every later connect.
+
 ## License
 
 GPL-3.0. See `COPYING` at the repo root for the full text..
