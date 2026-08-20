@@ -1021,14 +1021,6 @@ class AutotuneWorkflow:
                 f"FOCI {self.driver.name} tuned ({tune_status}): vel_p="
                 f"{int(result['velocity_p'])} pos_p={int(result['position_p'])}"
             )
-            if "stiffness_timebase_ms" in result:
-                gcmd.respond_info(
-                    f"FOCI {self.driver.name} autotune evidence: budget="
-                    f"{int(result.get('motion_budget_mrev', 0))}mrev stiffness_timebase="
-                    f"{int(result.get('stiffness_timebase_ms', 0))}ms search_stop="
-                    f"{int(result.get('velocity_search_stop_reason', 0))} flags=0x"
-                    f"{result.get('outer_evidence_flags', 0):02x}"
-                )
             if inner_warning_flags:
                 gcmd.respond_info(
                     f"FOCI {self.driver.name} inner confidence: "
@@ -1169,8 +1161,6 @@ class AutotuneWorkflow:
         )
         probed_velocity_mrev_s = int(result.get("probed_velocity_mrev_s", 0))
         if probed_velocity_mrev_s:
-            # Breakaway-seeded production path: real provenance, no mechanical
-            # ID ever ran, so j_eff/b_eff are meaningless zeros -- skip them.
             configfile.set(
                 self.driver.name,
                 "autotune_probed_velocity_mrev_s",
@@ -1193,8 +1183,5 @@ class AutotuneWorkflow:
             configfile.set(
                 self.driver.name, "autotune_band_position_q", f"{int(result['band_position_q'])}"
             )
-        else:
-            configfile.set(self.driver.name, "identified_j_eff", f"{int(result['j_eff'])}")
-            configfile.set(self.driver.name, "identified_b_eff", f"{int(result['b_eff'])}")
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)

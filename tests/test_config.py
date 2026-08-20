@@ -717,8 +717,8 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
     assert driver.config.identified_r_count_milli == 1792
     assert driver.config.identified_l_count_micro == 2046
     assert driver.config.identified_tau_e_us == 1154
-    assert driver.config.identified_j_eff == 12345
-    assert driver.config.identified_b_eff == 678
+    assert not hasattr(driver.config, "identified_j_eff")
+    assert not hasattr(driver.config, "identified_b_eff")
     assert driver.config.autotune_profile == "conservative"
     assert driver.config.autotune_mode == "nominal"
     assert driver.config.autotune_status == "commissioned"

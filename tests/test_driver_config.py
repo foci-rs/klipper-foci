@@ -101,8 +101,6 @@ CONFIG_FIELD_NAMES = {
     "identified_l_r_shift_minus_permille",
     "identified_l_r_shift_plus_permille",
     "identified_l_x_mag_vs_quad_permille",
-    "identified_j_eff",
-    "identified_b_eff",
     "identified_current_gains_source",
     "identified_current_candidate_gains_source",
     "identified_axis_split_source",
@@ -440,8 +438,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_l_r_shift_minus_permille": 4,
             "identified_l_r_shift_plus_permille": 4,
             "identified_l_x_mag_vs_quad_permille": 20,
-            "identified_j_eff": 9,
-            "identified_b_eff": 10,
             "identified_current_gains_source": 1,
             "identified_current_candidate_gains_source": 1,
             "identified_axis_split_source": 1,
@@ -526,8 +522,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_l_r_shift_minus_permille == 4
     assert parsed.identified_l_r_shift_plus_permille == 4
     assert parsed.identified_l_x_mag_vs_quad_permille == 20
-    assert parsed.identified_j_eff == 9
-    assert parsed.identified_b_eff == 10
     assert parsed.identified_current_gains_source == 1
     assert parsed.identified_current_candidate_gains_source == 1
     assert parsed.identified_axis_split_source == 1

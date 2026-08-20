@@ -101,8 +101,6 @@ class FociDriverConfig:
     identified_l_r_shift_minus_permille: int | None
     identified_l_r_shift_plus_permille: int | None
     identified_l_x_mag_vs_quad_permille: int | None
-    identified_j_eff: int | None
-    identified_b_eff: int | None
     identified_current_gains_source: int | None
     identified_current_candidate_gains_source: int | None
     identified_axis_split_source: int | None
@@ -369,8 +367,10 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_l_x_mag_vs_quad_permille = config.getint(
         "identified_l_x_mag_vs_quad_permille", None, minval=0, maxval=1000
     )
-    identified_j_eff = config.getint("identified_j_eff", None, minval=0)
-    identified_b_eff = config.getint("identified_b_eff", None, minval=0)
+    # Deprecated: consumed and discarded so printer.cfg written by older
+    # firmware/host builds still loads without error.
+    config.getint("identified_j_eff", None, minval=0)
+    config.getint("identified_b_eff", None, minval=0)
     identified_current_gains_source = config.getint(
         "identified_current_gains_source", None, minval=0, maxval=255
     )
@@ -631,8 +631,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_l_r_shift_minus_permille=identified_l_r_shift_minus_permille,
         identified_l_r_shift_plus_permille=identified_l_r_shift_plus_permille,
         identified_l_x_mag_vs_quad_permille=identified_l_x_mag_vs_quad_permille,
-        identified_j_eff=identified_j_eff,
-        identified_b_eff=identified_b_eff,
         identified_current_gains_source=identified_current_gains_source,
         identified_current_candidate_gains_source=(identified_current_candidate_gains_source),
         identified_axis_split_source=identified_axis_split_source,

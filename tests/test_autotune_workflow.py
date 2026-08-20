@@ -101,10 +101,11 @@ SAMPLE_STAGE_C_RESUME_RESULT = {
     "torque_filter_hz": 0,
     "position_filter_hz": 0,
     "flux_filter_hz": 0,
-    "j_eff": 42,
-    "b_eff": 11,
 }
 
+# Production breakaway path: the only path FOCI_AUTOTUNE ships, always
+# carrying real provenance -- mirrors `robustness_pass_outer_result` in
+# firmware.
 SAMPLE_TUNE_RESULT = {
     "status": 0,
     "warning_code": 0,
@@ -117,27 +118,6 @@ SAMPLE_TUNE_RESULT = {
     "torque_filter_hz": 200,
     "position_filter_hz": 60,
     "flux_filter_hz": 200,
-    "j_eff": 33,
-    "b_eff": 9,
-}
-
-# Production breakaway path: real provenance, zero-filled mechanical-ID
-# fields -- mirrors `robustness_pass_outer_result` in firmware, which never
-# runs mechanical identification.
-SAMPLE_TUNE_RESULT_WITH_PROVENANCE = {
-    "status": 0,
-    "warning_code": 0,
-    "velocity_p": 863,
-    "velocity_i": 12,
-    "position_p": 480,
-    "position_i": 4,
-    "velocity_limit": 400000,
-    "velocity_filter_hz": 120,
-    "torque_filter_hz": 200,
-    "position_filter_hz": 60,
-    "flux_filter_hz": 200,
-    "j_eff": 0,
-    "b_eff": 0,
     "probed_velocity_mrev_s": 5366,
     "d_eq_q": 1234,
     "confidence_q": 5000,
@@ -437,13 +417,17 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertEqual(d.state.active_gains["velocity_p"], 863)
         self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "863")
+        self.assertEqual(cfg.values[(d.name, "pid_position_p")], "480")
         self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+        self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
+        self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
+        self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
 
     def test_persist_writes_provenance_block(self):
         d = self._commissioned_driver()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
-        d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT_WITH_PROVENANCE, "nominal", "tuned")
+        d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT, "nominal", "tuned")
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
         self.assertEqual(cfg.values[(d.name, "autotune_d_eq_q")], "1234")
         self.assertEqual(cfg.values[(d.name, "autotune_confidence_q")], "5000")
@@ -451,29 +435,16 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "autotune_band_upper_percent")], "80")
         self.assertEqual(cfg.values[(d.name, "autotune_band_position_q")], "3000")
 
-    def test_persist_skips_identified_fields_for_production_provenance(self):
-        """Nonzero probed_velocity_mrev_s marks the breakaway path, which never
-        runs mechanical ID -- j_eff/b_eff are meaningless zeros there, so they
-        must not be written."""
-        d = self._commissioned_driver()
-        cfg = MockConfigFile()
-        d.printer._objects["configfile"] = cfg
-        d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT_WITH_PROVENANCE, "nominal", "tuned")
-        self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
-        self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
-
-    def test_persist_writes_identified_fields_for_legacy_result(self):
-        """SAMPLE_TUNE_RESULT carries no provenance keys (legacy mechanical-ID
-        path, matching `step_commit`'s zero-filled TuneProvenance): the real
-        j_eff/b_eff must still land in printer.cfg, and no provenance keys."""
+    def test_persist_never_writes_removed_mechanical_id_fields(self):
+        """identified_j_eff/identified_b_eff persistence is removed entirely --
+        no tune result, real or synthetic, may re-introduce them into
+        SAVE_CONFIG output."""
         d = self._commissioned_driver()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
         d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT, "nominal", "tuned")
-        self.assertEqual(cfg.values[(d.name, "identified_j_eff")], "33")
-        self.assertEqual(cfg.values[(d.name, "identified_b_eff")], "9")
-        self.assertNotIn((d.name, "autotune_probed_velocity_mrev_s"), cfg.values)
-        self.assertNotIn((d.name, "autotune_band_lower_percent"), cfg.values)
+        self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
+        self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
 
     def test_raises_if_inhibited(self):
         d = self._commissioned_driver()
@@ -1219,8 +1190,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
             "torque_filter_hz": 0,
             "position_filter_hz": 0,
             "flux_filter_hz": 0,
-            "j_eff": 42,
-            "b_eff": 11,
         }
         result.update(result_fields or {})
 
@@ -1296,15 +1265,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         toolhead.set_bounds(x_min=0.0, x_max=120.0, y_min=0.0, y_max=120.0)
         toolhead.set_position(x=10.0, y=20.0)
         d.printer._objects["configfile"] = MockConfigFile()
-        self._finish_tune_on_next_pause(
-            d,
-            {
-                "outer_evidence_flags": 0,
-                "stiffness_timebase_ms": 50,
-                "velocity_search_stop_reason": 1,
-                "motion_budget_mrev": 750,
-            },
-        )
+        self._finish_tune_on_next_pause(d)
 
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         d.autotune.autotune(gcmd)
@@ -1318,11 +1279,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertEqual(
             d.protocol.commands.tune.last_args[-8:],
             [5000, 7500, 1, 1500, 250, 1250, 1250, 3000],
-        )
-        self.assertIn(
-            "FOCI foci stepper_x autotune evidence: budget=750mrev "
-            "stiffness_timebase=50ms search_stop=1 flags=0x00",
-            gcmd._responses,
         )
 
     def test_accepted_with_warnings_still_reports_tuned(self):
@@ -1412,8 +1368,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
                     "torque_filter_hz": 0,
                     "position_filter_hz": 0,
                     "flux_filter_hz": 0,
-                    "j_eff": 42,
-                    "b_eff": 11,
                 }
             )
             return reactor._time
