@@ -658,9 +658,19 @@ class AutotuneWorkflow:
             self.driver.state.release()
         try:
             gcode.run_script_from_command("G28 X Y")
-        finally:
-            if had_lock and not self.driver.state.try_acquire():
-                raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
+        except Exception as err:
+            # A homing failure aborts autotune here: falling through to the
+            # dispatch's run_tune would drive the motor in raw motor space
+            # against unhomed, encoder-unaligned axes. Re-take the operation
+            # lock (best effort) so autotune()'s finally can release it, then
+            # surface the homing failure unmasked.
+            if had_lock:
+                self.driver.state.try_acquire()
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: autotune aborted -- homing failed: {err}"
+            ) from err
+        if had_lock and not self.driver.state.try_acquire():
+            raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         gcode.run_script_from_command(safe_pose_move)
         toolhead.wait_moves()
         self.driver.homing.invalidate_homing()

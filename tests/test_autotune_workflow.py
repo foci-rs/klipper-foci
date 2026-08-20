@@ -341,6 +341,35 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(events[1], ("script", "G0 X100.000 Y100.000"))
         self.assertEqual(events[2], ("run_tune", ACTION_CODES["breakaway_seeded"]))
 
+    def test_homing_failure_aborts_before_run_tune(self):
+        """A homing failure during the per-dispatch re-home must abort autotune,
+        never fall through to run_tune against unhomed/unaligned axes."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcode = d.printer.lookup_object("gcode")
+        gcmd = MockGCmd({})
+        issued = []
+
+        def failing_script(command):
+            if command == "G28 X Y":
+                raise CommandError("No trigger on stepper_y after full movement")
+
+        gcode.run_script_from_command = failing_script
+        d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
+        d.state.operation_lock = True
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune._run_one_dispatch(
+                gcmd,
+                ACTION_CODES["breakaway_seeded"],
+                {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+                toolhead,
+                "G0 X100.000 Y100.000",
+            )
+
+        self.assertIn("homing", str(ctx.exception).lower())
+        self.assertEqual(issued, [])
+
     def test_each_stage_dispatch_is_preceded_by_a_rehome(self):
         """Both the breakaway_seeded dispatch and the auto-issued stage_c_resume
         dispatch must be preceded by their own G28 re-home -- the chained
