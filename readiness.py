@@ -60,8 +60,6 @@ def resolve_autotune_readiness(
         blockers.append("inhibited after failed FOCI_COMMISSION")
     if state.runtime_status == "uncommissioned":
         blockers.append("not commissioned")
-    if not state.is_calibrated:
-        blockers.append("not calibrated")
 
     current_loop_evidence = _resolve_current_loop_evidence(driver)
     inductance_evidence = _resolve_inductance_evidence(driver)

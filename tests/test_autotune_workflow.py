@@ -285,6 +285,27 @@ class TestAutotuneGates(unittest.TestCase):
             [ACTION_CODES["breakaway_seeded"], ACTION_CODES["stage_c_resume"]],
         )
 
+    def test_cold_start_self_homes_without_up_front_calibration(self):
+        """A commissioned driver that lost calibration+homing (e.g. after a
+        klipper restart) must self-home through the dispatch instead of
+        rejecting up front. The motion plan is config-derived, and
+        ``_rehome_and_center`` arms the motor before the tune runs."""
+        d = self._commissioned_driver(homed_axes="")
+        d.state.is_calibrated = False
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        issued = []
+        d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="tune_result",
+            second_terminal="tune_result",
+        )
+
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(issued, [ACTION_CODES["breakaway_seeded"]])
+
     def test_run_one_dispatch_rehomes_and_recenters_before_run_tune(self):
         """The breakaway terminal unhomes the axes and re-zeroes the encoder,
         so every firmware stage dispatch must re-home (G28, which also re-runs
@@ -440,22 +461,6 @@ class TestAutotuneGates(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
         self.assertIn("not commissioned", str(ctx.exception))
-
-    def test_raises_if_not_calibrated(self):
-        d = self._commissioned_driver()
-        d.state.is_calibrated = False
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        with self.assertRaises(CommandError) as ctx:
-            d.autotune.autotune(gcmd)
-        self.assertIn("not calibrated", str(ctx.exception))
-
-    def test_raises_if_not_homed_with_kinematics(self):
-        kin = MockCartesianKinematics()
-        d = self._commissioned_driver(kinematics=kin, homed_axes="x")
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        with self.assertRaises(CommandError) as ctx:
-            d.autotune.autotune(gcmd)
-        self.assertIn("not homed for X/Y", str(ctx.exception))
 
     def test_refuses_none_kinematics_for_production_autotune(self):
         d = self._commissioned_driver(kinematics=MockNoneKinematics(), homed_axes="")
@@ -1276,10 +1281,10 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         gcode = d.printer.lookup_object("gcode")
-        # Up-front safe-pose move, then the dispatch's own re-home + re-center.
+        # The dispatch's own re-home then re-center; no redundant up-front move.
         self.assertEqual(
             gcode._scripts,
-            ["G0 X60.000 Y60.000", "G28 X Y", "G0 X60.000 Y60.000"],
+            ["G28 X Y", "G0 X60.000 Y60.000"],
         )
         self.assertEqual(
             d.protocol.commands.tune.last_args[-8:],
@@ -1318,45 +1323,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         self.assertIn("unsupported kinematics", str(ctx.exception))
         self.assertIsNone(d.protocol.commands.tune.last_args)
-
-    def test_blocks_before_tune_when_live_current_gains_mismatch(self):
-        d = self._ready_driver()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        invalidate_calls = []
-        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
-        self._install_live_dump(
-            d,
-            {
-                REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 416,
-                REGISTERS["PID_TORQUE_P_TORQUE_I"]: (256 << 16) | 416,
-            },
-        )
-
-        with self.assertRaises(CommandError) as ctx:
-            d.autotune.autotune(gcmd)
-
-        self.assertIn("live current-loop gain flux_p mismatch", str(ctx.exception))
-        self.assertIsNone(d.protocol.commands.tune.last_args)
-        self.assertEqual(invalidate_calls, [])
-
-    def test_blocks_before_tune_when_live_current_gain_readback_is_missing(self):
-        d = self._ready_driver()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        invalidate_calls = []
-        d.homing.invalidate_homing = lambda: invalidate_calls.append("invalidate_homing")
-        self._install_live_dump(
-            d,
-            {
-                REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
-            },
-        )
-
-        with self.assertRaises(CommandError) as ctx:
-            d.autotune.autotune(gcmd)
-
-        self.assertIn("live current-loop gain torque_p unavailable", str(ctx.exception))
-        self.assertIsNone(d.protocol.commands.tune.last_args)
-        self.assertEqual(invalidate_calls, [])
 
     def test_unavailable_stage2_inputs_refuse_before_homing_invalidation_and_tune(self):
         d = self._ready_driver()

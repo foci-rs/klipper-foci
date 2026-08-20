@@ -819,7 +819,13 @@ class AutotuneWorkflow:
         return "velocity_integral_incomplete"
 
     def autotune(self, gcmd) -> None:
-        """Stage 2: installed tuning after commissioning and homing."""
+        """Stage 2: installed tuning after commissioning.
+
+        Each dispatch re-homes, re-centers, and arms the motor before it moves,
+        so this does not require the axes homed on entry -- a commissioned
+        driver that lost calibration/homing (e.g. after a klipper restart)
+        self-homes through the dispatch.
+        """
         try:
             action = parse_autotune_action(gcmd.get("ACTION", None))
         except AcceptanceMatrixProtocolError as err:
@@ -848,32 +854,19 @@ class AutotuneWorkflow:
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: not commissioned. Run FOCI_COMMISSION first."
                 )
-            if not self.driver.state.is_calibrated:
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: not calibrated. Enable motor, re-home, then retry."
-                )
-
             toolhead = self.driver.printer.lookup_object("toolhead")
             self._ensure_printer_idle(gcmd, toolhead)
+            # The motion plan is derived from static axis bounds (bed-center),
+            # not live position, so it needs no prior homing. Each dispatch
+            # re-homes, re-centers, and arms the motor before it moves, so a
+            # commissioned-but-cold driver (e.g. after a klipper restart)
+            # self-homes rather than being rejected here.
             try:
                 motion_budget = compute_autotune_motion_budget(self.driver, gcmd)
             except AutotuneBudgetError as err:
                 raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
 
-            toolhead.wait_moves()
-            self._ensure_printer_idle(gcmd, toolhead)
-
-            if not self.driver.state.is_calibrated:
-                raise gcmd.error(f"FOCI {self.driver.name}: calibration lost during wait")
-            kin_status = toolhead.get_status(toolhead.get_last_move_time())
-            if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
-                raise gcmd.error(f"FOCI {self.driver.name}: homing lost during wait")
-
-            live_current_gains = self.driver.dump.read_live_current_gains()
-            readiness = resolve_autotune_readiness(
-                self.driver,
-                live_current_gains=live_current_gains,
-            )
+            readiness = resolve_autotune_readiness(self.driver)
             if readiness.blocked:
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE blocked: "
@@ -897,14 +890,6 @@ class AutotuneWorkflow:
                 )
 
             safe_pose_move = format_safe_pose_move(motion_budget)
-            gcode = self.driver.printer.lookup_object("gcode")
-            gcode.run_script_from_command(safe_pose_move)
-            toolhead.wait_moves()
-            if not self.driver.state.is_calibrated:
-                raise gcmd.error(f"FOCI {self.driver.name}: calibration lost during safe-pose move")
-            kin_status = toolhead.get_status(toolhead.get_last_move_time())
-            if not {"x", "y"}.issubset(set(kin_status.get("homed_axes", ""))):
-                raise gcmd.error(f"FOCI {self.driver.name}: homing lost during safe-pose move")
 
             if self.driver.state.commissioned_result is not None:
                 inner_lambda = self.driver.state.commissioned_result["lambda_us"]

@@ -161,13 +161,11 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     kinematics = toolhead.get_kinematics()
     kind = _kinematics_kind(kinematics)
     role = _stepper_role(driver.stepper_name)
+    # Sized from the static axis bounds and the bed-center pose every dispatch
+    # re-centers to, not the live toolhead position, so the plan is
+    # homing-independent and identical across the breakaway and resume
+    # dispatches.
     status = toolhead.get_status(toolhead.get_last_move_time())
-    homed = set(status.get("homed_axes", ""))
-    if not {"x", "y"}.issubset(homed):
-        missing = "".join(sorted({"x", "y"} - homed))
-        raise AutotuneBudgetError(f"printer not homed for X/Y (missing: {missing})")
-
-    _status_axis_tuple(status, "position")
     min_x, min_y = _status_axis_tuple(status, "axis_minimum")
     max_x, max_y = _status_axis_tuple(status, "axis_maximum")
     safe_x = (min_x + max_x) / 2.0
