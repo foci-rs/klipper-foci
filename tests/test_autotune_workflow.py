@@ -1325,7 +1325,14 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
             gcmd._responses,
         )
 
-    def test_accepted_with_warnings_still_succeeds(self):
+    def test_accepted_with_warnings_still_reports_tuned(self):
+        """A firmware AcceptedWithWarnings/warning_code result is still 'tuned'.
+
+        tuned_conservative is no longer emitted by FOCI_AUTOTUNE: a successful
+        tune (status 0 or 1) always records "tuned", regardless of a nonzero
+        warning_code. tuned_conservative remains a valid persisted status only
+        for backward-compatible reads of existing configs.
+        """
         d = self._ready_driver()
         toolhead = d.printer.lookup_object("toolhead")
         toolhead._kinematics = MockCartesianKinematics([["stepper_x"], ["stepper_y"]])
@@ -1339,7 +1346,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         d.autotune.autotune(gcmd)
 
-        self.assertEqual(d.state.runtime_status, "tuned_conservative")
+        self.assertEqual(d.state.runtime_status, "tuned")
 
     def test_autotune_refuses_unsupported_kinematics_before_tune(self):
         d = self._ready_driver()

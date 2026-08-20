@@ -994,11 +994,7 @@ class AutotuneWorkflow:
                     f"holding with entry gains)"
                 )
 
-            warning_code = result.get("warning_code", 0)
-            if status == 1 or warning_code != 0:
-                tune_status = "tuned_conservative"
-            else:
-                tune_status = "tuned"
+            tune_status = "tuned"
 
             self.driver.state.pre_tune_snapshot = self._snapshot_pre_tune_state()
             active_gains = self.driver.state.active_gains
