@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
 from klipper_foci.registers import REGISTERS
 
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
-    CommandError,
     MockGCmd,
     make_config_driver,
     make_config_printer,
@@ -36,19 +34,6 @@ class DumpOnlyProtocol:
         for addr, value in self.dump_values.items():
             self.driver.dump.handle_dump_value({"addr": addr, "value": value})
         self.driver.dump.handle_dump_done({})
-
-    def __getattr__(self, name):
-        raise AssertionError(f"unexpected protocol call: {name}")
-
-
-class TimeoutDumpProtocol:
-    """Protocol fake that never reports dump completion."""
-
-    def __init__(self):
-        self.calls = []
-
-    def dump_registers(self):
-        self.calls.append("dump_registers")
 
     def __getattr__(self, name):
         raise AssertionError(f"unexpected protocol call: {name}")
@@ -328,40 +313,6 @@ def test_tuning_readiness_reports_unavailable_inputs_line():
     assert "blockers: none" in output
     assert "warnings: inner confidence:" in output
     assert "unavailable_inputs: average_inductance" in output
-
-
-def test_read_live_current_gains_returns_missing_fields_as_none():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    protocol = DumpOnlyProtocol(
-        driver,
-        {
-            REGISTERS["PID_FLUX_P_FLUX_I"]: (256 << 16) | 416,
-        },
-    )
-    driver.protocol = protocol
-
-    live_gains = driver.dump.read_live_current_gains()
-
-    assert protocol.calls == ["dump_registers"]
-    assert live_gains == {
-        "flux_p": 256,
-        "flux_i": 416,
-        "torque_p": None,
-        "torque_i": None,
-    }
-
-
-def test_read_live_current_gains_reports_dump_timeout():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    protocol = TimeoutDumpProtocol()
-    driver.protocol = protocol
-
-    with pytest.raises(CommandError, match="live current-loop gain readback timed out"):
-        driver.dump.read_live_current_gains()
-
-    assert protocol.calls == ["dump_registers"]
 
 
 def test_tuning_flag_appends_resistance_identification_evidence():

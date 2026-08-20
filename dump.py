@@ -235,20 +235,6 @@ class RegisterDumpWorkflow:
 
         return self._dump_complete
 
-    def read_live_current_gains(self) -> dict[str, int | None]:
-        """Read live current-loop gains from the firmware dump path."""
-        if not self._request_dump_values():
-            raise self.driver.printer.command_error(
-                f"FOCI {self.driver.name}: live current-loop gain readback timed out"
-            )
-        live_gains = self._live_gain_values()
-        return {
-            "flux_p": live_gains.get("flux_p"),
-            "flux_i": live_gains.get("flux_i"),
-            "torque_p": live_gains.get("torque_p"),
-            "torque_i": live_gains.get("torque_i"),
-        }
-
     def dump_registers(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
 
