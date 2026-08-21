@@ -16,6 +16,7 @@ from tests.mocks import (
     SAMPLE_COMMISSION_RESULT,
     CommandError,
     MockCartesianKinematics,
+    MockCoreXYKinematics,
     MockGCmd,
     MockNoneKinematics,
     MockPrintStats,
@@ -350,6 +351,36 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("homing", str(ctx.exception).lower())
         self.assertEqual(issued, [])
 
+    def test_dispatch_timeout_disables_motor_to_cancel_firmware_run(self):
+        """A host timeout must enqueue the firmware cancel/disarm path."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcmd = MockGCmd({})
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+        enable_line.motor_enable(toolhead.get_last_move_time())
+        d.protocol.run_tune = lambda **kw: None
+
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            return reactor._time
+
+        reactor.pause = pause
+        d.state.operation_lock = True
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune._run_one_dispatch(
+                gcmd,
+                ACTION_CODES["breakaway_seeded"],
+                {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+                toolhead,
+                "G0 X100.000 Y100.000",
+            )
+
+        self.assertIn("timed out", str(ctx.exception))
+        self.assertFalse(enable_line.is_motor_enabled())
+
     def test_each_stage_dispatch_is_preceded_by_a_rehome(self):
         """Both the breakaway_seeded dispatch and the auto-issued stage_c_resume
         dispatch must be preceded by their own G28 re-home -- the chained
@@ -422,6 +453,31 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
         self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
+
+    def test_successful_corexy_autotune_disables_kinematic_pair(self):
+        """A successful tune must not leave one CoreXY motor holding while the
+        tuned motor has returned to a conservative firmware voltage limit."""
+        d = self._commissioned_driver(
+            kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        )
+        d.printer._objects["configfile"] = MockConfigFile()
+        toolhead = d.printer.lookup_object("toolhead")
+        stepper_enable = d.printer.lookup_object("stepper_enable")
+        x_enable = stepper_enable.lookup_enable("stepper_x")
+        y_enable = stepper_enable.lookup_enable("stepper_y")
+        x_enable.motor_enable(toolhead.get_last_move_time())
+        y_enable.motor_enable(toolhead.get_last_move_time())
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_complete_candidate",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({}))
+
+        self.assertFalse(x_enable.is_motor_enabled())
+        self.assertFalse(y_enable.is_motor_enabled())
 
     def test_persist_writes_provenance_block(self):
         d = self._commissioned_driver()

@@ -100,6 +100,36 @@ class HomingWorkflow:
         """Tell firmware whether raw enable may start auto-calibration."""
         self.driver.protocol.set_auto_calibrate_on_enable(allowed)
 
+    def kinematic_motor_names_for_stepper(self) -> tuple[str, ...]:
+        """Return steppers whose motor-space state is coupled to this driver."""
+        toolhead = self.driver.printer.lookup_object("toolhead", None)
+        if toolhead is None:
+            return (self.driver.stepper_name,)
+        kin = toolhead.get_kinematics()
+        rails = getattr(kin, "rails", None)
+        if rails is None and hasattr(kin, "get_rails"):
+            rails = kin.get_rails()
+        if rails is None:
+            return (self.driver.stepper_name,)
+
+        coupling = self.COUPLED_AXES.get(type(kin).__name__)
+        rail_entries = []
+        target_axes = set()
+        for i, rail in enumerate(rails):
+            names = tuple(stepper.get_name() for stepper in rail.get_steppers())
+            axes = coupling.get(i, ()) if coupling else ((i,) if i < 3 else ())
+            rail_entries.append((names, axes))
+            if self.driver.stepper_name in names:
+                target_axes.update(axes)
+        if not target_axes:
+            return (self.driver.stepper_name,)
+
+        motor_names = []
+        for names, axes in rail_entries:
+            if target_axes.intersection(axes):
+                motor_names.extend(names)
+        return tuple(dict.fromkeys(motor_names))
+
     def format_calibration_status(self, status: int) -> str:
         """Format a non-zero foci_calibrate_result status for operators."""
         if status in self.CALIBRATION_ERROR_NAMES:

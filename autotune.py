@@ -346,10 +346,20 @@ class AutotuneWorkflow:
 
     def _synchronize_disarmed_workflow_terminal(self, toolhead) -> None:
         """Mirror a firmware-owned terminal disarm into Klipper state."""
+        self._disable_kinematic_motors(toolhead)
+
+    def _disable_kinematic_motors(self, toolhead) -> None:
+        """Disable every Klipper motor coupled to this autotune workflow."""
         self.driver.state.is_calibrated = False
         stepper_enable = self.driver.printer.lookup_object("stepper_enable")
-        enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
-        enable_line.motor_disable(toolhead.get_last_move_time())
+        print_time = toolhead.get_last_move_time()
+        for stepper_name in self.driver.homing.kinematic_motor_names_for_stepper():
+            enable_line = stepper_enable.lookup_enable(stepper_name)
+            enable_line.motor_disable(print_time)
+
+    def _cancel_inflight_dispatch(self, toolhead) -> None:
+        """Cancel a tune dispatch that left firmware running without a terminal."""
+        self._disable_kinematic_motors(toolhead)
 
     def _format_acceptance_matrix_result(self) -> str:
         terminal = self.acceptance_matrix.terminal or {}
@@ -707,55 +717,59 @@ class AutotuneWorkflow:
         eventtime = reactor.monotonic()
         timeout = eventtime + COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S
         workflow_timeout_armed = False
-        while not self.done and not self._workflow_finished():
-            eventtime = reactor.pause(eventtime + 0.1)
-            if self.velocity_integral_error is not None:
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: velocity integral transport failure: "
-                    f"{self.velocity_integral_error}"
-                )
-            if self.acceptance_matrix_error is not None:
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: velocity confidence transport failure: "
-                    f"{self.acceptance_matrix_error}"
-                )
-            if self.breakaway_campaign_error is not None:
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: breakaway campaign transport failure: "
-                    f"{self.breakaway_campaign_error}"
-                )
-            if self.robustness_reversal_error is not None:
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: robustness reversal transport failure: "
-                    f"{self.robustness_reversal_error}"
-                )
-            if (
-                self.velocity_integral.workflow_plan is not None
-                or self.acceptance_matrix.workflow_plan is not None
-                or self.robustness_workflow_plan is not None
-            ) and not workflow_timeout_armed:
-                if self.robustness_workflow_plan is not None:
-                    maximum_duration_s = (
-                        int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
+        try:
+            while not self.done and not self._workflow_finished():
+                eventtime = reactor.pause(eventtime + 0.1)
+                if self.velocity_integral_error is not None:
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: velocity integral transport failure: "
+                        f"{self.velocity_integral_error}"
                     )
-                elif self.acceptance_matrix.workflow_plan is not None:
-                    maximum_duration_s = self.acceptance_matrix.maximum_duration_s
-                else:
-                    maximum_duration_s = self.velocity_integral.maximum_duration_s
-                timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
-                workflow_timeout_armed = True
-            if eventtime > timeout:
-                phase = "run" if workflow_timeout_armed else "waiting for plan"
-                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE timed out {phase}")
-            if self.driver.commissioning.error_code != 0:
-                error_name = COMMISSION_ERROR_NAMES.get(
-                    self.driver.commissioning.error_code,
-                    f"UNKNOWN({int(self.driver.commissioning.error_code)})",
-                )
-                self.driver.commissioning.maybe_clear_calibration_for_chip_reset(
-                    self.driver.commissioning.error_code
-                )
-                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
+                if self.acceptance_matrix_error is not None:
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: velocity confidence transport failure: "
+                        f"{self.acceptance_matrix_error}"
+                    )
+                if self.breakaway_campaign_error is not None:
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: breakaway campaign transport failure: "
+                        f"{self.breakaway_campaign_error}"
+                    )
+                if self.robustness_reversal_error is not None:
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: robustness reversal transport failure: "
+                        f"{self.robustness_reversal_error}"
+                    )
+                if (
+                    self.velocity_integral.workflow_plan is not None
+                    or self.acceptance_matrix.workflow_plan is not None
+                    or self.robustness_workflow_plan is not None
+                ) and not workflow_timeout_armed:
+                    if self.robustness_workflow_plan is not None:
+                        maximum_duration_s = (
+                            int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
+                        )
+                    elif self.acceptance_matrix.workflow_plan is not None:
+                        maximum_duration_s = self.acceptance_matrix.maximum_duration_s
+                    else:
+                        maximum_duration_s = self.velocity_integral.maximum_duration_s
+                    timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
+                    workflow_timeout_armed = True
+                if eventtime > timeout:
+                    phase = "run" if workflow_timeout_armed else "waiting for plan"
+                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE timed out {phase}")
+                if self.driver.commissioning.error_code != 0:
+                    error_name = COMMISSION_ERROR_NAMES.get(
+                        self.driver.commissioning.error_code,
+                        f"UNKNOWN({int(self.driver.commissioning.error_code)})",
+                    )
+                    self.driver.commissioning.maybe_clear_calibration_for_chip_reset(
+                        self.driver.commissioning.error_code
+                    )
+                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
+        except Exception:
+            self._cancel_inflight_dispatch(toolhead)
+            raise
 
         if not self._workflow_finished():
             return "tune_result"
@@ -971,18 +985,14 @@ class AutotuneWorkflow:
                 error_name = COMMISSION_ERROR_NAMES.get(status, f"UNKNOWN({int(status)})")
                 if status == 18:
                     self.driver.commissioning.handle_chip_reset_detected()
-                    stepper_enable = self.driver.printer.lookup_object("stepper_enable")
-                    enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
-                    enable_line.motor_disable(toolhead.get_last_move_time())
+                    self._disable_kinematic_motors(toolhead)
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE chip reset: {error_name} "
                         f"(motor disabled by firmware)"
                     )
                 if status in HARD_FAULT_CODES:
                     self.driver.commissioning.on_commission_failure()
-                    stepper_enable = self.driver.printer.lookup_object("stepper_enable")
-                    enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
-                    enable_line.motor_disable(toolhead.get_last_move_time())
+                    self._disable_kinematic_motors(toolhead)
                     safety_detail = self._format_outer_safety_fault()
                     detail_suffix = f"; {safety_detail}" if safety_detail else ""
                     raise gcmd.error(
@@ -1026,6 +1036,7 @@ class AutotuneWorkflow:
                     f"FOCI {self.driver.name} inner confidence: "
                     f"{format_inner_warning_flags(inner_warning_flags)}"
                 )
+            self._disable_kinematic_motors(toolhead)
         finally:
             self.driver.state.release()
 
