@@ -4,6 +4,8 @@ import pytest
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
     STAGE_C_TERMINAL_CAUSE_NAMES,
+    TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY,
+    TERMINAL_REST_REJECTION_OWNER_SHIFT,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
@@ -1460,6 +1462,62 @@ def test_schema_seven_requires_matching_probe_constrained_terminal_flag():
         )
         sequence = feed_full_evidence(assembler)
         feed_terminal(assembler, sequence, recovery_flags=0)
+
+
+def _schema_seven_assembler_with_terminal_flags(terminal_flags):
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        schema_revision=7,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0,
+        final_p=724,
+        joint_membership=0x000E_0000,
+    )
+    sequence = feed_full_evidence(assembler)
+    feed_terminal(assembler, sequence, recovery_flags=terminal_flags)
+    return assembler
+
+
+def test_schema_seven_exposes_rest_rejection_after_sufficiency_and_owner():
+    # bit 4 set, owner code 0b10 (stage_c_recovery) in bits 5-6.
+    flags = TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY | (
+        0b10 << TERMINAL_REST_REJECTION_OWNER_SHIFT
+    )
+    assembler = _schema_seven_assembler_with_terminal_flags(flags)
+
+    assert assembler.terminal["rest_rejection_after_sufficiency"] is True
+    assert assembler.terminal["rest_rejection_owner"] == "stage_c_recovery"
+
+
+def test_schema_seven_rest_rejection_owner_is_none_when_flag_clear():
+    assembler = _schema_seven_assembler_with_terminal_flags(0)
+
+    assert assembler.terminal["rest_rejection_after_sufficiency"] is False
+    assert assembler.terminal["rest_rejection_owner"] is None
+
+
+def test_schema_seven_decodes_every_rest_rejection_owner_code():
+    expected = {
+        0b00: "stage_c_anchor",
+        0b01: "stage_c_positive_observation",
+        0b10: "stage_c_recovery",
+        0b11: "stage_c_cleanup",
+    }
+    for code, name in expected.items():
+        flags = TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY | (
+            code << TERMINAL_REST_REJECTION_OWNER_SHIFT
+        )
+        assembler = _schema_seven_assembler_with_terminal_flags(flags)
+        assert assembler.terminal["rest_rejection_owner"] == name
+
+
+def test_schema_seven_rejects_bit_seven_as_still_reserved():
+    with pytest.raises(VelocityIntegralProtocolError, match="terminal recovery flags"):
+        _schema_seven_assembler_with_terminal_flags(1 << 7)
 
 
 def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000, plan_digest=None):

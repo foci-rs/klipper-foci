@@ -51,6 +51,20 @@ TERMINAL_RECOVERY_UNAVAILABLE = 1 << 0
 TERMINAL_RECOVERED_WITH_CURRENT_HEADROOM = 1 << 1
 TERMINAL_RECOVERY_QUANTIZATION_EXPOSED = 1 << 2
 TERMINAL_PROBE_CONSTRAINED_TEST_POINT = 1 << 3
+# Schema 7 only: whether evidence.assess(..) was already Sufficient when a
+# rest check rejected the run, and which Stage-C rest check owner rejected
+# it. Gated to schema == 7 specifically (not >=) so a future schema bump
+# never has to disentangle these bits from an unrelated later meaning.
+TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY = 1 << 4
+TERMINAL_REST_REJECTION_OWNER_SHIFT = 5
+TERMINAL_REST_REJECTION_OWNER_MASK = 0b11 << TERMINAL_REST_REJECTION_OWNER_SHIFT
+
+REST_REJECTION_OWNER_NAMES = {
+    0b00: "stage_c_anchor",
+    0b01: "stage_c_positive_observation",
+    0b10: "stage_c_recovery",
+    0b11: "stage_c_cleanup",
+}
 INTEGRAL_CAUSE_TOO_FEW_RUNGS = 1
 INTEGRAL_CAUSE_CURRENT_AFTER_SUFFICIENCY = 3
 INTEGRAL_CAUSE_BOOKEND_UNAVAILABLE = 8
@@ -503,6 +517,10 @@ class VelocityIntegralAssembler:
             )
             if schema_revision >= 7:
                 known_flags |= TERMINAL_PROBE_CONSTRAINED_TEST_POINT
+            if schema_revision == 7:
+                known_flags |= (
+                    TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY | TERMINAL_REST_REJECTION_OWNER_MASK
+                )
             if flags < 0 or flags & ~known_flags:
                 raise VelocityIntegralProtocolError("invalid terminal recovery flags")
         rung = int(params.get("rest_boundary_rung_plus_one", 0))
@@ -567,6 +585,8 @@ class VelocityIntegralAssembler:
             terminal["probe_constrained_test_point"] = bool(
                 int(terminal["recovery_flags"]) & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
             )
+            terminal["rest_rejection_after_sufficiency"] = False
+            terminal["rest_rejection_owner"] = None
         elif int(self.plan["schema_revision"]) >= 6:
             flags = int(terminal["recovery_flags"])
             terminal["recovery_unavailable"] = int(bool(flags & TERMINAL_RECOVERY_UNAVAILABLE))
@@ -579,6 +599,21 @@ class VelocityIntegralAssembler:
             terminal["probe_constrained_test_point"] = bool(
                 flags & TERMINAL_PROBE_CONSTRAINED_TEST_POINT
             )
+            if int(self.plan["schema_revision"]) == 7:
+                terminal["rest_rejection_after_sufficiency"] = bool(
+                    flags & TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY
+                )
+                terminal["rest_rejection_owner"] = (
+                    REST_REJECTION_OWNER_NAMES[
+                        (flags & TERMINAL_REST_REJECTION_OWNER_MASK)
+                        >> TERMINAL_REST_REJECTION_OWNER_SHIFT
+                    ]
+                    if terminal["rest_rejection_after_sufficiency"]
+                    else None
+                )
+            else:
+                terminal["rest_rejection_after_sufficiency"] = False
+                terminal["rest_rejection_owner"] = None
             if int(self.plan["schema_revision"]) == 16:
                 # Breakaway acceptance terminal: firmware sets no
                 # recovery_flags target bits (Task 2), so the terminus is
