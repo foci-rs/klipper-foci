@@ -1830,3 +1830,65 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         self.assertIsNotNone(d.autotune.breakaway_campaign_error)
         self.assertIn("duplicate confirmation", str(d.autotune.breakaway_campaign_error))
+
+
+class _StubVelocityIntegralResponse:
+    """Minimal stand-in exposing exactly what `_format_velocity_integral_result`
+    reads (`plan`, `summary`, `terminal`, `outcome`, `reproduction`), so the
+    message-formatting logic can be tested without driving the full
+    terminal-assembly wire protocol -- that protocol is already covered
+    directly in test_velocity_integral.py."""
+
+    def __init__(self, *, plan=None, summary=None, terminal=None, outcome=None, reproduction=None):
+        self.plan = plan
+        self.summary = summary
+        self.terminal = terminal
+        self.outcome = outcome
+        self.reproduction = reproduction
+
+
+class FormatVelocityIntegralResultTest(unittest.TestCase):
+    def _workflow(self, terminal):
+        d = make_driver()
+        d.autotune.velocity_integral = _StubVelocityIntegralResponse(
+            plan={"final_p": 724, "planned_velocity_mrev_s": 2929, "positive_rung_count": 12},
+            summary={
+                "forward_eligible_mask": 0xFFF,
+                "reverse_eligible_mask": 0xFFF,
+                "bookend_available_mask": 0b11,
+                "current_terminus_plus_one": 0,
+            },
+            terminal=terminal,
+            outcome="inconclusive",
+        )
+        return d.autotune
+
+    def test_names_the_owner_when_sufficiency_was_reached_before_rest_rejected(self):
+        workflow = self._workflow(
+            {
+                "outcome_name": "inconclusive",
+                "outcome_namespace": "stage_c",
+                "cause": 53,
+                "rest_rejection_after_sufficiency": True,
+                "rest_rejection_owner": "stage_c_recovery",
+            }
+        )
+
+        message = workflow._format_velocity_integral_result()
+
+        self.assertIn("sufficiency reached before rest rejected (owner=stage_c_recovery)", message)
+
+    def test_says_nothing_extra_for_an_ordinary_partial_acquisition(self):
+        workflow = self._workflow(
+            {
+                "outcome_name": "InconclusiveRest",
+                "outcome_namespace": "stage_c",
+                "cause": 53,
+                "rest_rejection_after_sufficiency": False,
+                "rest_rejection_owner": None,
+            }
+        )
+
+        message = workflow._format_velocity_integral_result()
+
+        self.assertNotIn("sufficiency reached before rest rejected", message)

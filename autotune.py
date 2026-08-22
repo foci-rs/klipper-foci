@@ -487,6 +487,11 @@ class AutotuneWorkflow:
         remediation = STAGE_C_TERMINAL_CAUSE_REMEDIATION.get(int(terminal.get("cause", 0)))
         if remediation is not None:
             message = f"{message}; {remediation}"
+        if terminal.get("rest_rejection_after_sufficiency"):
+            message = (
+                f"{message}; sufficiency reached before rest rejected "
+                f"(owner={terminal.get('rest_rejection_owner')})"
+            )
         if response.reproduction is not None:
             masks = response.reproduction.get("masks", {})
             mask_text = []
