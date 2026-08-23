@@ -33,6 +33,8 @@ from .velocity_integral import (
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
     BREAKAWAY_TERMINAL_REMEDIATION,
     FLOOR_ORIGIN_NAMES,
+    STAGE_C_CAUSE_DISPATCH_NAMESPACE,
+    STAGE_C_CAUSE_NAMESPACE_NAMES,
     STAGE_C_TERMINAL_CAUSE_NAMES,
     STAGE_C_TERMINAL_CAUSE_REMEDIATION,
     BreakawayCampaignAssembler,
@@ -67,14 +69,21 @@ OUTER_SAFETY_FAULT_NAMES = {
 }
 
 
-def _stage_c_cause_text(cause: int) -> str:
-    """Render a Stage-C terminal cause as its number and dispatch name.
+def _stage_c_cause_namespace_text(cause_namespace: int) -> str:
+    """Render a Stage-C terminal's cause namespace as its wire-carried name."""
+    return STAGE_C_CAUSE_NAMESPACE_NAMES.get(cause_namespace, "unknown")
 
-    The number stays because `cause` shares its numeric range with the engine's
-    own causes and with `CommissionError` status codes, so the name only
-    identifies the value when the dispatch namespace is the producer.
-    """
-    name = STAGE_C_TERMINAL_CAUSE_NAMES.get(cause)
+
+def _stage_c_cause_text(cause_namespace: int, cause: int) -> str:
+    """Render a Stage-C terminal cause as its number and, for a dispatch
+    cause, its name. The dispatch name table only applies within its own
+    namespace -- the same number from the engine or error namespace means
+    something else."""
+    name = (
+        STAGE_C_TERMINAL_CAUSE_NAMES.get(cause)
+        if cause_namespace == STAGE_C_CAUSE_DISPATCH_NAMESPACE
+        else None
+    )
     return str(cause) if name is None else f"{cause} ({name})"
 
 
@@ -473,6 +482,8 @@ class AutotuneWorkflow:
         plan = response.plan or {}
         summary = response.summary or {}
         terminal = response.terminal or {}
+        cause_namespace = int(terminal.get("cause_namespace", -1))
+        cause = int(terminal.get("cause", 0))
         message = (
             f"velocity integral response {terminal.get('outcome_name', response.outcome)}: P="
             f"{int(plan.get('final_p', 0))} velocity={int(plan.get('planned_velocity_mrev_s', 0))}"
@@ -481,10 +492,14 @@ class AutotuneWorkflow:
             f"{summary.get('reverse_eligible_mask', 0):08x} bookend=0x"
             f"{summary.get('bookend_available_mask', 0):02x} current_terminus="
             f"{int(summary.get('current_terminus_plus_one', 0))} namespace="
-            f"{terminal.get('outcome_namespace', 'stage_c')} cause="
-            f"{_stage_c_cause_text(int(terminal.get('cause', 0)))}"
+            f"{_stage_c_cause_namespace_text(cause_namespace)} cause="
+            f"{_stage_c_cause_text(cause_namespace, cause)}"
         )
-        remediation = STAGE_C_TERMINAL_CAUSE_REMEDIATION.get(int(terminal.get("cause", 0)))
+        remediation = (
+            STAGE_C_TERMINAL_CAUSE_REMEDIATION.get(cause)
+            if cause_namespace == STAGE_C_CAUSE_DISPATCH_NAMESPACE
+            else None
+        )
         if remediation is not None:
             message = f"{message}; {remediation}"
         if terminal.get("rest_rejection_after_sufficiency"):

@@ -1892,3 +1892,61 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         message = workflow._format_velocity_integral_result()
 
         self.assertNotIn("sufficiency reached before rest rejected", message)
+
+    def test_names_a_dispatch_cause_from_the_stage_c_table(self):
+        workflow = self._workflow(
+            {
+                "outcome_name": "Fault",
+                "outcome_namespace": "stage_c",
+                "cause_namespace": 2,
+                "cause": 4,
+            }
+        )
+
+        message = workflow._format_velocity_integral_result()
+
+        self.assertIn("namespace=dispatch cause=4 (evidence_integrity)", message)
+
+    def test_does_not_apply_the_dispatch_table_to_an_engine_cause_with_the_same_number(self):
+        workflow = self._workflow(
+            {
+                "outcome_name": "Fault",
+                "outcome_namespace": "stage_c",
+                "cause_namespace": 0,
+                "cause": 4,
+            }
+        )
+
+        message = workflow._format_velocity_integral_result()
+
+        self.assertIn("namespace=engine cause=4", message)
+        self.assertNotIn("evidence_integrity", message)
+
+    def test_does_not_apply_the_dispatch_table_to_an_error_cause_with_the_same_number(self):
+        workflow = self._workflow(
+            {
+                "outcome_name": "Fault",
+                "outcome_namespace": "stage_c",
+                "cause_namespace": 1,
+                "cause": 4,
+            }
+        )
+
+        message = workflow._format_velocity_integral_result()
+
+        self.assertIn("namespace=error cause=4", message)
+        self.assertNotIn("evidence_integrity", message)
+
+    def test_only_offers_stage_c_remediation_for_a_dispatch_cause(self):
+        workflow = self._workflow(
+            {
+                "outcome_name": "Fault",
+                "outcome_namespace": "stage_c",
+                "cause_namespace": 0,
+                "cause": 12,
+            }
+        )
+
+        message = workflow._format_velocity_integral_result()
+
+        self.assertNotIn("run a campaign first", message)

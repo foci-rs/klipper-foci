@@ -867,6 +867,7 @@ def feed_terminal(
     emitted_rungs=None,
     digest=None,
     cause=0,
+    cause_namespace=None,
     rest_boundary=(0, 0),
     recovery_flags=None,
     current_terminus_plus_one=0,
@@ -1004,6 +1005,8 @@ def feed_terminal(
         "expected_rungs": total_rungs,
         "emitted_rungs": emitted_rungs,
     }
+    if cause_namespace is not None:
+        terminal_core["cause_namespace"] = cause_namespace
     if int(assembler.plan["schema_revision"]) >= 6:
         if recovery_flags is None:
             recovery_flags = 4 if assembler.plan["recovery_quantization_exposed"] else 0
@@ -1280,6 +1283,16 @@ def test_stage_c_fault_accepts_one_missing_final_recovery():
     assert assembler.outcome == "fault"
     assert assembler.terminal["cause"] == 11
     assert set(assembler.recoveries) == set(range(6))
+
+
+def test_terminal_carries_the_wire_cause_namespace():
+    assembler = schema_six_assembler()
+    sequence = feed_full_evidence(assembler)
+
+    feed_terminal(assembler, sequence, cause=4, cause_namespace=0)
+
+    assert assembler.terminal["cause"] == 4
+    assert assembler.terminal["cause_namespace"] == 0
 
 
 def test_stage_c_non_fault_rejects_one_missing_final_recovery():

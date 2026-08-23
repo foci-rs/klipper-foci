@@ -1164,10 +1164,13 @@ STAGE_C_CAUSE_PLAN_MISMATCH = 7
 STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT = 11
 STAGE_C_CAUSE_NO_RETAINED_AUTHORITY = 12
 
-# Dispatch-namespace causes attached to a Stage-C terminal. These share their
-# numeric range with the engine's own `INTEGRAL_CAUSE_*` values and with
-# `CommissionError::status_code()`; a value is
-# only unambiguous once the reader knows which producer emitted it.
+# A Stage-C terminal's `cause` number is only unambiguous once paired with
+# `cause_namespace`: the engine, error, and dispatch producers each number
+# their own causes independently and can emit the same raw value.
+STAGE_C_CAUSE_NAMESPACE_NAMES = {0: "engine", 1: "error", 2: "dispatch"}
+STAGE_C_CAUSE_DISPATCH_NAMESPACE = 2
+
+# Dispatch-namespace causes attached to a Stage-C terminal.
 STAGE_C_TERMINAL_CAUSE_NAMES = {
     STAGE_C_CAUSE_EVIDENCE_INTEGRITY: "evidence_integrity",
     STAGE_C_CAUSE_REPRODUCTION_MISMATCH: "reproduction_mismatch",
