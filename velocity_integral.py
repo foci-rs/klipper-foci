@@ -1238,7 +1238,11 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
     9: "the additive span between breakaway and ceiling was insufficient",
     10: "the additive ladder exceeded its resolution budget",
     11: "discovery evidence was excluded; retain the trace and inspect stationarity",
-    12: "discovery stopped on a safety fault; inspect retained safety evidence",
+    12: (
+        "discovery stopped on a safety fault; any in-band rungs already retained "
+        "are diagnostic only and were not confirmed -- inspect the retained safety "
+        "evidence, then re-commission to retry"
+    ),
     13: "no discovery rung could be confirmed; inspect the nomination margins",
     14: "the target band was not reached at the discovery authority ceiling",
     15: "the confirmed response left the 70-80% band; inspect confirmation bounds",
