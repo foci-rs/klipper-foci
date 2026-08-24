@@ -1225,6 +1225,7 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     23: "probe_internal_fault",
     24: "discovery_internal_fault",
     25: "confirmation_internal_fault",
+    26: "confirmation_stage_c_plan_refused",
 }
 
 # Advisory text only -- relays what the disclosed cause means, not a
@@ -1651,7 +1652,17 @@ class BreakawayCampaignAssembler:
                 "campaign accepted flag disagrees with the Stage-C plan digest"
             )
         confirmation_accepted = bool(int((self.confirmation_terminal or {}).get("accepted", 0)))
-        if self.confirmation_terminal is not None and bool(accepted) != confirmation_accepted:
+        # A confirmed acceptance whose Stage-C plan build was refused
+        # legitimately leaves accepted=False with a confirmed confirmation
+        # terminal -- confirmation and Stage-C admission are
+        # deliberately separate, stacked gates. Only the reverse direction (a
+        # Stage-C plan materializing without a confirmed acceptance) is
+        # structurally impossible and remains a genuine protocol violation.
+        # The message text is unchanged from before this fix (only the
+        # *condition* narrowed from symmetric to one-directional) so it keeps
+        # matching `test_breakaway_campaign_terminal_requires_agreement_with_confirmation`'s
+        # existing `match="own acceptance"` assertion in test_velocity_integral.py.
+        if accepted and self.confirmation_terminal is not None and not confirmation_accepted:
             raise BreakawayCampaignProtocolError(
                 "campaign terminal disagrees with the confirmation terminal's own acceptance"
             )

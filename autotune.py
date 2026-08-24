@@ -547,9 +547,14 @@ class AutotuneWorkflow:
         cause = int(terminal.get("terminal_cause", 0))
         cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{int(cause)}")
         phase_name = BREAKAWAY_PHASE_NAMES.get(int(terminal.get("phase", -1)), "unknown")
+        error_code = int(terminal.get("error_code", 0))
+        error_suffix = ""
+        if error_code:
+            error_name = COMMISSION_ERROR_NAMES.get(error_code, f"unknown_{error_code}")
+            error_suffix = f" error={error_name}"
         message = (
             f"breakaway campaign {'accepted' if campaign.accepted else 'not accepted'} (phase="
-            f"{phase_name} cause={cause_name})"
+            f"{phase_name} cause={cause_name}{error_suffix})"
         )
         probe_result = campaign.probe_result
         if probe_result is not None:

@@ -1800,6 +1800,7 @@ def feed_breakaway_confirmation(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, 
             "accepted": int(accepted),
             "stage_c_plan_digest_low": stage_c_low,
             "stage_c_plan_digest_high": stage_c_high,
+            "error_code": 0,
         }
     )
 
@@ -1932,6 +1933,81 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertIn("nominated P=400 margin=2000pm", message)
         self.assertIn("confirmed P=0 measured_SE=900pm required_SE=667pm", message)
         self.assertIn("remediation:", message)
+
+    def test_operator_report_names_the_real_error_on_a_confirmed_refusal(self):
+        d = self._commissioned_driver()
+        feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+        feed_breakaway_probe_and_discovery(d)
+        discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
+        confirm_low, confirm_high = BREAKAWAY_CONFIRMATION_DIGEST
+        d.autotune.handle_breakaway_confirmation_plan(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "plan_digest_low": confirm_low,
+                "plan_digest_high": confirm_high,
+                "prior_plan_digest_low": discovery_low,
+                "prior_plan_digest_high": discovery_high,
+                "family_size": 8,
+                "observations_per_direction": 4,
+                "candidate_p_raw": 400,
+                "band_lower_percent": 70,
+                "band_upper_percent": 80,
+                "capture_profile": 0,
+                "acceptance_rule": 0,
+                "nominated_margin_percent_milli": 2_000,
+            }
+        )
+        d.autotune.handle_breakaway_confirmation_terminal_identity(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "plan_digest_low": confirm_low,
+                "plan_digest_high": confirm_high,
+                "prior_plan_digest_low": discovery_low,
+                "prior_plan_digest_high": discovery_high,
+                "family_size": 8,
+                "terminal_cause": 21,
+            }
+        )
+        d.autotune.handle_breakaway_confirmation_terminal_masks(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 3,
+                "forward_collected_mask": 0b1111,
+                "forward_eligible_mask": 0b1111,
+                "forward_included_mask": 0b1111,
+                "reverse_collected_mask": 0b1111,
+                "reverse_eligible_mask": 0b1111,
+                "reverse_included_mask": 0b1111,
+                "accepted": 1,
+                "confirmed_p_raw": 400,
+                "max_relative_se_permille": 500,
+                "required_relative_se_permille": 667,
+                "has_safety_fault": 0,
+            }
+        )
+        d.autotune.handle_breakaway_campaign_terminal(
+            {
+                "oid": 0,
+                "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                "evidence_sequence": 4,
+                "phase": 2,
+                "terminal_cause": 26,
+                "accepted": 0,
+                "stage_c_plan_digest_low": 0,
+                "stage_c_plan_digest_high": 0,
+                "error_code": 11,
+            }
+        )
+
+        message = d.autotune._format_breakaway_campaign_result()
+
+        self.assertIn("cause=confirmation_stage_c_plan_refused", message)
+        self.assertIn("error=velocity validation failed", message)
 
     def test_confirmation_inconclusive_preserves_prior_p_and_skips_persistence(self):
         """Brief step 4: on a non-accept terminal, the previously commissioned

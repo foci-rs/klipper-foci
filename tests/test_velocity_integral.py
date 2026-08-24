@@ -2396,6 +2396,8 @@ def feed_campaign_terminal(
     run_sequence=BREAKAWAY_RUN_SEQUENCE,
     accepted,
     stage_c_digest=STAGE_C_DIGEST,
+    terminal_cause=None,
+    error_code=0,
 ):
     low, high = stage_c_digest if accepted else (0, 0)
     assembler.handle_campaign_terminal(
@@ -2404,10 +2406,13 @@ def feed_campaign_terminal(
             "run_sequence": run_sequence,
             "evidence_sequence": 4,
             "phase": 2,
-            "terminal_cause": 21 if accepted else 15,
+            "terminal_cause": terminal_cause
+            if terminal_cause is not None
+            else (21 if accepted else 15),
             "accepted": int(accepted),
             "stage_c_plan_digest_low": low,
             "stage_c_plan_digest_high": high,
+            "error_code": error_code,
         }
     )
 
@@ -2684,6 +2689,25 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
         feed_campaign_terminal(assembler, accepted=True)
 
 
+def test_breakaway_campaign_terminal_confirmed_refusal_is_not_a_protocol_error():
+    """A genuinely confirmed acceptance whose Stage-C plan build was refused
+    is a legitimate outcome, not a protocol violation -- only the
+    reverse (a Stage-C plan without a confirmed acceptance) remains invalid."""
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_probe_result(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_terminal(assembler, accepted=True)
+
+    feed_campaign_terminal(assembler, accepted=False, terminal_cause=26, error_code=11)
+
+    assert assembler.done
+    assert assembler.accepted is False
+    assert assembler.campaign_terminal["error_code"] == 11
+
+
 def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
@@ -2704,6 +2728,7 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
                 "accepted": 1,
                 "stage_c_plan_digest_low": 0,
                 "stage_c_plan_digest_high": 0,
+                "error_code": 0,
             }
         )
 
