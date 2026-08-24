@@ -35,6 +35,8 @@ ROBUSTNESS_OUTCOME_NAMES = {
     3: "failed",
 }
 
+ROBUSTNESS_CAUSE_IAE_EXCEEDED = 3
+
 ROBUSTNESS_CAUSE_NAMES = {
     0: "pass",
     1: "reconvergence_time_exceeded",

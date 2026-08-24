@@ -5,6 +5,7 @@ import struct
 import pytest
 from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
+    ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
     ROBUSTNESS_CYCLES_PER_DIRECTION,
     ROBUSTNESS_OUTCOME_NAMES,
@@ -217,6 +218,8 @@ def test_terminal_parse_decodes_plant_rate_and_iae_max():
 
 def test_cause_names_cover_firmware_values_zero_through_ten():
     assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(11))
+    assert ROBUSTNESS_CAUSE_IAE_EXCEEDED == 3
+    assert ROBUSTNESS_CAUSE_NAMES[ROBUSTNESS_CAUSE_IAE_EXCEEDED] == "iae_exceeded"
     assert ROBUSTNESS_CAUSE_NAMES[7] == "evidence_integrity"
     assert ROBUSTNESS_CAUSE_NAMES[8] == "internal_fault"
     assert ROBUSTNESS_CAUSE_NAMES[9] == "rest_not_confirmed"

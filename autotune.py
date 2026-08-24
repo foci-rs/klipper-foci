@@ -23,6 +23,7 @@ from .commissioning import (
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 from .robustness_reversal import (
+    ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
     RobustnessReversalProtocolError,
 )
@@ -46,8 +47,6 @@ from .velocity_integral import (
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
 )
-
-ROBUSTNESS_CAUSE_IAE_EXCEEDED = 3
 
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
