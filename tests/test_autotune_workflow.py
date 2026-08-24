@@ -455,6 +455,39 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
 
+    def test_pass_log_failure_does_not_skip_kinematic_motor_disable(self):
+        d = self._commissioned_driver(
+            kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        )
+        d.printer._objects["configfile"] = MockConfigFile()
+        toolhead = d.printer.lookup_object("toolhead")
+        stepper_enable = d.printer.lookup_object("stepper_enable")
+        x_enable = stepper_enable.lookup_enable("stepper_x")
+        y_enable = stepper_enable.lookup_enable("stepper_y")
+        x_enable.motor_enable(toolhead.get_last_move_time())
+        y_enable.motor_enable(toolhead.get_last_move_time())
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_complete_candidate",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        def fail_gain_search_log(message, *_args):
+            if message.startswith("foci-gain-search"):
+                raise RuntimeError("log failed")
+
+        with (
+            patch("klipper_foci.autotune.logging.info", side_effect=fail_gain_search_log),
+            self.assertRaises(
+                RuntimeError, msg="logging failure should propagate after safety cleanup"
+            ),
+        ):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertFalse(x_enable.is_motor_enabled())
+        self.assertFalse(y_enable.is_motor_enabled())
+
     def test_successful_corexy_autotune_disables_kinematic_pair(self):
         """A successful tune must not leave one CoreXY motor holding while the
         tuned motor has returned to a conservative firmware voltage limit."""
@@ -852,12 +885,18 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("rejected", logged)
         self.assertFalse(any("foci-gain-search" in response for response in gcmd._responses))
 
-    def test_persist_logs_landed_gain(self):
+    def test_successful_autotune_logs_landed_gain(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_complete_candidate",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
 
         with patch("klipper_foci.autotune.logging.info") as info:
-            d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT, "nominal", "tuned")
+            d.autotune.autotune(MockGCmd({}))
 
         logged = "\n".join(str(call.args) for call in info.call_args_list)
         self.assertIn("foci-gain-search", logged)

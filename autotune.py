@@ -1085,6 +1085,12 @@ class AutotuneWorkflow:
                     f"{format_inner_warning_flags(inner_warning_flags)}"
                 )
             self._disable_kinematic_motors(toolhead)
+            logging.info(
+                "foci-gain-search %s: candidate p=%d i=%d verdict=passed",
+                self.driver.name,
+                int(result["velocity_p"]),
+                int(result["velocity_i"]),
+            )
         finally:
             self.driver.state.release()
 
@@ -1244,9 +1250,3 @@ class AutotuneWorkflow:
             )
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)
-        logging.info(
-            "foci-gain-search %s: candidate p=%d i=%d verdict=passed",
-            self.driver.name,
-            int(result["velocity_p"]),
-            int(result["velocity_i"]),
-        )
