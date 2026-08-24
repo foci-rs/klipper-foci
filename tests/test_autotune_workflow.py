@@ -783,7 +783,63 @@ class TestAutotuneGates(unittest.TestCase):
 
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
-        self.assertIn("robustness reversal", str(ctx.exception))
+        self.assertIn("no robust gain", str(ctx.exception).lower())
+
+    def test_production_iae_reject_reports_no_robust_gain(self):
+        from tests.test_robustness_reversal import (
+            build_cycle_evidence_payload,
+            build_terminal_payload,
+        )
+
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_rejected_robustness(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_cycle_evidence(
+                    {"payload": build_cycle_evidence_payload(direction=0, iae_median_qs=1_530_000)}
+                )
+                d.autotune.handle_robustness_cycle_evidence(
+                    {"payload": build_cycle_evidence_payload(direction=1, iae_median_qs=1_490_000)}
+                )
+                d.autotune.handle_robustness_reversal_terminal(
+                    {
+                        "payload": build_terminal_payload(
+                            outcome=1,
+                            cause=3,
+                            selected_p=460,
+                            selected_i=900,
+                            iae_max_q_qs=1_181_812,
+                        )
+                    }
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_rejected_robustness
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("no robust gain", message.lower())
+        self.assertIn("response band", message.lower())
+        self.assertIn("460", message)
+        self.assertIn("900", message)
+        self.assertIn("1530000", message)
+        self.assertIn("1181812", message)
 
     def test_production_path_safety_fault_inhibits_enable(self):
         """A safety-fault robustness terminal (outcome=3, cause=6) on the inline

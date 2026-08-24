@@ -26,8 +26,12 @@ from .robustness_reversal import (
     ROBUSTNESS_CAUSE_NAMES,
     RobustnessReversalProtocolError,
 )
-from .robustness_reversal import handle_cycle_evidence as parse_robustness_cycle_evidence
-from .robustness_reversal import handle_terminal as parse_robustness_reversal_terminal
+from .robustness_reversal import (
+    handle_cycle_evidence as parse_robustness_cycle_evidence,
+)
+from .robustness_reversal import (
+    handle_terminal as parse_robustness_reversal_terminal,
+)
 from .velocity_integral import (
     BREAKAWAY_PHASE_NAMES,
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
@@ -42,6 +46,8 @@ from .velocity_integral import (
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
 )
+
+ROBUSTNESS_CAUSE_IAE_EXCEEDED = 3
 
 MODE_MAP: dict[str, int] = {
     "unloaded": 0,
@@ -824,6 +830,24 @@ class AutotuneWorkflow:
                     # SET_STEPPER_ENABLE from re-energizing blind. Raises on
                     # its own.
                     self._handle_robustness_safety_fault(gcmd)
+                if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_IAE_EXCEEDED:
+                    measured = max(
+                        int(
+                            (self.robustness_cycle_evidence.get(index) or {}).get(
+                                "iae_median_qs", 0
+                            )
+                        )
+                        for index in (0, 1)
+                    )
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: no robust gain within the response band. "
+                        "The most aggressive in-band candidate "
+                        f"(P={int(terminal.get('selected_p', 0))} "
+                        f"I={int(terminal.get('selected_i', 0))}) failed the robustness gate: "
+                        f"measured IAE {measured} exceeds bound "
+                        f"{int(terminal.get('iae_max_q_qs', 0))}. "
+                        f"The plant cannot be robustly controlled within the response band."
+                    )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
                     f"the production path: {terminal.get('outcome_name', 'unknown')} "
