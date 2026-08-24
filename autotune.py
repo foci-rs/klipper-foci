@@ -1188,12 +1188,6 @@ class AutotuneWorkflow:
 
     def persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
         """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
-        logging.info(
-            "foci-gain-search %s: candidate p=%d i=%d verdict=passed",
-            self.driver.name,
-            int(result["velocity_p"]),
-            int(result["velocity_i"]),
-        )
         configfile = self.driver.printer.lookup_object("configfile")
         configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['velocity_p'])}")
         configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['velocity_i'])}")
@@ -1250,3 +1244,9 @@ class AutotuneWorkflow:
             )
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)
+        logging.info(
+            "foci-gain-search %s: candidate p=%d i=%d verdict=passed",
+            self.driver.name,
+            int(result["velocity_p"]),
+            int(result["velocity_i"]),
+        )

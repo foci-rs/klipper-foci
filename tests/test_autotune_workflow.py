@@ -865,6 +865,21 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("12", logged)
         self.assertIn("passed", logged)
 
+    def test_persist_failure_does_not_log_passed_gain(self):
+        d = self._commissioned_driver()
+
+        class FailingConfigFile:
+            def set(self, *_args):
+                raise CommandError("persistence failed")
+
+        d.printer._objects["configfile"] = FailingConfigFile()
+
+        with patch("klipper_foci.autotune.logging.info") as info, self.assertRaises(CommandError):
+            d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT, "nominal", "tuned")
+
+        logged = "\n".join(str(call.args) for call in info.call_args_list)
+        self.assertNotIn("verdict=passed", logged)
+
     def test_production_path_safety_fault_inhibits_enable(self):
         """A safety-fault robustness terminal (outcome=3, cause=6) on the inline
         production dispatch must still inhibit motor enable, exactly as the
