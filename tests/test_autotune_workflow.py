@@ -1,6 +1,7 @@
 """Tests for FOCI autotune workflow behavior."""
 
 import unittest
+from unittest.mock import patch
 
 from klipper_foci.acceptance_matrix import ACTION_CODES
 from klipper_foci.autotune import OUTER_SAFETY_FAULT_NAMES
@@ -830,7 +831,10 @@ class TestAutotuneGates(unittest.TestCase):
 
         reactor.pause = pause_with_rejected_robustness
 
-        with self.assertRaises(CommandError) as ctx:
+        with (
+            patch("klipper_foci.autotune.logging.info") as info,
+            self.assertRaises(CommandError) as ctx,
+        ):
             d.autotune.autotune(gcmd)
 
         message = str(ctx.exception)
@@ -840,6 +844,26 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("900", message)
         self.assertIn("1530000", message)
         self.assertIn("1181812", message)
+        logged = "\n".join(str(call.args) for call in info.call_args_list)
+        self.assertIn("foci-gain-search", logged)
+        self.assertIn("460", logged)
+        self.assertIn("900", logged)
+        self.assertIn("1530000", logged)
+        self.assertIn("rejected", logged)
+        self.assertFalse(any("foci-gain-search" in response for response in gcmd._responses))
+
+    def test_persist_logs_landed_gain(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+
+        with patch("klipper_foci.autotune.logging.info") as info:
+            d.autotune.persist_tune_results(SAMPLE_TUNE_RESULT, "nominal", "tuned")
+
+        logged = "\n".join(str(call.args) for call in info.call_args_list)
+        self.assertIn("foci-gain-search", logged)
+        self.assertIn("863", logged)
+        self.assertIn("12", logged)
+        self.assertIn("passed", logged)
 
     def test_production_path_safety_fault_inhibits_enable(self):
         """A safety-fault robustness terminal (outcome=3, cause=6) on the inline

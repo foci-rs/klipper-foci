@@ -822,6 +822,19 @@ class AutotuneWorkflow:
                 # faulted mid-dispatch. The report-only verdict below is for the
                 # standalone diagnostic; the production path must fail loudly.
                 terminal = self.robustness_reversal_terminal
+                measured = max(
+                    int((self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0))
+                    for index in (0, 1)
+                )
+                logging.info(
+                    "foci-gain-search %s: candidate p=%d i=%d iae=%d bound=%d verdict=%s",
+                    self.driver.name,
+                    int(terminal.get("selected_p", 0)),
+                    int(terminal.get("selected_i", 0)),
+                    measured,
+                    int(terminal.get("iae_max_q_qs", 0)),
+                    terminal.get("outcome_name", "unknown"),
+                )
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
                     # Safety fault: chip state is unknown afterward and this
                     # path issues no terminal-owned motor_disable, so the
@@ -830,14 +843,6 @@ class AutotuneWorkflow:
                     # its own.
                     self._handle_robustness_safety_fault(gcmd)
                 if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_IAE_EXCEEDED:
-                    measured = max(
-                        int(
-                            (self.robustness_cycle_evidence.get(index) or {}).get(
-                                "iae_median_qs", 0
-                            )
-                        )
-                        for index in (0, 1)
-                    )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: no robust gain within the response band. "
                         "The most aggressive in-band candidate "
@@ -1183,6 +1188,12 @@ class AutotuneWorkflow:
 
     def persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
         """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
+        logging.info(
+            "foci-gain-search %s: candidate p=%d i=%d verdict=passed",
+            self.driver.name,
+            int(result["velocity_p"]),
+            int(result["velocity_i"]),
+        )
         configfile = self.driver.printer.lookup_object("configfile")
         configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['velocity_p'])}")
         configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['velocity_i'])}")
