@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from .acceptance_matrix import (
@@ -826,15 +827,19 @@ class AutotuneWorkflow:
                     int((self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0))
                     for index in (0, 1)
                 )
-                logging.info(
-                    "foci-gain-search %s: candidate p=%d i=%d iae=%d bound=%d verdict=%s",
-                    self.driver.name,
-                    int(terminal.get("selected_p", 0)),
-                    int(terminal.get("selected_i", 0)),
-                    measured,
-                    int(terminal.get("iae_max_q_qs", 0)),
-                    terminal.get("outcome_name", "unknown"),
-                )
+                # Evidence logging is diagnostic-only and must never block the
+                # safety-critical handling below (safety-fault inhibit, the
+                # IAE-reject error, or the generic reject error).
+                with contextlib.suppress(Exception):
+                    logging.info(
+                        "foci-gain-search %s: candidate p=%d i=%d iae=%d bound=%d verdict=%s",
+                        self.driver.name,
+                        int(terminal.get("selected_p", 0)),
+                        int(terminal.get("selected_i", 0)),
+                        measured,
+                        int(terminal.get("iae_max_q_qs", 0)),
+                        terminal.get("outcome_name", "unknown"),
+                    )
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
                     # Safety fault: chip state is unknown afterward and this
                     # path issues no terminal-owned motor_disable, so the

@@ -919,6 +919,45 @@ class TestAutotuneGates(unittest.TestCase):
         logged = "\n".join(str(call.args) for call in info.call_args_list)
         self.assertNotIn("verdict=passed", logged)
 
+    def test_reject_log_failure_does_not_skip_safety_inhibit(self):
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        reactor = d.printer.get_reactor()
+
+        def pause_with_safety_fault(deadline):
+            reactor._time = deadline
+            if d.autotune.robustness_workflow_plan is None:
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 7,
+                        "nominal_workflow_ms": 15_000,
+                        "maximum_workflow_ms": 32_000,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            elif d.autotune.robustness_reversal_terminal is None:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=3, cause=6)}
+                )
+            return reactor._time
+
+        def fail_gain_search_log(message, *_args):
+            if message.startswith("foci-gain-search"):
+                raise RuntimeError("log failed")
+
+        reactor.pause = pause_with_safety_fault
+
+        with (
+            patch("klipper_foci.autotune.logging.info", side_effect=fail_gain_search_log),
+            self.assertRaises(CommandError),
+        ):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertTrue(d.state.inhibited)
+
     def test_production_path_safety_fault_inhibits_enable(self):
         """A safety-fault robustness terminal (outcome=3, cause=6) on the inline
         production dispatch must still inhibit motor enable, exactly as the
