@@ -197,6 +197,40 @@ def drive_two_dispatch_scenario(
     reactor.pause = pause
 
 
+def drive_orchestrated_robustness_scenario(d, *, outcome, cause):
+    """Drive a reproduced-resume scenario through to a custom orchestrated
+    robustness terminal, built via ``build_terminal_payload`` so the outcome
+    and cause come from the same wire encoding firmware uses (rather than the
+    lightweight named-terminal stamp ``_feed_dispatch_terminal`` uses for the
+    first two dispatches).
+    """
+    from tests.test_robustness_reversal import build_terminal_payload
+
+    reactor = d.printer.get_reactor()
+    previous_run_tune = d.protocol.run_tune
+    dispatch_count = {"n": 0}
+
+    def counting_run_tune(**kwargs):
+        dispatch_count["n"] += 1
+        return previous_run_tune(**kwargs)
+
+    d.protocol.run_tune = counting_run_tune
+
+    def pause(deadline):
+        reactor._time = deadline
+        if dispatch_count["n"] == 1:
+            _feed_dispatch_terminal(d.autotune, "breakaway_accepted_complete_candidate")
+        elif dispatch_count["n"] == 2:
+            _feed_dispatch_terminal(d.autotune, "complete")
+        else:
+            d.autotune.handle_robustness_reversal_terminal(
+                {"payload": build_terminal_payload(outcome=outcome, cause=cause)}
+            )
+        return reactor._time
+
+    reactor.pause = pause
+
+
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(
@@ -513,44 +547,94 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "pid_position_p")], "480")
         self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
 
-    def test_reproduced_resume_robustness_reject_raises_temporary_error(self):
-        """H1 scope stops at a temporary hard failure for a non-pass robustness
-        verdict after an orchestrated reproduced resume; Task H2 replaces this
-        with the real orchestrated reject/safety-fault handling."""
-        from tests.test_robustness_reversal import build_terminal_payload
-
+    def test_orchestrated_reject_no_snapshot_fails_without_config_mutation(self):
+        """An orchestrated (post-reproduced-resume) robustness reject with no
+        pre_tune_snapshot must fail loudly, without invoking the standalone
+        diagnostic's revert-and-report verdict handler and without touching
+        config -- the host deployed nothing on this path, so there is
+        nothing to revert."""
         d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = None
         persisted = []
         d.autotune.persist_tune_results = lambda *a, **k: persisted.append((a, k))
-        reactor = d.printer.get_reactor()
-        previous_run_tune = d.protocol.run_tune
-        dispatch_count = {"n": 0}
-
-        def counting_run_tune(**kwargs):
-            dispatch_count["n"] += 1
-            return previous_run_tune(**kwargs)
-
-        d.protocol.run_tune = counting_run_tune
-
-        def pause(deadline):
-            reactor._time = deadline
-            if dispatch_count["n"] == 1:
-                _feed_dispatch_terminal(d.autotune, "breakaway_accepted_complete_candidate")
-            elif dispatch_count["n"] == 2:
-                _feed_dispatch_terminal(d.autotune, "complete")
-            else:
-                d.autotune.handle_robustness_reversal_terminal(
-                    {"payload": build_terminal_payload(outcome=1, cause=3)}
-                )
-            return reactor._time
-
-        reactor.pause = pause
+        verdict_calls = []
+        d.autotune._handle_robustness_verdict = lambda gcmd: verdict_calls.append(gcmd)
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=3)
 
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(MockGCmd({}))
 
-        self.assertIn("robustness reversal", str(ctx.exception).lower())
+        self.assertIn("robustness gate", str(ctx.exception).lower())
+        self.assertEqual(verdict_calls, [])
+        self.assertEqual(cfg.values, {})
         self.assertEqual(persisted, [])
+        self.assertFalse(d.state.inhibited)
+
+    def test_orchestrated_reject_stale_snapshot_does_not_revert(self):
+        """Same assertions with a deliberately stale pre_tune_snapshot present:
+        the orchestrated branch must never consult it, so a snapshot left over
+        from an earlier diagnostic run cannot leak a revert onto unrelated
+        config or gains."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = self._tuned_snapshot(velocity_p=111)
+        persisted = []
+        d.autotune.persist_tune_results = lambda *a, **k: persisted.append((a, k))
+        verdict_calls = []
+        d.autotune._handle_robustness_verdict = lambda gcmd: verdict_calls.append(gcmd)
+        before_gains = dict(d.state.active_gains)
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=3)
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(verdict_calls, [])
+        self.assertEqual(cfg.values, {})
+        self.assertEqual(persisted, [])
+        self.assertEqual(d.state.active_gains, before_gains)
+        self.assertIsNotNone(d.state.pre_tune_snapshot)
+
+    def test_orchestrated_safety_fault_no_snapshot_inhibits_enable(self):
+        """An orchestrated safety fault (outcome=failed, cause=safety_fault)
+        must inhibit enable and block auto-calibrate-on-enable through the
+        new dedicated helper, without touching config."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = None
+        blocked = []
+        d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: blocked.append(allowed)
+        drive_orchestrated_robustness_scenario(d, outcome=3, cause=6)
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertIn("safety fault", str(ctx.exception).lower())
+        self.assertTrue(d.state.inhibited)
+        self.assertEqual(blocked, [False])
+        self.assertEqual(cfg.values, {})
+
+    def test_orchestrated_safety_fault_stale_snapshot_inhibits_without_revert(self):
+        """Same as above with a stale pre_tune_snapshot present: the
+        enable-inhibit still fires, but the snapshot must not be consulted
+        for a config revert."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = self._tuned_snapshot(velocity_p=222)
+        blocked = []
+        d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: blocked.append(allowed)
+        drive_orchestrated_robustness_scenario(d, outcome=3, cause=6)
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertTrue(d.state.inhibited)
+        self.assertEqual(blocked, [False])
+        self.assertEqual(cfg.values, {})
 
     def test_pass_log_failure_does_not_skip_kinematic_motor_disable(self):
         d = self._commissioned_driver(

@@ -877,11 +877,41 @@ class AutotuneWorkflow:
                     f"{detail_suffix}"
                 )
             if orchestrated:
-                # TODO(H2): orchestrated reject/safety-fault handling (a
-                # dedicated inhibit helper, not the standalone diagnostic's
-                # revert-and-report path below) hooks in here. For now the
-                # caller turns this marker into a temporary hard failure.
-                return "robustness_reversal"
+                # The orchestrated dispatch deployed nothing: there is no
+                # pre_tune_snapshot to revert (fresh) or one may be stale
+                # (from an earlier diagnostic run), so this branch must
+                # never read or mutate it. printer.cfg already holds the
+                # operator baseline; firmware restores its own registers.
+                terminal = self.robustness_reversal_terminal
+                if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
+                    # Safety fault: same in-session enable-inhibit as the
+                    # standalone diagnostic below, without the config
+                    # revert. Raises on its own.
+                    self._inhibit_orchestrated_safety_fault(gcmd)
+                if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_IAE_EXCEEDED:
+                    measured = max(
+                        int(
+                            (self.robustness_cycle_evidence.get(index) or {}).get(
+                                "iae_median_qs", 0
+                            )
+                        )
+                        for index in (0, 1)
+                    )
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: no robust gain within the response band. "
+                        "The most aggressive in-band candidate "
+                        f"(P={int(terminal.get('selected_p', 0))} "
+                        f"I={int(terminal.get('selected_i', 0))}) failed the robustness gate: "
+                        f"measured IAE {measured} exceeds bound "
+                        f"{int(terminal.get('iae_max_q_qs', 0))}. "
+                        f"The plant cannot be robustly controlled within the response band."
+                    )
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
+                    f"the production path: {terminal.get('outcome_name', 'unknown')} "
+                    f"(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
+                    f"{detail_suffix}"
+                )
             self._handle_robustness_verdict(gcmd)
             return "robustness_reversal"
         if self.breakaway_campaign.done:
@@ -1057,8 +1087,9 @@ class AutotuneWorkflow:
                         orchestrated=True,
                     )
                     if outcome != "tune_result":
-                        # TODO(H2): replace this temporary failure with the
-                        # orchestrated reject/safety-fault handling.
+                        # Defensive: the orchestrated dispatch above raises
+                        # for every non-pass terminal (ordinary reject and
+                        # safety fault alike), so this is unreachable today.
                         raise gcmd.error(
                             f"FOCI {self.driver.name}: robustness reversal after "
                             f"reproduced resume did not pass (outcome={outcome})"
@@ -1198,9 +1229,37 @@ class AutotuneWorkflow:
         snapshot = self.driver.state.pre_tune_snapshot
         if snapshot is not None:
             self._revert_config_only(snapshot)
+        self._inhibit_enable_for_safety_fault()
+        raise gcmd.error(
+            f"FOCI {self.driver.name}: robustness safety fault; motor enable "
+            f"inhibited until restart"
+        )
+
+    def _inhibit_enable_for_safety_fault(self) -> None:
+        """Block a subsequent SET_STEPPER_ENABLE until restart.
+
+        Shared by the standalone diagnostic's revert-and-report path
+        (`_handle_robustness_safety_fault`) and the orchestrated production
+        path (`_inhibit_orchestrated_safety_fault`); it never raises so each
+        caller controls its own error.
+        """
         self.driver.state.inhibited = True
         self.driver.state.last_commission_failure = "robustness safety fault"
         self.driver.homing.set_auto_calibrate_on_enable_allowed(False)
+
+    def _inhibit_orchestrated_safety_fault(self, gcmd) -> None:
+        """Inhibit enable for an orchestrated safety fault without touching config.
+
+        Runs when the host-orchestrated robustness dispatch (the third
+        dispatch issued after a reproduced resume) reports a safety fault.
+        Unlike `_handle_robustness_safety_fault`, this path deployed
+        nothing: `pre_tune_snapshot` is only populated after a
+        `tune_result`, so a fresh orchestrated reject has none, and a stale
+        one left over from an earlier diagnostic run would revert unrelated
+        config. printer.cfg already holds the operator baseline; firmware
+        restores the physical registers on its own.
+        """
+        self._inhibit_enable_for_safety_fault()
         raise gcmd.error(
             f"FOCI {self.driver.name}: robustness safety fault; motor enable "
             f"inhibited until restart"
