@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 
 from .acceptance_matrix import (
@@ -737,8 +736,10 @@ class AutotuneWorkflow:
         chained after a reproduced resume, as opposed to the standalone
         ACTION=robustness_reversal diagnostic command. It only affects a
         non-pass robustness terminal: the diagnostic path keeps its full
-        report-only handling, while an orchestrated dispatch defers to the
-        caller instead of reverting state itself.
+        report-only handling (reverting the deployed gain when a
+        pre-tune snapshot exists), while an orchestrated dispatch handles
+        the reject or safety fault itself and raises, without touching
+        ``pre_tune_snapshot`` or reverting config.
 
         Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
         Returns the velocity-integral outcome name (for example
@@ -829,53 +830,6 @@ class AutotuneWorkflow:
                 f"FOCI {self.driver.name}: "
                 f"{self._format_robustness_reversal_result()}{detail_suffix}"
             )
-            if action_code != ACTION_CODES["robustness_reversal"]:
-                # The production dispatch (breakaway_seeded / stage_c_resume)
-                # promotes straight to a TuneResult on a robustness pass, so a
-                # terminal reaching here at all means robustness rejected or
-                # faulted mid-dispatch. The report-only verdict below is for the
-                # standalone diagnostic; the production path must fail loudly.
-                terminal = self.robustness_reversal_terminal
-                measured = max(
-                    int((self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0))
-                    for index in (0, 1)
-                )
-                # Evidence logging is diagnostic-only and must never block the
-                # safety-critical handling below (safety-fault inhibit, the
-                # IAE-reject error, or the generic reject error).
-                with contextlib.suppress(Exception):
-                    logging.info(
-                        "foci-gain-search %s: candidate p=%d i=%d iae=%d bound=%d verdict=%s",
-                        self.driver.name,
-                        int(terminal.get("selected_p", 0)),
-                        int(terminal.get("selected_i", 0)),
-                        measured,
-                        int(terminal.get("iae_max_q_qs", 0)),
-                        terminal.get("outcome_name", "unknown"),
-                    )
-                if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
-                    # Safety fault: chip state is unknown afterward and this
-                    # path issues no terminal-owned motor_disable, so the
-                    # enable-inhibit is the only thing blocking a subsequent
-                    # SET_STEPPER_ENABLE from re-energizing blind. Raises on
-                    # its own.
-                    self._handle_robustness_safety_fault(gcmd)
-                if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_IAE_EXCEEDED:
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: no robust gain within the response band. "
-                        "The most aggressive in-band candidate "
-                        f"(P={int(terminal.get('selected_p', 0))} "
-                        f"I={int(terminal.get('selected_i', 0))}) failed the robustness gate: "
-                        f"measured IAE {measured} exceeds bound "
-                        f"{int(terminal.get('iae_max_q_qs', 0))}. "
-                        f"The plant cannot be robustly controlled within the response band."
-                    )
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
-                    f"the production path: {terminal.get('outcome_name', 'unknown')} "
-                    f"(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
-                    f"{detail_suffix}"
-                )
             if orchestrated:
                 # The orchestrated dispatch deployed nothing: there is no
                 # pre_tune_snapshot to revert (fresh) or one may be stale
