@@ -723,6 +723,7 @@ class AutotuneWorkflow:
         request_fields: dict,
         toolhead,
         safe_pose_move: str,
+        orchestrated: bool = False,
     ) -> str:
         """Issue one firmware dispatch and wait for its terminal.
 
@@ -731,6 +732,13 @@ class AutotuneWorkflow:
         otherwise run against an unaligned encoder and fail with "encoder not
         aligned". The re-home runs unconditionally so it covers the first
         dispatch, the auto-issued stage_c_resume, and any future chained stage.
+
+        ``orchestrated`` marks a robustness_reversal dispatch the host itself
+        chained after a reproduced resume, as opposed to the standalone
+        ACTION=robustness_reversal diagnostic command. It only affects a
+        non-pass robustness terminal: the diagnostic path keeps its full
+        report-only handling, while an orchestrated dispatch defers to the
+        caller instead of reverting state itself.
 
         Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
         Returns the velocity-integral outcome name (for example
@@ -868,6 +876,12 @@ class AutotuneWorkflow:
                     f"(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
                     f"{detail_suffix}"
                 )
+            if orchestrated:
+                # TODO(H2): orchestrated reject/safety-fault handling (a
+                # dedicated inhibit helper, not the standalone diagnostic's
+                # revert-and-report path below) hooks in here. For now the
+                # caller turns this marker into a temporary hard failure.
+                return "robustness_reversal"
             self._handle_robustness_verdict(gcmd)
             return "robustness_reversal"
         if self.breakaway_campaign.done:
@@ -1029,7 +1043,27 @@ class AutotuneWorkflow:
                     toolhead,
                     safe_pose_move,
                 )
-                if outcome != "tune_result":
+                if outcome == "complete":
+                    # Reproduced: the accepted candidate still needs a
+                    # robustness verdict before it can deploy. Firmware emits
+                    # a full TuneResult directly on a robustness pass.
+                    self._reset_dispatch_state()
+                    outcome = self._run_one_dispatch(
+                        gcmd,
+                        ACTION_CODES["robustness_reversal"],
+                        request_fields,
+                        toolhead,
+                        safe_pose_move,
+                        orchestrated=True,
+                    )
+                    if outcome != "tune_result":
+                        # TODO(H2): replace this temporary failure with the
+                        # orchestrated reject/safety-fault handling.
+                        raise gcmd.error(
+                            f"FOCI {self.driver.name}: robustness reversal after "
+                            f"reproduced resume did not pass (outcome={outcome})"
+                        )
+                elif outcome != "tune_result":
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: stage-C resume did not reproduce the "
                         f"accepted candidate (outcome={outcome})"

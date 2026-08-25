@@ -160,16 +160,21 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     workflow.velocity_integral.done = True
 
 
-def drive_two_dispatch_scenario(d, *, first_terminal, second_terminal, tune_result=None):
-    """Feed a two-dispatch FOCI_AUTOTUNE scenario through the mocked reactor.
+def drive_two_dispatch_scenario(
+    d, *, first_terminal, second_terminal, third_terminal=None, tune_result=None
+):
+    """Feed a two- or three-dispatch FOCI_AUTOTUNE scenario through the mocked
+    reactor.
 
     Each firmware dispatch gets exactly one simulated ``reactor.pause``: the
     first delivers ``first_terminal``, the second (issued only when the first
-    was "complete_candidate") delivers ``second_terminal``. This wraps whatever
-    ``run_tune`` is already installed (tests may replace it beforehand to
-    observe the dispatched actions) purely to count dispatches. ``tune_result``
-    is forwarded to ``_feed_dispatch_terminal`` when either terminal is
-    "tune_result", letting callers assert on distinguishable field values.
+    was "complete_candidate") delivers ``second_terminal``, and the third
+    (issued only when the second was "complete", i.e. a reproduced resume)
+    delivers ``third_terminal``. This wraps whatever ``run_tune`` is already
+    installed (tests may replace it beforehand to observe the dispatched
+    actions) purely to count dispatches. ``tune_result`` is forwarded to
+    ``_feed_dispatch_terminal`` when any terminal is "tune_result", letting
+    callers assert on distinguishable field values.
     """
     reactor = d.printer.get_reactor()
     previous_run_tune = d.protocol.run_tune
@@ -181,9 +186,11 @@ def drive_two_dispatch_scenario(d, *, first_terminal, second_terminal, tune_resu
 
     d.protocol.run_tune = counting_run_tune
 
+    terminals = (first_terminal, second_terminal, third_terminal)
+
     def pause(deadline):
         reactor._time = deadline
-        terminal = first_terminal if dispatch_count["n"] == 1 else second_terminal
+        terminal = terminals[dispatch_count["n"] - 1]
         _feed_dispatch_terminal(d.autotune, terminal, tune_result)
         return reactor._time
 
@@ -454,6 +461,96 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
         self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
+
+    def test_reproduced_resume_dispatches_robustness_then_tune_result(self):
+        """A reproduced resume ("complete") is no longer the end of the road:
+        firmware now needs an explicit, host-orchestrated robustness_reversal
+        dispatch to verify the accepted candidate before a TuneResult can
+        deploy. Each of the three dispatches must be preceded by its own
+        re-home, exactly like the first two already are."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        gcode = d.printer.lookup_object("gcode")
+        events = []
+        gcode.run_script_from_command = lambda command: events.append(("script", command))
+        d.protocol.run_tune = lambda **kw: events.append(("run_tune", kw["action"]))
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_complete_candidate",
+            second_terminal="complete",
+            third_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({}))
+
+        dispatched_actions = [value for kind, value in events if kind == "run_tune"]
+        self.assertEqual(
+            dispatched_actions,
+            [
+                ACTION_CODES["breakaway_seeded"],
+                ACTION_CODES["stage_c_resume"],
+                ACTION_CODES["robustness_reversal"],
+            ],
+        )
+        rehomed_since_dispatch = False
+        dispatches = 0
+        for kind, value in events:
+            if kind == "script" and value == "G28 X Y":
+                rehomed_since_dispatch = True
+            elif kind == "run_tune":
+                self.assertTrue(
+                    rehomed_since_dispatch,
+                    "stage dispatch was not preceded by a re-home",
+                )
+                dispatches += 1
+                rehomed_since_dispatch = False
+        self.assertEqual(dispatches, 3)
+
+        self.assertEqual(d.state.active_gains["velocity_p"], 863)
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "863")
+        self.assertEqual(cfg.values[(d.name, "pid_position_p")], "480")
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+
+    def test_reproduced_resume_robustness_reject_raises_temporary_error(self):
+        """H1 scope stops at a temporary hard failure for a non-pass robustness
+        verdict after an orchestrated reproduced resume; Task H2 replaces this
+        with the real orchestrated reject/safety-fault handling."""
+        from tests.test_robustness_reversal import build_terminal_payload
+
+        d = self._commissioned_driver()
+        persisted = []
+        d.autotune.persist_tune_results = lambda *a, **k: persisted.append((a, k))
+        reactor = d.printer.get_reactor()
+        previous_run_tune = d.protocol.run_tune
+        dispatch_count = {"n": 0}
+
+        def counting_run_tune(**kwargs):
+            dispatch_count["n"] += 1
+            return previous_run_tune(**kwargs)
+
+        d.protocol.run_tune = counting_run_tune
+
+        def pause(deadline):
+            reactor._time = deadline
+            if dispatch_count["n"] == 1:
+                _feed_dispatch_terminal(d.autotune, "breakaway_accepted_complete_candidate")
+            elif dispatch_count["n"] == 2:
+                _feed_dispatch_terminal(d.autotune, "complete")
+            else:
+                d.autotune.handle_robustness_reversal_terminal(
+                    {"payload": build_terminal_payload(outcome=1, cause=3)}
+                )
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertIn("robustness reversal", str(ctx.exception).lower())
+        self.assertEqual(persisted, [])
 
     def test_pass_log_failure_does_not_skip_kinematic_motor_disable(self):
         d = self._commissioned_driver(
