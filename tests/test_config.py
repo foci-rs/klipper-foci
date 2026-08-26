@@ -84,6 +84,15 @@ class OldFirmwareMcu(MockMCU):
         return super().lookup_command(fmt, cq=cq)
 
 
+class OldFirmwareMcuMissingVelocityFeedforwardRpm(MockMCU):
+    """Mock an old dictionary that predates the renamed RPM-domain FF command."""
+
+    def lookup_command(self, fmt, cq=None):
+        if fmt.startswith("tmc_set_velocity_feedforward_rpm "):
+            raise CommandError("unknown command tmc_set_velocity_feedforward_rpm")
+        return super().lookup_command(fmt, cq=cq)
+
+
 def registered_command_names(printer):
     gcode = printer.lookup_object("gcode")
     return {args[0] for args, _kwargs in gcode._mux_commands}
@@ -540,6 +549,23 @@ def test_old_firmware_dictionary_fails_identification_without_fallback():
     driver = make_config_driver(printer, sections, "foci stepper_x")
 
     with pytest.raises(CommandError, match="unknown command tmc_set_motion_scale"):
+        driver._handle_mcu_identify()
+
+
+def test_old_firmware_dictionary_fails_identification_without_velocity_feedforward_rpm():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        },
+        chips={"foci": OldFirmwareMcuMissingVelocityFeedforwardRpm("foci")},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    with pytest.raises(CommandError, match="unknown command tmc_set_velocity_feedforward_rpm"):
         driver._handle_mcu_identify()
 
 
