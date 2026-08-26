@@ -571,8 +571,8 @@ def test_gain_default_and_maxval_and_retired_key():
         config = MockConfig(p, s, "foci stepper_x")
         parse_driver_config(config)
         unused = config.unused_options()
-        if unused:
-            raise CommandError(f"Option(s) {', '.join(unused)} in [foci stepper_x] are not valid")
+        assert "velocity_feedforward_multiplier" in unused
+        raise CommandError(f"Option(s) {', '.join(unused)} in [foci stepper_x] are not valid")
 
 
 def test_gain_to_permille_conversion():
