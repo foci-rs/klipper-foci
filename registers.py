@@ -189,6 +189,8 @@ REGISTERS: dict[str, int] = {
     "PID_VELOCITY_ERROR_SUM": 0x85,
     "CONFIG_ADVANCED_PI_REPRESENT": 0x86,
     "ADC_VM_RAW": 0x87,
+    "VELOCITY_FF_CLAMP_LATCHED": 0x88,
+    "VELOCITY_FF_CLAMP_COUNT": 0x89,
 }
 
 
@@ -496,6 +498,13 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_TORQUE_ERROR_SUM",
             "PID_FLUX_ERROR_SUM",
             "PID_VELOCITY_ERROR_SUM",
+        ],
+    ),
+    (
+        "Velocity Feedforward Clamp",
+        [
+            "VELOCITY_FF_CLAMP_LATCHED",
+            "VELOCITY_FF_CLAMP_COUNT",
         ],
     ),
     (

@@ -236,6 +236,27 @@ def test_dump_requires_runtime_adc_vm_offset_for_voltage_decode():
     assert "~36" not in output
 
 
+def test_dump_reports_velocity_ff_clamp_latch_and_count():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    assert "VELOCITY_FF_CLAMP_LATCHED" in REGISTERS
+    assert "VELOCITY_FF_CLAMP_COUNT" in REGISTERS
+
+    output, calls = _run_dump(
+        driver,
+        values={
+            REGISTERS["VELOCITY_FF_CLAMP_LATCHED"]: 1,
+            REGISTERS["VELOCITY_FF_CLAMP_COUNT"]: 42,
+        },
+    )
+
+    assert calls == ["dump_registers"]
+    assert "========== Velocity Feedforward Clamp ==========" in output
+    assert f"{'VELOCITY_FF_CLAMP_LATCHED:':30} {1:08x}" in output
+    assert f"{'VELOCITY_FF_CLAMP_COUNT:':30} {42:08x}" in output
+
+
 def test_tuning_flag_appends_context_and_count_space_note():
     driver = make_driver()
     _seed_tuning_state(driver)
