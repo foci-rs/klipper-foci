@@ -201,25 +201,25 @@ class TestRuntimeFiltersCommand(unittest.TestCase):
 
 
 class TestVelocityFeedforwardCommand(unittest.TestCase):
-    def test_sets_feedforward_enable_and_multiplier(self):
+    def test_sets_feedforward_enable_and_gain(self):
         d = make_driver()
 
         d.controls.set_velocity_feedforward(
             MockGCmd(
                 {
                     "ENABLE": 1,
-                    "MULTIPLIER": 8,
+                    "GAIN": 8,
                 }
             )
         )
 
-        self.assertEqual(d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 1, 8])
+        self.assertEqual(d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 1, 8000])
         self.assertTrue(d.settings.velocity_feedforward)
-        self.assertEqual(d.settings.velocity_feedforward_multiplier, 8)
+        self.assertEqual(d.settings.velocity_feedforward_gain, 8.0)
 
-    def test_disable_preserves_configured_multiplier(self):
+    def test_disable_preserves_configured_gain(self):
         d = make_driver()
-        d.settings.velocity_feedforward_multiplier = 4
+        d.settings.velocity_feedforward_gain = 4.0
 
         d.controls.set_velocity_feedforward(
             MockGCmd(
@@ -229,9 +229,9 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
             )
         )
 
-        self.assertEqual(d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 0, 4])
+        self.assertEqual(d.protocol.commands.set_velocity_feedforward.last_args, [d.oid, 0, 4000])
         self.assertFalse(d.settings.velocity_feedforward)
-        self.assertEqual(d.settings.velocity_feedforward_multiplier, 4)
+        self.assertEqual(d.settings.velocity_feedforward_gain, 4.0)
 
 
 class TestVelocityTransientFeedforwardCommand(unittest.TestCase):

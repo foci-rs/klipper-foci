@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .config import CURRENT_FILTER_MAX_HZ, FILTER_MIN_HZ, MOTION_FILTER_MAX_HZ
+from .config import (
+    CURRENT_FILTER_MAX_HZ,
+    FILTER_MIN_HZ,
+    MOTION_FILTER_MAX_HZ,
+    gain_to_permille,
+)
 from .constants import (
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
     MAX_RUN_CURRENT_AMPS,
@@ -156,22 +161,21 @@ class ControlsWorkflow:
         )
 
     def set_velocity_feedforward(self, gcmd) -> None:
-        """Set velocity feedforward multiplier for live bringup debugging."""
+        """Set velocity feedforward gain for live bringup debugging."""
         enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
-        multiplier = gcmd.get_int(
-            "MULTIPLIER",
-            self.driver.settings.velocity_feedforward_multiplier,
-            minval=0,
-            maxval=65535,
+        gain = gcmd.get_float(
+            "GAIN",
+            self.driver.settings.velocity_feedforward_gain,
+            minval=0.0,
+            maxval=8.0,
         )
 
-        self.driver.protocol.set_velocity_feedforward(bool(enable), multiplier)
+        self.driver.protocol.set_velocity_feedforward(bool(enable), gain_to_permille(gain))
         self.driver.settings.velocity_feedforward = enable != 0
-        self.driver.settings.velocity_feedforward_multiplier = multiplier
+        self.driver.settings.velocity_feedforward_gain = gain
 
         gcmd.respond_info(
-            f"FOCI {self.driver.name} velocity feedforward set: enable={int(enable)} "
-            f"multiplier={int(multiplier)}"
+            f"FOCI {self.driver.name} velocity feedforward set: enable={int(enable)} gain={gain}"
         )
 
     def set_velocity_transient_feedforward(self, gcmd) -> None:

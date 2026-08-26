@@ -10,6 +10,7 @@ from klipper_foci.config import (
     FociControlSettings,
     FociDriverConfig,
     RuntimeValidationResult,
+    gain_to_permille,
     parse_driver_config,
     validate_runtime_config,
 )
@@ -51,7 +52,7 @@ CONFIG_FIELD_NAMES = {
     "pid_velocity_p",
     "pid_velocity_i",
     "velocity_feedforward",
-    "velocity_feedforward_multiplier",
+    "velocity_feedforward_gain",
     "velocity_transient_feedforward",
     "velocity_transient_lead_time_us",
     "velocity_transient_gain",
@@ -187,7 +188,7 @@ EXPECTED_CONTROL_SETTING_FIELDS = (
     "pid_velocity_p",
     "pid_velocity_i",
     "velocity_feedforward",
-    "velocity_feedforward_multiplier",
+    "velocity_feedforward_gain",
     "velocity_transient_feedforward",
     "velocity_transient_lead_time_us",
     "velocity_transient_gain",
@@ -410,7 +411,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "pid_velocity_p": 1152,
             "pid_velocity_i": 32,
             "velocity_feedforward": True,
-            "velocity_feedforward_multiplier": 7,
+            "velocity_feedforward_gain": 7,
             "pid_velocity_limit": 500000,
             "commissioned_velocity_p": 1100,
             "commissioned_velocity_i": 48,
@@ -479,7 +480,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.pid_position_p == 640
     assert parsed.pid_velocity_i == 32
     assert parsed.velocity_feedforward is True
-    assert parsed.velocity_feedforward_multiplier == 7
+    assert parsed.velocity_feedforward_gain == 7
     assert parsed.velocity_transient_feedforward is False
     assert parsed.velocity_transient_lead_time_us == 0
     assert parsed.velocity_transient_gain == 0
@@ -551,6 +552,41 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.autotune_profile == "balanced"
     assert parsed.autotune_mode == "nominal"
     assert parsed.autotune_status == "commissioned"
+
+
+def test_gain_default_and_maxval_and_retired_key():
+    printer, _chips, sections, _config = make_foci_config(
+        foci_values={"velocity_feedforward": "true"}
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+    assert driver.settings.velocity_feedforward_gain == 1.0
+
+    with pytest.raises(CommandError):
+        p, _c, s, _cfg = make_foci_config(foci_values={"velocity_feedforward_gain": "40"})
+        make_config_driver(p, s, "foci stepper_x")
+
+    with pytest.raises(CommandError):
+        p, _c, s, _cfg = make_foci_config(foci_values={"velocity_feedforward_multiplier": "40"})
+        config = MockConfig(p, s, "foci stepper_x")
+        parse_driver_config(config)
+        unused = config.unused_options()
+        if unused:
+            raise CommandError(f"Option(s) {', '.join(unused)} in [foci stepper_x] are not valid")
+
+
+def test_gain_to_permille_conversion():
+    assert gain_to_permille(1.0) == 1000 and gain_to_permille(2.5) == 2500
+
+
+def test_config_path_sends_gain_as_permille():
+    printer, _chips, sections, _config = make_foci_config(
+        foci_values={"velocity_feedforward": "true", "velocity_feedforward_gain": "1.0"}
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+    driver._handle_connect()
+    assert driver.protocol.commands.set_velocity_feedforward.last_args == [driver.oid, 1, 1000]
 
 
 def test_parse_driver_config_bounds_current_loop_evidence_fields():
@@ -986,7 +1022,7 @@ def test_handle_connect_reads_payloads_from_settings_not_config():
             "encoder_ppr": 1200,
             "voltage_limit": 16000,
             "velocity_feedforward": False,
-            "velocity_feedforward_multiplier": 1,
+            "velocity_feedforward_gain": 1,
         }
     )
     driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
@@ -1007,7 +1043,7 @@ def test_handle_connect_reads_payloads_from_settings_not_config():
     driver.settings.position_filter_hz = 60
     driver.settings.flux_filter_hz = 70
     driver.settings.velocity_feedforward = True
-    driver.settings.velocity_feedforward_multiplier = 9
+    driver.settings.velocity_feedforward_gain = 9
     driver.settings.pid_velocity_limit = 123456
 
     driver.config.run_current = 0.1
@@ -1016,7 +1052,7 @@ def test_handle_connect_reads_payloads_from_settings_not_config():
     driver.config.pid_position_p = None
     driver.config.velocity_filter_hz = 0
     driver.config.velocity_feedforward = False
-    driver.config.velocity_feedforward_multiplier = 1
+    driver.config.velocity_feedforward_gain = 1
     driver.config.pid_velocity_limit = None
 
     driver._handle_connect()
@@ -1044,7 +1080,7 @@ def test_handle_connect_reads_payloads_from_settings_not_config():
     assert driver.protocol.commands.set_velocity_feedforward.last_args == [
         10,
         1,
-        9,
+        gain_to_permille(9),
     ]
     assert driver.protocol.commands.set_velocity_limit.last_args == [10, 123456]
 

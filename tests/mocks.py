@@ -489,6 +489,7 @@ class MockConfig:
         self._printer = printer
         self._sections = sections
         self._name = name
+        self._accessed_keys: set[str] = set()
 
     def get_name(self):
         return self._name
@@ -503,7 +504,16 @@ class MockConfig:
         return MockConfig(self._printer, self._sections, name)
 
     def get(self, key, default=None):
+        self._accessed_keys.add(key)
         return self._sections.get(self._name, {}).get(key, default)
+
+    def unused_options(self):
+        """Keys present in this section that were never read.
+
+        Mirrors Klipper's real unused-config-option check, which this
+        simplified test double does not otherwise model.
+        """
+        return sorted(set(self._sections.get(self._name, {})) - self._accessed_keys)
 
     def getint(self, key, default=None, minval=None, maxval=None):
         value = self.get(key, default)

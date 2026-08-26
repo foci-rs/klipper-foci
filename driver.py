@@ -12,6 +12,7 @@ from .commissioning import (
 from .config import (
     FociControlSettings,
     check_autotune_staleness,
+    gain_to_permille,
     parse_driver_config,
     validate_runtime_config,
 )
@@ -208,7 +209,7 @@ class FociDriver:
             position_gains=position_gains,
             velocity_feedforward=(
                 settings.velocity_feedforward,
-                settings.velocity_feedforward_multiplier,
+                gain_to_permille(settings.velocity_feedforward_gain),
             ),
             velocity_limit=settings.pid_velocity_limit,
         )

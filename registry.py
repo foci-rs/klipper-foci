@@ -101,7 +101,7 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "default",
         "controls",
         "set_velocity_feedforward",
-        "Set FOCI velocity feedforward runtime multiplier for bringup debugging",
+        "Set FOCI velocity feedforward runtime gain for bringup debugging",
     ),
     GcodeCommandSpec(
         "FOCI_STEP_POSITION",

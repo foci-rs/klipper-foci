@@ -21,6 +21,11 @@ CURRENT_FILTER_MAX_HZ = 6000
 MAX_ENCODER_PPR = 0x3FFF_FFFF
 
 
+def gain_to_permille(gain: float) -> int:
+    """Convert a float gain to the wire's permille integer encoding."""
+    return round(gain * 1000)
+
+
 @dataclass
 class FociDriverConfig:
     """Parsed config for one ``[foci <stepper>]`` section."""
@@ -51,7 +56,7 @@ class FociDriverConfig:
     pid_velocity_p: int | None
     pid_velocity_i: int | None
     velocity_feedforward: bool
-    velocity_feedforward_multiplier: int
+    velocity_feedforward_gain: float
     velocity_transient_feedforward: bool
     velocity_transient_lead_time_us: int
     velocity_transient_gain: int
@@ -178,7 +183,7 @@ class FociControlSettings:
     pid_velocity_p: int | None
     pid_velocity_i: int | None
     velocity_feedforward: bool
-    velocity_feedforward_multiplier: int
+    velocity_feedforward_gain: float
     velocity_transient_feedforward: bool
     velocity_transient_lead_time_us: int
     velocity_transient_gain: int
@@ -303,8 +308,8 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
 
     velocity_feedforward = config.getboolean("velocity_feedforward", False)
-    velocity_feedforward_multiplier = config.getint(
-        "velocity_feedforward_multiplier", 1, minval=0, maxval=65535
+    velocity_feedforward_gain = config.getfloat(
+        "velocity_feedforward_gain", 1.0, minval=0.0, maxval=8.0
     )
     pid_velocity_limit = config.getint("pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF)
 
@@ -581,7 +586,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         pid_velocity_p=pid_velocity_p,
         pid_velocity_i=pid_velocity_i,
         velocity_feedforward=velocity_feedforward,
-        velocity_feedforward_multiplier=velocity_feedforward_multiplier,
+        velocity_feedforward_gain=velocity_feedforward_gain,
         velocity_transient_feedforward=False,
         velocity_transient_lead_time_us=0,
         velocity_transient_gain=0,

@@ -184,7 +184,7 @@ class FociMcuCommands:
             " velocity_p=%hu velocity_i=%hu"
         )
         self.set_velocity_feedforward = mcu.lookup_command(
-            "tmc_set_velocity_feedforward oid=%c enable=%c multiplier=%hu"
+            "tmc_set_velocity_feedforward_rpm oid=%c enable=%c gain_permille=%hu"
         )
         self.set_velocity_transient_feedforward = mcu.lookup_command(
             "tmc_set_velocity_transient_feedforward oid=%c enable=%c"

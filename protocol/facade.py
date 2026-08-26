@@ -90,8 +90,8 @@ class FociProtocol:
             [self.driver.oid, position_p, position_i, velocity_p, velocity_i]
         )
 
-    def set_velocity_feedforward(self, enable: bool, multiplier: int) -> None:
-        self.commands.set_velocity_feedforward.send([self.driver.oid, int(enable), multiplier])
+    def set_velocity_feedforward(self, enable: bool, gain_permille: int) -> None:
+        self.commands.set_velocity_feedforward.send([self.driver.oid, int(enable), gain_permille])
 
     def set_velocity_limit(self, velocity_limit: int) -> None:
         self.commands.set_velocity_limit.send([self.driver.oid, velocity_limit])
@@ -311,9 +311,9 @@ class FociProtocol:
             self.set_flux_filter(filter_hz["flux"])
         if position_gains is not None:
             self.set_position_gains(*position_gains)
-        enable_feedforward, multiplier = velocity_feedforward
+        enable_feedforward, gain_permille = velocity_feedforward
         if enable_feedforward:
-            self.set_velocity_feedforward(True, multiplier)
+            self.set_velocity_feedforward(True, gain_permille)
         if velocity_limit is not None:
             self.set_velocity_limit(velocity_limit)
 
