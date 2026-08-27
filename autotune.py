@@ -879,10 +879,13 @@ class AutotuneWorkflow:
                     f"FOCI {self.driver.name}: breakaway campaign safety fault{detail_suffix}"
                 )
             if not self.breakaway_campaign.accepted:
-                # No previously commissioned P is touched here: this
-                # branch never reaches persist_tune_results or the
-                # active_gains assignment below.
-                return "breakaway_campaign"
+                terminal = self.breakaway_campaign.campaign_terminal or {}
+                cause = int(terminal.get("terminal_cause", 0))
+                cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{cause}")
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE breakaway campaign not "
+                    f"accepted ({cause_name}); existing gains retained"
+                )
             if self.velocity_integral.done:
                 # An accepted breakaway campaign reaches its
                 # velocity-integral terminal in the SAME dispatch as this

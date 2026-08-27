@@ -1635,8 +1635,8 @@ def feed_breakaway_workflow_plan(driver, run_sequence, maximum_workflow_ms):
     )
 
 
-def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE):
-    """Feed a resolved probe and a 2-nomination discovery ladder."""
+def _feed_breakaway_probe_and_discovery_plan(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE):
+    """Feed a resolved probe and the discovery ladder plan, without a terminal."""
     probe_low, probe_high = BREAKAWAY_PROBE_DIGEST
     driver.autotune.handle_breakaway_probe_plan(
         {
@@ -1717,6 +1717,14 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "reverse_moved": 1,
         }
     )
+
+
+def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE):
+    """Feed a resolved probe, the discovery ladder plan, and a nominating
+    (success) discovery terminal."""
+    _feed_breakaway_probe_and_discovery_plan(driver, run_sequence)
+    probe_low, probe_high = BREAKAWAY_PROBE_DIGEST
+    discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
     driver.autotune.handle_breakaway_discovery_terminal(
         {
             "oid": 0,
@@ -1730,6 +1738,46 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "terminal_cause": 0,
             "collected_count": 2,
             "has_safety_fault": 0,
+        }
+    )
+
+
+def feed_breakaway_discovery_internal_fault(
+    driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, error_code=3
+):
+    """Feed a probe and discovery plan, then a discovery internal-fault terminal
+    and the campaign closure: done, not accepted, no safety fault. ``error_code``
+    is the underlying CommissionError the firmware carries on the campaign
+    closure record (default 3 = SPI communication error)."""
+    _feed_breakaway_probe_and_discovery_plan(driver, run_sequence)
+    probe_low, probe_high = BREAKAWAY_PROBE_DIGEST
+    discovery_low, discovery_high = BREAKAWAY_DISCOVERY_DIGEST
+    driver.autotune.handle_breakaway_discovery_terminal(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 2,
+            "plan_digest_low": discovery_low,
+            "plan_digest_high": discovery_high,
+            "prior_plan_digest_low": probe_low,
+            "prior_plan_digest_high": probe_high,
+            "family_size": 32,
+            "terminal_cause": 24,
+            "collected_count": 0,
+            "has_safety_fault": 0,
+        }
+    )
+    driver.autotune.handle_breakaway_campaign_terminal(
+        {
+            "oid": 0,
+            "run_sequence": run_sequence,
+            "evidence_sequence": 4,
+            "phase": 1,
+            "terminal_cause": 24,
+            "accepted": 0,
+            "stage_c_plan_digest_low": 0,
+            "stage_c_plan_digest_high": 0,
+            "error_code": error_code,
         }
     )
 
@@ -2011,9 +2059,9 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertIn("error=velocity validation failed", message)
 
     def test_confirmation_inconclusive_preserves_prior_p_and_skips_persistence(self):
-        """Brief step 4: on a non-accept terminal, the previously commissioned
-        P is untouched and neither Stage-C completion nor the persistence
-        callback ever runs."""
+        """Brief step 4: a non-accept terminal raises a terminal error naming
+        the rejection cause, and leaves the previously commissioned P untouched
+        -- neither Stage-C completion nor the persistence callback runs."""
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
@@ -2031,8 +2079,11 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         reactor.pause = pause_with_inconclusive_confirmation
 
-        d.autotune.autotune(gcmd)
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
 
+        self.assertIn("not accepted", str(ctx.exception))
+        self.assertIn("confirmation_response_location", str(ctx.exception))
         self.assertFalse(d.autotune.breakaway_campaign.accepted)
         self.assertIsNone(d.autotune.velocity_integral.plan)
         self.assertFalse(d.autotune.velocity_integral.done)
@@ -2040,6 +2091,38 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertEqual(persisted, [])
         self.assertTrue(
             any("breakaway campaign not accepted" in message for message in gcmd._responses)
+        )
+
+    def test_discovery_internal_fault_raises_and_names_cause(self):
+        """A done, not-accepted campaign with no safety fault raises a terminal
+        error naming the rejection cause -- so a genuine discovery fault is
+        distinguishable from a still-running campaign, not a silent return --
+        and the underlying CommissionError is surfaced in the operator report."""
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+        persisted = []
+        d.autotune.persist_tune_results = lambda *args, **kwargs: persisted.append((args, kwargs))
+
+        def pause_with_discovery_internal_fault(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif not d.autotune.breakaway_campaign.done:
+                feed_breakaway_discovery_internal_fault(d, error_code=3)
+            return reactor._time
+
+        reactor.pause = pause_with_discovery_internal_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertIn("not accepted", str(ctx.exception))
+        self.assertIn("discovery_internal_fault", str(ctx.exception))
+        self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
+        self.assertEqual(persisted, [])
+        self.assertTrue(
+            any("error=SPI communication error" in message for message in gcmd._responses)
         )
 
     def test_dumb_host_never_reissues_a_second_confirmation_after_acceptance(self):
