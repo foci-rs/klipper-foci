@@ -141,6 +141,12 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
             "crit_over_1000us": 1,
             "queue_step_count": 23,
             "queue_step_max_cycles": 175000,
+            "shutdown_site_count": 3,
+            "shutdown_site_max_cycles": 6000,
+            "reset_site_count": 2,
+            "reset_site_max_cycles": 4200,
+            "trigger_stop_site_count": 15,
+            "trigger_stop_site_max_cycles": 900,
             "tim5_activation_count": 400,
             "tim5_irq_max_cycles": 2400,
             "tim5_dispatch_max_cycles": 2100,
@@ -176,6 +182,12 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "crit_over_1000us=1" in gcmd.last_info
     assert "queue_step_max_cycles=175000" in gcmd.last_info
     assert "queue_step_max_us=1041" in gcmd.last_info
+    assert "shutdown_site_count=3" in gcmd.last_info
+    assert "shutdown_site_max_cycles=6000" in gcmd.last_info
+    assert "reset_site_count=2" in gcmd.last_info
+    assert "reset_site_max_cycles=4200" in gcmd.last_info
+    assert "trigger_stop_site_count=15" in gcmd.last_info
+    assert "trigger_stop_site_max_cycles=900" in gcmd.last_info
     assert "tim5_irq_max_cycles=2400" in gcmd.last_info
     assert "tim5_irq_max_us=14" in gcmd.last_info
     assert "tim5_dispatch_max_cycles=2100" in gcmd.last_info

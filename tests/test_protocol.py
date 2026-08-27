@@ -762,7 +762,17 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
     )
     driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 2})
     driver.protocol.commands.stepper_stop_stats = MockCommand({"stop_count": 1})
-    driver.protocol.commands.stepper_perf_stats = MockCommand({"crit_max_cycles": 190000})
+    driver.protocol.commands.stepper_perf_stats = MockCommand(
+        {
+            "crit_max_cycles": 190000,
+            "shutdown_site_count": 3,
+            "shutdown_site_max_cycles": 6000,
+            "reset_site_count": 2,
+            "reset_site_max_cycles": 4200,
+            "trigger_stop_site_count": 15,
+            "trigger_stop_site_max_cycles": 900,
+        }
+    )
 
     assert driver.protocol.get_step_position() == {"pos": -19176}
     stats = driver.protocol.get_stepper_stats()
@@ -774,7 +784,15 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
         {"activation_count": 2},
         {"stop_count": 1},
     )
-    assert perf == {"crit_max_cycles": 190000}
+    assert perf == {
+        "crit_max_cycles": 190000,
+        "shutdown_site_count": 3,
+        "shutdown_site_max_cycles": 6000,
+        "reset_site_count": 2,
+        "reset_site_max_cycles": 4200,
+        "trigger_stop_site_count": 15,
+        "trigger_stop_site_max_cycles": 900,
+    }
     assert driver.protocol.commands.stepper_get_position.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_stats.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_exec_stats.last_args == [driver.oid]

@@ -72,6 +72,12 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
             "crit_over_1000us": 1,
             "queue_step_count": 90,
             "queue_step_max_cycles": 180000,
+            "shutdown_site_count": 3,
+            "shutdown_site_max_cycles": 6000,
+            "reset_site_count": 2,
+            "reset_site_max_cycles": 4200,
+            "trigger_stop_site_count": 15,
+            "trigger_stop_site_max_cycles": 900,
             "tim5_activation_count": 208,
             "tim5_irq_max_cycles": 2400,
             "tim5_dispatch_max_cycles": 2100,
@@ -107,6 +113,9 @@ def test_stepper_perf_event_handler_formats_fatal_snapshot():
         "crit_over_10us=10 crit_over_50us=5 crit_over_100us=3 "
         "crit_over_1000us=1 queue_step_count=90 "
         "queue_step_max_cycles=180000 queue_step_max_us=1071 "
+        "shutdown_site_count=3 shutdown_site_max_cycles=6000 "
+        "reset_site_count=2 reset_site_max_cycles=4200 "
+        "trigger_stop_site_count=15 trigger_stop_site_max_cycles=900 "
         "tim5_activation_count=208 tim5_irq_max_cycles=2400 tim5_irq_max_us=14 "
         "tim5_dispatch_max_cycles=2100 tim5_dispatch_max_us=12 "
         "tim5_dispatch_max_cycles_events=5 tim5_events_max_per_irq=13 "

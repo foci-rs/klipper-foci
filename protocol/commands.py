@@ -43,6 +43,9 @@ class FociMcuCommands:
         " scheduler_full_count=%u"
         " stepper_load_lateness_max_ticks=%u"
         " stepper_load_lateness_last_ticks=%i build_trace_enabled=%c"
+        " shutdown_site_count=%u shutdown_site_max_cycles=%u"
+        " reset_site_count=%u reset_site_max_cycles=%u"
+        " trigger_stop_site_count=%u trigger_stop_site_max_cycles=%u"
     )
 
     def __init__(self) -> None:
