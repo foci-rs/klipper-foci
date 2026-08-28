@@ -7,8 +7,8 @@ import struct
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-MATRIX_SCHEMA_REVISION = 6
-MATRIX_SCHEMA_REVISIONS = (1, 2, 3, 4, 5, MATRIX_SCHEMA_REVISION)
+MATRIX_SCHEMA_REVISION = 7
+MATRIX_SCHEMA_REVISIONS = (1, 2, 3, 4, 5, 6, MATRIX_SCHEMA_REVISION)
 PLAN_REPLY_FRAGMENTS = 2
 MATRIX_AMPLITUDE_COUNT = 5
 MATRIX_EXPECTED_OBSERVATIONS = 40
@@ -61,7 +61,7 @@ CAUSE_NAMES = {
 
 _PLAN_V1 = struct.Struct("<HIBQQHH5hHHBII")
 _PLAN_V2 = struct.Struct("<HIBQQHH5hHHBIIQQ")
-_TERMINAL = struct.Struct("<HIBBQQ8sHBH")
+_TERMINAL = struct.Struct("<HIHBBQQ8sHBH")
 
 
 class AcceptanceMatrixProtocolError(Exception):
@@ -196,6 +196,7 @@ class AcceptanceMatrixAssembler:
             4: _PLAN_V2,
             5: _PLAN_V2,
             6: _PLAN_V2,
+            7: _PLAN_V2,
         }.get(schema)
         if plan_struct is None:
             raise AcceptanceMatrixProtocolError("unsupported matrix schema")
@@ -272,6 +273,7 @@ class AcceptanceMatrixAssembler:
         (
             schema,
             run_sequence,
+            evidence_sequence,
             outcome,
             cause,
             plan_digest,
@@ -325,6 +327,10 @@ class AcceptanceMatrixAssembler:
                 raise AcceptanceMatrixProtocolError("pre-motion failure carried evidence digests")
             if any(masks) or emitted_observations or emitted_amplitudes:
                 raise AcceptanceMatrixProtocolError("pre-motion failure carried matrix evidence")
+            if evidence_sequence != 0:
+                raise AcceptanceMatrixProtocolError(
+                    "pre-motion failure carried an evidence sequence"
+                )
         else:
             if self.workflow_plan is None or self.plan is None:
                 raise AcceptanceMatrixProtocolError("matrix terminal arrived before plan")
@@ -334,6 +340,10 @@ class AcceptanceMatrixAssembler:
                 raise AcceptanceMatrixProtocolError("matrix plan digest changed")
             if outcome == 0 and any(mask.bit_count() < 3 for mask in eligible):
                 raise AcceptanceMatrixProtocolError("complete matrix lacks directional floor")
+            if evidence_sequence == 0:
+                raise AcceptanceMatrixProtocolError(
+                    "resolved matrix terminal has no evidence sequence"
+                )
 
         outcome_name = (
             "InconclusiveRest" if outcome == 1 and cause == 53 else OUTCOME_NAMES[outcome]
@@ -341,6 +351,7 @@ class AcceptanceMatrixAssembler:
         self.terminal = {
             "schema_revision": schema,
             "run_sequence": run_sequence,
+            "evidence_sequence": evidence_sequence,
             "outcome": outcome,
             "outcome_name": outcome_name,
             "outcome_namespace": "acceptance_matrix",

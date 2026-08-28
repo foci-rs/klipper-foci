@@ -116,11 +116,13 @@ def terminal_payload(
     emitted_observations=40,
     emitted_amplitudes=5,
     schema=2,
+    evidence_sequence=41,
 ):
     return struct.pack(
-        "<HIBBQQ8sHBH",
+        "<HIHBBQQ8sHBH",
         schema,
         RUN_SEQUENCE,
+        evidence_sequence,
         outcome,
         cause,
         plan_digest,
@@ -365,11 +367,42 @@ def test_pre_motion_failed_terminal_is_complete_without_plan(cause):
                 eligible=(0, 0),
                 emitted_observations=0,
                 emitted_amplitudes=0,
+                evidence_sequence=0,
             ),
         }
     )
     assert assembler.done
     assert assembler.outcome == "failed"
+
+
+@pytest.mark.parametrize("cause", (3, 4, 5))
+def test_pre_motion_failed_terminal_rejects_nonzero_evidence_sequence(cause):
+    assembler = AcceptanceMatrixAssembler()
+    with pytest.raises(AcceptanceMatrixProtocolError, match="evidence"):
+        assembler.handle_terminal(
+            {
+                "oid": 1,
+                "payload": terminal_payload(
+                    outcome=3,
+                    cause=cause,
+                    plan_digest=0,
+                    digest=0,
+                    attempted=(0, 0),
+                    eligible=(0, 0),
+                    emitted_observations=0,
+                    emitted_amplitudes=0,
+                    evidence_sequence=1,
+                ),
+            }
+        )
+
+
+def test_resolved_terminal_rejects_zero_evidence_sequence():
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+    assembler.handle_plan({"oid": 1, "payload": plan_payload()})
+    with pytest.raises(AcceptanceMatrixProtocolError, match="evidence"):
+        assembler.handle_terminal({"oid": 1, "payload": terminal_payload(evidence_sequence=0)})
 
 
 def test_autotune_relays_one_complete_matrix_without_host_decisions():
@@ -520,6 +553,30 @@ def test_matrix_terminals_are_accepted_at_the_revision_firmware_emits():
     assert assembler.terminal["schema_revision"] == 5
 
 
+def test_terminal_carries_the_evidence_sequence():
+    assembler = AcceptanceMatrixAssembler()
+    workflow(assembler)
+    assembler.handle_plan({"oid": 1, "payload": plan_payload()})
+    payload = struct.pack(
+        "<HIHBBQQ8sHBH",
+        2,
+        RUN_SEQUENCE,
+        91,
+        0,
+        0,
+        PLAN_DIGEST,
+        0x1111_2222_3333_4444,
+        bytes((0x1F, 0x1F, 0x1F, 0x1F, 0, 0, 0, 0)),
+        40,
+        5,
+        0x12,
+    )
+
+    assembler.handle_terminal({"oid": 1, "payload": payload})
+
+    assert assembler.terminal["evidence_sequence"] == 91
+
+
 def test_matrix_schema_six_plan_and_terminal_are_accepted():
     """Each matrix schema gate fails closed and silently, so this asserts
     acceptance of the current firmware revision rather than the absence of a
@@ -536,3 +593,18 @@ def test_matrix_schema_six_plan_and_terminal_are_accepted():
 
     assert assembler.plan["schema_revision"] == 6
     assert assembler.terminal["schema_revision"] == 6
+
+
+def test_matrix_schema_seven_plan_and_terminal_are_accepted():
+    assembler = AcceptanceMatrixAssembler()
+    recovery_wide_workflow(assembler)
+    assembler.handle_plan(
+        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=7, nominal_ms=63_041)}
+    )
+
+    assembler.handle_terminal(
+        {"oid": 1, "payload": terminal_payload(schema=7)},
+    )
+
+    assert assembler.plan["schema_revision"] == 7
+    assert assembler.terminal["schema_revision"] == 7
