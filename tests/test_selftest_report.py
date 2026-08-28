@@ -23,6 +23,23 @@ def test_selftest_done_handler_marks_complete():
     assert d.selftest.status == 0
 
 
+def test_selftest_survives_expanded_electrical_id_duration():
+    d = make_driver()
+    reactor = d.printer.get_reactor()
+    real_pause = reactor.pause
+
+    def pause_and_maybe_finish(deadline):
+        result = real_pause(deadline)
+        if reactor.monotonic() >= 20.0:
+            d.selftest.complete = True
+            d.selftest.status = 0
+        return result
+
+    reactor.pause = pause_and_maybe_finish
+
+    d.selftest.selftest(MockGCmd())
+
+
 def test_commission_detail_handler_appends_to_details():
     d = make_driver()
     d.commissioning.details = []

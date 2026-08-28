@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .commissioning import COMMISSION_ERROR_NAMES, format_commission_detail
+from .constants import ELECTRICAL_ID_WAIT_TIMEOUT_S
 
 SELFTEST_STAGES: dict[int, str] = {
     1: "ADC calibration",
@@ -83,7 +84,7 @@ class SelftestWorkflow:
 
             self.driver.protocol.run_selftest()
 
-            deadline = reactor.monotonic() + 15.0
+            deadline = reactor.monotonic() + ELECTRICAL_ID_WAIT_TIMEOUT_S
             while not self.complete:
                 if reactor.monotonic() > deadline:
                     raise self.driver.printer.command_error(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from .constants import ELECTRICAL_ID_WAIT_TIMEOUT_S
+
 PHASE_NAMES: dict[int, str] = {
     1: "ADC calibration",
     2: "Coil check",
@@ -617,7 +619,7 @@ class CommissioningWorkflow:
 
             reactor = self.driver.printer.get_reactor()
             eventtime = reactor.monotonic()
-            timeout = eventtime + 30.0
+            timeout = eventtime + ELECTRICAL_ID_WAIT_TIMEOUT_S
             while not self.done:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if eventtime > timeout:
