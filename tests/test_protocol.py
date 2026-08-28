@@ -79,7 +79,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_outer_safety_fault", driver.oid) in registrations
     for name in (
         "foci_commissioning_workflow_plan",
-        "foci_rung_origin_recovery_summary",
         "foci_velocity_integral_plan_core",
         "foci_velocity_integral_plan_geometry",
         "foci_velocity_integral_plan_authority",
@@ -87,22 +86,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         "foci_velocity_integral_plan_travel",
         "foci_velocity_integral_plan_recovery",
         "foci_velocity_integral_plan_rung",
-        "foci_velocity_integral_observation_core",
-        "foci_velocity_integral_observation_rate",
-        "foci_velocity_integral_observation_quality",
-        "foci_velocity_integral_rung_core",
-        "foci_velocity_integral_rung_component",
-        "foci_velocity_integral_run_summary",
-        "foci_velocity_integral_curve_interval",
-        "foci_velocity_integral_drift",
-        "foci_velocity_integral_stage_b_comparison",
-        "foci_velocity_integral_reproduction_core",
-        "foci_velocity_integral_reproduction_mask",
-        "foci_velocity_integral_reproduction_interval",
-        "foci_velocity_integral_reproduction_digest",
-        "foci_velocity_integral_terminal_core",
-        "foci_velocity_integral_terminal_identity",
-        "foci_velocity_integral_terminal_timing",
+        "foci_velocity_integral_terminal",
     ):
         assert (name, driver.oid) in registrations
     assert ("foci_selftest_result", driver.oid) in registrations

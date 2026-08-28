@@ -88,10 +88,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_commissioning_workflow_plan",
         ),
         (
-            driver.autotune.handle_rung_origin_recovery_summary,
-            "foci_rung_origin_recovery_summary",
-        ),
-        (
             driver.autotune.handle_velocity_integral_plan_core,
             "foci_velocity_integral_plan_core",
         ),
@@ -120,68 +116,8 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_velocity_integral_plan_rung",
         ),
         (
-            driver.autotune.handle_velocity_integral_observation_core,
-            "foci_velocity_integral_observation_core",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_observation_rate,
-            "foci_velocity_integral_observation_rate",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_observation_quality,
-            "foci_velocity_integral_observation_quality",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_rung_core,
-            "foci_velocity_integral_rung_core",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_rung_component,
-            "foci_velocity_integral_rung_component",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_run_summary,
-            "foci_velocity_integral_run_summary",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_curve_interval,
-            "foci_velocity_integral_curve_interval",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_drift,
-            "foci_velocity_integral_drift",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_stage_b_comparison,
-            "foci_velocity_integral_stage_b_comparison",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_reproduction_core,
-            "foci_velocity_integral_reproduction_core",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_reproduction_mask,
-            "foci_velocity_integral_reproduction_mask",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_reproduction_interval,
-            "foci_velocity_integral_reproduction_interval",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_reproduction_digest,
-            "foci_velocity_integral_reproduction_digest",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_terminal_core,
-            "foci_velocity_integral_terminal_core",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_terminal_identity,
-            "foci_velocity_integral_terminal_identity",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_terminal_timing,
-            "foci_velocity_integral_terminal_timing",
+            driver.autotune.handle_velocity_integral_terminal,
+            "foci_velocity_integral_terminal",
         ),
         (
             driver.autotune.handle_acceptance_matrix_plan,

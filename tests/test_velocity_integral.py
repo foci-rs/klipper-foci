@@ -1,16 +1,17 @@
 """Velocity-integral stream reassembly and integrity tests."""
 
+import struct
+
 import pytest
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
-    STAGE_C_TERMINAL_CAUSE_NAMES,
     TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY,
     TERMINAL_REST_REJECTION_OWNER_SHIFT,
+    VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
-    slot_direction_index,
 )
 
 PLAN_DIGEST = 0x0123_4567_89AB_CDEF
@@ -19,7 +20,6 @@ RUN_SEQUENCE = 9
 POSITIVE_I = (5, 10, 20)
 NATIVE_Q4_12_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
 COMBINED_Q4_12_POSITIVE_I = (*NATIVE_Q4_12_POSITIVE_I, 1310)
-OPAQUE_DIGEST = 0xDEAD_BEEF_0123_4567
 
 
 def feed_workflow(assembler, shape=2, maximum_ms=70_000, nominal_ms=None):
@@ -132,105 +132,6 @@ def feed_plan(
                 "tau_us": 2_621_440 // i_raw,
             }
         )
-
-
-def feed_observation(assembler, sequence, rung_index, slot, i_raw, slot_order=0):
-    direction = slot_direction_index(slot_order, slot)
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": sequence,
-    }
-    low, high = (100, 110) if direction == 0 else (-110, -100)
-    assembler.handle_observation_core(
-        {
-            **common,
-            "fragment": 0,
-            "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
-            "plan_digest_high": PLAN_DIGEST >> 32,
-            "rung_index": rung_index,
-            "slot": slot,
-            "i_raw": i_raw,
-            "direction": direction,
-            "classification": 0,
-            "initial_lead_in": int(sequence == 1),
-            "peak_torque_target_abs": 1200,
-        }
-    )
-    assembler.handle_observation_rate(
-        {
-            **common,
-            "fragment": 1,
-            "settled_low": -20 if direction else 20,
-            "settled_mean": -18 if direction else 18,
-            "settled_high": -16 if direction else 16,
-            "settled_shift": 1,
-            "deficit_low_q": low,
-            "deficit_high_q": high,
-        }
-    )
-    assembler.handle_observation_quality(
-        {
-            **common,
-            "fragment": 2,
-            "suffix_len": 64,
-            "level_or_exclusion": 3,
-            "selected_blocks": 16,
-            "slope_mantissa": -7,
-            "slope_shift": 2,
-            "slope_half_width_mantissa": 9,
-            "slope_half_width_shift": 1,
-            "lag_one_q": -12,
-            "lag_one_half_width_q": 30,
-            "residual_mantissa": 44,
-            "residual_shift": 3,
-            "tested_suffixes": 3,
-        }
-    )
-
-
-def test_stage_c_observation_advances_over_trace_only_current_sequence():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler, schema_revision=3)
-    feed_observation(assembler, 1, 0, 0, 0)
-    feed_observation(assembler, 3, 0, 1, 1)
-
-    assert (0, 1) in assembler.observations
-
-
-def test_stage_c_terminal_can_follow_observation_without_current():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler, schema_revision=3)
-    feed_observation(assembler, 1, 0, 0, 0)
-
-    assembler.handle_run_summary(
-        {
-            "oid": 0,
-            "run_sequence": RUN_SEQUENCE,
-            "evidence_sequence": 2,
-            "fragment": 0,
-            "forward_eligible_mask": 0,
-            "reverse_eligible_mask": 0,
-            "opening_available_mask": 0,
-            "bookend_available_mask": 0,
-            "current_terminus_plus_one": 0,
-            "sufficient_direction_mask": 0,
-        }
-    )
-
-    assert assembler.summary is not None
-
-
-def test_stage_c_trace_only_current_hole_does_not_hide_larger_gap():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler, schema_revision=3)
-    feed_observation(assembler, 1, 0, 0, 0)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="sequence gap"):
-        feed_observation(assembler, 4, 0, 1, 1)
 
 
 def test_schema_four_assembles_minimum_positive_ladder_and_timeout():
@@ -352,691 +253,6 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
     assert assembler.plan["maximum_workflow_ms"] == 1_000_000
 
 
-def feed_rung(assembler, sequence, rung_index, i_raw, kind):
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": sequence,
-        "rung_index": rung_index,
-        "i_raw": i_raw,
-    }
-    for direction in range(2):
-        low, high = (100, 110) if direction == 0 else (-110, -100)
-        assembler.handle_rung_core(
-            {
-                **common,
-                "fragment": direction,
-                "direction": direction,
-                "kind": kind,
-                "classification": 0,
-                "component_count": 1,
-                "usable_mask": 0x0F,
-                "included_mask": 0x07,
-                "observation_classes": 0,
-            }
-        )
-        assembler.handle_rung_component(
-            {
-                **common,
-                "direction": direction,
-                "component": 0,
-                "low_q": low,
-                "high_q": high,
-            }
-        )
-
-
-def feed_recovery(assembler, sequence, rung_index, outcome=0):
-    assembler.handle_recovery_summary(
-        {
-            "oid": 0,
-            "run_sequence": RUN_SEQUENCE,
-            "evidence_sequence": sequence,
-            "stage": 1,
-            "rung_index": rung_index,
-            "p_raw": assembler.plan["final_p"],
-            "binding_source": 0,
-            "outcome": outcome,
-        }
-    )
-
-
-def stage_c_recovery_assembler():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler)
-    for slot in range(8):
-        feed_observation(assembler, 2 * slot + 1, 0, slot, 0)
-    feed_rung(assembler, 17, 0, 0, 0)
-    return assembler
-
-
-def stage_c_11_recovery_assembler():
-    """Exercise the schema>=11 bounded-hidden-run grammar on the breakaway
-    continuation (shape 6, schema 14) -- schema 11 itself is no longer
-    accepted now that the classic combined range (8-13) is gone, but 14 still
-    trips the same >=11 gate this helper is named for.
-
-    Schema 14 is also >=12, so (unlike the retired schema-11 plan) its
-    observation stream must use the two-hidden-position advance, exactly as
-    stage_c_12_recovery_assembler does below -- there is no longer a
-    reachable schema that is >=11 but not >=12.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
-    feed_plan(
-        assembler,
-        schema_revision=14,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-    for slot in range(8):
-        feed_observation(assembler, 3 * slot + 1, 0, slot, 0)
-    feed_rung(assembler, 25, 0, 0, 0)
-    return assembler
-
-
-def stage_c_12_recovery_assembler():
-    """Exercise the schema>=12 two-hidden-position grammar on the breakaway
-    continuation (shape 6, schema 14) -- schema 12 itself is no longer
-    accepted now that the classic combined range (8-13) is gone, but 14 still
-    trips the same >=12 gate this helper is named for."""
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
-    feed_plan(
-        assembler,
-        schema_revision=14,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-    for slot in range(8):
-        feed_observation(assembler, 3 * slot + 1, 0, slot, 0)
-    feed_rung(assembler, 25, 0, 0, 0)
-    return assembler
-
-
-@pytest.mark.parametrize(
-    ("second_sequence", "error"),
-    (
-        (4, None),
-        (2, "sequence gap"),
-        (3, "sequence gap"),
-        (5, "sequence gap"),
-    ),
-)
-def test_stage_c_12_ordinary_rest_uses_exact_two_hidden_positions(second_sequence, error):
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
-    feed_plan(
-        assembler,
-        schema_revision=14,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-    feed_observation(assembler, 1, 0, 0, 0)
-
-    def action():
-        feed_observation(assembler, second_sequence, 0, 1, 0)
-
-    if error is None:
-        action()
-    else:
-        with pytest.raises(VelocityIntegralProtocolError, match=error):
-            action()
-
-
-def test_stage_c_recovery_summary_is_causal_and_compact():
-    assembler = stage_c_recovery_assembler()
-
-    feed_recovery(assembler, 18, 0)
-
-    assert assembler.recoveries[0] == {
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": 18,
-        "stage": 1,
-        "rung_index": 0,
-        "p_raw": 1448,
-        "binding_source": 0,
-        "outcome": 0,
-    }
-    with pytest.raises(VelocityIntegralProtocolError, match="duplicate"):
-        feed_recovery(assembler, 18, 0)
-
-
-@pytest.mark.parametrize(
-    ("sequence", "outcome", "error"),
-    (
-        (27, 1, None),
-        (28, 1, None),
-        (26, 0, None),
-        (26, 1, "hidden recovery-rest"),
-        (29, 1, "sequence gap"),
-    ),
-)
-def test_stage_c_11_recovery_accepts_a_bounded_hidden_run(sequence, outcome, error):
-    assembler = stage_c_11_recovery_assembler()
-    if error is not None:
-        with pytest.raises(VelocityIntegralProtocolError, match=error):
-            feed_recovery(assembler, sequence, 0, outcome=outcome)
-    else:
-        feed_recovery(assembler, sequence, 0, outcome=outcome)
-        assert assembler.recoveries[0]["outcome"] == outcome
-
-
-@pytest.mark.parametrize(
-    ("sequence", "outcome", "error"),
-    (
-        (28, 1, None),
-        (27, 1, None),
-        (26, 0, None),
-        (26, 3, None),
-        (26, 1, "hidden recovery-rest"),
-        (26, 5, "hidden recovery-rest"),
-        (29, 1, "sequence gap"),
-    ),
-)
-def test_stage_c_12_recovery_accepts_a_bounded_hidden_run(sequence, outcome, error):
-    assembler = stage_c_12_recovery_assembler()
-    if error is not None:
-        with pytest.raises(VelocityIntegralProtocolError, match=error):
-            feed_recovery(assembler, sequence, 0, outcome=outcome)
-    else:
-        feed_recovery(assembler, sequence, 0, outcome=outcome)
-        assert assembler.recoveries[0]["outcome"] == outcome
-
-
-def feed_stage_c_terminal_start(assembler, sequence, cause, outcome=3):
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": sequence,
-    }
-    assembler.handle_run_summary(
-        {
-            **common,
-            "fragment": 0,
-            "forward_eligible_mask": 0,
-            "reverse_eligible_mask": 0,
-            "opening_available_mask": 0,
-            "bookend_available_mask": 0,
-            "current_terminus_plus_one": 0,
-            "sufficient_direction_mask": 0,
-        }
-    )
-    assembler.handle_terminal_core(
-        {
-            **common,
-            "fragment": 0,
-            "outcome": outcome,
-            "cause": cause,
-            "rest_boundary_rung_plus_one": 0,
-            "rest_boundary_slot_plus_one": 0,
-            "expected_observations": 120,
-            "emitted_observations": 8,
-            "expected_rungs": 15,
-            "emitted_rungs": 1,
-            "recovery_flags": 0,
-        }
-    )
-
-
-def test_stage_c_11_accepts_hidden_rest_before_completed_rest_terminal():
-    assembler = stage_c_11_recovery_assembler()
-
-    feed_stage_c_terminal_start(assembler, 27, cause=53)
-
-    assert len(assembler._terminal_parts) == 1
-
-
-def test_stage_c_11_rejects_completed_rest_terminal_without_hidden_sequence():
-    assembler = stage_c_11_recovery_assembler()
-
-    with pytest.raises(VelocityIntegralProtocolError, match="omitted hidden"):
-        feed_stage_c_terminal_start(assembler, 26, cause=53)
-
-
-def test_stage_c_11_rejects_hidden_rest_before_unrelated_fault():
-    assembler = stage_c_11_recovery_assembler()
-
-    with pytest.raises(VelocityIntegralProtocolError, match="completed-rest"):
-        feed_stage_c_terminal_start(assembler, 27, cause=11)
-
-
-def test_stage_c_12_rest_terminal_requires_exact_hidden_positions():
-    accepted = VelocityIntegralAssembler()
-    feed_workflow(accepted, shape=6, nominal_ms=470_573, maximum_ms=496_528)
-    feed_plan(
-        accepted,
-        schema_revision=14,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-    feed_observation(accepted, 1, 0, 0, 0)
-    feed_stage_c_terminal_start(accepted, 4, cause=53, outcome=2)
-
-    omitted = VelocityIntegralAssembler()
-    feed_workflow(omitted, shape=6, nominal_ms=470_573, maximum_ms=496_528)
-    feed_plan(
-        omitted,
-        schema_revision=14,
-        positive_i=COMBINED_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=187_651,
-        maximum_workflow_ms=197_896,
-        final_p=1024,
-        joint_membership=0,
-    )
-    feed_observation(omitted, 1, 0, 0, 0)
-    with pytest.raises(VelocityIntegralProtocolError, match="omitted hidden"):
-        feed_stage_c_terminal_start(omitted, 2, cause=53, outcome=2)
-
-
-@pytest.mark.parametrize(
-    ("sequence", "error"),
-    (
-        (27, None),
-        (28, None),
-        (29, "sequence gap"),
-        (24, "sequence gap"),
-        (26, "omitted hidden"),
-    ),
-)
-def test_stage_c_12_terminal_accepts_a_bounded_hidden_run(sequence, error):
-    assembler = stage_c_12_recovery_assembler()
-    if error is not None:
-        with pytest.raises(VelocityIntegralProtocolError, match=error):
-            feed_stage_c_terminal_start(assembler, sequence, cause=53)
-    else:
-        feed_stage_c_terminal_start(assembler, sequence, cause=53)
-        assert len(assembler._terminal_parts) == 1
-
-
-@pytest.mark.parametrize(
-    ("replacement", "message"),
-    (
-        ({"stage": 0}, "wrong stage"),
-        ({"run_sequence": RUN_SEQUENCE + 1}, "run sequence"),
-        ({"evidence_sequence": 19}, "sequence gap"),
-        ({"rung_index": 1}, "immediately follow"),
-        ({"p_raw": 1449}, "fixed P"),
-    ),
-)
-def test_stage_c_recovery_summary_rejects_changed_identity(replacement, message):
-    assembler = stage_c_recovery_assembler()
-    params = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": 18,
-        "stage": 1,
-        "rung_index": 0,
-        "p_raw": 1448,
-        "binding_source": 5,
-        "outcome": 1,
-        **replacement,
-    }
-
-    with pytest.raises(VelocityIntegralProtocolError, match=message):
-        assembler.handle_recovery_summary(params)
-
-
-def test_ineligible_opening_anchor_may_terminate_without_recovery():
-    assembler = stage_c_recovery_assembler()
-
-    feed_terminal(
-        assembler,
-        18,
-        reproduction=False,
-        outcome=2,
-        emitted_observations=8,
-        emitted_rungs=1,
-        cause=1,
-    )
-
-    assert assembler.done
-    assert assembler.outcome == "inconclusive"
-    assert assembler.recoveries == {}
-
-
-def feed_full_evidence(assembler, recovery_outcomes=None, *, rung_count=None):
-    sequence = 1
-    rung_values = (0, *assembler.plan["positive_i"], 0)
-    if rung_count is not None:
-        rung_values = rung_values[:rung_count]
-    recovery_outcomes = recovery_outcomes or {}
-    for rung_index, i_raw in enumerate(rung_values):
-        for slot in range(8):
-            feed_observation(assembler, sequence, rung_index, slot, i_raw)
-            sequence += 2
-        feed_rung(
-            assembler,
-            sequence,
-            rung_index,
-            i_raw,
-            0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
-        )
-        sequence += 1
-        feed_recovery(
-            assembler,
-            sequence,
-            rung_index,
-            outcome=recovery_outcomes.get(rung_index, 0),
-        )
-        sequence += 1
-    return sequence
-
-
-def feed_full_evidence_omitting(assembler, omit, recovery_outcomes=None, *, rung_count=None):
-    """Feed every rung's evidence like feed_full_evidence, but skip one record.
-
-    `omit` names exactly one record to withhold entirely:
-      ("observation", rung_index, slot) -- withhold that one observation
-      ("rung", rung_index)              -- withhold that rung's core and
-                                            component records, and (because
-                                            handle_recovery_summary then has
-                                            no causal predecessor to follow,
-                                            per velocity_integral.py:314-323)
-                                            its recovery too
-      ("recovery", rung_index)          -- withhold only that recovery
-
-    Every evidence_sequence position the omitted record(s) would have used is
-    never issued, so every later record is renumbered to close the gap and
-    local sequence validation still passes. What remains reachable is only
-    the terminal's structural reconciliation against the assembled
-    observation/rung/recovery collections -- the thing this feeder exists to
-    isolate.
-    """
-    kind, omit_rung_index, *rest = omit
-    omit_slot = rest[0] if rest else None
-    sequence = 1
-    rung_values = (0, *assembler.plan["positive_i"], 0)
-    if rung_count is not None:
-        rung_values = rung_values[:rung_count]
-    recovery_outcomes = recovery_outcomes or {}
-    for rung_index, i_raw in enumerate(rung_values):
-        omit_rung = kind == "rung" and rung_index == omit_rung_index
-        for slot in range(8):
-            if kind == "observation" and rung_index == omit_rung_index and slot == omit_slot:
-                continue
-            feed_observation(assembler, sequence, rung_index, slot, i_raw)
-            sequence += 2
-        if not omit_rung:
-            feed_rung(
-                assembler,
-                sequence,
-                rung_index,
-                i_raw,
-                0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
-            )
-            sequence += 1
-        omit_recovery = omit_rung or (kind == "recovery" and rung_index == omit_rung_index)
-        if not omit_recovery:
-            feed_recovery(
-                assembler,
-                sequence,
-                rung_index,
-                outcome=recovery_outcomes.get(rung_index, 0),
-            )
-            sequence += 1
-    return sequence
-
-
-def feed_full_evidence_with_recovery_shift(
-    assembler, shift_rung_index, hidden_run, recovery_outcomes=None, *, rung_count=None
-):
-    """Feed every rung's evidence like feed_full_evidence, but shift one recovery.
-
-    Every observation, rung, and recovery is fed -- nothing is omitted, so
-    the resulting stream carries the same wire-visible records as an exact
-    (hidden_run == 0) run. Only `shift_rung_index`'s recovery lands
-    `hidden_run` evidence-sequence positions later than the exact run would
-    place it, and every later record is renumbered to follow from there, the
-    same way real firmware's own sequence counter would after leaving a
-    bounded number of positions unreported.
-
-    Only used by the schema>=12 (breakaway, schema 14) recovery-shift test, so
-    the observation stride leaves the two-hidden-position gap that schema
-    requires -- unlike feed_full_evidence's single-hidden-position stride,
-    which schema 14 would reject as a sequence gap.
-    """
-    sequence = 1
-    rung_values = (0, *assembler.plan["positive_i"], 0)
-    if rung_count is not None:
-        rung_values = rung_values[:rung_count]
-    recovery_outcomes = recovery_outcomes or {}
-    for rung_index, i_raw in enumerate(rung_values):
-        for slot in range(8):
-            feed_observation(assembler, sequence, rung_index, slot, i_raw)
-            sequence += 3
-        feed_rung(
-            assembler,
-            sequence,
-            rung_index,
-            i_raw,
-            0 if rung_index == 0 else 2 if rung_index == len(rung_values) - 1 else 1,
-        )
-        sequence += 1
-        shift = hidden_run if rung_index == shift_rung_index else 0
-        feed_recovery(
-            assembler,
-            sequence + shift,
-            rung_index,
-            outcome=recovery_outcomes.get(rung_index, 0),
-        )
-        sequence += 1 + shift
-    return sequence
-
-
-def _without_evidence_sequence(value):
-    """Strip evidence_sequence recursively so a shifted run compares equal.
-
-    A record-preserving sequence shift necessarily changes the raw
-    evidence_sequence stamped on the shifted recovery and on every record
-    fed after it. Stripping that one field is what lets the comparison prove
-    the *content* is identical, rather than trivially failing on the shift
-    itself.
-    """
-    if isinstance(value, dict):
-        return {
-            key: _without_evidence_sequence(item)
-            for key, item in value.items()
-            if key != "evidence_sequence"
-        }
-    if isinstance(value, list):
-        return [_without_evidence_sequence(item) for item in value]
-    return value
-
-
-def feed_terminal(
-    assembler,
-    sequence,
-    *,
-    reproduction=True,
-    outcome=None,
-    emitted_observations=None,
-    emitted_rungs=None,
-    digest=None,
-    cause=0,
-    cause_namespace=None,
-    rest_boundary=(0, 0),
-    recovery_flags=None,
-    current_terminus_plus_one=0,
-):
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": sequence,
-    }
-    assembler.handle_run_summary(
-        {
-            **common,
-            "fragment": 0,
-            "forward_eligible_mask": 0b111,
-            "reverse_eligible_mask": 0b101,
-            "opening_available_mask": 0b11,
-            "bookend_available_mask": 0b11,
-            "current_terminus_plus_one": current_terminus_plus_one,
-            "sufficient_direction_mask": 0b01,
-        }
-    )
-    for direction in range(2):
-        assembler.handle_curve_interval(
-            {
-                **common,
-                "kind": 0,
-                "direction": direction,
-                "rung_index": 0,
-                "low_q": -10,
-                "high_q": 10,
-            }
-        )
-        mask = (0b111, 0b101)[direction]
-        for rung in range(3):
-            if mask & (1 << rung):
-                assembler.handle_curve_interval(
-                    {
-                        **common,
-                        "kind": 1,
-                        "direction": direction,
-                        "rung_index": rung,
-                        "low_q": -30 + rung,
-                        "high_q": 40 + rung,
-                    }
-                )
-        assembler.handle_curve_interval(
-            {
-                **common,
-                "kind": 2,
-                "direction": direction,
-                "rung_index": 0,
-                "low_q": -12,
-                "high_q": 12,
-            }
-        )
-        assembler.handle_drift(
-            {
-                **common,
-                "direction": direction,
-                "available": 1,
-                "opening_low_q": -10,
-                "opening_high_q": 10,
-                "closing_low_q": -12,
-                "closing_high_q": 12,
-            }
-        )
-        assembler.handle_stage_b_comparison(
-            {
-                **common,
-                "direction": direction,
-                "available": 1 if direction == 0 else 0,
-                "stage_b_low_q16": -200,
-                "stage_b_high_q16": 200,
-                "expected_low_q": -20,
-                "expected_high_q": 20,
-                "opening_low_q": -10,
-                "opening_high_q": 10,
-            }
-        )
-    if reproduction:
-        assembler.handle_reproduction_core({**common, "outcome": 1, "direction_mask": 0b11})
-        for direction in range(2):
-            assembler.handle_reproduction_mask(
-                {
-                    **common,
-                    "direction": direction,
-                    "previous_mask": 0b111,
-                    "current_mask": 0b111,
-                    "shared_mask": 0b111,
-                    "reproduced_mask": 0b101,
-                    "divergent_mask": 0b010,
-                    "previous_only_mask": 0,
-                    "current_only_mask": 0,
-                }
-            )
-            for rung, kind in ((0, 1), (1, 2), (2, 1)):
-                assembler.handle_reproduction_interval(
-                    {
-                        **common,
-                        "direction": direction,
-                        "rung_index": rung,
-                        "kind": kind,
-                        "previous_low_q": -30,
-                        "previous_high_q": 40,
-                        "current_low_q": -20,
-                        "current_high_q": 50,
-                        "result_low_or_gap_q": -20 if kind == 1 else 7,
-                        "result_high_q": 40 if kind == 1 else 0,
-                    }
-                )
-        assembler.handle_reproduction_digest(
-            {
-                **common,
-                "previous_digest_low": 0x89AB_CDEF,
-                "previous_digest_high": 0x0123_4567,
-                "current_digest_low": 0x7654_3210,
-                "current_digest_high": 0xFEDC_BA98,
-            }
-        )
-    total_rungs = int(assembler.plan["total_rung_count"])
-    emitted_rungs = total_rungs if emitted_rungs is None else emitted_rungs
-    emitted_observations = (
-        8 * emitted_rungs if emitted_observations is None else emitted_observations
-    )
-    terminal_outcome = (1 if reproduction else 0) if outcome is None else outcome
-    terminal_core = {
-        **common,
-        "fragment": 0,
-        "outcome": terminal_outcome,
-        "cause": cause,
-        "rest_boundary_rung_plus_one": rest_boundary[0],
-        "rest_boundary_slot_plus_one": rest_boundary[1],
-        "expected_observations": 8 * total_rungs,
-        "emitted_observations": emitted_observations,
-        "expected_rungs": total_rungs,
-        "emitted_rungs": emitted_rungs,
-    }
-    if cause_namespace is not None:
-        terminal_core["cause_namespace"] = cause_namespace
-    if int(assembler.plan["schema_revision"]) >= 6:
-        if recovery_flags is None:
-            recovery_flags = 4 if assembler.plan["recovery_quantization_exposed"] else 0
-        terminal_core["recovery_flags"] = recovery_flags
-    else:
-        terminal_core["recovery_unavailable"] = 0
-    assembler.handle_terminal_core(terminal_core)
-    terminal_digest = OPAQUE_DIGEST if digest is None else digest
-    assembler.handle_terminal_identity(
-        {
-            **common,
-            "fragment": 1,
-            "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
-            "plan_digest_high": PLAN_DIGEST >> 32,
-            "digest_low": terminal_digest & 0xFFFF_FFFF,
-            "digest_high": terminal_digest >> 32,
-        }
-    )
-    assembler.handle_terminal_timing(
-        {
-            **common,
-            "fragment": 2,
-            "started_low": 0xFFFF_FFFE,
-            "started_high": 0x0000_0001,
-            "completed_low": 0x0000_0004,
-            "completed_high": 0x0000_0002,
-        }
-    )
-
-
 @pytest.mark.parametrize("shape", [0, 1, 2])
 def test_workflow_shapes_preserve_exact_digest_and_duration(shape):
     assembler = VelocityIntegralAssembler()
@@ -1058,38 +274,6 @@ def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
     assert assembler.maximum_duration_s == 389.52
 
 
-def test_assembles_exact_curves_sparse_masks_and_divergence_records():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler)
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(assembler, sequence)
-
-    assert assembler.done
-    assert assembler.outcome == "complete"
-    assert assembler.plan["plan_digest"] == PLAN_DIGEST
-    assert assembler.plan["stage_b_plan_digest"] == STAGE_B_DIGEST
-    assert assembler.plan["authorities"][0]["directional_validity"] == 2
-    assert assembler.plan["authorities"][1]["directional_validity"] == 1
-    assert assembler.plan["authorities"][0]["reduced_margin"] == 1
-    assert assembler.curves[1]["eligible_mask"] == 0b101
-    assert set(assembler.curves[1]["positive"]) == {0, 2}
-    assert assembler.reproduction["divergent"][0][1]["signed_gap_q"] == 7
-    assert assembler.reproduction["previous_digest"] == 0x0123_4567_89AB_CDEF
-    assert assembler.reproduction["current_digest"] == 0xFEDC_BA98_7654_3210
-    assert assembler.summary["opening_available_mask"] == 0b11
-    assert assembler.stage_b_comparison[0]["available"] == 1
-    assert assembler.stage_b_comparison[1]["available"] == 0
-    assert assembler.terminal["run_started_us"] == 0x0000_0001_FFFF_FFFE
-    assert assembler.terminal["run_completed_us"] == 0x0000_0002_0000_0004
-    assert len(assembler.recoveries) == 5
-    assert assembler.recoveries[0]["binding_source"] == 0
-    assert assembler.terminal["recovery_unavailable"] == 0
-    assert "absolute_curves" in assembler.report
-    assert "reproduction" in assembler.report
-
-
 def test_rejects_plan_fragment_reordering_and_duplicates():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler)
@@ -1108,510 +292,6 @@ def test_rejects_plan_fragment_reordering_and_duplicates():
                 "tau_us": 524_288,
             }
         )
-
-
-def test_terminal_rejects_missing_reproduction_fragment():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler)
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(assembler, sequence)
-    assembler.done = False
-    assembler.reproduction["masks"].pop(1)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="reproduction masks"):
-        assembler.validate_complete()
-
-
-def test_terminal_digest_is_retained_as_opaque_firmware_identity():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler)
-    sequence = feed_full_evidence(assembler)
-    opaque_digest = 0xDEAD_BEEF_0123_4567
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        digest=opaque_digest,
-    )
-
-    assembler.validate_complete()
-    assert assembler.terminal["digest"] == opaque_digest
-
-
-def test_terminal_exposes_compact_rest_boundary_without_reconstructing_it():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler)
-    feed_plan(assembler)
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        cause=10,
-        rest_boundary=(3, 6),
-    )
-
-    assert assembler.terminal["rest_boundary"] == {
-        "positive_rung_index": 2,
-        "slot": 5,
-    }
-
-
-@pytest.mark.parametrize(
-    ("cause", "rest_boundary", "current_terminus_plus_one", "accepted"),
-    (
-        (10, (4, 1), 0, True),
-        (3, (0, 0), 4, True),
-        (0, (0, 0), 0, False),
-    ),
-)
-def test_partial_rung_recovery_requires_post_sufficiency_terminal(
-    cause,
-    rest_boundary,
-    current_terminus_plus_one,
-    accepted,
-):
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=2,
-    )
-    sequence = feed_full_evidence(assembler, rung_count=4)
-    boundary_rung = 4
-    feed_observation(
-        assembler,
-        sequence,
-        boundary_rung,
-        0,
-        assembler.plan["positive_i"][boundary_rung - 1],
-    )
-    sequence += 2
-    feed_recovery(assembler, sequence, boundary_rung)
-    sequence += 1
-    bookend_rung = int(assembler.plan["total_rung_count"]) - 1
-    for slot in range(8):
-        feed_observation(assembler, sequence, bookend_rung, slot, 0)
-        sequence += 2
-    feed_rung(assembler, sequence, bookend_rung, 0, 2)
-    sequence += 1
-    feed_recovery(assembler, sequence, bookend_rung)
-    sequence += 1
-
-    terminal = {
-        "reproduction": False,
-        "emitted_observations": 41,
-        "emitted_rungs": 5,
-        "cause": cause,
-        "rest_boundary": rest_boundary,
-        "recovery_flags": 8,
-        "current_terminus_plus_one": current_terminus_plus_one,
-    }
-    if not accepted:
-        with pytest.raises(
-            VelocityIntegralProtocolError,
-            match="recovery records do not match fully acquired rungs",
-        ):
-            feed_terminal(assembler, sequence, **terminal)
-        return
-
-    feed_terminal(assembler, sequence, **terminal)
-
-    assert assembler.outcome == "complete_candidate"
-    assert set(assembler.recoveries) == {0, 1, 2, 3, boundary_rung, bookend_rung}
-
-
-def schema_six_assembler():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=6,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=1,
-    )
-    return assembler
-
-
-def schema_six_full_report(*, recovery_outcome=0, terminal_flags=4):
-    assembler = schema_six_assembler()
-    final_rung = int(assembler.plan["total_rung_count"]) - 1
-    sequence = feed_full_evidence(
-        assembler,
-        recovery_outcomes={final_rung: recovery_outcome},
-    )
-    feed_terminal(assembler, sequence, recovery_flags=terminal_flags)
-    return assembler
-
-
-def schema_six_recovery_fault_prefix(*, outcome=3, missing_recoveries=(6,)):
-    assembler = schema_six_assembler()
-    emitted_rungs = 7
-    sequence = feed_full_evidence(assembler, rung_count=emitted_rungs)
-    for rung_index in missing_recoveries:
-        assembler.recoveries.pop(rung_index)
-    final_rung = emitted_rungs - 1
-    assembler._last_evidence = (
-        ("rung", final_rung) if final_rung in missing_recoveries else ("recovery", final_rung)
-    )
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        outcome=outcome,
-        emitted_rungs=emitted_rungs,
-        cause=11 if outcome == 3 else 0,
-        recovery_flags=4,
-    )
-    return assembler
-
-
-def test_stage_c_fault_accepts_one_missing_final_recovery():
-    assembler = schema_six_recovery_fault_prefix()
-
-    assert assembler.outcome == "fault"
-    assert assembler.terminal["cause"] == 11
-    assert set(assembler.recoveries) == set(range(6))
-
-
-def test_terminal_carries_the_wire_cause_namespace():
-    assembler = schema_six_assembler()
-    sequence = feed_full_evidence(assembler)
-
-    feed_terminal(assembler, sequence, cause=4, cause_namespace=0)
-
-    assert assembler.terminal["cause"] == 4
-    assert assembler.terminal["cause_namespace"] == 0
-
-
-def test_stage_c_non_fault_rejects_one_missing_final_recovery():
-    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
-        schema_six_recovery_fault_prefix(outcome=2)
-
-
-def test_stage_c_fault_rejects_two_missing_recovery_records():
-    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
-        schema_six_recovery_fault_prefix(missing_recoveries=(5, 6))
-
-
-def test_stage_c_fault_rejects_missing_intermediate_recovery():
-    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
-        schema_six_recovery_fault_prefix(missing_recoveries=(5,))
-
-
-# ============================================================================
-# Terminal structural reconciliation: the bounded hidden-run rule (Tasks 1 and 2) gives up sequence-level
-# detection of a shift that omits no record. What still catches an actual
-# omission is the terminal comparing its declared counts, and the assembled
-# recovery set, against what the assembler built from the evidence it saw.
-# ============================================================================
-
-
-def test_stage_c_terminal_reconciliation_catches_an_omitted_observation():
-    assembler = schema_six_assembler()
-    sequence = feed_full_evidence_omitting(assembler, ("observation", 1, 0))
-
-    with pytest.raises(VelocityIntegralProtocolError, match="terminal observation count mismatch"):
-        feed_terminal(assembler, sequence)
-
-
-def test_stage_c_terminal_reconciliation_catches_an_omitted_rung():
-    assembler = schema_six_assembler()
-    sequence = feed_full_evidence_omitting(assembler, ("rung", 1))
-
-    with pytest.raises(VelocityIntegralProtocolError, match="terminal rung count mismatch"):
-        feed_terminal(assembler, sequence)
-
-
-def test_stage_c_terminal_reconciliation_catches_an_omitted_recovery():
-    assembler = schema_six_assembler()
-    sequence = feed_full_evidence_omitting(assembler, ("recovery", 1))
-
-    with pytest.raises(VelocityIntegralProtocolError, match="fully acquired rungs"):
-        feed_terminal(assembler, sequence, outcome=2)
-
-
-def test_stage_c_fault_terminal_masks_an_omitted_final_recovery():
-    """Pin the documented masking, not just its acceptance.
-
-    A fault terminal drops its highest expected recovery from the required
-    set when that recovery immediately followed its rung and is absent
-    (velocity_integral.py:707-714). A genuine fault raised before the
-    firmware ever emitted the final recovery, and a final recovery that was
-    simply lost in transit, are indistinguishable by this check -- assert the
-    surviving recovery set, so the test proves exactly what was accepted.
-    """
-    assembler = schema_six_assembler()
-    final_rung = int(assembler.plan["total_rung_count"]) - 1
-    sequence = feed_full_evidence_omitting(assembler, ("recovery", final_rung))
-
-    feed_terminal(assembler, sequence, outcome=3, cause=11)
-
-    assert assembler.outcome == "fault"
-    assert set(assembler.recoveries) == set(range(final_rung))
-
-
-def test_stage_c_11_complete_run_accepts_a_bounded_recovery_sequence_shift():
-    """Pin the fourth guarantee end to end, not just at the recovery step.
-
-    Build two otherwise identical schema>=11 streams -- the same rungs,
-    observations, and recovery outcomes -- that differ only in how many
-    positions rung 0's recovery appears to have hidden: zero (an exact
-    sequence) versus two (the bound's ceiling). Neither stream omits a
-    wire-visible record, so the terminal's declared counts are the same
-    complete-run counts in both, unchanged from what feed_terminal reports
-    by default. Carry the resulting sequence through a normal complete
-    terminal: both assemblers must finish successfully with identical
-    assembled structures, proving the bounded rule (Task 1) cannot tell a
-    genuinely different shift from an exact sequence once every record has
-    actually arrived -- not just that one recovery call accepts it in
-    isolation.
-
-    Re-hosted on the breakaway continuation (shape 6, schema 14) -- schema 11
-    itself is no longer accepted now that the classic combined range (8-13)
-    is gone, but 14 still trips the same >=11 gate this test is named for.
-    """
-
-    def build(hidden_run):
-        assembler = VelocityIntegralAssembler()
-        feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
-        feed_plan(
-            assembler,
-            schema_revision=14,
-            positive_i=COMBINED_Q4_12_POSITIVE_I,
-            nominal_workflow_ms=187_651,
-            maximum_workflow_ms=197_896,
-            final_p=1024,
-            joint_membership=0,
-        )
-        sequence = feed_full_evidence_with_recovery_shift(assembler, 0, hidden_run)
-        feed_terminal(assembler, sequence, recovery_flags=0)
-        return assembler
-
-    exact = build(hidden_run=0)
-    shifted = build(hidden_run=2)
-
-    assert exact.done and shifted.done
-    assert exact.outcome == shifted.outcome == "complete"
-    assert _without_evidence_sequence(exact.observations) == _without_evidence_sequence(
-        shifted.observations
-    )
-    assert _without_evidence_sequence(exact.rungs) == _without_evidence_sequence(shifted.rungs)
-    assert _without_evidence_sequence(exact.recoveries) == _without_evidence_sequence(
-        shifted.recoveries
-    )
-
-
-def test_schema_six_requires_causal_recovery_outcome_for_recovered_flag():
-    assembler = schema_six_full_report(recovery_outcome=5, terminal_flags=6)
-
-    assert assembler.terminal["recovery_unavailable"] == 0
-    assert assembler.terminal["recovered_with_current_headroom"] is True
-    assert assembler.terminal["recovery_quantization_exposed"] is True
-    assert assembler.recoveries[13]["outcome"] == 5
-
-    with pytest.raises(VelocityIntegralProtocolError, match="causal recovery"):
-        schema_six_full_report(recovery_outcome=0, terminal_flags=6)
-
-
-def test_schema_six_rejects_reserved_or_inconsistent_terminal_flags():
-    with pytest.raises(VelocityIntegralProtocolError, match="terminal recovery flags"):
-        schema_six_full_report(terminal_flags=8)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="exposure differ"):
-        schema_six_full_report(terminal_flags=0)
-
-
-def test_schema_six_preserves_recovery_unavailable_as_a_named_flag():
-    assembler = schema_six_full_report(terminal_flags=5)
-
-    assert assembler.terminal["recovery_unavailable"] == 1
-    assert assembler.terminal["recovered_with_current_headroom"] is False
-    assert assembler.terminal["recovery_quantization_exposed"] is True
-
-
-def test_schema_seven_requires_matching_probe_constrained_terminal_flag():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=0b10,
-        final_p=724,
-        joint_membership=0x000E_0000,
-    )
-    sequence = feed_full_evidence(assembler)
-    feed_terminal(assembler, sequence, recovery_flags=0b1000)
-
-    assert assembler.terminal["probe_constrained_test_point"] is True
-    assert assembler.report["plan"]["probe_constrained_test_point"] is True
-
-    with pytest.raises(VelocityIntegralProtocolError, match="probe constraint differ"):
-        assembler = VelocityIntegralAssembler()
-        feed_workflow(assembler, maximum_ms=182_512)
-        feed_plan(
-            assembler,
-            schema_revision=7,
-            positive_i=NATIVE_Q4_12_POSITIVE_I,
-            nominal_workflow_ms=165_950,
-            maximum_workflow_ms=182_512,
-            recovery_flags=0b10,
-            final_p=724,
-            joint_membership=0x000E_0000,
-        )
-        sequence = feed_full_evidence(assembler)
-        feed_terminal(assembler, sequence, recovery_flags=0)
-
-
-def _schema_seven_assembler_with_terminal_flags(terminal_flags):
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=0,
-        final_p=724,
-        joint_membership=0x000E_0000,
-    )
-    sequence = feed_full_evidence(assembler)
-    feed_terminal(assembler, sequence, recovery_flags=terminal_flags)
-    return assembler
-
-
-def test_schema_seven_exposes_rest_rejection_after_sufficiency_and_owner():
-    # bit 4 set, owner code 0b10 (stage_c_recovery) in bits 5-6.
-    flags = TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY | (
-        0b10 << TERMINAL_REST_REJECTION_OWNER_SHIFT
-    )
-    assembler = _schema_seven_assembler_with_terminal_flags(flags)
-
-    assert assembler.terminal["rest_rejection_after_sufficiency"] is True
-    assert assembler.terminal["rest_rejection_owner"] == "stage_c_recovery"
-
-
-def test_schema_seven_rest_rejection_owner_is_none_when_flag_clear():
-    assembler = _schema_seven_assembler_with_terminal_flags(0)
-
-    assert assembler.terminal["rest_rejection_after_sufficiency"] is False
-    assert assembler.terminal["rest_rejection_owner"] is None
-
-
-def test_schema_seven_decodes_every_rest_rejection_owner_code():
-    expected = {
-        0b00: "stage_c_anchor",
-        0b01: "stage_c_positive_observation",
-        0b10: "stage_c_recovery",
-        0b11: "stage_c_cleanup",
-    }
-    for code, name in expected.items():
-        flags = TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY | (
-            code << TERMINAL_REST_REJECTION_OWNER_SHIFT
-        )
-        assembler = _schema_seven_assembler_with_terminal_flags(flags)
-        assert assembler.terminal["rest_rejection_owner"] == name
-
-
-def test_schema_seven_rejects_bit_seven_as_still_reserved():
-    with pytest.raises(VelocityIntegralProtocolError, match="terminal recovery flags"):
-        _schema_seven_assembler_with_terminal_flags(1 << 7)
-
-
-def feed_no_transition_terminal(assembler, *, outcome=5, cause=11, flags=0b1000, plan_digest=None):
-    plan_digest = PLAN_DIGEST if plan_digest is None else plan_digest
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": 0,
-    }
-    assembler.handle_terminal_core(
-        {
-            **common,
-            "fragment": 0,
-            "outcome": outcome,
-            "cause": cause,
-            "recovery_flags": flags,
-            "rest_boundary_rung_plus_one": 0,
-            "rest_boundary_slot_plus_one": 0,
-            "expected_observations": 0,
-            "emitted_observations": 0,
-            "expected_rungs": 0,
-            "emitted_rungs": 0,
-        }
-    )
-    assembler.handle_terminal_identity(
-        {
-            **common,
-            "fragment": 1,
-            "plan_digest_low": plan_digest & 0xFFFF_FFFF,
-            "plan_digest_high": plan_digest >> 32,
-            "digest_low": 0,
-            "digest_high": 0,
-        }
-    )
-    assembler.handle_terminal_timing(
-        {
-            **common,
-            "fragment": 2,
-            "started_low": 0,
-            "started_high": 0,
-            "completed_low": 0,
-            "completed_high": 0,
-        }
-    )
-
-
-def test_missing_retained_authority_resume_accepts_a_terminal_without_a_plan():
-    """A resume with nothing retained has no exact plan to name.
-
-    Every other failed admission rejects a plan it can identify, so it carries a
-    digest. This one is refused before any plan exists, and reporting a
-    fabricated digest to satisfy that contract would invent evidence.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=2, maximum_ms=182_512)
-
-    feed_no_transition_terminal(assembler, cause=12, flags=0, plan_digest=0)
-
-    assert assembler.done is True
-    assert assembler.outcome == "failed"
-    assert assembler.terminal["cause"] == 12
-    assert assembler.terminal["plan_digest"] == 0
-    assert assembler.terminal["digest"] == 0
-    assert assembler.terminal["probe_constrained_test_point"] is False
-    assert STAGE_C_TERMINAL_CAUSE_NAMES[12] == "no_retained_stage_c_authority"
-
-
-def test_no_transition_direct_resume_accepts_exact_zero_motion_terminal():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=2, maximum_ms=182_512)
-
-    feed_no_transition_terminal(assembler)
-
-    assert assembler.plan is None
-    assert assembler.summary is None
-    assert assembler.done is True
-    assert assembler.outcome == "failed"
-    assert assembler.terminal["cause"] == 11
-    assert assembler.terminal["plan_digest"] == PLAN_DIGEST
-    assert assembler.terminal["digest"] == 0
-    assert assembler.terminal["probe_constrained_test_point"] is True
 
 
 def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
@@ -1638,79 +318,6 @@ def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
 
     with pytest.raises(VelocityIntegralProtocolError, match="requires breakaway"):
         feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
-
-
-def test_refused_resume_is_accepted_without_a_workflow_envelope():
-    """A refusal declares no workflow because it never started one.
-
-    The envelope exists to give the host a timeout, and firmware has no honest
-    duration for a command it refused before planning. The refusal arrives well
-    inside the plan timeout, so nothing downstream needs the envelope either.
-    """
-    assembler = VelocityIntegralAssembler()
-
-    feed_no_transition_terminal(assembler, cause=12, flags=0, plan_digest=0)
-
-    assert assembler.workflow_plan is None
-    assert assembler.done is True
-    assert assembler.outcome == "failed"
-    assert assembler.terminal["cause"] == 12
-
-
-def test_resume_plan_mismatch_accepts_a_terminal_naming_the_retained_plan():
-    """A resume refused against retained authority moves the motor not at all.
-
-    It is refused before any Stage-C stroke, so it arrives in the same
-    zero-motion shape as the other failed admissions. Unlike the empty-slot
-    refusal it does have a plan to name: the retained one it disagreed with.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=2, maximum_ms=182_512)
-
-    feed_no_transition_terminal(assembler, cause=7, flags=0)
-
-    assert assembler.plan is None
-    assert assembler.done is True
-    assert assembler.outcome == "failed"
-    assert assembler.terminal["cause"] == 7
-    assert assembler.terminal["plan_digest"] == PLAN_DIGEST
-    assert assembler.terminal["digest"] == 0
-    assert assembler.terminal["probe_constrained_test_point"] is False
-
-
-def test_resume_plan_mismatch_without_a_retained_digest_is_rejected():
-    """Only the empty slot may report no plan at all.
-
-    A mismatch that names no plan is indistinguishable from having nothing
-    retained, which is the distinction the operator needs to act on.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=2, maximum_ms=182_512)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="terminal identity is invalid"):
-        feed_no_transition_terminal(assembler, cause=7, flags=0, plan_digest=0)
-
-
-@pytest.mark.parametrize(
-    ("outcome", "cause", "flags", "message"),
-    (
-        (4, 11, 0b1000, "terminal preceded exact plan"),
-        (5, 10, 0b1000, "terminal preceded exact plan"),
-        (5, 11, 0, "terminal preceded exact plan"),
-        (5, 7, 0b1000, "terminal preceded exact plan"),
-    ),
-)
-def test_no_transition_rejects_any_other_terminal_only_shape(outcome, cause, flags, message):
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=2, maximum_ms=182_512)
-
-    with pytest.raises(VelocityIntegralProtocolError, match=message):
-        feed_no_transition_terminal(
-            assembler,
-            outcome=outcome,
-            cause=cause,
-            flags=flags,
-        )
 
 
 def test_mirrored_slot_order_flag_is_accepted_at_every_schema():
@@ -1753,119 +360,6 @@ def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
         )
 
 
-def test_mirrored_run_accepts_the_inverted_slot_direction():
-    """A mirrored run inverts which direction each slot travels.
-
-    The host validated direction against raw slot parity, so every observation of
-    a mirrored run was rejected with "invalid observation slot or direction". The
-    run aborted at the first observation, before producing any evidence.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=0b100,
-    )
-    assert assembler.plan["mirrored_slot_order"] is True
-
-    # Slot 0 travels reverse under mirroring, which is the inverse of parity.
-    feed_observation(assembler, 1, 0, 0, 1, slot_order=1)
-    assert (0, 0) in assembler.observations
-
-    # The unmirrored pairing must now be the one refused.
-    with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
-        feed_observation(assembler, 3, 0, 1, 1, slot_order=0)
-
-
-def test_unmirrored_run_still_requires_parity_matched_directions():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=0,
-    )
-    assert assembler.plan["mirrored_slot_order"] is False
-
-    feed_observation(assembler, 1, 0, 0, 1)
-    assert (0, 0) in assembler.observations
-    with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
-        feed_observation(assembler, 3, 0, 1, 1, slot_order=1)
-
-
-def test_paired_slot_order_accepts_its_f_r_r_f_directions():
-    """The paired order runs F,R,R,F,F,R,R,F, so direction is not slot parity.
-
-    A boolean mirrored flag cannot express it: slots 0 and 3 both travel forward
-    while slots 1 and 2 both travel reverse, which neither parity nor its inverse
-    produces.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-        recovery_flags=0b1000,
-    )
-    assert assembler.plan["slot_order"] == 2
-
-    expected = [0, 1, 1, 0, 0, 1, 1, 0]
-    for slot, direction in enumerate(expected):
-        assert slot_direction_index(2, slot) == direction, f"slot {slot}"
-
-    # Slot 0 forward and slot 1 reverse match parity here, but slot 2 must be
-    # reverse and slot 3 forward, which is where parity would disagree.
-    feed_observation(assembler, 1, 0, 0, 1, slot_order=2)
-    assert (0, 0) in assembler.observations
-    with pytest.raises(VelocityIntegralProtocolError, match="slot or direction"):
-        feed_observation(assembler, 3, 0, 2, 1, slot_order=0)
-
-
-def test_slot_direction_index_covers_all_three_orders():
-    for slot in range(8):
-        assert slot_direction_index(0, slot) == slot & 1
-        assert slot_direction_index(1, slot) == (slot & 1) ^ 1
-    assert [slot_direction_index(2, s) for s in range(8)] == [0, 1, 1, 0, 0, 1, 1, 0]
-
-
-def test_slot_range_follows_the_plan_not_a_hardcoded_eight():
-    """Slots per rung is firmware geometry, not a host constant.
-
-    A schedule with a different slot count would otherwise be rejected here even
-    though the plan declares it, which is the same shape of defect as the
-    hardcoded workflow durations.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=7,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-    )
-    rungs = int(assembler.plan["total_rung_count"])
-    observations = int(assembler.plan["expected_observations"])
-
-    assert observations % rungs == 0
-    assert assembler.slots_per_rung == observations // rungs
-
-
-# ============================================================================
-# Breakaway-seeded campaign: schema-14 Stage-C continuation
-# ============================================================================
-
-
 def test_schema_fourteen_assembles_the_breakaway_stage_c_plan():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
@@ -1900,307 +394,245 @@ def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
         feed_plan(assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0)
 
 
-def test_schema_fourteen_terminal_core_does_not_require_a_combined_marker():
-    """Firmware never sets the combined-workflow recovery-flags bit for a
-    breakaway plan.
+def _terminal_params(
+    *,
+    schema=VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
+    run_sequence=RUN_SEQUENCE,
+    outcome=1,
+    cause=0,
+    cause_namespace=0,
+    recovery_flags=0,
+    forward_eligible_mask=0,
+    reverse_eligible_mask=0,
+    bookend_available_mask=0,
+    current_terminus_plus_one=0,
+    reproduction_available=0,
+    forward_reproduced_mask=0,
+    forward_divergent_mask=0,
+    reverse_reproduced_mask=0,
+    reverse_divergent_mask=0,
+):
+    payload = struct.pack(
+        "<BIBBBBIIBBBIIII",
+        schema,
+        run_sequence,
+        outcome,
+        cause,
+        cause_namespace,
+        recovery_flags,
+        forward_eligible_mask,
+        reverse_eligible_mask,
+        bookend_available_mask,
+        current_terminus_plus_one,
+        reproduction_available,
+        forward_reproduced_mask,
+        forward_divergent_mask,
+        reverse_reproduced_mask,
+        reverse_divergent_mask,
+    )
+    return {"oid": 0, "payload": payload}
 
-    That bit (and the wire marker it fed, now removed with the rest of the
-    combined-terminal handling) was only ever set when
-    `combined_selected_response` was built, which
-    StageCAuthority::new_breakaway never does. Before this fix, the old
-    unconditional `schema_revision >= 8` gate rejected every schema-14
-    terminal outright.
-    """
+
+def test_handle_terminal_parses_the_compact_payload():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=49_920, maximum_ms=49_920)
-    feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
-    common = {
-        "oid": 0,
-        "run_sequence": RUN_SEQUENCE,
-        "evidence_sequence": 1,
-    }
-    assembler.handle_run_summary(
-        {
-            **common,
-            "fragment": 0,
-            "forward_eligible_mask": 0,
-            "reverse_eligible_mask": 0,
-            "opening_available_mask": 0,
-            "bookend_available_mask": 0,
-            "current_terminus_plus_one": 0,
-            "sufficient_direction_mask": 0,
-        }
-    )
+    feed_workflow(assembler)
+    feed_plan(assembler)
 
-    assembler.handle_terminal_core(
-        {
-            **common,
-            "fragment": 0,
-            "outcome": 3,
-            "cause": 17,
-            "rest_boundary_rung_plus_one": 0,
-            "rest_boundary_slot_plus_one": 0,
-            "expected_observations": 0,
-            "emitted_observations": 0,
-            "expected_rungs": 0,
-            "emitted_rungs": 0,
-            "recovery_flags": 0,
-        }
-    )
-
-    assert len(assembler._terminal_parts) == 1
-
-
-def test_schema_fourteen_complete_outcome_does_not_require_reproduction():
-    """A shape-6, schema-14 Complete outcome is exempt from the
-    reproduction-required check in `validate_complete`.
-
-    The completeness state here is synthesized rather than streamed through
-    the full observation/rung/terminal handler sequence, because schema >=
-    12's two-hidden-position sequencing is orthogonal to what this test
-    targets.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=49_920, maximum_ms=49_920)
-    feed_plan(assembler, schema_revision=14, positive_i=(5,), joint_membership=0)
-
-    assembler.outcome = "complete"
-    assembler._summary = {"bookend_available_mask": 0b11}
-    assembler.curves = [
-        {"eligible_mask": 0, "opening": (0, 0), "positive": {}, "bookend": (0, 0)},
-        {"eligible_mask": 0, "opening": (0, 0), "positive": {}, "bookend": (0, 0)},
-    ]
-    assembler.drift = [{}, {}]
-    assembler.stage_b_comparison = [{}, {}]
-    assembler.terminal = {
-        "plan_digest": assembler.plan["plan_digest"],
-        "expected_observations": assembler.plan["expected_observations"],
-        "emitted_observations": 0,
-        "expected_rungs": assembler.plan["total_rung_count"],
-        "emitted_rungs": 0,
-        "cause": 0,
-        "rest_boundary": None,
-        "recovery_quantization_exposed": False,
-        "recovered_with_current_headroom": False,
-        "probe_constrained_test_point": False,
-    }
-    assembler.observations = {}
-    assembler.rungs = {}
-    assembler.recoveries = {}
-
-    assembler.validate_complete()  # must not raise despite reproduction is None
-
-
-# ============================================================================
-# Breakaway native acceptance terminal: schema-16
-# ============================================================================
-
-BREAKAWAY_ACCEPTANCE_POSITIVE_I = (10, 40, 96, 200)
-
-
-def test_breakaway_schema_sixteen_reproduced_complete_exposes_terminus_and_selected_i():
-    """A reproduced breakaway Complete discloses its terminus via the
-    rest-boundary reference alone, not via recovery_flags target bits --
-    breakaway emits none (Task 2). target_code=0 (recovery_flags=0) is
-    deliberate: a reader that still (wrongly) reads the combined-target bits
-    would see target_code 0 and report no terminus at all, which this test
-    would catch.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
-    feed_plan(
-        assembler,
-        schema_revision=16,
-        positive_i=BREAKAWAY_ACCEPTANCE_POSITIVE_I,
-        joint_membership=0,
-    )
-    rung_values = (0, *BREAKAWAY_ACCEPTANCE_POSITIVE_I, 0)
-    sequence = feed_foc213_transport_validated_replay(assembler, rung_values, centred_rung_index=0)
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=True,
-        outcome=1,
-        recovery_flags=0,
-        rest_boundary=(3, 0),
-    )
-
-    assert assembler.done
-    assert assembler.outcome == "complete"
-    assert assembler.reproduction is not None
-    assert assembler.terminal["target_terminus"] == 2
-    assert assembler.terminal["selected_i"] == BREAKAWAY_ACCEPTANCE_POSITIVE_I[2]
-
-
-def test_breakaway_schema_sixteen_first_candidate_is_not_accepted_as_authority():
-    """The first sufficient run emits complete_candidate, not complete --
-    only a reproduced run gets to install as acceptance authority."""
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
-    feed_plan(
-        assembler,
-        schema_revision=16,
-        positive_i=BREAKAWAY_ACCEPTANCE_POSITIVE_I,
-        joint_membership=0,
-    )
-    rung_values = (0, *BREAKAWAY_ACCEPTANCE_POSITIVE_I, 0)
-    sequence = feed_foc213_transport_validated_replay(assembler, rung_values, centred_rung_index=0)
-
-    feed_terminal(
-        assembler,
-        sequence,
-        reproduction=False,
-        outcome=0,
-        recovery_flags=0,
-        rest_boundary=(3, 0),
-    )
-
-    assert assembler.terminal["outcome"] == 0
-    assert assembler.outcome == "complete_candidate"
-    assert assembler.reproduction is None
-
-
-def test_breakaway_schema_sixteen_complete_without_reproduction_is_rejected():
-    """A breakaway Complete that carries acceptance authority (a disclosed
-    target_terminus) must have arrived via reproduction, mirroring the
-    firmware invariant that the acceptance point installs only on a
-    reproduced Complete."""
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
-    feed_plan(
-        assembler,
-        schema_revision=16,
-        positive_i=BREAKAWAY_ACCEPTANCE_POSITIVE_I,
-        joint_membership=0,
-    )
-    rung_values = (0, *BREAKAWAY_ACCEPTANCE_POSITIVE_I, 0)
-    sequence = feed_foc213_transport_validated_replay(assembler, rung_values, centred_rung_index=0)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="breakaway acceptance"):
-        feed_terminal(
-            assembler,
-            sequence,
-            reproduction=False,
+    assembler.handle_terminal(
+        _terminal_params(
             outcome=1,
-            recovery_flags=0,
-            rest_boundary=(3, 0),
+            cause=4,
+            cause_namespace=0,
+            forward_eligible_mask=0x0000_0007,
+            reverse_eligible_mask=0x0000_0003,
+            bookend_available_mask=0b01,
+            current_terminus_plus_one=4,
+            reproduction_available=1,
+        )
+    )
+
+    assert assembler.done is True
+    assert assembler.outcome == "complete"
+    assert assembler.terminal["outcome_name"] == "complete"
+    assert assembler.terminal["cause"] == 4
+    assert assembler.terminal["cause_namespace"] == 0
+    assert assembler.terminal["forward_eligible_mask"] == 0x0000_0007
+    assert assembler.terminal["reverse_eligible_mask"] == 0x0000_0003
+    assert assembler.terminal["bookend_available_mask"] == 0b01
+    assert assembler.terminal["current_terminus_plus_one"] == 4
+    assert assembler.terminal["rest_rejection_after_sufficiency"] is False
+    assert assembler.terminal["rest_rejection_owner"] is None
+
+
+def test_handle_terminal_rejects_unsupported_schema():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="schema"):
+        assembler.handle_terminal(_terminal_params(schema=99))
+
+
+def test_handle_terminal_rejects_invalid_outcome():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="outcome"):
+        assembler.handle_terminal(_terminal_params(outcome=99))
+
+
+def test_handle_terminal_rejects_run_sequence_mismatch():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="run sequence"):
+        assembler.handle_terminal(
+            _terminal_params(run_sequence=RUN_SEQUENCE + 1, reproduction_available=1)
         )
 
 
-def feed_foc213_transport_validated_replay(assembler, rung_values, *, centred_rung_index):
-    """Feed the wire-visible pattern the foc213-transport-validated capture
-    demonstrates.
+def test_handle_terminal_establishes_run_sequence_when_none_preceded_it():
+    assembler = VelocityIntegralAssembler()
 
-    Per slot: one observation followed by two hidden positions (a
-    rest_selection and a current), so the next visible record lands 3
-    sequence positions later. Per rung: `integral_rung`, then one hidden
-    position, then `rung_origin_recovery` with outcome 1 -- except
-    `centred_rung_index`, whose recovery was already centred: outcome 0, with
-    no hidden position.
+    assembler.handle_terminal(_terminal_params(run_sequence=41, outcome=5, cause=12))
 
-    Returns the next unused evidence_sequence position, so a caller can check
-    it against the archived capture's terminal position.
-    """
-    sequence = 1
-    last_rung_index = len(rung_values) - 1
-    for rung_index, i_raw in enumerate(rung_values):
-        for slot in range(8):
-            feed_observation(assembler, sequence, rung_index, slot, i_raw)
-            sequence += 3
-        kind = 0 if rung_index == 0 else 2 if rung_index == last_rung_index else 1
-        feed_rung(assembler, sequence, rung_index, i_raw, kind)
-        sequence += 1
-        if rung_index == centred_rung_index:
-            feed_recovery(assembler, sequence, rung_index, outcome=0)
-            sequence += 1
-        else:
-            feed_recovery(assembler, sequence + 1, rung_index, outcome=1)
-            sequence += 2
-    return sequence
+    assert assembler.done is True
+    assert assembler.outcome == "failed"
+    assert assembler.terminal["cause"] == 12
 
 
-def test_foc213_transport_validated_replays_the_breakaway_evidence_sequence():
-    """Replay the wire-visible pattern from the foc213-transport-validated
-    capture: schema 14, workflow shape 6, all fourteen rungs of
-    `NATIVE_Q4_12_POSITIVE_I`.
+def test_handle_terminal_rejects_a_successful_outcome_with_no_preceding_plan():
+    assembler = VelocityIntegralAssembler()
 
-    The archived capture's evidence sequence runs contiguously from 1 to 377
-    with the terminal at 378; this fixture reproduces that geometry exactly.
-    Rung 12 was already centred (outcome 0, no hidden position); the other
-    thirteen recoveries were moving (outcome 1, one hidden position).
-    """
+    with pytest.raises(VelocityIntegralProtocolError, match="preceded exact plan"):
+        assembler.handle_terminal(_terminal_params(run_sequence=41, outcome=1, cause=0))
+
+
+def test_handle_terminal_rejects_an_unlisted_failed_admission_cause():
+    assembler = VelocityIntegralAssembler()
+
+    with pytest.raises(VelocityIntegralProtocolError, match="preceded exact plan"):
+        assembler.handle_terminal(_terminal_params(run_sequence=41, outcome=5, cause=1))
+
+
+def test_handle_terminal_rejects_failed_admission_shape_after_a_partial_plan():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    assembler.handle_plan_core(
+        {
+            "oid": 0,
+            "run_sequence": RUN_SEQUENCE,
+            "evidence_sequence": 0,
+            "fragment": 0,
+            "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
+            "plan_digest_high": PLAN_DIGEST >> 32,
+            "stage_b_digest_low": STAGE_B_DIGEST & 0xFFFF_FFFF,
+            "stage_b_digest_high": STAGE_B_DIGEST >> 32,
+            "build_revision": 7,
+            "schema_revision": 2,
+            "channel": 0,
+            "final_p": 1448,
+        }
+    )
+
+    with pytest.raises(VelocityIntegralProtocolError, match="preceded exact plan"):
+        assembler.handle_terminal(_terminal_params(outcome=5, cause=12))
+
+
+def test_handle_terminal_rejects_failed_admission_shape_under_a_proportional_only_workflow():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=0)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="preceded exact plan"):
+        assembler.handle_terminal(_terminal_params(outcome=5, cause=12))
+
+
+def test_handle_terminal_decodes_rest_rejection_owner():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+    flags = TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY | (
+        0b10 << TERMINAL_REST_REJECTION_OWNER_SHIFT
+    )
+
+    assembler.handle_terminal(_terminal_params(recovery_flags=flags, reproduction_available=1))
+
+    assert assembler.terminal["rest_rejection_after_sufficiency"] is True
+    assert assembler.terminal["rest_rejection_owner"] == "stage_c_recovery"
+
+
+def test_handle_terminal_marks_inconclusive_rest_by_cause():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    assembler.handle_terminal(_terminal_params(outcome=2, cause=53))
+
+    assert assembler.terminal["outcome_name"] == "InconclusiveRest"
+
+
+def test_handle_terminal_with_reproduction_exposes_masks_per_direction():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    assembler.handle_terminal(
+        _terminal_params(
+            reproduction_available=1,
+            forward_reproduced_mask=0x0000_0005,
+            forward_divergent_mask=0x0000_0002,
+            reverse_reproduced_mask=0x0000_0002,
+            reverse_divergent_mask=0x0000_0001,
+        )
+    )
+
+    assert assembler.reproduction == {
+        "forward": {"reproduced_mask": 0x0000_0005, "divergent_mask": 0x0000_0002},
+        "reverse": {"reproduced_mask": 0x0000_0002, "divergent_mask": 0x0000_0001},
+    }
+
+
+def test_handle_terminal_rejects_invalid_reproduction_availability_value():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="reproduction"):
+        assembler.handle_terminal(_terminal_params(outcome=2, reproduction_available=2))
+
+
+def test_handle_terminal_rejects_reproduction_masks_without_availability_flag():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="reproduction"):
+        assembler.handle_terminal(
+            _terminal_params(outcome=2, reproduction_available=0, forward_reproduced_mask=1)
+        )
+
+
+def test_handle_terminal_rejects_complete_without_reproduction():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="reproduction"):
+        assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
+
+
+def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_continuation():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler,
-        schema_revision=14,
-        positive_i=NATIVE_Q4_12_POSITIVE_I,
-        final_p=1024,
-        joint_membership=0,
-    )
-    rung_values = (0, *NATIVE_Q4_12_POSITIVE_I, 0)
-    assert len(rung_values) == 14
-
-    next_sequence = feed_foc213_transport_validated_replay(
-        assembler, rung_values, centred_rung_index=12
+        assembler, schema_revision=14, positive_i=POSITIVE_I, final_p=1024, joint_membership=0
     )
 
-    assert next_sequence == 378
-    assert len(assembler.observations) == 112
-    assert len(assembler.rungs) == 14
-    assert len(assembler.recoveries) == 14
-    assert assembler.recoveries[12]["outcome"] == 0
-    assert all(
-        assembler.recoveries[rung_index]["outcome"] == 1
-        for rung_index in range(14)
-        if rung_index != 12
-    )
+    assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
 
-
-def test_foc213_p18b_replays_the_partial_breakaway_prefix():
-    """Replay foc213-p18b's wire-visible prefix through its first failing
-    recovery.
-
-    That capture's campaign was accepted and Stage C then failed at its first
-    moving recovery -- rung 0, the opening anchor -- and the recorder was
-    stopped two rungs in, mid-way through rung 1's observations: two rungs of
-    eight observations each, `integral_rung`, one hidden position, and
-    `rung_origin_recovery` with outcome 1, then rung 1's eight observations
-    with no rung record or recovery following them.
-
-    Analysing `foc213-p18b` yields only `partial integral-response capture`,
-    so the full audit's grammar checks never run on it. This covers its
-    Stage-C accounting; the record ordering is asserted directly against the
-    decoded stream elsewhere.
-    """
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
-    feed_plan(
-        assembler,
-        schema_revision=14,
-        positive_i=POSITIVE_I,
-        final_p=1024,
-        joint_membership=0,
-    )
-
-    sequence = 1
-    for slot in range(8):
-        feed_observation(assembler, sequence, 0, slot, 0)
-        sequence += 3
-    feed_rung(assembler, sequence, 0, 0, 0)
-    sequence += 1
-    feed_recovery(assembler, sequence + 1, 0, outcome=1)
-    sequence += 2
-
-    for slot in range(8):
-        feed_observation(assembler, sequence, 1, slot, POSITIVE_I[0])
-        sequence += 3
-
-    assert len(assembler.observations) == 16
-    assert len(assembler.rungs) == 1
-    assert len(assembler.recoveries) == 1
-    assert assembler.recoveries[0]["outcome"] == 1
+    assert assembler.outcome == "complete"
 
 
 # ============================================================================

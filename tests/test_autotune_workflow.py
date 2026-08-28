@@ -1,5 +1,6 @@
 """Tests for FOCI autotune workflow behavior."""
 
+import struct
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.registers import REGISTERS
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
+    VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
     VelocityIntegralAssembler,
 )
 
@@ -50,45 +52,35 @@ def install_live_dump(driver, dump_values=None):
 
 
 def feed_no_transition_terminal(workflow, run_sequence):
-    common = {
-        "run_sequence": run_sequence,
-        "evidence_sequence": 0,
-    }
-    workflow.handle_velocity_integral_terminal_core(
-        {
-            **common,
-            "fragment": 0,
-            "outcome": 5,
-            "cause": 11,
-            "recovery_flags": 0b1000,
-            "rest_boundary_rung_plus_one": 0,
-            "rest_boundary_slot_plus_one": 0,
-            "expected_observations": 0,
-            "emitted_observations": 0,
-            "expected_rungs": 0,
-            "emitted_rungs": 0,
-        }
+    outcome = 5  # failed
+    cause = 11  # no transition-capable operating point
+    cause_namespace = 2  # dispatch
+    recovery_flags = 0
+    forward_eligible_mask = reverse_eligible_mask = 0
+    bookend_available_mask = 0
+    current_terminus_plus_one = 0
+    reproduction_available = 0
+    forward_reproduced_mask = forward_divergent_mask = 0
+    reverse_reproduced_mask = reverse_divergent_mask = 0
+    payload = struct.pack(
+        "<BIBBBBIIBBBIIII",
+        VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
+        run_sequence,
+        outcome,
+        cause,
+        cause_namespace,
+        recovery_flags,
+        forward_eligible_mask,
+        reverse_eligible_mask,
+        bookend_available_mask,
+        current_terminus_plus_one,
+        reproduction_available,
+        forward_reproduced_mask,
+        forward_divergent_mask,
+        reverse_reproduced_mask,
+        reverse_divergent_mask,
     )
-    workflow.handle_velocity_integral_terminal_identity(
-        {
-            **common,
-            "fragment": 1,
-            "plan_digest_low": 0x89AB_CDEF,
-            "plan_digest_high": 0x0123_4567,
-            "digest_low": 0,
-            "digest_high": 0,
-        }
-    )
-    workflow.handle_velocity_integral_terminal_timing(
-        {
-            **common,
-            "fragment": 2,
-            "started_low": 0,
-            "started_high": 0,
-            "completed_low": 0,
-            "completed_high": 0,
-        }
-    )
+    workflow.handle_velocity_integral_terminal({"oid": 0, "payload": payload})
 
 
 SAMPLE_STAGE_C_RESUME_RESULT = {

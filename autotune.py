@@ -203,20 +203,6 @@ class AutotuneWorkflow:
         except BreakawayCampaignProtocolError as err:
             self.breakaway_campaign_error = err
 
-    def _handle_recovery_summary(self, params: dict) -> None:
-        stage = int(params.get("stage", -1))
-        if stage != 1:
-            self.velocity_integral_error = VelocityIntegralProtocolError(
-                "recovery summary named an invalid stage"
-            )
-            return
-        if self.velocity_integral_error is not None:
-            return
-        try:
-            self.velocity_integral.handle_recovery_summary(params)
-        except VelocityIntegralProtocolError as err:
-            self.velocity_integral_error = err
-
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         shape = int(params.get("shape", -1))
         if shape in (4, 5):
@@ -410,9 +396,6 @@ class AutotuneWorkflow:
             f"{int(terminal.get('iae_max_q_qs', 0))}); {direction_text}"
         )
 
-    def handle_rung_origin_recovery_summary(self, params: dict) -> None:
-        self._handle_recovery_summary(params)
-
     def handle_velocity_integral_plan_core(self, params: dict) -> None:
         self._handle_velocity_integral("handle_plan_core", params)
 
@@ -434,58 +417,12 @@ class AutotuneWorkflow:
     def handle_velocity_integral_plan_rung(self, params: dict) -> None:
         self._handle_velocity_integral("handle_plan_rung", params)
 
-    def handle_velocity_integral_observation_core(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_observation_core", params)
-
-    def handle_velocity_integral_observation_rate(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_observation_rate", params)
-
-    def handle_velocity_integral_observation_quality(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_observation_quality", params)
-
-    def handle_velocity_integral_rung_core(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_rung_core", params)
-
-    def handle_velocity_integral_rung_component(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_rung_component", params)
-
-    def handle_velocity_integral_run_summary(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_run_summary", params)
-
-    def handle_velocity_integral_curve_interval(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_curve_interval", params)
-
-    def handle_velocity_integral_drift(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_drift", params)
-
-    def handle_velocity_integral_stage_b_comparison(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_stage_b_comparison", params)
-
-    def handle_velocity_integral_reproduction_core(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_reproduction_core", params)
-
-    def handle_velocity_integral_reproduction_mask(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_reproduction_mask", params)
-
-    def handle_velocity_integral_reproduction_interval(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_reproduction_interval", params)
-
-    def handle_velocity_integral_reproduction_digest(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_reproduction_digest", params)
-
-    def handle_velocity_integral_terminal_core(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_terminal_core", params)
-
-    def handle_velocity_integral_terminal_identity(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_terminal_identity", params)
-
-    def handle_velocity_integral_terminal_timing(self, params: dict) -> None:
-        self._handle_velocity_integral("handle_terminal_timing", params)
+    def handle_velocity_integral_terminal(self, params: dict) -> None:
+        self._handle_velocity_integral("handle_terminal", params)
 
     def _format_velocity_integral_result(self) -> str:
         response = self.velocity_integral
         plan = response.plan or {}
-        summary = response.summary or {}
         terminal = response.terminal or {}
         cause_namespace = int(terminal.get("cause_namespace", -1))
         cause = int(terminal.get("cause", 0))
@@ -493,10 +430,10 @@ class AutotuneWorkflow:
             f"velocity integral response {terminal.get('outcome_name', response.outcome)}: P="
             f"{int(plan.get('final_p', 0))} velocity={int(plan.get('planned_velocity_mrev_s', 0))}"
             f"mrev/s positive_rungs={int(plan.get('positive_rung_count', 0))} eligible=0x"
-            f"{summary.get('forward_eligible_mask', 0):08x}/0x"
-            f"{summary.get('reverse_eligible_mask', 0):08x} bookend=0x"
-            f"{summary.get('bookend_available_mask', 0):02x} current_terminus="
-            f"{int(summary.get('current_terminus_plus_one', 0))} namespace="
+            f"{terminal.get('forward_eligible_mask', 0):08x}/0x"
+            f"{terminal.get('reverse_eligible_mask', 0):08x} bookend=0x"
+            f"{terminal.get('bookend_available_mask', 0):02x} current_terminus="
+            f"{int(terminal.get('current_terminus_plus_one', 0))} namespace="
             f"{_stage_c_cause_namespace_text(cause_namespace)} cause="
             f"{_stage_c_cause_text(cause_namespace, cause)}"
         )
@@ -513,14 +450,11 @@ class AutotuneWorkflow:
                 f"(owner={terminal.get('rest_rejection_owner')})"
             )
         if response.reproduction is not None:
-            masks = response.reproduction.get("masks", {})
-            mask_text = []
-            for direction, name in ((0, "forward"), (1, "reverse")):
-                values = masks.get(direction, {})
-                mask_text.append(
-                    f"{name} reproduced=0x{values.get('reproduced_mask', 0):08x} divergent=0x"
-                    f"{values.get('divergent_mask', 0):08x}"
-                )
+            mask_text = [
+                f"{name} reproduced=0x{values.get('reproduced_mask', 0):08x} divergent=0x"
+                f"{values.get('divergent_mask', 0):08x}"
+                for name, values in response.reproduction.items()
+            ]
             message += "; " + "; ".join(mask_text)
         return message
 
