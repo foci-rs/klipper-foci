@@ -1971,7 +1971,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertIn("ceiling=2000", message)
         self.assertIn("step=40", message)
         self.assertIn("rungs=3", message)
-        self.assertIn("nominated P=400 margin=2000pm", message)
+        self.assertIn("nominated P=400 margin=2000pctm", message)
         self.assertIn("confirmed P=0 measured_SE=900pm required_SE=667pm", message)
         self.assertIn("remediation:", message)
 

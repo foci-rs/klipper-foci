@@ -509,7 +509,7 @@ class AutotuneWorkflow:
         if confirmation is not None:
             message += (
                 f"; nominated P={int(confirmation.get('candidate_p_raw', 0))} margin="
-                f"{int(confirmation.get('nominated_margin_percent_milli', 0))}pm"
+                f"{int(confirmation.get('nominated_margin_percent_milli', 0))}pctm"
             )
         confirmation_terminal = campaign.confirmation_terminal
         if confirmation_terminal is not None:
