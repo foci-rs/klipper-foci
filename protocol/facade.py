@@ -181,6 +181,9 @@ class FociProtocol:
     def get_stepper_perf_stats(self, *, clear: bool) -> dict:
         return queries.get_stepper_perf_stats(self, clear=clear)
 
+    def get_stack_watermark(self) -> dict:
+        return queries.get_stack_watermark(self)
+
     def dev_tmc_write_register(self, *, addr: int, value: int) -> None:
         if self.driver.oid is None or self.commands.dev_tmc_write_register is None:
             raise self.driver.printer.command_error("FOCI_TMC_WRITE_REGISTER requires dev firmware")

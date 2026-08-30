@@ -125,6 +125,13 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Query FOCI MCU step-dispatch cycle counters without motion",
     ),
     GcodeCommandSpec(
+        "FOCI_STACK_WATERMARK",
+        "advanced",
+        "diagnostics",
+        "stack_watermark",
+        "Query unused FOCI MCU stack headroom since boot without motion",
+    ),
+    GcodeCommandSpec(
         "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
         "expert",
         "controls",

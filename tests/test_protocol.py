@@ -49,6 +49,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.selftest is not None
     assert commands.dump_registers is not None
     assert commands.stepper_perf_stats is not None
+    assert commands.stack_watermark is not None
     assert commands.query_adc_vm_offset is not None
     assert commands.current_step_test is not None
     assert commands.velocity_limit_latch_test is not None

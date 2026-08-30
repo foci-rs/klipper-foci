@@ -67,3 +67,23 @@ def get_stepper_perf_stats(protocol, *, clear: bool) -> dict:
     if response is None:
         raise protocol.driver.printer.command_error("FOCI_DISPATCH_STATS query returned no data")
     return response
+
+
+def get_stack_watermark(protocol) -> dict:
+    if protocol.driver.oid is None or protocol.commands.stack_watermark is None:
+        raise protocol.driver.printer.command_error(
+            "FOCI_STACK_WATERMARK is not available before MCU identify"
+        )
+    response = protocol.commands.stack_watermark.send([protocol.driver.oid])
+    if response is None:
+        raise protocol.driver.printer.command_error("FOCI_STACK_WATERMARK query returned no data")
+    missing = [
+        field
+        for field in ("stack_unused_bytes", "painted_bytes", "status")
+        if field not in response
+    ]
+    if missing:
+        raise protocol.driver.printer.command_error(
+            f"FOCI_STACK_WATERMARK query returned incomplete data: {', '.join(missing)}"
+        )
+    return response

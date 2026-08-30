@@ -55,6 +55,7 @@ class FociMcuCommands:
         self.stepper_timing_stats = None
         self.stepper_stop_stats = None
         self.stepper_perf_stats = None
+        self.stack_watermark = None
         self.query_adc_vm_offset = None
         self.set_current = None
         self.set_motion_scale = None
@@ -146,6 +147,11 @@ class FociMcuCommands:
         self.query_adc_vm_offset = mcu.lookup_query_command(
             "foci_adc_vm_offset oid=%c",
             "foci_adc_vm_offset_result oid=%c offset_raw=%hu sample_count=%c status=%c",
+            oid=oid,
+        )
+        self.stack_watermark = mcu.lookup_query_command(
+            "foci_stack_watermark oid=%c",
+            "foci_stack_watermark_result oid=%c stack_unused_bytes=%u painted_bytes=%u status=%c",
             oid=oid,
         )
         self.set_current = mcu.lookup_command("tmc_set_current oid=%c run_ma=%u")

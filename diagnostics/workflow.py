@@ -67,6 +67,9 @@ class DiagnosticsWorkflow:
     def dispatch_stats(self, gcmd) -> None:
         return self.passive.dispatch_stats(gcmd)
 
+    def stack_watermark(self, gcmd) -> None:
+        return self.passive.stack_watermark(gcmd)
+
     def tmc_read_register(self, gcmd) -> None:
         return self.passive.tmc_read_register(gcmd)
 

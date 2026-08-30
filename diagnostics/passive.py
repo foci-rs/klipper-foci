@@ -190,6 +190,33 @@ class PassiveDiagnostics:
         parts.append(f"tim5_dispatch_max_us={cycles_to_us('tim5_dispatch_max_cycles')}")
         gcmd.respond_info(" ".join(parts))
 
+    def stack_watermark(self, gcmd) -> None:
+        """Query how much of the boot-painted MCU stack was never used.
+
+        The firmware measures the deepest point the stack has reached since
+        boot, so run the workload under test first and do not reset the MCU
+        between that workload and this query.
+        """
+        response = self.driver.protocol.get_stack_watermark()
+        status = int(response["status"])
+        if status != 0:
+            raise gcmd.error(
+                f"FOCI_STACK_WATERMARK {self.driver.stepper_name}: firmware reported "
+                f"status={status} (the board did not paint its stack at startup)"
+            )
+        unused_bytes = int(response["stack_unused_bytes"])
+        painted_bytes = int(response["painted_bytes"])
+        parts = [
+            f"FOCI_STACK_WATERMARK {self.driver.stepper_name}:",
+            f"stack_unused_bytes={unused_bytes}",
+            f"painted_bytes={painted_bytes}",
+        ]
+        if unused_bytes >= painted_bytes:
+            parts.append("(lower bound: the stack never entered the painted span)")
+        message = " ".join(parts)
+        log.info(message)
+        gcmd.respond_info(message)
+
     def tmc_read_register(self, gcmd) -> None:
         """Read a raw TMC4671 register through dev firmware."""
         addr = gcmd.get_int("ADDR", minval=0, maxval=0xFF)
