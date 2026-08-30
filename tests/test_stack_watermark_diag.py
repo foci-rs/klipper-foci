@@ -31,19 +31,20 @@ def test_stack_watermark_reports_headroom_and_painted_span():
     assert "lower bound" not in gcmd.last_info
 
 
-def test_stack_watermark_flags_an_untouched_span_as_a_lower_bound():
+def test_stack_watermark_flags_a_truncated_scan_as_a_lower_bound():
     driver = make_watermark_driver(
         {
             "oid": 10,
-            "stack_unused_bytes": 97280,
+            "stack_unused_bytes": 32768,
             "painted_bytes": 97280,
-            "status": 0,
+            "status": 2,
         }
     )
     gcmd = MockGCmd()
 
     driver.diagnostics.stack_watermark(gcmd)
 
+    assert "stack_unused_bytes=32768" in gcmd.last_info
     assert "lower bound" in gcmd.last_info
 
 
@@ -52,7 +53,16 @@ def test_stack_watermark_rejects_a_board_that_never_painted():
         {"oid": 10, "stack_unused_bytes": 0, "painted_bytes": 0, "status": 1}
     )
 
-    with pytest.raises(CommandError, match="status=1"):
+    with pytest.raises(CommandError, match="did not paint"):
+        driver.diagnostics.stack_watermark(MockGCmd())
+
+
+def test_stack_watermark_rejects_an_unknown_status():
+    driver = make_watermark_driver(
+        {"oid": 10, "stack_unused_bytes": 0, "painted_bytes": 0, "status": 9}
+    )
+
+    with pytest.raises(CommandError, match="unknown status=9"):
         driver.diagnostics.stack_watermark(MockGCmd())
 
 

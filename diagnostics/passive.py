@@ -13,6 +13,10 @@ from .formatting import (
 
 log = logging.getLogger(__name__)
 
+STACK_WATERMARK_MEASURED = 0
+STACK_WATERMARK_NOT_PAINTED = 1
+STACK_WATERMARK_LOWER_BOUND = 2
+
 
 class PassiveDiagnostics:
     """Own read-only FOCI diagnostic commands and events."""
@@ -195,14 +199,20 @@ class PassiveDiagnostics:
 
         The firmware measures the deepest point the stack has reached since
         boot, so run the workload under test first and do not reset the MCU
-        between that workload and this query.
+        between that workload and this query. The firmware masks interrupts for
+        the scan, so do not issue this during motion.
         """
         response = self.driver.protocol.get_stack_watermark()
         status = int(response["status"])
-        if status != 0:
+        if status == STACK_WATERMARK_NOT_PAINTED:
+            raise gcmd.error(
+                f"FOCI_STACK_WATERMARK {self.driver.stepper_name}: the board did not "
+                "paint its stack at startup"
+            )
+        if status not in (STACK_WATERMARK_MEASURED, STACK_WATERMARK_LOWER_BOUND):
             raise gcmd.error(
                 f"FOCI_STACK_WATERMARK {self.driver.stepper_name}: firmware reported "
-                f"status={status} (the board did not paint its stack at startup)"
+                f"unknown status={status}"
             )
         unused_bytes = int(response["stack_unused_bytes"])
         painted_bytes = int(response["painted_bytes"])
@@ -211,8 +221,8 @@ class PassiveDiagnostics:
             f"stack_unused_bytes={unused_bytes}",
             f"painted_bytes={painted_bytes}",
         ]
-        if unused_bytes >= painted_bytes:
-            parts.append("(lower bound: the stack never entered the painted span)")
+        if status == STACK_WATERMARK_LOWER_BOUND:
+            parts.append("(lower bound: the scan found no used word in its window)")
         message = " ".join(parts)
         log.info(message)
         gcmd.respond_info(message)
