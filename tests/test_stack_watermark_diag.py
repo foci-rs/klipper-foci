@@ -57,6 +57,15 @@ def test_stack_watermark_rejects_a_board_that_never_painted():
         driver.diagnostics.stack_watermark(MockGCmd())
 
 
+def test_stack_watermark_reports_a_firmware_refusal_during_motion():
+    driver = make_watermark_driver(
+        {"oid": 10, "stack_unused_bytes": 0, "painted_bytes": 0, "status": 3}
+    )
+
+    with pytest.raises(CommandError, match="refused while motion is active"):
+        driver.diagnostics.stack_watermark(MockGCmd())
+
+
 def test_stack_watermark_rejects_an_unknown_status():
     driver = make_watermark_driver(
         {"oid": 10, "stack_unused_bytes": 0, "painted_bytes": 0, "status": 9}

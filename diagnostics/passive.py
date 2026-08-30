@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 STACK_WATERMARK_MEASURED = 0
 STACK_WATERMARK_NOT_PAINTED = 1
 STACK_WATERMARK_LOWER_BOUND = 2
+STACK_WATERMARK_MOTION_ACTIVE = 3
 
 
 class PassiveDiagnostics:
@@ -200,7 +201,7 @@ class PassiveDiagnostics:
         The firmware measures the deepest point the stack has reached since
         boot, so run the workload under test first and do not reset the MCU
         between that workload and this query. The firmware masks interrupts for
-        the scan, so do not issue this during motion.
+        the scan and refuses the query outright while motion is active.
         """
         response = self.driver.protocol.get_stack_watermark()
         status = int(response["status"])
@@ -208,6 +209,12 @@ class PassiveDiagnostics:
             raise gcmd.error(
                 f"FOCI_STACK_WATERMARK {self.driver.stepper_name}: the board did not "
                 "paint its stack at startup"
+            )
+        if status == STACK_WATERMARK_MOTION_ACTIVE:
+            raise gcmd.error(
+                f"FOCI_STACK_WATERMARK {self.driver.stepper_name}: refused while motion "
+                "is active. The scan masks interrupts, so run it with the motor "
+                "disabled and the step queue drained"
             )
         if status not in (STACK_WATERMARK_MEASURED, STACK_WATERMARK_LOWER_BOUND):
             raise gcmd.error(
