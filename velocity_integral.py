@@ -163,6 +163,8 @@ class VelocityIntegralAssembler:
             14,
             15,
             16,
+            17,
+            18,
         ):
             raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
         self._require_fragment(params, 0)
@@ -541,7 +543,7 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 # discovery-plan-geometry schema this host currently understands.
 # Current firmware revisions, used when this host authors a request.
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
-BREAKAWAY_STAGE_C_SCHEMA_REVISION = 16
+BREAKAWAY_STAGE_C_SCHEMA_REVISION = 18
 # First revision of each breakaway stream. These are boundaries, not sets: every
 # revision at or above them is a breakaway plan. Stage-C 8-13 was the classic
 # combined schema range; firmware never emits it after Stage 2, and
