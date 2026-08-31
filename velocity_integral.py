@@ -504,6 +504,7 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     24: "discovery_internal_fault",
     25: "confirmation_internal_fault",
     26: "confirmation_stage_c_plan_refused",
+    27: "confirmation_no_transition_capable_candidate",
 }
 
 # Advisory text only -- relays what the disclosed cause means, not a
