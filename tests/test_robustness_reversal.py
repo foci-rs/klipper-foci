@@ -249,7 +249,7 @@ def test_terminal_rejects_invalid_outcome():
 
 def test_terminal_rejects_invalid_cause():
     with pytest.raises(RobustnessReversalProtocolError, match="taxonomy"):
-        handle_and_return(build_terminal_payload(cause=11))
+        handle_and_return(build_terminal_payload(cause=12))
 
 
 def test_terminal_rejects_unsupported_schema():
