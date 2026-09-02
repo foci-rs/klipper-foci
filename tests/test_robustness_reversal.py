@@ -216,14 +216,15 @@ def test_terminal_parse_decodes_plant_rate_and_iae_max():
     assert terminal["iae_max_q_qs"] == 8_400_000
 
 
-def test_cause_names_cover_firmware_values_zero_through_ten():
-    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(11))
+def test_cause_names_cover_firmware_values_zero_through_eleven():
+    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(12))
     assert ROBUSTNESS_CAUSE_IAE_EXCEEDED == 3
     assert ROBUSTNESS_CAUSE_NAMES[ROBUSTNESS_CAUSE_IAE_EXCEEDED] == "iae_exceeded"
     assert ROBUSTNESS_CAUSE_NAMES[7] == "evidence_integrity"
     assert ROBUSTNESS_CAUSE_NAMES[8] == "internal_fault"
     assert ROBUSTNESS_CAUSE_NAMES[9] == "rest_not_confirmed"
     assert ROBUSTNESS_CAUSE_NAMES[10] == "tail_repeated"
+    assert ROBUSTNESS_CAUSE_NAMES[11] == "origin_not_recovered"
 
 
 def test_outcome_names_cover_firmware_values_zero_through_three():

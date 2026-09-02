@@ -49,6 +49,7 @@ ROBUSTNESS_CAUSE_NAMES = {
     8: "internal_fault",
     9: "rest_not_confirmed",
     10: "tail_repeated",
+    11: "origin_not_recovered",
 }
 
 _HEADER = "<BIBBHHi"
