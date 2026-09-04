@@ -107,5 +107,26 @@ class CancelAndAwaitQuiescenceTests(unittest.TestCase):
         self.assertEqual(COMMISSION_ERROR_NAMES[74], "cancelled")
 
 
+class SelftestTimeoutCancelTests(unittest.TestCase):
+    def test_selftest_timeout_sends_cancel_before_raising(self):
+        d = make_driver()
+        sent = []
+        d.protocol.run_selftest = lambda: None
+        d.protocol.run_commission_cancel = lambda: sent.append(True)
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertRaises(Exception) as ctx:
+            d.selftest.selftest(MockGCmd({}))
+
+        self.assertIn("timed out", str(ctx.exception))
+        self.assertEqual(sent, [True])
+
+
 if __name__ == "__main__":
     unittest.main()

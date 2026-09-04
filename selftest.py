@@ -87,6 +87,9 @@ class SelftestWorkflow:
             deadline = reactor.monotonic() + ELECTRICAL_ID_WAIT_TIMEOUT_S
             while not self.complete:
                 if reactor.monotonic() > deadline:
+                    self.driver.commissioning.cancel_and_await_quiescence(
+                        reactor, lambda: self.complete, reactor.monotonic()
+                    )
                     raise self.driver.printer.command_error(
                         f"FOCI {self.driver.stepper_name}: selftest timed out"
                     )
