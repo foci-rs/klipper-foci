@@ -6,6 +6,7 @@ import logging
 from typing import ClassVar
 
 from .commissioning import COMMISSION_ERROR_NAMES, format_commission_detail
+from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
 
 class HomingWorkflow:
@@ -22,6 +23,7 @@ class HomingWorkflow:
         7: "CONFIG_FAULT (run-time configuration missing)",
         8: "ENCODER_FAULT (encoder did not report expected calibration movement)",
         9: "CLOSED_LOOP_ENTRY_UNSTABLE (position hold runaway or excess drift)",
+        10: "CANCELLED (operator-requested cancel)",
     }
 
     # Kinematics coupling map: in coupled kinematics a single motor affects
@@ -220,6 +222,10 @@ class HomingWorkflow:
             self.set_auto_calibrate_on_enable_allowed(True)
             self.driver.protocol.run_calibration()
             params = self.driver.state.calibration_completion.wait(t_start + 5.0)
+            if params is None:
+                self.driver.protocol.run_commission_cancel()
+                grace_deadline = reactor.monotonic() + COMMISSION_CANCEL_GRACE_PERIOD_S
+                params = self.driver.state.calibration_completion.wait(grace_deadline)
             t_elapsed = reactor.monotonic() - t_start
             self.driver.state.calibration_completion = None
 

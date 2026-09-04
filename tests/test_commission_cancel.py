@@ -7,7 +7,7 @@ import unittest
 from klipper_foci.commissioning import COMMISSION_ERROR_NAMES
 from klipper_foci.constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
-from tests.mocks import MockGCmd, make_driver
+from tests.mocks import SAMPLE_ACTIVE_GAINS, MockGCmd, make_driver
 
 
 class CommissionTimeoutCancelTests(unittest.TestCase):
@@ -126,6 +126,66 @@ class SelftestTimeoutCancelTests(unittest.TestCase):
 
         self.assertIn("timed out", str(ctx.exception))
         self.assertEqual(sent, [True])
+
+
+class EnsureCalibratedTimeoutCancelTests(unittest.TestCase):
+    def test_ensure_calibrated_timeout_sends_cancel_and_waits_again(self):
+        d = make_driver()  # commissioned, not yet calibrated for this call
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        sent = []
+        d.protocol.run_calibration = lambda: None
+        d.protocol.run_commission_cancel = lambda: sent.append(True)
+        reactor = d.printer.get_reactor()
+
+        wait_deadlines = []
+
+        class FakeCompletion:
+            def complete(self, result):
+                pass
+
+            def wait(self, deadline, waketime_result=None):
+                wait_deadlines.append(deadline)
+                reactor._time = deadline
+                return waketime_result  # always times out, both calls
+
+        fake = FakeCompletion()
+        reactor.completion = lambda: fake
+
+        with self.assertRaises(Exception) as ctx:
+            d.homing.ensure_calibrated()
+
+        self.assertIn("timed out", str(ctx.exception))
+        self.assertEqual(sent, [True])
+        self.assertEqual(len(wait_deadlines), 2)
+        self.assertGreater(wait_deadlines[1], wait_deadlines[0])
+
+    def test_ensure_calibrated_cancelled_status_reports_cancelled_not_a_generic_failure(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.protocol.run_calibration = lambda: None
+        d.protocol.run_commission_cancel = lambda: None
+        reactor = d.printer.get_reactor()
+
+        class FakeCompletion:
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, result):
+                pass
+
+            def wait(self, deadline, waketime_result=None):
+                self.calls += 1
+                reactor._time = deadline
+                if self.calls == 1:
+                    return waketime_result
+                return {"status": 10}  # CalibrationError::Cancelled
+
+        reactor.completion = lambda: FakeCompletion()
+
+        with self.assertRaises(Exception) as ctx:
+            d.homing.ensure_calibrated()
+
+        self.assertIn("cancelled", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":
