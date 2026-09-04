@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .constants import ELECTRICAL_ID_WAIT_TIMEOUT_S
+from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S, ELECTRICAL_ID_WAIT_TIMEOUT_S
 
 PHASE_NAMES: dict[int, str] = {
     1: "ADC calibration",
@@ -100,6 +100,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     71: "primitive start timestamp is in the future",
     72: "origin recovery start offset mismatch",
     73: "resistance nonpositive slope (reversed current polarity or sign error)",
+    74: "cancelled",
 }
 
 # Error codes for which the failure message should point at a dedicated
@@ -565,6 +566,23 @@ class CommissioningWorkflow:
             method = next(method for method in details if details[method]["status"] == 2)
             raise ValueError(COMMISSION_ERROR_NAMES[TIMING_REJECTION_ERROR_CODES[method]])
         return accepted
+
+    def cancel_and_await_quiescence(self, reactor, wait_predicate, eventtime: float) -> float:
+        """Send foci_commission_cancel and poll until wait_predicate() is true
+        or COMMISSION_CANCEL_GRACE_PERIOD_S elapses, whichever comes first.
+
+        Returns the eventtime this call stopped at. Callers still raise their
+        own "timed out" error regardless of the outcome here -- this method
+        only decides how long to wait before that raise, and whether firmware
+        actually quiesced in time (observable via wait_predicate() afterward).
+        It never touches the caller's operation lock; the caller's own
+        try/finally holds and releases it around this call.
+        """
+        self.driver.protocol.run_commission_cancel()
+        deadline = eventtime + COMMISSION_CANCEL_GRACE_PERIOD_S
+        while not wait_predicate() and eventtime < deadline:
+            eventtime = reactor.pause(min(eventtime + 0.1, deadline))
+        return eventtime
 
     def commission(self, gcmd) -> None:
         """Stage 1: commission motor for safe printer motion."""
