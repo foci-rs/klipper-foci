@@ -356,6 +356,9 @@ class FociProtocol:
     def run_commission(self, profile_code: int) -> None:
         self.commands.commission.send([self.driver.oid, profile_code])
 
+    def run_commission_cancel(self) -> None:
+        self.commands.commission_cancel.send([self.driver.oid])
+
     def run_tune(
         self,
         *,

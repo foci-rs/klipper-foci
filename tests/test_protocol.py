@@ -922,6 +922,15 @@ def test_core_workflow_methods_send_existing_payloads():
     assert commands.dump_registers.last_args == [driver.oid]
 
 
+def test_run_commission_cancel_sends_the_command():
+    driver = make_driver()
+
+    driver.protocol.run_commission_cancel()
+
+    commands = driver.protocol.commands
+    assert commands.commission_cancel.last_args == [driver.oid]
+
+
 def test_run_tune_sends_planning_payload():
     driver = make_driver()
 

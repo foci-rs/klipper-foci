@@ -65,6 +65,7 @@ class FociMcuCommands:
         self.dump_registers = None
         self.set_pid_gains = None
         self.commission = None
+        self.commission_cancel = None
         self.tune = None
         self.set_velocity_filter = None
         self.set_torque_filter = None
@@ -170,6 +171,7 @@ class FociMcuCommands:
             "tmc_set_pid_gains oid=%c flux_p=%hu flux_i=%hu torque_p=%hu torque_i=%hu"
         )
         self.commission = mcu.lookup_command("foci_commission oid=%c profile=%c")
+        self.commission_cancel = mcu.lookup_command("foci_commission_cancel oid=%c")
         self.tune = mcu.lookup_command(
             "foci_tune oid=%c action=%c profile=%c mode=%c"
             " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
