@@ -359,6 +359,10 @@ class AutotuneWorkflow:
 
     def _cancel_inflight_dispatch(self, toolhead) -> None:
         """Cancel a tune dispatch that left firmware running without a terminal."""
+        reactor = self.driver.printer.get_reactor()
+        self.driver.commissioning.cancel_and_await_quiescence(
+            reactor, lambda: self.done, reactor.monotonic()
+        )
         self._disable_kinematic_motors(toolhead)
 
     def _format_acceptance_matrix_result(self) -> str:

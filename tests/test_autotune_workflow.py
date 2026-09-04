@@ -386,13 +386,16 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(issued, [])
 
     def test_dispatch_timeout_disables_motor_to_cancel_firmware_run(self):
-        """A host timeout must enqueue the firmware cancel/disarm path."""
+        """A host timeout must send foci_commission_cancel and wait for
+        quiescence before disabling the motor and re-raising."""
         d = self._commissioned_driver()
         toolhead = d.printer.lookup_object("toolhead")
         gcmd = MockGCmd({})
         enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(toolhead.get_last_move_time())
         d.protocol.run_tune = lambda **kw: None
+        sent = []
+        d.protocol.run_commission_cancel = lambda: sent.append(True)
 
         reactor = d.printer.get_reactor()
 
@@ -414,6 +417,111 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertIn("timed out", str(ctx.exception))
         self.assertFalse(enable_line.is_motor_enabled())
+        self.assertEqual(sent, [True])
+
+    def test_dispatch_timeout_keeps_the_lock_held_while_the_grace_period_runs(self):
+        """The spec's central acceptance criterion: the lock stays held while
+        the grace period is running, not just released-or-not at the end.
+        Simulate a slow ack (arrives on the third grace-period pause, not the
+        first) and assert the lock is still True at an intermediate pause
+        before it arrives -- catching a regression where the lock got
+        released the instant the cancel was sent rather than after the wait
+        completed.
+
+        `_run_one_dispatch`'s own plan-wait loop also calls `reactor.pause`
+        (about 50 times, at 0.1s steps against its 5s timeout) before the
+        timeout fires and `_cancel_inflight_dispatch` begins the grace
+        period, so `pause_count` below only starts counting once
+        `run_commission_cancel` marks the start of the grace period --
+        that is the moment this test's "third pause" is about."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcmd = MockGCmd({})
+        d.protocol.run_tune = lambda **kw: None
+        grace_period_started = []
+        d.protocol.run_commission_cancel = lambda: grace_period_started.append(True)
+        d.state.operation_lock = True
+
+        reactor = d.printer.get_reactor()
+        lock_states_during_wait = []
+        pause_count = 0
+
+        def pause(deadline):
+            nonlocal pause_count
+            reactor._time = deadline
+            if grace_period_started:
+                pause_count += 1
+                lock_states_during_wait.append(d.state.operation_lock)
+                if pause_count == 3:
+                    d.autotune.handle_tune_result({"status": 74})
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertRaises(CommandError):
+            d.autotune._run_one_dispatch(
+                gcmd,
+                ACTION_CODES["breakaway_seeded"],
+                {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+                toolhead,
+                "G0 X100.000 Y100.000",
+            )
+
+        self.assertGreaterEqual(len(lock_states_during_wait), 3)
+        self.assertTrue(
+            all(lock_states_during_wait),
+            "the lock must stay held at every pause during the grace period, "
+            "not just at the start and end",
+        )
+        # _run_one_dispatch/_cancel_inflight_dispatch never release the lock
+        # themselves -- only autotune()'s own outer finally does, and this
+        # test calls _run_one_dispatch directly without going through it.
+        self.assertTrue(d.state.operation_lock)
+
+    def test_dispatch_timeout_releases_lock_immediately_on_ack_inside_grace_period(self):
+        """A Cancelled terminal arriving during the grace period must not
+        wait out the full grace period before the caller proceeds.
+
+        As above, `grace_period_started` scopes `pause_calls` to pauses that
+        happen after `run_commission_cancel` fires, since the plan-wait loop
+        that precedes it also calls `reactor.pause` many times on its own."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcmd = MockGCmd({})
+        d.protocol.run_tune = lambda **kw: None
+        grace_period_started = []
+
+        def run_commission_cancel():
+            grace_period_started.append(True)
+            d.autotune.handle_tune_result({"status": 74})
+
+        d.protocol.run_commission_cancel = run_commission_cancel
+
+        reactor = d.printer.get_reactor()
+        pause_calls = []
+
+        def pause(deadline):
+            reactor._time = deadline
+            if grace_period_started:
+                pause_calls.append(deadline)
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertRaises(CommandError):
+            d.autotune._run_one_dispatch(
+                gcmd,
+                ACTION_CODES["breakaway_seeded"],
+                {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+                toolhead,
+                "G0 X100.000 Y100.000",
+            )
+
+        # The ack (status 74) sets self.done immediately when
+        # run_commission_cancel is called, so the grace-period loop must
+        # exit on its first predicate check rather than polling for the
+        # full COMMISSION_CANCEL_GRACE_PERIOD_S.
+        self.assertLessEqual(len(pause_calls), 2)
 
     def test_each_stage_dispatch_is_preceded_by_a_rehome(self):
         """Both the breakaway_seeded dispatch and the auto-issued stage_c_resume
