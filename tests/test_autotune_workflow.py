@@ -420,13 +420,12 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(sent, [True])
 
     def test_dispatch_timeout_keeps_the_lock_held_while_the_grace_period_runs(self):
-        """The spec's central acceptance criterion: the lock stays held while
-        the grace period is running, not just released-or-not at the end.
-        Simulate a slow ack (arrives on the third grace-period pause, not the
-        first) and assert the lock is still True at an intermediate pause
-        before it arrives -- catching a regression where the lock got
-        released the instant the cancel was sent rather than after the wait
-        completed.
+        """Assert the lock stays held while the grace period is running, not
+        just released-or-not at the end. Simulate a slow ack (arrives on the
+        third grace-period pause, not the first) and assert the lock is
+        still True at an intermediate pause before it arrives -- catching a
+        regression where the lock got released the instant the cancel was
+        sent rather than after the wait completed.
 
         `_run_one_dispatch`'s own plan-wait loop also calls `reactor.pause`
         (about 50 times, at 0.1s steps against its 5s timeout) before the
@@ -482,9 +481,9 @@ class TestAutotuneGates(unittest.TestCase):
         """A Cancelled terminal arriving during the grace period must not
         wait out the full grace period before the caller proceeds.
 
-        As above, `grace_period_started` scopes `pause_calls` to pauses that
-        happen after `run_commission_cancel` fires, since the plan-wait loop
-        that precedes it also calls `reactor.pause` many times on its own."""
+        `grace_period_started` scopes `pause_calls` to pauses that happen
+        after `run_commission_cancel` fires, since the plan-wait loop that
+        precedes it also calls `reactor.pause` many times on its own."""
         d = self._commissioned_driver()
         toolhead = d.printer.lookup_object("toolhead")
         gcmd = MockGCmd({})
