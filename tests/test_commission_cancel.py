@@ -7,7 +7,29 @@ import unittest
 from klipper_foci.commissioning import COMMISSION_ERROR_NAMES
 from klipper_foci.constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
-from tests.mocks import make_driver
+from tests.mocks import MockGCmd, make_driver
+
+
+class CommissionTimeoutCancelTests(unittest.TestCase):
+    def test_commission_timeout_sends_cancel_before_raising(self):
+        d = make_driver()
+        sent = []
+        d.protocol.run_commission = lambda profile_code: None
+        d.protocol.run_commission_cancel = lambda: sent.append(True)
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertRaises(Exception) as ctx:
+            d.commissioning.commission(MockGCmd({}))
+
+        self.assertIn("timed out", str(ctx.exception))
+        self.assertEqual(sent, [True])
+        self.assertFalse(d.state.operation_lock)
 
 
 class CancelAndAwaitQuiescenceTests(unittest.TestCase):

@@ -641,6 +641,7 @@ class CommissioningWorkflow:
             while not self.done:
                 eventtime = reactor.pause(eventtime + 0.1)
                 if eventtime > timeout:
+                    self.cancel_and_await_quiescence(reactor, lambda: self.done, eventtime)
                     self.on_commission_failure()
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
                     self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
