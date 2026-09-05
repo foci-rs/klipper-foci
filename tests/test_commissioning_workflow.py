@@ -632,7 +632,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
     """Verify commission-stream resistance replies get folded into result.
 
     W1 made firmware emit foci_resistance_run + two foci_resistance_axis
-    replies during FOCI_COMMISSION, just before foci_commission_result.
+    replies during FOCI_SETUP, just before foci_commission_result.
     These tests drive that exact reply sequence through the host's
     response handlers and confirm the values end up persisted via
     persist_commission_results, with axis0/axis1 correctly routed by
@@ -647,7 +647,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
 
         def drive_success(_args):
             # Firmware emits these three replies, in order, just before
-            # foci_commission_result, as part of the same FOCI_COMMISSION
+            # foci_commission_result, as part of the same FOCI_SETUP
             # run. Axis replies arrive axis1-before-axis0 here on purpose
             # to prove routing uses electrical_axis, not arrival order.
             driver.diagnostics.handle_resistance_run(

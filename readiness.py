@@ -57,7 +57,7 @@ def resolve_autotune_readiness(
 
     state = driver.state
     if state.inhibited:
-        blockers.append("inhibited after failed FOCI_COMMISSION")
+        blockers.append("inhibited after failed FOCI_SETUP")
     if state.runtime_status == "uncommissioned":
         blockers.append("not commissioned")
 

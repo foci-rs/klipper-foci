@@ -869,11 +869,11 @@ class AutotuneWorkflow:
 
         try:
             if self.driver.state.inhibited:
-                reason = self.driver.state.last_commission_failure or "failed FOCI_COMMISSION"
+                reason = self.driver.state.last_commission_failure or "failed FOCI_SETUP"
                 raise gcmd.error(f"FOCI {self.driver.name}: inhibited: {reason}")
             if self.driver.state.runtime_status == "uncommissioned":
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: not commissioned. Run FOCI_COMMISSION first."
+                    f"FOCI {self.driver.name}: not commissioned. Run FOCI_SETUP first."
                 )
             toolhead = self.driver.printer.lookup_object("toolhead")
             self._ensure_printer_idle(gcmd, toolhead)

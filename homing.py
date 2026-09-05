@@ -198,15 +198,14 @@ class HomingWorkflow:
             if self.driver.state.last_commission_failure:
                 detail = f" last failure: {self.driver.state.last_commission_failure}."
             raise self.driver.printer.command_error(
-                f"FOCI {self.driver.name}: operation inhibited after failed FOCI_COMMISSION. "
-                f"Retry FOCI_COMMISSION or restart Klipper.{detail}"
+                f"FOCI {self.driver.name}: operation inhibited after failed FOCI_SETUP. "
+                f"Retry FOCI_SETUP or restart Klipper.{detail}"
             )
         if self.driver.state.is_calibrated:
             return
         if self.driver.state.active_gains is None:
             raise self.driver.printer.command_error(
-                f"FOCI {self.driver.name}: no commissioned gains available. Run "
-                f"FOCI_COMMISSION first."
+                f"FOCI {self.driver.name}: no commissioned gains available. Run FOCI_SETUP first."
             )
         if not self.driver.state.try_acquire():
             raise self.driver.printer.command_error(

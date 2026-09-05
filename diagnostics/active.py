@@ -909,7 +909,7 @@ class ActiveDiagnostics:
     def resistance_test(self, gcmd) -> None:
         """Run the shared firmware resistance-identification diagnostic.
 
-        Triggers the same firmware engine used by FOCI_COMMISSION's
+        Triggers the same firmware engine used by FOCI_SETUP's
         resistance-identification phase. Results stream back via the
         foci_resistance_profile/run/axis replies, which are displayed
         as reported with no host-side fitting or pass/fail evaluation.

@@ -646,7 +646,7 @@ class CommissioningWorkflow:
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
                     self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
                     self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
-                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_COMMISSION timed out")
+                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP timed out")
                 if self.error_code != 0:
                     error_name = self.format_commission_failure(self.error_code)
                     if self.error_code == 18:
@@ -666,13 +666,12 @@ class CommissioningWorkflow:
                         )
                         gcmd.respond_info("\n".join(detail_lines))
                     raise gcmd.error(
-                        f"FOCI {self.driver.name}: FOCI_COMMISSION failed at {phase_name}: "
-                        f"{error_name}"
+                        f"FOCI {self.driver.name}: FOCI_SETUP failed at {phase_name}: {error_name}"
                     )
 
             result = self.result
             # W1 firmware emits foci_resistance_run + two
-            # foci_resistance_axis replies during FOCI_COMMISSION, just
+            # foci_resistance_axis replies during FOCI_SETUP, just
             # before foci_commission_result. The diagnostics handlers
             # cache those reply values (keyed by oid); fold them into the
             # result dict now so persist_commission_results' presence-gated
@@ -696,7 +695,7 @@ class CommissioningWorkflow:
             except ValueError as error:
                 self.on_commission_failure(str(error))
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_COMMISSION timing evidence rejected: {error}"
+                    f"FOCI {self.driver.name}: FOCI_SETUP timing evidence rejected: {error}"
                 ) from error
             status = result.get("status", 255)
             if status > 1:
@@ -705,7 +704,7 @@ class CommissioningWorkflow:
                     self.handle_chip_reset_detected()
                 else:
                     self.on_commission_failure(error_name)
-                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_COMMISSION failed: {error_name}")
+                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP failed: {error_name}")
 
             self.driver.state.is_calibrated = True
             self.driver.state.inhibited = False

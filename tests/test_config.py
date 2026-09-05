@@ -19,7 +19,7 @@ def test_package_entry_points_import_driver_and_global_config():
 
 DEFAULT_COMMANDS = {
     "FOCI_SELFTEST",
-    "FOCI_COMMISSION",
+    "FOCI_SETUP",
     "FOCI_AUTOTUNE",
     "DUMP_FOCI",
     "DUMP_TMC",
@@ -334,11 +334,11 @@ def test_homing_events_register_homing_workflow_callbacks():
         assert callbacks[0].__self__.__class__.__name__ == "HomingWorkflow"
 
 
-def test_commission_registers_commissioning_workflow_handler():
+def test_setup_registers_commissioning_workflow_handler():
     printer = build_driver_with_mode("default")
     gcode = printer.lookup_object("gcode")
 
-    handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_COMMISSION")
+    handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_SETUP")
 
     assert handler.__self__.__class__.__name__ == "CommissioningWorkflow"
 

@@ -729,7 +729,7 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
     if status not in valid_statuses:
         logging.warning(
             "FOCI %s: unknown autotune_status='%s' (expected one of: %s). "
-            "Motor cannot be enabled until FOCI_COMMISSION is run.",
+            "Motor cannot be enabled until FOCI_SETUP is run.",
             config.name,
             status,
             ", ".join(valid_statuses),
@@ -770,7 +770,7 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
     if missing:
         logging.warning(
             "FOCI %s: autotune_status='%s' but missing required fields: %s. "
-            "Motor cannot be enabled until FOCI_COMMISSION is run.",
+            "Motor cannot be enabled until FOCI_SETUP is run.",
             config.name,
             status,
             ", ".join(missing),

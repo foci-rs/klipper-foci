@@ -52,7 +52,7 @@ together because the host does not provide an old-firmware fallback.
 
 ## Commissioning Diagnostics
 
-`FOCI_COMMISSION` persists inner electrical identification fields for later
+`FOCI_SETUP` persists inner electrical identification fields for later
 `FOCI_TUNE` runs. The host reports and persists `identified_inner_warning_flags`
 as a bitfield:
 
@@ -67,7 +67,7 @@ as a bitfield:
 | 6 | Confidence fields are host defaults, not a fresh measurement; forces conservative Stage 2 synthesis |
 | 7 | Reserved |
 
-Non-zero displayable flags are shown in `FOCI_COMMISSION` and `FOCI_TUNE`
+Non-zero displayable flags are shown in `FOCI_SETUP` and `FOCI_TUNE`
 console output. Bits 0, 1, and 3 derate Stage 2 by widening lambda. Bits 5 and
 6 force conservative Stage 2 synthesis when new gains are generated. Bit 4 is
 kept reserved/deprecated because successful current-validation retry is reported
