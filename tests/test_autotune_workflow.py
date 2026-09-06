@@ -951,7 +951,7 @@ class TestAutotuneGates(unittest.TestCase):
                 d.autotune.handle_commissioning_workflow_plan(
                     {
                         "run_sequence": 7,
-                        "shape": 7,
+                        "shape": 4,
                         "nominal_workflow_ms": 15_000,
                         "maximum_workflow_ms": 32_000,
                         "digest_low": 0,
@@ -997,7 +997,7 @@ class TestAutotuneGates(unittest.TestCase):
                 d.autotune.handle_commissioning_workflow_plan(
                     {
                         "run_sequence": 7,
-                        "shape": 7,
+                        "shape": 4,
                         "nominal_workflow_ms": 15_000,
                         "maximum_workflow_ms": 32_000,
                         "digest_low": 0,
@@ -1041,7 +1041,7 @@ class TestAutotuneGates(unittest.TestCase):
                 d.autotune.handle_commissioning_workflow_plan(
                     {
                         "run_sequence": 7,
-                        "shape": 7,
+                        "shape": 4,
                         "nominal_workflow_ms": 15_000,
                         "maximum_workflow_ms": 32_000,
                         "digest_low": 0,
@@ -1116,7 +1116,7 @@ class TestAutotuneGates(unittest.TestCase):
                 d.autotune.handle_commissioning_workflow_plan(
                     {
                         "run_sequence": 7,
-                        "shape": 7,
+                        "shape": 4,
                         "nominal_workflow_ms": 15_000,
                         "maximum_workflow_ms": 32_000,
                         "digest_low": 0,
@@ -1245,7 +1245,7 @@ class TestAutotuneGates(unittest.TestCase):
             reactor._time = deadline
             params = {
                 "run_sequence": 17,
-                "shape": 2,
+                "shape": 0,
                 "nominal_workflow_ms": 182_512,
                 "maximum_workflow_ms": 182_512,
             }
@@ -1724,7 +1724,7 @@ BREAKAWAY_STAGE_C_DIGEST = (0x7777_7777, 0x8888_8888)
 def feed_breakaway_workflow_plan(driver, run_sequence, maximum_workflow_ms):
     params = {
         "run_sequence": run_sequence,
-        "shape": 6,
+        "shape": 3,
         "nominal_workflow_ms": maximum_workflow_ms,
         "maximum_workflow_ms": maximum_workflow_ms,
     }

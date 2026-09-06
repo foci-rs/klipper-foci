@@ -19,8 +19,8 @@ SLOT_ORDER_FORWARD_FIRST = 0
 SLOT_ORDER_REVERSE_FIRST = 1
 
 WORKFLOW_SHAPE_TO_MATRIX_ORDER = {
-    4: MATRIX_ORDER_ASCENDING,
-    5: MATRIX_ORDER_DESCENDING,
+    1: MATRIX_ORDER_ASCENDING,
+    2: MATRIX_ORDER_DESCENDING,
 }
 
 # Firmware also defines mirrored matrix actions (wire 3 and 4). They are
@@ -138,7 +138,7 @@ class AcceptanceMatrixAssembler:
         if self.workflow_plan is not None:
             raise AcceptanceMatrixProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (4, 5):
+        if shape not in (1, 2):
             raise AcceptanceMatrixProtocolError("invalid matrix workflow shape")
         duration = (
             int(params["nominal_workflow_ms"]),

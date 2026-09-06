@@ -160,7 +160,7 @@ class AutotuneWorkflow:
         if (
             method_name == "handle_plan_core"
             and workflow is not None
-            and int(workflow["shape"]) == 6
+            and int(workflow["shape"]) == 3
             and not (self.breakaway_campaign.done and self.breakaway_campaign.accepted)
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
@@ -180,7 +180,7 @@ class AutotuneWorkflow:
         if (
             method_name == "handle_plan_rung"
             and workflow is not None
-            and int(workflow["shape"]) == 6
+            and int(workflow["shape"]) == 3
             and self.velocity_integral.plan is not None
             and int(self.velocity_integral.plan["plan_digest"])
             != self.breakaway_campaign.stage_c_plan_digest
@@ -193,7 +193,7 @@ class AutotuneWorkflow:
         if self.breakaway_campaign_error is not None:
             return
         workflow = self.velocity_integral.workflow_plan
-        if workflow is None or int(workflow["shape"]) != 6:
+        if workflow is None or int(workflow["shape"]) != 3:
             self.breakaway_campaign_error = BreakawayCampaignProtocolError(
                 "breakaway campaign evidence arrived without a breakaway workflow plan"
             )
@@ -205,13 +205,13 @@ class AutotuneWorkflow:
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         shape = int(params.get("shape", -1))
-        if shape in (4, 5):
+        if shape in (1, 2):
             try:
                 self.acceptance_matrix.handle_workflow_plan(params)
             except AcceptanceMatrixProtocolError as err:
                 self.acceptance_matrix_error = err
             return
-        if shape == 7:
+        if shape == 4:
             # Robustness reversal: record the run's worst-case duration so the
             # wait loop arms its extended timeout. It does not feed the
             # acceptance-matrix or velocity-integral assemblers.
@@ -330,7 +330,7 @@ class AutotuneWorkflow:
             # terminal is still terminal, and nothing else will follow it.
             return self.velocity_integral.done
         shape = int(workflow["shape"])
-        if shape == 6:
+        if shape == 3:
             # The breakaway campaign's own campaign terminal is the only
             # phase-independent completion signal. A non-accept terminal ends
             # the workflow immediately; an accepted one only finishes once the
@@ -340,7 +340,7 @@ class AutotuneWorkflow:
             if not self.breakaway_campaign.accepted:
                 return True
             return self.velocity_integral.done
-        # Stage-C resume (shape 2) and any other enveloped workflow complete on
+        # Stage-C resume (shape 0) and any other enveloped workflow complete on
         # the integral-response terminal.
         return self.velocity_integral.done
 

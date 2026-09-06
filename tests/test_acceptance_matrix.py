@@ -62,7 +62,7 @@ def ready_driver():
     return driver
 
 
-def workflow(assembler, shape=4):
+def workflow(assembler, shape=1):
     params = {
         "oid": 1,
         "run_sequence": RUN_SEQUENCE,
@@ -185,7 +185,7 @@ def test_only_compact_matrix_replies_are_registered():
     }
 
 
-@pytest.mark.parametrize(("shape", "order"), ((4, 1), (5, 2)))
+@pytest.mark.parametrize(("shape", "order"), ((1, 1), (2, 2)))
 def test_exact_plan_and_terminal_close_one_matrix(shape, order):
     assembler = AcceptanceMatrixAssembler()
     workflow(assembler, shape)
@@ -238,7 +238,7 @@ def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
     params = {
         "oid": 1,
         "run_sequence": RUN_SEQUENCE,
-        "shape": 4,
+        "shape": 1,
         "nominal_workflow_ms": 63_041,
         "maximum_workflow_ms": 66_456,
     }
@@ -260,7 +260,7 @@ def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
     params = {
         "oid": 1,
         "run_sequence": RUN_SEQUENCE,
-        "shape": 4,
+        "shape": 1,
         "nominal_workflow_ms": 63_041,
         "maximum_workflow_ms": 66_456,
     }
@@ -289,9 +289,9 @@ def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
 @pytest.mark.parametrize(
     ("shape", "nominal", "maximum"),
     (
-        (3, 60_541, 66_456),
         (0, 60_541, 66_456),
-        (6, 60_541, 66_456),
+        (3, 60_541, 66_456),
+        (4, 60_541, 66_456),
     ),
 )
 def test_matrix_workflow_rejects_non_matrix_shapes(shape, nominal, maximum):
@@ -414,7 +414,7 @@ def test_autotune_relays_one_complete_matrix_without_host_decisions():
         params = {
             "oid": driver.oid,
             "run_sequence": RUN_SEQUENCE,
-            "shape": 4,
+            "shape": 1,
             "nominal_workflow_ms": 60_541,
             "maximum_workflow_ms": 66_456,
         }
@@ -480,7 +480,7 @@ def test_plan_rejects_a_reordered_fragment():
         assembler.handle_plan({"oid": 1, "fragment": 1, "payload": payload[PLAN_FRAGMENT_BYTES:]})
 
 
-def recovery_wide_workflow(assembler, shape=4):
+def recovery_wide_workflow(assembler, shape=1):
     """Workflow envelope for schemas that use the recovery-wide duration."""
     params = {
         "oid": 1,

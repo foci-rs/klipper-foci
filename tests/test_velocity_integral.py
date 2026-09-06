@@ -22,7 +22,7 @@ NATIVE_Q4_12_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
 COMBINED_Q4_12_POSITIVE_I = (*NATIVE_Q4_12_POSITIVE_I, 1310)
 
 
-def feed_workflow(assembler, shape=2, maximum_ms=70_000, nominal_ms=None):
+def feed_workflow(assembler, shape=0, maximum_ms=70_000, nominal_ms=None):
     if nominal_ms is None:
         nominal_ms = maximum_ms
     params = {
@@ -238,7 +238,7 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
     not combined-specific.
     """
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=470_573, maximum_ms=496_528)
+    feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
         schema_revision=14,
@@ -302,16 +302,17 @@ def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
     retained authority, so it carries the same schema under the resume shape.
     """
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=2, nominal_ms=49_920, maximum_ms=49_920)
+    feed_workflow(assembler, shape=0, nominal_ms=49_920, maximum_ms=49_920)
 
     feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
 
     assert assembler.plan["schema_revision"] == 14
 
 
-# Shape 0 is proportional-only and is refused earlier, by the gate that rejects
-# any exact plan under a Stage-B-only workflow.
-@pytest.mark.parametrize("shape", (1, 3))
+# Every valid shape other than resume (0) and breakaway (3) reaches the
+# schema-pairing gate below unrefused -- there is no earlier, shape-specific
+# gate any more, since every live shape now names a real firmware workflow.
+@pytest.mark.parametrize("shape", (1, 2, 4))
 def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=shape, nominal_ms=49_920, maximum_ms=49_920)
@@ -362,7 +363,7 @@ def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
 
 def test_schema_fourteen_assembles_the_breakaway_stage_c_plan():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
         assembler,
         schema_revision=14,
@@ -377,18 +378,18 @@ def test_schema_fourteen_assembles_the_breakaway_stage_c_plan():
 
 def test_schema_fourteen_requires_breakaway_workflow():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
+    feed_workflow(assembler, shape=1, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="breakaway workflow"):
         feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
 
 
-def test_shape_six_stage_c_plan_rejects_a_non_breakaway_schema():
+def test_breakaway_shape_stage_c_plan_rejects_a_non_breakaway_schema():
     """Schema 13 is below the breakaway floor and, since the classic combined
     range (8-13) is no longer accepted at all, is now rejected at the plan-core
     schema gate rather than at the later shape-pairing check."""
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="unsupported Stage-C evidence schema"):
         feed_plan(assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0)
@@ -541,12 +542,15 @@ def test_handle_terminal_rejects_failed_admission_shape_after_a_partial_plan():
         assembler.handle_terminal(_terminal_params(outcome=5, cause=12))
 
 
-def test_handle_terminal_rejects_failed_admission_shape_under_a_proportional_only_workflow():
+def test_handle_terminal_rejects_an_unlisted_cause_when_a_workflow_plan_is_present():
+    """An unlisted failed-admission cause is rejected the same way whether or
+    not a workflow plan has already arrived -- the workflow shape itself no
+    longer carries any special-case meaning here."""
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=0)
 
     with pytest.raises(VelocityIntegralProtocolError, match="preceded exact plan"):
-        assembler.handle_terminal(_terminal_params(outcome=5, cause=12))
+        assembler.handle_terminal(_terminal_params(outcome=5, cause=99))
 
 
 def test_handle_terminal_decodes_rest_rejection_owner():
@@ -625,7 +629,7 @@ def test_handle_terminal_rejects_complete_without_reproduction():
 
 def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_continuation():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=6, nominal_ms=20_000, maximum_ms=20_000)
+    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
         assembler, schema_revision=14, positive_i=POSITIVE_I, final_p=1024, joint_membership=0
     )

@@ -137,7 +137,7 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is not None:
             raise VelocityIntegralProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (0, 1, 2, 3, 6):
+        if shape not in (0, 1, 2, 3, 4):
             raise VelocityIntegralProtocolError("invalid workflow shape")
         if int(params["maximum_workflow_ms"]) < int(params["nominal_workflow_ms"]):
             raise VelocityIntegralProtocolError("workflow maximum is below nominal")
@@ -271,15 +271,10 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError(
                 "reproduction masks present without reproduction evidence"
             )
-        if self.plan is None:
-            shape_zero = self.workflow_plan is not None and int(self.workflow_plan["shape"]) == 0
-            if (
-                self._plan_parts
-                or shape_zero
-                or outcome != 5
-                or cause not in STAGE_C_FAILED_ADMISSION_CAUSES
-            ):
-                raise VelocityIntegralProtocolError("terminal preceded exact plan")
+        if self.plan is None and (
+            self._plan_parts or outcome != 5 or cause not in STAGE_C_FAILED_ADMISSION_CAUSES
+        ):
+            raise VelocityIntegralProtocolError("terminal preceded exact plan")
         if self._run_sequence is None:
             self._run_sequence = run_sequence
         elif run_sequence != self._run_sequence:
@@ -288,7 +283,7 @@ class VelocityIntegralAssembler:
             self.plan is not None
             and int(self.plan["schema_revision"]) >= 8
             and self.workflow_plan is not None
-            and int(self.workflow_plan["shape"]) == 6
+            and int(self.workflow_plan["shape"]) == 3
         )
         if outcome_name == "complete" and not reproduction_available and not breakaway:
             raise VelocityIntegralProtocolError(
@@ -370,7 +365,7 @@ class VelocityIntegralAssembler:
             # carries the breakaway schema under the resume shape. The campaign is
             # no longer the only way to reach schema 14.
             workflow_shape = int(self.workflow_plan["shape"])
-            if workflow_shape not in (6, 2):
+            if workflow_shape not in (3, 0):
                 raise VelocityIntegralProtocolError(
                     "breakaway Stage-C plan requires breakaway workflow"
                 )
@@ -384,10 +379,6 @@ class VelocityIntegralAssembler:
     def _require_stage_c_workflow(self, params: dict) -> None:
         if self.workflow_plan is None:
             raise VelocityIntegralProtocolError("plan core preceded workflow plan")
-        if int(self.workflow_plan["shape"]) == 0:
-            raise VelocityIntegralProtocolError(
-                "proportional-only workflow emitted integral-response plan"
-            )
         self._require_run(params)
 
     def _require_plan_step(self, expected: str, count: int) -> None:
@@ -422,7 +413,8 @@ class VelocityIntegralAssembler:
 # Breakaway-seeded campaign reporting
 # ============================================================================
 #
-# The breakaway campaign (StageCPlanShape.BreakawaySeededPThenI = 6) is a
+# The breakaway campaign
+# (VelocityAutotuneWorkflowKind.BreakawaySeededProportionalThenIntegral = 3) is a
 # three-phase acquisition -- a physical-excursion upward probe, an additive
 # discovery ladder, and a held-out eight-stroke confirmation block -- that
 # firmware runs entirely on its own authority before, on acceptance, handing
