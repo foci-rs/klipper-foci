@@ -293,7 +293,7 @@ def test_tuning_flag_appends_autotune_readiness_report():
     assert "-- Autotune readiness --" in output
     assert "FOCI foci manual_stepper stepper_x autotune readiness:" in output
     assert "result: ready" in output
-    assert "stage2_policy: normal" in output
+    assert "installed_tuning_policy: normal" in output
     assert "blockers: none" in output
     assert "warnings: none" in output
     trusted_inputs_line = next(line for line in output.splitlines() if "trusted_inputs:" in line)
@@ -314,7 +314,7 @@ def test_tuning_readiness_blocks_live_current_gain_mismatch():
 
     assert "-- Autotune readiness --" in output
     assert "result: blocked" in output
-    assert "stage2_policy: unavailable" in output
+    assert "installed_tuning_policy: unavailable" in output
     assert "warnings: inner confidence:" in output
     assert "unavailable_inputs: none" in output
     assert "live current-loop gain flux_p mismatch live=257 host=256" in output

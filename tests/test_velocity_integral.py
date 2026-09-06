@@ -391,7 +391,9 @@ def test_breakaway_shape_stage_c_plan_rejects_a_non_breakaway_schema():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
 
-    with pytest.raises(VelocityIntegralProtocolError, match="unsupported Stage-C evidence schema"):
+    with pytest.raises(
+        VelocityIntegralProtocolError, match="unsupported velocity-integral evidence schema"
+    ):
         feed_plan(assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0)
 
 
@@ -1153,7 +1155,7 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
     feed_confirmation_plan(assembler)
     feed_confirmation_terminal(assembler, accepted=True)
 
-    with pytest.raises(BreakawayCampaignProtocolError, match="Stage-C plan digest"):
+    with pytest.raises(BreakawayCampaignProtocolError, match="velocity-integral plan digest"):
         assembler.handle_campaign_terminal(
             {
                 "oid": 0,

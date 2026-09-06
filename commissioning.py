@@ -92,7 +92,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     62: "target rate invalid",
     63: "zero-elapsed encoder sample",
     64: "campaign plan could not be constructed",
-    65: "Stage-C authority denied",
+    65: "velocity-integral authority denied",
     66: "discovery selected no in-band ladder",
     67: "sampling grid period is zero",
     68: "grid deadline advanced before it was due",
@@ -474,7 +474,7 @@ def format_current_loop_failure_summary(
 
 
 class CommissioningWorkflow:
-    """Run Stage 1 commissioning and track commissioning responses."""
+    """Run commissioning and track commissioning responses."""
 
     def __init__(self, driver) -> None:
         self.driver = driver
@@ -586,7 +586,7 @@ class CommissioningWorkflow:
         return eventtime
 
     def commission(self, gcmd) -> None:
-        """Stage 1: commission motor for safe printer motion."""
+        """Commission motor for safe printer motion."""
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         if profile_name not in PROFILE_MAP:
             raise gcmd.error(
@@ -769,7 +769,7 @@ class CommissioningWorkflow:
         return error_name
 
     def on_commission_failure(self, failure: str | None = None) -> None:
-        """Handle Stage 1 failure state transitions."""
+        """Handle commissioning failure state transitions."""
         self.driver.state.is_calibrated = False
         self.driver.state.commissioned_result = None
         self.driver.state.active_gains = None
@@ -791,7 +791,7 @@ class CommissioningWorkflow:
             self.handle_chip_reset_detected()
 
     def persist_commission_results(self, result: dict, profile_name: str) -> None:
-        """Persist Stage 1 results to printer.cfg pending SAVE_CONFIG."""
+        """Persist commissioning results to printer.cfg pending SAVE_CONFIG."""
         configfile = self.driver.printer.lookup_object("configfile")
         configfile.set(self.driver.name, "pid_flux_p", f"{int(result['flux_p'])}")
         configfile.set(self.driver.name, "pid_flux_i", f"{int(result['flux_i'])}")

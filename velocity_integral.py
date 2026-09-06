@@ -19,7 +19,7 @@ OUTCOME_NAMES = {
 PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
 PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
 # Set when a combined run executed its forward and reverse observation slots in
-# mirrored order. Firmware records this without moving the Stage-C schema, so
+# mirrored order. Firmware records this without moving the velocity-integral schema, so
 # unlike the older bits it is accepted at every schema revision.
 PLAN_SLOT_ORDER_SHIFT = 2
 PLAN_SLOT_ORDER_MASK = 0b11 << PLAN_SLOT_ORDER_SHIFT
@@ -74,10 +74,13 @@ def _terminal_payload(params: dict) -> bytes:
     try:
         payload = bytes(params["payload"])
     except (KeyError, TypeError, ValueError) as err:
-        raise VelocityIntegralProtocolError("Stage-C terminal payload is missing") from err
+        raise VelocityIntegralProtocolError(
+            "velocity-integral terminal payload is missing"
+        ) from err
     if len(payload) != _TERMINAL.size:
         raise VelocityIntegralProtocolError(
-            f"Stage-C terminal payload has {len(payload)} bytes, expected {int(_TERMINAL.size)}"
+            f"velocity-integral terminal payload has {len(payload)} bytes, expected "
+            f"{int(_TERMINAL.size)}"
         )
     return payload
 
@@ -99,7 +102,7 @@ class VelocityIntegralAssembler:
 
     @property
     def plan_ready(self) -> bool:
-        """Whether the exact Stage-C plan has arrived."""
+        """Whether the exact velocity-integral plan has arrived."""
         return self.plan is not None
 
     @property
@@ -166,7 +169,7 @@ class VelocityIntegralAssembler:
             17,
             18,
         ):
-            raise VelocityIntegralProtocolError("unsupported Stage-C evidence schema")
+            raise VelocityIntegralProtocolError("unsupported velocity-integral evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
 
@@ -188,11 +191,11 @@ class VelocityIntegralAssembler:
         if direction != len(self._authorities) or direction not in (0, 1):
             raise VelocityIntegralProtocolError("reordered plan authority")
         if int(params["pooled_low_q16"]) > int(params["pooled_high_q16"]):
-            raise VelocityIntegralProtocolError("reversed Stage-B authority interval")
+            raise VelocityIntegralProtocolError("reversed breakaway authority interval")
         if int(params.get("directional_validity", -1)) not in range(5):
-            raise VelocityIntegralProtocolError("invalid Stage-B directional validity")
+            raise VelocityIntegralProtocolError("invalid breakaway directional validity")
         if int(params.get("reduced_margin", -1)) not in (0, 1):
-            raise VelocityIntegralProtocolError("invalid Stage-B reduced-margin flag")
+            raise VelocityIntegralProtocolError("invalid breakaway reduced-margin flag")
         self._authorities.append(_metadata_free(params))
 
     def handle_plan_timing(self, params: dict) -> None:
@@ -256,7 +259,7 @@ class VelocityIntegralAssembler:
             reverse_divergent_mask,
         ) = _TERMINAL.unpack(_terminal_payload(params))
         if schema != VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION:
-            raise VelocityIntegralProtocolError("unsupported Stage-C terminal schema")
+            raise VelocityIntegralProtocolError("unsupported velocity-integral terminal schema")
         outcome_name = OUTCOME_NAMES.get(outcome)
         if outcome_name is None:
             raise VelocityIntegralProtocolError("invalid terminal outcome")
@@ -355,11 +358,11 @@ class VelocityIntegralAssembler:
         if int(plan["schema_revision"]) >= 8:
             # Every reachable schema here is >= BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION
             # (handle_plan_core no longer admits the classic combined range 8-13).
-            # The breakaway campaign's Stage-C continuation has no reproduced
-            # Stage-B sweep plan to pair against -- Stage C is authorized by the
-            # accepted confirmation digest instead (see BreakawayCampaignAssembler),
-            # not by a Stage-B/Stage-C schema pairing. Only the workflow shape is
-            # exclusive here.
+            # The breakaway campaign's velocity-integral continuation has no
+            # reproduced breakaway sweep plan to pair against -- it is authorized
+            # by the accepted confirmation digest instead (see
+            # BreakawayCampaignAssembler), not by a breakaway/velocity-integral
+            # schema pairing. Only the workflow shape is exclusive here.
             #
             # A resume replays that same exact plan from retained authority, so it
             # carries the breakaway schema under the resume shape. The campaign is
@@ -367,7 +370,7 @@ class VelocityIntegralAssembler:
             workflow_shape = int(self.workflow_plan["shape"])
             if workflow_shape not in (3, 0):
                 raise VelocityIntegralProtocolError(
-                    "breakaway Stage-C plan requires breakaway workflow"
+                    "breakaway velocity-integral plan requires breakaway workflow"
                 )
         self.plan = plan
 
@@ -418,7 +421,7 @@ class VelocityIntegralAssembler:
 # three-phase acquisition -- a physical-excursion upward probe, an additive
 # discovery ladder, and a held-out eight-stroke confirmation block -- that
 # firmware runs entirely on its own authority before, on acceptance, handing
-# off into the existing Stage-C velocity-integral flow above (schema 14,
+# off into the existing velocity-integral flow above (schema 14,
 # handled by VelocityIntegralAssembler already). BreakawayCampaignAssembler
 # below covers only the campaign's own evidence: it validates the firmware's
 # digest chain (each phase's plan names the prior phase's digest) and the
@@ -440,22 +443,22 @@ STAGE_C_CAUSE_PLAN_MISMATCH = 7
 STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT = 11
 STAGE_C_CAUSE_NO_RETAINED_AUTHORITY = 12
 
-# A Stage-C terminal's `cause` number is only unambiguous once paired with
+# A velocity-integral terminal's `cause` number is only unambiguous once paired with
 # `cause_namespace`: the engine, error, and dispatch producers each number
 # their own causes independently and can emit the same raw value.
 STAGE_C_CAUSE_NAMESPACE_NAMES = {0: "engine", 1: "error", 2: "dispatch"}
 STAGE_C_CAUSE_DISPATCH_NAMESPACE = 2
 
-# Dispatch-namespace causes attached to a Stage-C terminal.
+# Dispatch-namespace causes attached to a velocity-integral terminal.
 STAGE_C_TERMINAL_CAUSE_NAMES = {
     STAGE_C_CAUSE_EVIDENCE_INTEGRITY: "evidence_integrity",
     STAGE_C_CAUSE_REPRODUCTION_MISMATCH: "reproduction_mismatch",
     STAGE_C_CAUSE_PLAN_MISMATCH: "plan_mismatch",
     STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT: ("no_transition_capable_operating_point"),
-    STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_stage_c_authority",
+    STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_velocity_integral_authority",
 }
 
-# Causes a Stage-C terminal may carry when it arrives with no exact plan: the
+# Causes a velocity-integral terminal may carry when it arrives with no exact plan: the
 # probe clamp left no operating point, the request disagreed with what was
 # retained, or there was nothing retained to resume. Every other cause implies a
 # plan the assembler should already have seen.
@@ -469,10 +472,10 @@ STAGE_C_FAILED_ADMISSION_CAUSES = frozenset(
 
 STAGE_C_TERMINAL_CAUSE_REMEDIATION = {
     STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: (
-        "no retained Stage C authority; run a campaign first, in this power cycle"
+        "no retained velocity-integral authority; run a campaign first, in this power cycle"
     ),
     STAGE_C_CAUSE_PLAN_MISMATCH: (
-        "request does not reproduce the retained Stage C plan; reissue with the "
+        "request does not reproduce the retained velocity-integral plan; reissue with the "
         "parameters the campaign ran with, or run a new campaign"
     ),
 }
@@ -926,14 +929,14 @@ class BreakawayCampaignAssembler:
         digest = _u64(params["stage_c_plan_digest_low"], params["stage_c_plan_digest_high"])
         if bool(accepted) != (digest != 0):
             raise BreakawayCampaignProtocolError(
-                "campaign accepted flag disagrees with the Stage-C plan digest"
+                "campaign accepted flag disagrees with the velocity-integral plan digest"
             )
         confirmation_accepted = bool(int((self.confirmation_terminal or {}).get("accepted", 0)))
-        # A confirmed acceptance whose Stage-C plan build was refused
+        # A confirmed acceptance whose velocity-integral plan build was refused
         # legitimately leaves accepted=False with a confirmed confirmation
-        # terminal -- confirmation and Stage-C admission are
+        # terminal -- confirmation and velocity-integral admission are
         # deliberately separate, stacked gates. Only the reverse direction (a
-        # Stage-C plan materializing without a confirmed acceptance) is
+        # velocity-integral plan materializing without a confirmed acceptance) is
         # structurally impossible and remains a genuine protocol violation.
         # The message text is unchanged from before this fix (only the
         # *condition* narrowed from symmetric to one-directional) so it keeps

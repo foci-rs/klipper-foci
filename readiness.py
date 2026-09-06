@@ -27,7 +27,7 @@ REQUIRED_STAGE2_INPUTS = frozenset(("average_inductance",))
 
 @dataclass(frozen=True)
 class AutotuneReadiness:
-    """Computed readiness report for Stage 2 autotune admission."""
+    """Computed readiness report for installed-tuning autotune admission."""
 
     result: str
     stage2_policy: str
@@ -41,7 +41,7 @@ class AutotuneReadiness:
 
     @property
     def blocked(self) -> bool:
-        """Return true when Stage 2 must refuse before starting."""
+        """Return true when installed tuning must refuse before starting."""
         return self.result == RESULT_BLOCKED
 
 
@@ -49,7 +49,7 @@ def resolve_autotune_readiness(
     driver,
     live_current_gains: Mapping[str, int | None] | None = None,
 ) -> AutotuneReadiness:
-    """Resolve host-visible Stage 2 readiness from firmware-classified evidence."""
+    """Resolve host-visible installed-tuning readiness from firmware-classified evidence."""
     blockers: list[str] = []
     warnings: list[str] = []
     trusted_inputs: list[str] = []
@@ -115,7 +115,7 @@ def format_readiness_report(report: AutotuneReadiness, stepper_name: str) -> lis
         "-- Autotune readiness --",
         f"  FOCI {stepper_name} autotune readiness:",
         f"    result: {report.result}",
-        f"    stage2_policy: {report.stage2_policy}",
+        f"    installed_tuning_policy: {report.stage2_policy}",
         f"    blockers: {_format_list(report.blockers)}",
         f"    warnings: {_format_list(report.warnings)}",
         f"    trusted_inputs: {_format_list(report.trusted_inputs)}",

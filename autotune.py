@@ -1,4 +1,4 @@
-"""Stage 2 autotune workflow for FOCI host commands."""
+"""Velocity-autotune workflow for FOCI host commands."""
 
 from __future__ import annotations
 
@@ -75,12 +75,12 @@ OUTER_SAFETY_FAULT_NAMES = {
 
 
 def _stage_c_cause_namespace_text(cause_namespace: int) -> str:
-    """Render a Stage-C terminal's cause namespace as its wire-carried name."""
+    """Render a velocity-integral terminal's cause namespace as its wire-carried name."""
     return STAGE_C_CAUSE_NAMESPACE_NAMES.get(cause_namespace, "unknown")
 
 
 def _stage_c_cause_text(cause_namespace: int, cause: int) -> str:
-    """Render a Stage-C terminal cause as its number and, for a dispatch
+    """Render a velocity-integral terminal cause as its number and, for a dispatch
     cause, its name. The dispatch name table only applies within its own
     namespace -- the same number from the engine or error namespace means
     something else."""
@@ -125,7 +125,7 @@ def _robustness_direction_text(index: int, direction: dict) -> str:
 
 
 class AutotuneWorkflow:
-    """Run installed Stage 2 tuning after commissioning and homing."""
+    """Run installed tuning after commissioning and homing."""
 
     def __init__(self, driver) -> None:
         self.driver = driver
@@ -164,7 +164,7 @@ class AutotuneWorkflow:
             and not (self.breakaway_campaign.done and self.breakaway_campaign.accepted)
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
-                "breakaway Stage-C plan arrived before an accepted campaign terminal"
+                "breakaway velocity-integral plan arrived before an accepted campaign terminal"
             )
             return
         try:
@@ -172,7 +172,7 @@ class AutotuneWorkflow:
         except VelocityIntegralProtocolError as err:
             self.velocity_integral_error = err
             return
-        # Once the breakaway Stage-C plan is fully assembled, cross-check its
+        # Once the breakaway velocity-integral plan is fully assembled, cross-check its
         # exact digest against the digest the campaign terminal already
         # disclosed at acceptance time. This is a firmware-identity check --
         # confirming two things firmware itself sent agree -- not a
@@ -186,7 +186,8 @@ class AutotuneWorkflow:
             != self.breakaway_campaign.stage_c_plan_digest
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
-                "breakaway Stage-C plan digest does not match the accepted campaign terminal"
+                "breakaway velocity-integral plan digest does not match the accepted "
+                "campaign terminal"
             )
 
     def _handle_breakaway_campaign(self, method_name: str, params: dict) -> None:
@@ -326,7 +327,7 @@ class AutotuneWorkflow:
         workflow = self.velocity_integral.workflow_plan
         if workflow is None:
             # Only a refusal can complete without an envelope: the exact-plan
-            # path refuses to assemble until a Stage-C workflow has arrived. Its
+            # path refuses to assemble until a velocity-integral workflow has arrived. Its
             # terminal is still terminal, and nothing else will follow it.
             return self.velocity_integral.done
         shape = int(workflow["shape"])
@@ -334,13 +335,13 @@ class AutotuneWorkflow:
             # The breakaway campaign's own campaign terminal is the only
             # phase-independent completion signal. A non-accept terminal ends
             # the workflow immediately; an accepted one only finishes once the
-            # handed-off classic Stage-C evidence completes.
+            # handed-off classic velocity-integral evidence completes.
             if not self.breakaway_campaign.done:
                 return False
             if not self.breakaway_campaign.accepted:
                 return True
             return self.velocity_integral.done
-        # Stage-C resume (shape 0) and any other enveloped workflow complete on
+        # A resumed velocity-integral run (shape 0) and any other enveloped workflow complete on
         # the integral-response terminal.
         return self.velocity_integral.done
 
@@ -605,7 +606,7 @@ class AutotuneWorkflow:
         the request identity for a possible stage_c_resume dispatch.
 
         Firmware emits this terminal from two places that must resolve
-        identically: a plain Stage-C dispatch, and an accepted breakaway
+        identically: a plain velocity-integral dispatch, and an accepted breakaway
         campaign (where it lands in the same dispatch as the campaign's own
         acceptance terminal). Both call this helper so the returned outcome
         -- for example "complete_candidate" -- always reaches the caller
@@ -688,7 +689,7 @@ class AutotuneWorkflow:
         Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
         Returns the velocity-integral outcome name (for example
         "complete_candidate" or "inconclusive") when the workflow finished via a
-        plain Stage-C evidence terminal instead. Any other workflow (velocity
+        plain velocity-integral evidence terminal instead. Any other workflow (velocity
         confidence matrix, robustness reversal, or breakaway campaign) is fully
         handled inline -- including raising on fault -- and returns its own
         marker, since none of those retry through a second dispatch.
@@ -846,7 +847,7 @@ class AutotuneWorkflow:
         return "velocity_integral_incomplete"
 
     def autotune(self, gcmd) -> None:
-        """Stage 2: installed tuning after commissioning.
+        """Installed tuning after commissioning.
 
         Each dispatch re-homes, re-centers, and arms the motor before it moves,
         so this does not require the axes homed on entry -- a commissioned
@@ -901,7 +902,8 @@ class AutotuneWorkflow:
                 )
             if readiness.stage2_policy == POLICY_UNAVAILABLE:
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE stage 2 unavailable inputs: "
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE installed-tuning unavailable "
+                    f"inputs: "
                     f"{', '.join(readiness.unavailable_inputs)}"
                 )
 
@@ -997,8 +999,8 @@ class AutotuneWorkflow:
                         )
                 elif outcome != "tune_result":
                     raise gcmd.error(
-                        f"FOCI {self.driver.name}: stage-C resume did not reproduce the "
-                        f"accepted candidate (outcome={outcome})"
+                        f"FOCI {self.driver.name}: velocity-integral resume did not reproduce "
+                        f"the accepted candidate (outcome={outcome})"
                     )
             elif outcome != "tune_result":
                 return
@@ -1197,7 +1199,7 @@ class AutotuneWorkflow:
         self._revert_config_only(snapshot)
 
     def persist_tune_results(self, result: dict, mode_name: str, status: str) -> None:
-        """Persist Stage 2 results to printer.cfg (pending SAVE_CONFIG)."""
+        """Persist installed-tuning results to printer.cfg (pending SAVE_CONFIG)."""
         configfile = self.driver.printer.lookup_object("configfile")
         configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['velocity_p'])}")
         configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['velocity_i'])}")

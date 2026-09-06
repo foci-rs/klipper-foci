@@ -1663,7 +1663,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
 
-        self.assertIn("stage 2 unavailable inputs: average_inductance", str(ctx.exception))
+        self.assertIn("installed-tuning unavailable inputs: average_inductance", str(ctx.exception))
         self.assertIsNone(d.protocol.commands.tune.last_args)
         self.assertEqual(invalidate_calls, [])
 

@@ -59,14 +59,14 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "default",
         "commissioning",
         "commission",
-        "Commission a FOCI stepper (Stage 1: diagnostics + current tune + closed-loop entry)",
+        "Commission a FOCI stepper (diagnostics + current tune + closed-loop entry)",
     ),
     GcodeCommandSpec(
         "FOCI_AUTOTUNE",
         "default",
         "autotune",
         "autotune",
-        "Tune installed FOCI stepper (Stage 2: requires commissioning + homing)",
+        "Tune installed FOCI stepper (requires commissioning + homing)",
     ),
     GcodeCommandSpec(
         "FOCI_SET_GAINS",
