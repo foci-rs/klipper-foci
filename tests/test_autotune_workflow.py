@@ -1818,7 +1818,9 @@ def _feed_breakaway_probe_and_discovery_plan(driver, run_sequence=BREAKAWAY_RUN_
     )
 
 
-def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE):
+def feed_breakaway_probe_and_discovery(
+    driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, collected_count=2, stop_rung_index=0
+):
     """Feed a resolved probe, the discovery ladder plan, and a nominating
     (success) discovery terminal."""
     _feed_breakaway_probe_and_discovery_plan(driver, run_sequence)
@@ -1835,8 +1837,9 @@ def feed_breakaway_probe_and_discovery(driver, run_sequence=BREAKAWAY_RUN_SEQUEN
             "prior_plan_digest_high": probe_high,
             "family_size": 32,
             "terminal_cause": 0,
-            "collected_count": 2,
+            "collected_count": collected_count,
             "has_safety_fault": 0,
+            "stop_rung_index": stop_rung_index,
         }
     )
 
@@ -2081,6 +2084,19 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertIn("nominated P=400 margin=2000pctm", message)
         self.assertIn("confirmed P=0 measured_SE=900pm required_SE=667pm", message)
         self.assertIn("remediation:", message)
+
+    def test_operator_report_shows_the_discovery_stop_rung_not_the_probe_rung(self):
+        """The probe's rung is constant per ladder; it is the discovery stop
+        rung and in-band count that actually distinguish otherwise
+        identical-looking rejections."""
+        d = self._commissioned_driver()
+        feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+        feed_breakaway_probe_and_discovery(d, stop_rung_index=17, collected_count=0)
+
+        message = d.autotune._format_breakaway_campaign_result()
+
+        self.assertIn("breakaway=320 rung=5 obs=14", message)
+        self.assertIn("discovery stop_rung=17 in_band=0", message)
 
     def test_operator_report_names_the_real_error_on_a_confirmed_refusal(self):
         d = self._commissioned_driver()

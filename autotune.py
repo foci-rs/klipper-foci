@@ -509,6 +509,12 @@ class AutotuneWorkflow:
                 f"{int(discovery.get('first_additive_step_raw', 0))} rungs="
                 f"{int(discovery.get('rung_count', 0))}"
             )
+        discovery_terminal = campaign.discovery_terminal
+        if discovery_terminal is not None:
+            message += (
+                f"; discovery stop_rung={int(discovery_terminal.get('stop_rung_index', 0))} "
+                f"in_band={int(discovery_terminal.get('collected_count', 0))}"
+            )
         confirmation = campaign.confirmation_plan
         if confirmation is not None:
             message += (
