@@ -436,7 +436,11 @@ class VelocityIntegralAssembler:
 # candidate, or synthesizes a value firmware did not send -- see
 # tests/test_velocity_integral.py's dumb-host proof tests.
 
-BREAKAWAY_PHASE_NAMES = {0: "probe", 1: "discovery", 2: "confirmation"}
+BREAKAWAY_PHASE_NAMES = {
+    0: "breakaway_probe",
+    1: "proportional_response_discovery",
+    2: "proportional_band_confirmation",
+}
 
 STAGE_C_CAUSE_EVIDENCE_INTEGRITY = 4
 STAGE_C_CAUSE_REPRODUCTION_MISMATCH = 6
