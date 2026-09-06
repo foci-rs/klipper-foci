@@ -98,6 +98,24 @@ def _robustness_reversal_cause_text(cause: int) -> str:
     return str(cause) if name is None else f"{cause} ({name})"
 
 
+# Display-only translation of `velocity_integral.py`'s `REST_REJECTION_OWNER_NAMES`
+# wire-mirrored values (which stay `stage_c_*` for parity with firmware's
+# `RestSelectionOwner::StageC*` variants) into the physical phrasing operators see.
+_REST_REJECTION_OWNER_TEXT = {
+    "stage_c_anchor": "velocity-integral anchor",
+    "stage_c_positive_observation": "velocity-integral positive-current observation",
+    "stage_c_recovery": "velocity-integral origin recovery",
+    "stage_c_cleanup": "velocity-integral cleanup",
+}
+
+
+def _rest_rejection_owner_text(owner: str | None) -> str | None:
+    """Render a rest-rejection owner as its physical phrasing for operator output."""
+    if owner is None:
+        return None
+    return _REST_REJECTION_OWNER_TEXT.get(owner, owner)
+
+
 def _robustness_direction_text(index: int, direction: dict) -> str:
     """Render one robustness-reversal direction summary.
 
@@ -452,7 +470,7 @@ class AutotuneWorkflow:
         if terminal.get("rest_rejection_after_sufficiency"):
             message = (
                 f"{message}; sufficiency reached before rest rejected "
-                f"(owner={terminal.get('rest_rejection_owner')})"
+                f"(owner={_rest_rejection_owner_text(terminal.get('rest_rejection_owner'))})"
             )
         if response.reproduction is not None:
             mask_text = [

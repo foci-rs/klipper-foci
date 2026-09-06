@@ -2324,7 +2324,10 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
 
         message = workflow._format_velocity_integral_result()
 
-        self.assertIn("sufficiency reached before rest rejected (owner=stage_c_recovery)", message)
+        self.assertIn(
+            "sufficiency reached before rest rejected (owner=velocity-integral origin recovery)",
+            message,
+        )
 
     def test_says_nothing_extra_for_an_ordinary_partial_acquisition(self):
         workflow = self._workflow(
