@@ -110,7 +110,6 @@ _REST_REJECTION_OWNER_TEXT = {
 
 
 def _rest_rejection_owner_text(owner: str | None) -> str | None:
-    """Render a rest-rejection owner as its physical phrasing for operator output."""
     if owner is None:
         return None
     return _REST_REJECTION_OWNER_TEXT.get(owner, owner)
