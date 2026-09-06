@@ -15,15 +15,16 @@ PHASE_NAMES: dict[int, str] = {
     6: "Current tune",
     7: "Current validation",
     8: "Inner done",
-    9: "Mechanical ID",
-    10: "Velocity tune",
-    11: "Velocity validation",
-    12: "Position tune",
-    13: "Filter selection",
-    14: "Commit",
-    15: "Outer done",
     16: "Encoder alignment",
     17: "Closed-loop entry",
+    18: "Breakaway proportional acquisition",
+    19: "Integral gain response characterization",
+    20: "Fixed-gain amplitude validation",
+    21: "Reversal standstill robustness gate",
+    22: "Position tune",
+    23: "Filter selection",
+    24: "Commit",
+    25: "Outer done",
 }
 
 COMMISSION_ERROR_NAMES: dict[int, str] = {

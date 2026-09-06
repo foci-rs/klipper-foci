@@ -470,12 +470,24 @@ class TestCommissioningStateTransitions(unittest.TestCase):
 
 class TestNameMaps(unittest.TestCase):
     def test_all_phase_ids_have_names(self):
-        """Every wire code 1-17 should have a name."""
-        for phase_id in range(1, 18):
+        """Every live `CommissionPhase` wire code should have a name.
+
+        Codes 9-15 are permanently retired (the removed `MechanicalId`,
+        `VelocityTune`, `VelocityValidate` and the pre-renumber outer block) and
+        must not appear.
+        """
+        live_codes = {1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}
+        for phase_id in live_codes:
             self.assertIn(
                 phase_id,
                 PHASE_NAMES,
-                f"PhaseId wire code {phase_id} missing from PHASE_NAMES",
+                f"CommissionPhase wire code {phase_id} missing from PHASE_NAMES",
+            )
+        for retired_id in (9, 10, 11, 12, 13, 14, 15):
+            self.assertNotIn(
+                retired_id,
+                PHASE_NAMES,
+                f"retired wire code {retired_id} must not be reused in PHASE_NAMES",
             )
 
     def test_hard_fault_codes_are_subset_of_error_names(self):
