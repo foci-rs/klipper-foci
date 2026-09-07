@@ -98,7 +98,7 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         self.assertIn("start=123", gcode._responses[0])
         self.assertIn("delta=0", gcode._responses[0])
 
-    def test_calibration_failure_reports_closed_loop_entry_diagnostics(self):
+    def test_calibration_failure_reports_closed_loop_activation_diagnostics(self):
         d = make_driver()
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         reactor = d.printer.get_reactor()

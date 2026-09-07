@@ -112,7 +112,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_velocity_limit_latch_core", driver.oid) in registrations
     assert ("foci_encoder_alignment", driver.oid) in registrations
     assert ("foci_adc_residual", driver.oid) in registrations
-    assert ("foci_closed_loop_entry", driver.oid) in registrations
+    assert ("foci_closed_loop_activation", driver.oid) in registrations
     assert ("foci_current_loop_filters", driver.oid) in registrations
     assert ("foci_current_loop_run", driver.oid) in registrations
     assert ("foci_current_validation_axis", driver.oid) in registrations
@@ -384,15 +384,15 @@ def test_registers_current_loop_hold_reply():
     ) in serial.responses
 
 
-def test_registers_closed_loop_entry_reply():
+def test_registers_closed_loop_activation_reply():
     driver = make_driver()
     serial = MockSerial()
 
     register_active_diagnostic_responses(serial, driver, driver.oid)
 
     assert (
-        driver.diagnostics.active.handle_closed_loop_entry,
-        "foci_closed_loop_entry",
+        driver.diagnostics.active.handle_closed_loop_activation,
+        "foci_closed_loop_activation",
         driver.oid,
     ) in serial.responses
 

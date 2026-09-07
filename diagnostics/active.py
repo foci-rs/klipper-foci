@@ -53,7 +53,7 @@ class ActiveDiagnostics:
         self.current_loop_cache: dict[int, dict] = {}
         self.last_current_loop_run: dict[int, dict] = {}
         self.last_current_loop_hold: dict[int, dict] = {}
-        self.last_closed_loop_entry: dict[int, dict] = {}
+        self.last_closed_loop_activation: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
         self.last_encoder_alignment: dict[int, dict] = {}
         self.adc_residuals: dict[int, list[dict]] = {}
@@ -496,9 +496,9 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
-    def handle_closed_loop_entry(self, params: dict) -> None:
-        """Handle foci_closed_loop_entry from firmware."""
-        self.last_closed_loop_entry[params["oid"]] = dict(params)
+    def handle_closed_loop_activation(self, params: dict) -> None:
+        """Handle foci_closed_loop_activation from firmware."""
+        self.last_closed_loop_activation[params["oid"]] = dict(params)
         msg = (
             f"FOCI {self.driver.name} closed-loop entry: entry_status={int(params['entry_status'])}"
             f" position_1={int(params['position_1'])} position_2={int(params['position_2'])} "
@@ -842,9 +842,9 @@ class ActiveDiagnostics:
         """Return the most recent transient current-loop hold reply for `oid`."""
         return self.last_current_loop_hold.get(oid, {})
 
-    def last_closed_loop_entry_evidence(self, oid: int) -> dict:
+    def last_closed_loop_activation_evidence(self, oid: int) -> dict:
         """Return the most recent transient closed-loop entry reply for `oid`."""
-        return self.last_closed_loop_entry.get(oid, {})
+        return self.last_closed_loop_activation.get(oid, {})
 
     def last_inductance_evidence(self, oid: int) -> dict:
         """Return the most recent transient inductance evidence for `oid`."""

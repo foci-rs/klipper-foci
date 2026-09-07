@@ -330,7 +330,7 @@ def _classify_last_hold_and_entry(
     elif hold and hold.get("warning_flags", 0):
         warnings.append(f"bounded sustained-hold warning flags={hold['warning_flags']}")
 
-    entry = active.last_closed_loop_entry_evidence(driver.oid)
+    entry = active.last_closed_loop_activation_evidence(driver.oid)
     entry_status = entry.get("entry_status") if entry else None
     if entry_status in CLOSED_LOOP_ENTRY_BLOCKING_STATUSES:
         blockers.append(f"closed-loop entry hard failure status={entry_status}")

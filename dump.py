@@ -135,7 +135,7 @@ CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
     14: "response_magnitude",
     15: "cross_axis_coupling",
     16: "wrong_sign",
-    17: "closed_loop_entry",
+    17: "closed_loop_activation",
 }
 
 CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
@@ -380,12 +380,12 @@ class RegisterDumpWorkflow:
             lines.append("-- Last sustained-hold gate (not persisted) --")
             lines.extend(self._format_last_current_loop_hold(last_current_loop_hold))
 
-        last_closed_loop_entry = self.driver.diagnostics.active.last_closed_loop_entry_evidence(
+        last_closed_loop_activation = self.driver.diagnostics.active.last_closed_loop_activation_evidence(
             self.driver.oid
         )
-        if last_closed_loop_entry:
+        if last_closed_loop_activation:
             lines.append("-- Last closed-loop entry (not persisted) --")
-            lines.extend(self._format_last_closed_loop_entry(last_closed_loop_entry))
+            lines.extend(self._format_last_closed_loop_activation(last_closed_loop_activation))
 
         last_encoder_alignment = self.driver.diagnostics.active.last_encoder_alignment_evidence(
             self.driver.oid
@@ -687,7 +687,7 @@ class RegisterDumpWorkflow:
             ),
         ]
 
-    def _format_last_closed_loop_entry(self, evidence: dict) -> list[str]:
+    def _format_last_closed_loop_activation(self, evidence: dict) -> list[str]:
         return [
             self._format_hold_pair(
                 "last.entry_status",

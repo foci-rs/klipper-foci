@@ -58,7 +58,7 @@ def test_current_loop_hold_caches_last_evidence():
         assert field_name in out
 
 
-def test_closed_loop_entry_caches_last_evidence():
+def test_closed_loop_activation_caches_last_evidence():
     d = make_driver()
     params = {
         "oid": d.oid,
@@ -70,10 +70,10 @@ def test_closed_loop_entry_caches_last_evidence():
         "runaway": 0,
     }
 
-    d.diagnostics.active.handle_closed_loop_entry(params)
+    d.diagnostics.active.handle_closed_loop_activation(params)
 
-    assert d.diagnostics.active.last_closed_loop_entry_evidence(d.oid) == params
-    assert d.diagnostics.active.last_closed_loop_entry_evidence(d.oid + 1) == {}
+    assert d.diagnostics.active.last_closed_loop_activation_evidence(d.oid) == params
+    assert d.diagnostics.active.last_closed_loop_activation_evidence(d.oid + 1) == {}
     out = d.printer.lookup_object("gcode")._responses[-1]
     for field_name in (
         "entry_status",

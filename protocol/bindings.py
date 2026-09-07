@@ -322,8 +322,8 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
-        driver.diagnostics.active.handle_closed_loop_entry,
-        "foci_closed_loop_entry",
+        driver.diagnostics.active.handle_closed_loop_activation,
+        "foci_closed_loop_activation",
         oid,
     )
     serial.register_response(

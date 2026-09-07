@@ -532,7 +532,7 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
             "actionable_status_count": 0,
         }
     )
-    driver.diagnostics.active.handle_closed_loop_entry(
+    driver.diagnostics.active.handle_closed_loop_activation(
         {
             "oid": driver.oid,
             "entry_status": 3,
@@ -571,9 +571,9 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.hold_status_flags           = or=0 actionable_count=0 warnings=0" in output
 
 
-def test_tuning_flag_names_bounded_closed_loop_entry_drift():
+def test_tuning_flag_names_bounded_closed_loop_activation_drift():
     driver = make_driver()
-    driver.diagnostics.active.handle_closed_loop_entry(
+    driver.diagnostics.active.handle_closed_loop_activation(
         {
             "oid": driver.oid,
             "entry_status": 4,

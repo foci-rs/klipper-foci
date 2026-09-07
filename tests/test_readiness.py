@@ -271,9 +271,9 @@ def test_sustained_hold_hard_failure_blocks_autotune():
     assert any("sustained-hold hard failure status=3" in item for item in report.blockers)
 
 
-def test_closed_loop_entry_warning_is_ready_with_warnings_and_normal_policy():
+def test_closed_loop_activation_warning_is_ready_with_warnings_and_normal_policy():
     driver = _driver_ready_for_autotune()
-    driver.diagnostics.active.last_closed_loop_entry[driver.oid] = {
+    driver.diagnostics.active.last_closed_loop_activation[driver.oid] = {
         "entry_status": 4,
     }
 
@@ -298,10 +298,10 @@ def test_sustained_hold_warning_flags_are_ready_with_warnings_and_normal_policy(
     assert any("bounded sustained-hold warning flags=3" in item for item in report.warnings)
 
 
-def test_closed_loop_entry_hard_failures_block_autotune():
+def test_closed_loop_activation_hard_failures_block_autotune():
     for status in (2, 3):
         driver = _driver_ready_for_autotune()
-        driver.diagnostics.active.last_closed_loop_entry[driver.oid] = {
+        driver.diagnostics.active.last_closed_loop_activation[driver.oid] = {
             "entry_status": status,
         }
 
