@@ -973,8 +973,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertGreaterEqual(reactor._time, 6.0)
         self.assertIsNotNone(d.autotune.robustness_reversal_terminal)
         self.assertIsNone(d.autotune.robustness_reversal_error)
-        # The robustness plan alone armed the extended timeout, not the
-        # fixed-gain-amplitude or velocity-integral paths.
         self.assertIsNotNone(d.autotune.robustness_workflow_plan)
         self.assertIsNone(d.autotune.fixed_gain_amplitude.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
