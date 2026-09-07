@@ -80,12 +80,12 @@ OUTER_SAFETY_FAULT_NAMES = {
 }
 
 
-def _stage_c_cause_namespace_text(cause_namespace: int) -> str:
+def _integral_cause_namespace_text(cause_namespace: int) -> str:
     """Render a velocity-integral terminal's cause namespace as its wire-carried name."""
     return INTEGRAL_CAUSE_NAMESPACE_NAMES.get(cause_namespace, "unknown")
 
 
-def _stage_c_cause_text(cause_namespace: int, cause: int) -> str:
+def _integral_cause_text(cause_namespace: int, cause: int) -> str:
     """Render a velocity-integral terminal cause as its number and, for a dispatch
     cause, its name. The dispatch name table only applies within its own
     namespace -- the same number from the engine or error namespace means
@@ -463,8 +463,8 @@ class AutotuneWorkflow:
             f"{terminal.get('reverse_eligible_mask', 0):08x} bookend=0x"
             f"{terminal.get('bookend_available_mask', 0):02x} current_terminus="
             f"{int(terminal.get('current_terminus_plus_one', 0))} namespace="
-            f"{_stage_c_cause_namespace_text(cause_namespace)} cause="
-            f"{_stage_c_cause_text(cause_namespace, cause)}"
+            f"{_integral_cause_namespace_text(cause_namespace)} cause="
+            f"{_integral_cause_text(cause_namespace, cause)}"
         )
         remediation = (
             INTEGRAL_TERMINAL_CAUSE_REMEDIATION.get(cause)

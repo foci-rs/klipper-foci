@@ -170,7 +170,7 @@ class VelocityIntegralAssembler:
     def handle_plan_core(self, params: dict) -> None:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
-        self._require_stage_c_workflow(params)
+        self._require_integral_workflow(params)
         if int(params.get("schema_revision", -1)) not in (
             2,
             3,
@@ -290,7 +290,7 @@ class VelocityIntegralAssembler:
                 "reproduction masks present without reproduction evidence"
             )
         if self.plan is None and (
-            self._plan_parts or outcome != 5 or cause not in STAGE_C_FAILED_ADMISSION_CAUSES
+            self._plan_parts or outcome != 5 or cause not in INTEGRAL_FAILED_ADMISSION_CAUSES
         ):
             raise VelocityIntegralProtocolError("terminal preceded exact plan")
         if self._run_sequence is None:
@@ -377,7 +377,7 @@ class VelocityIntegralAssembler:
                 int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
             )
         if int(plan["schema_revision"]) >= 8:
-            # Every reachable schema here is >= BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION
+            # Every reachable schema here is >= BREAKAWAY_INTEGRAL_MIN_SCHEMA_REVISION
             # (handle_plan_core no longer admits the classic combined range 8-13).
             # The breakaway campaign's velocity-integral continuation has no
             # reproduced breakaway sweep plan to pair against -- it is authorized
@@ -400,7 +400,7 @@ class VelocityIntegralAssembler:
         if int(params.get("fragment", -1)) != expected:
             raise VelocityIntegralProtocolError("fragment identity mismatch")
 
-    def _require_stage_c_workflow(self, params: dict) -> None:
+    def _require_integral_workflow(self, params: dict) -> None:
         if self.workflow_plan is None:
             raise VelocityIntegralProtocolError("plan core preceded workflow plan")
         self._require_run(params)
@@ -452,11 +452,11 @@ class VelocityIntegralAssembler:
 # candidate, or synthesizes a value firmware did not send -- see
 # tests/test_velocity_integral.py's dumb-host proof tests.
 
-STAGE_C_CAUSE_EVIDENCE_INTEGRITY = 4
-STAGE_C_CAUSE_REPRODUCTION_MISMATCH = 6
-STAGE_C_CAUSE_PLAN_MISMATCH = 7
-STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT = 11
-STAGE_C_CAUSE_NO_RETAINED_AUTHORITY = 12
+INTEGRAL_CAUSE_EVIDENCE_INTEGRITY = 4
+INTEGRAL_CAUSE_REPRODUCTION_MISMATCH = 6
+INTEGRAL_CAUSE_PLAN_MISMATCH = 7
+INTEGRAL_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT = 11
+INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY = 12
 
 # A velocity-integral terminal's `cause` number is only unambiguous once paired with
 # `cause_namespace`: the engine, error, and dispatch producers each number
@@ -466,30 +466,30 @@ INTEGRAL_CAUSE_DISPATCH_NAMESPACE = 2
 
 # Dispatch-namespace causes attached to a velocity-integral terminal.
 INTEGRAL_TERMINAL_CAUSE_NAMES = {
-    STAGE_C_CAUSE_EVIDENCE_INTEGRITY: "evidence_integrity",
-    STAGE_C_CAUSE_REPRODUCTION_MISMATCH: "reproduction_mismatch",
-    STAGE_C_CAUSE_PLAN_MISMATCH: "plan_mismatch",
-    STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT: ("no_transition_capable_operating_point"),
-    STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_velocity_integral_authority",
+    INTEGRAL_CAUSE_EVIDENCE_INTEGRITY: "evidence_integrity",
+    INTEGRAL_CAUSE_REPRODUCTION_MISMATCH: "reproduction_mismatch",
+    INTEGRAL_CAUSE_PLAN_MISMATCH: "plan_mismatch",
+    INTEGRAL_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT: ("no_transition_capable_operating_point"),
+    INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_velocity_integral_authority",
 }
 
 # Causes a velocity-integral terminal may carry when it arrives with no exact plan: the
 # probe clamp left no operating point, the request disagreed with what was
 # retained, or there was nothing retained to resume. Every other cause implies a
 # plan the assembler should already have seen.
-STAGE_C_FAILED_ADMISSION_CAUSES = frozenset(
+INTEGRAL_FAILED_ADMISSION_CAUSES = frozenset(
     (
-        STAGE_C_CAUSE_PLAN_MISMATCH,
-        STAGE_C_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT,
-        STAGE_C_CAUSE_NO_RETAINED_AUTHORITY,
+        INTEGRAL_CAUSE_PLAN_MISMATCH,
+        INTEGRAL_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT,
+        INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY,
     )
 )
 
 INTEGRAL_TERMINAL_CAUSE_REMEDIATION = {
-    STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: (
+    INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY: (
         "no retained velocity-integral authority; run a campaign first, in this power cycle"
     ),
-    STAGE_C_CAUSE_PLAN_MISMATCH: (
+    INTEGRAL_CAUSE_PLAN_MISMATCH: (
         "request does not reproduce the retained velocity-integral plan; reissue with the "
         "parameters the campaign ran with, or run a new campaign"
     ),
@@ -553,11 +553,11 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
 FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}
 CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 
-# Firmware's `combined_plan::BREAKAWAY_STAGE_B_SCHEMA_REVISION`: the only
+# Firmware's `combined_plan::BREAKAWAY_PROPORTIONAL_SCHEMA_REVISION`: the only
 # discovery-plan-geometry schema this host currently understands.
 # Current firmware revisions, used when this host authors a request.
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
-BREAKAWAY_STAGE_C_SCHEMA_REVISION = 18
+BREAKAWAY_INTEGRAL_SCHEMA_REVISION = 18
 # First revision of each breakaway stream. These are boundaries, not sets: every
 # revision at or above them is a breakaway plan. Stage-C 8-13 was the classic
 # combined schema range; firmware never emits it after Stage 2, and
@@ -565,7 +565,7 @@ BREAKAWAY_STAGE_C_SCHEMA_REVISION = 18
 # current revision above, so a stream from firmware newer than this host is
 # refused rather than mis-parsed against rules that may no longer hold.
 BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION = 15
-BREAKAWAY_STAGE_C_MIN_SCHEMA_REVISION = 14
+BREAKAWAY_INTEGRAL_MIN_SCHEMA_REVISION = 14
 
 BREAKAWAY_PROBE_MAX_OBSERVATIONS = 128
 BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US = 2_000
