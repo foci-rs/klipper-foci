@@ -4,28 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from ._vocabulary_generated import PHASE_NAMES
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S, ELECTRICAL_ID_WAIT_TIMEOUT_S
-
-PHASE_NAMES: dict[int, str] = {
-    1: "ADC calibration",
-    2: "Coil check",
-    3: "Phase wiring",
-    4: "Encoder check",
-    5: "Electrical ID",
-    6: "Current tune",
-    7: "Current validation",
-    8: "Inner done",
-    16: "Encoder alignment",
-    17: "Closed-loop entry",
-    18: "Breakaway proportional acquisition",
-    19: "Integral gain response characterization",
-    20: "Fixed-gain amplitude validation",
-    21: "Reversal standstill robustness gate",
-    22: "Position tune",
-    23: "Filter selection",
-    24: "Commit",
-    25: "Outer done",
-}
 
 COMMISSION_ERROR_NAMES: dict[int, str] = {
     1: "motor already enabled",

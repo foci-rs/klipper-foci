@@ -5,6 +5,13 @@ from __future__ import annotations
 import itertools
 import struct
 
+from ._vocabulary_generated import (
+    ACTION_CODES,
+    SHAPE_MATRIX_ASCENDING,
+    SHAPE_MATRIX_DESCENDING,
+    WORKFLOW_SHAPE_TO_MATRIX_ORDER,
+)
+
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
 MATRIX_SCHEMA_REVISION = 7
@@ -18,29 +25,13 @@ MATRIX_ORDER_DESCENDING = 2
 SLOT_ORDER_FORWARD_FIRST = 0
 SLOT_ORDER_REVERSE_FIRST = 1
 
-WORKFLOW_SHAPE_TO_MATRIX_ORDER = {
-    1: MATRIX_ORDER_ASCENDING,
-    2: MATRIX_ORDER_DESCENDING,
-}
-
 # Firmware also defines mirrored matrix actions (wire 3 and 4). They are
-# deliberately not exposed here. A mirrored matrix run could produce a better
+# removed and reserved. A mirrored matrix run could produce a better
 # shared floor and would then function as a favourable re-roll of a spent
 # retention lifecycle, so leaving it unreachable from the host is a safety
 # boundary rather than a convention. Stage C carries the same slot-order
 # confound and is not lifecycle-limited, so breakaway_seeded is the
 # production and measurement path.
-ACTION_CODES = {
-    "matrix_ascending": 1,
-    "matrix_descending": 2,
-    "breakaway_seeded": 7,
-    # Replays one retained Stage-C plan so a sufficient run can reproduce and
-    # promote to Complete. Retention is RAM-only, so this only succeeds in the
-    # same power cycle as the run that produced the candidate, and any campaign
-    # in between resets the slot.
-    "stage_c_resume": 8,
-    "robustness_reversal": 9,
-}
 OUTCOME_NAMES = {
     0: "complete",
     1: "inconclusive",
@@ -138,7 +129,7 @@ class AcceptanceMatrixAssembler:
         if self.workflow_plan is not None:
             raise AcceptanceMatrixProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (1, 2):
+        if shape not in (SHAPE_MATRIX_ASCENDING, SHAPE_MATRIX_DESCENDING):
             raise AcceptanceMatrixProtocolError("invalid matrix workflow shape")
         duration = (
             int(params["nominal_workflow_ms"]),

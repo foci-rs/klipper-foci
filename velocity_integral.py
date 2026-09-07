@@ -4,6 +4,15 @@ from __future__ import annotations
 
 import struct
 
+from ._vocabulary_generated import (
+    BREAKAWAY_PHASE_NAMES,
+    SHAPE_BREAKAWAY_SEEDED,
+    SHAPE_MATRIX_ASCENDING,
+    SHAPE_MATRIX_DESCENDING,
+    SHAPE_RESUME,
+    SHAPE_ROBUSTNESS_REVERSAL,
+)
+
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
 
@@ -140,7 +149,13 @@ class VelocityIntegralAssembler:
         if self.workflow_plan is not None:
             raise VelocityIntegralProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (0, 1, 2, 3, 4):
+        if shape not in (
+            SHAPE_RESUME,
+            SHAPE_MATRIX_ASCENDING,
+            SHAPE_MATRIX_DESCENDING,
+            SHAPE_BREAKAWAY_SEEDED,
+            SHAPE_ROBUSTNESS_REVERSAL,
+        ):
             raise VelocityIntegralProtocolError("invalid workflow shape")
         if int(params["maximum_workflow_ms"]) < int(params["nominal_workflow_ms"]):
             raise VelocityIntegralProtocolError("workflow maximum is below nominal")
@@ -286,7 +301,7 @@ class VelocityIntegralAssembler:
             self.plan is not None
             and int(self.plan["schema_revision"]) >= 8
             and self.workflow_plan is not None
-            and int(self.workflow_plan["shape"]) == 3
+            and int(self.workflow_plan["shape"]) == SHAPE_BREAKAWAY_SEEDED
         )
         if outcome_name == "complete" and not reproduction_available and not breakaway:
             raise VelocityIntegralProtocolError(
@@ -368,7 +383,7 @@ class VelocityIntegralAssembler:
             # carries the breakaway schema under the resume shape. The campaign is
             # no longer the only way to reach schema 14.
             workflow_shape = int(self.workflow_plan["shape"])
-            if workflow_shape not in (3, 0):
+            if workflow_shape not in (SHAPE_BREAKAWAY_SEEDED, SHAPE_RESUME):
                 raise VelocityIntegralProtocolError(
                     "breakaway velocity-integral plan requires breakaway workflow"
                 )
@@ -430,12 +445,6 @@ class VelocityIntegralAssembler:
 # value unchanged. It never selects a rung, changes a family size, retries a
 # candidate, or synthesizes a value firmware did not send -- see
 # tests/test_velocity_integral.py's dumb-host proof tests.
-
-BREAKAWAY_PHASE_NAMES = {
-    0: "breakaway_probe",
-    1: "proportional_response_discovery",
-    2: "proportional_band_confirmation",
-}
 
 STAGE_C_CAUSE_EVIDENCE_INTEGRITY = 4
 STAGE_C_CAUSE_REPRODUCTION_MISMATCH = 6

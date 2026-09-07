@@ -3,6 +3,7 @@
 import struct
 
 import pytest
+from klipper_foci._vocabulary_generated import ACTION_CODES
 from klipper_foci.acceptance_matrix import (
     MATRIX_ORDER_ASCENDING,
     AcceptanceMatrixAssembler,
@@ -169,6 +170,21 @@ def test_unknown_action_rejects_before_any_mcu_command():
     driver = ready_driver()
     with pytest.raises(CommandError, match="unknown ACTION"):
         driver.autotune.autotune(MockGCmd({"ACTION": "pick_p_1024"}))
+    assert driver.protocol.commands.tune.last_args is None
+
+
+def test_action_codes_admit_only_live_actions():
+    assert set(ACTION_CODES.values()) == {1, 2, 7, 8, 9}
+    assert set(ACTION_CODES.values()).isdisjoint({0, 3, 4, 5, 6})
+
+
+@pytest.mark.parametrize(
+    "selector", ("combined", "combined_mirrored", "combined_paired", "pick_p_1024")
+)
+def test_reserved_selectors_issue_no_mcu_command(selector):
+    driver = ready_driver()
+    with pytest.raises(CommandError, match="unknown ACTION"):
+        driver.autotune.autotune(MockGCmd({"ACTION": selector}))
     assert driver.protocol.commands.tune.last_args is None
 
 

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import logging
 
+from ._vocabulary_generated import (
+    SHAPE_BREAKAWAY_SEEDED,
+    SHAPE_MATRIX_ASCENDING,
+    SHAPE_MATRIX_DESCENDING,
+    SHAPE_ROBUSTNESS_REVERSAL,
+)
 from .acceptance_matrix import (
     ACTION_CODES,
     AcceptanceMatrixAssembler,
@@ -177,7 +183,7 @@ class AutotuneWorkflow:
         if (
             method_name == "handle_plan_core"
             and workflow is not None
-            and int(workflow["shape"]) == 3
+            and int(workflow["shape"]) == SHAPE_BREAKAWAY_SEEDED
             and not (self.breakaway_campaign.done and self.breakaway_campaign.accepted)
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
@@ -197,7 +203,7 @@ class AutotuneWorkflow:
         if (
             method_name == "handle_plan_rung"
             and workflow is not None
-            and int(workflow["shape"]) == 3
+            and int(workflow["shape"]) == SHAPE_BREAKAWAY_SEEDED
             and self.velocity_integral.plan is not None
             and int(self.velocity_integral.plan["plan_digest"])
             != self.breakaway_campaign.stage_c_plan_digest
@@ -211,7 +217,7 @@ class AutotuneWorkflow:
         if self.breakaway_campaign_error is not None:
             return
         workflow = self.velocity_integral.workflow_plan
-        if workflow is None or int(workflow["shape"]) != 3:
+        if workflow is None or int(workflow["shape"]) != SHAPE_BREAKAWAY_SEEDED:
             self.breakaway_campaign_error = BreakawayCampaignProtocolError(
                 "breakaway campaign evidence arrived without a breakaway workflow plan"
             )
@@ -223,13 +229,13 @@ class AutotuneWorkflow:
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         shape = int(params.get("shape", -1))
-        if shape in (1, 2):
+        if shape in (SHAPE_MATRIX_ASCENDING, SHAPE_MATRIX_DESCENDING):
             try:
                 self.acceptance_matrix.handle_workflow_plan(params)
             except AcceptanceMatrixProtocolError as err:
                 self.acceptance_matrix_error = err
             return
-        if shape == 4:
+        if shape == SHAPE_ROBUSTNESS_REVERSAL:
             # Robustness reversal: record the run's worst-case duration so the
             # wait loop arms its extended timeout. It does not feed the
             # acceptance-matrix or velocity-integral assemblers.
@@ -348,7 +354,7 @@ class AutotuneWorkflow:
             # terminal is still terminal, and nothing else will follow it.
             return self.velocity_integral.done
         shape = int(workflow["shape"])
-        if shape == 3:
+        if shape == SHAPE_BREAKAWAY_SEEDED:
             # The breakaway campaign's own campaign terminal is the only
             # phase-independent completion signal. A non-accept terminal ends
             # the workflow immediately; an accepted one only finishes once the
