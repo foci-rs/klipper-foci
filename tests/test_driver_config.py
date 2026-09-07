@@ -1195,6 +1195,24 @@ def test_homing_config_rejects_out_of_range(values):
         make_config_driver(printer, sections, "foci stepper_x")
 
 
+@pytest.mark.parametrize(
+    "values,field_name,expected",
+    [
+        ({"stall_distance": "10.0"}, "stall_distance", 10.0),
+        ({"stall_persistence": "1"}, "stall_persistence", 1),
+        ({"stall_persistence": "255"}, "stall_persistence", 255),
+        ({"homing_current": "2.2999"}, "homing_current", 2.2999),
+    ],
+)
+def test_homing_config_accepts_boundary_values(values, field_name, expected):
+    printer, _chips, sections, _config = make_foci_config(
+        stepper_values={"rotation_distance": 40.0},
+        foci_values={"run_current": 2.3, **values},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    assert getattr(driver.config, field_name) == expected
+
+
 def test_homing_current_zero_opts_out():
     printer, _chips, sections, _config = make_foci_config(foci_values={"homing_current": "0"})
     driver = make_config_driver(printer, sections, "foci stepper_x")
