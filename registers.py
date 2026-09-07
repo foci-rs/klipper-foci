@@ -191,6 +191,7 @@ REGISTERS: dict[str, int] = {
     "ADC_VM_RAW": 0x87,
     "VELOCITY_FF_CLAMP_LATCHED": 0x88,
     "VELOCITY_FF_CLAMP_COUNT": 0x89,
+    "CONFIG_BIQUAD_X_ENABLE": 0x8A,
 }
 
 
@@ -401,6 +402,10 @@ Fields["CONFIG_ADVANCED_PI_REPRESENT"] = {
     "position_p_q4_12": 1 << 5,
 }
 
+Fields["CONFIG_BIQUAD_X_ENABLE"] = {
+    "biquad_x_enable": 0xFFFFFFFF,
+}
+
 SIGNED_FIELDS: list[str] = [
     "adc_i0_scale",
     "adc_i1_scale",
@@ -484,6 +489,7 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         [
             "PID_POSITION_TARGET",
             "PID_POSITION_ACTUAL",
+            "CONFIG_BIQUAD_X_ENABLE",
         ],
     ),
     (

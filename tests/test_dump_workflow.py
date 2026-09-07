@@ -798,3 +798,17 @@ def test_dump_reports_homing_stall_state():
     assert (
         "homing clamp_active=0 last_stall latched=1 peak_error_units=1234 trigger_tick=7" in output
     )
+
+
+def test_dump_reports_position_filter_enable():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    assert REGISTERS["CONFIG_BIQUAD_X_ENABLE"] == 0x8A
+
+    disabled, _calls = _run_dump(driver, values={REGISTERS["CONFIG_BIQUAD_X_ENABLE"]: 0})
+    line = next(row for row in disabled.splitlines() if "CONFIG_BIQUAD_X_ENABLE" in row)
+    assert "00000000" in line
+    assert "biquad_x_enable=" not in line
+
+    enabled, _calls = _run_dump(driver, values={REGISTERS["CONFIG_BIQUAD_X_ENABLE"]: 1})
+    assert "biquad_x_enable=1" in enabled
