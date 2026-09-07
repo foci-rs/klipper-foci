@@ -12,6 +12,7 @@ from klipper_foci.config import (
     RuntimeValidationResult,
     gain_to_permille,
     parse_driver_config,
+    stall_threshold_units,
     validate_runtime_config,
 )
 
@@ -32,6 +33,9 @@ CONFIG_FIELD_NAMES = {
     "encoder_ppr",
     "voltage_limit",
     "encoder_reversed",
+    "homing_current",
+    "stall_distance",
+    "stall_persistence",
     "rotation_distance",
     "microsteps",
     "full_steps",
@@ -1157,3 +1161,41 @@ def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
     assert "rotation_distance=40" in output
     assert "remove legacy hand compensation" in output
     assert "compare rotation_distance with the actual transmission before enabling motion" in output
+
+
+def test_homing_defaults_and_threshold_units():
+    printer, _chips, sections, _config = make_foci_config(
+        stepper_values={"rotation_distance": 40.0}
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    cfg = driver.config
+    assert cfg.homing_current == 0.7
+    assert cfg.stall_distance == 0.5
+    assert cfg.stall_persistence == 3
+    assert stall_threshold_units(cfg) == 819
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"homing_current": "2.3"},
+        {"homing_current": "-0.1"},
+        {"stall_distance": "0"},
+        {"stall_distance": "10.1"},
+        {"stall_persistence": "0"},
+        {"stall_persistence": "256"},
+    ],
+)
+def test_homing_config_rejects_out_of_range(values):
+    with pytest.raises(CommandError):
+        printer, _chips, sections, _config = make_foci_config(
+            stepper_values={"rotation_distance": 40.0},
+            foci_values={"run_current": 2.3, **values},
+        )
+        make_config_driver(printer, sections, "foci stepper_x")
+
+
+def test_homing_current_zero_opts_out():
+    printer, _chips, sections, _config = make_foci_config(foci_values={"homing_current": "0"})
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    assert driver.config.homing_current == 0.0

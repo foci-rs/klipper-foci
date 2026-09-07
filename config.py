@@ -19,6 +19,11 @@ FILTER_MIN_HZ = 10
 MOTION_FILTER_MAX_HZ = 1000
 CURRENT_FILTER_MAX_HZ = 6000
 MAX_ENCODER_PPR = 0x3FFF_FFFF
+DEFAULT_HOMING_CURRENT_AMPS = 0.7
+DEFAULT_STALL_DISTANCE_MM = 0.5
+DEFAULT_STALL_PERSISTENCE_TICKS = 3
+MAX_STALL_PERSISTENCE_TICKS = 255
+POSITION_UNITS_PER_REV = 65536
 
 
 def gain_to_permille(gain: float) -> int:
@@ -36,6 +41,9 @@ class FociDriverConfig:
     encoder_ppr: int
     voltage_limit: int
     encoder_reversed: bool
+    homing_current: float
+    stall_distance: float
+    stall_persistence: int
     rotation_distance: float
     microsteps: int
     full_steps: int
@@ -278,6 +286,22 @@ def parse_driver_config(config) -> FociDriverConfig:
         "encoder_direction",
         {"default": False, "reversed": True},
         default="default",
+    )
+
+    homing_current = config.getfloat(
+        "homing_current", DEFAULT_HOMING_CURRENT_AMPS, minval=0.0, maxval=MAX_RUN_CURRENT_AMPS
+    )
+    if homing_current > 0.0 and homing_current >= run_current:
+        raise config.error(
+            f"homing_current {homing_current:.3f} in [{name}] must be below run_current "
+            f"{run_current:.3f} (or 0 to disable the homing clamp)"
+        )
+    stall_distance = config.getfloat("stall_distance", DEFAULT_STALL_DISTANCE_MM, above=0.0)
+    stall_persistence = config.getint(
+        "stall_persistence",
+        DEFAULT_STALL_PERSISTENCE_TICKS,
+        minval=1,
+        maxval=MAX_STALL_PERSISTENCE_TICKS,
     )
 
     pid_flux_p = config.getint("pid_flux_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
@@ -542,6 +566,11 @@ def parse_driver_config(config) -> FociDriverConfig:
     microsteps = stepper_config.getint("microsteps")
     full_steps = stepper_config.getint("full_steps_per_rotation", 200)
     rotation_distance = stepper_config.getfloat("rotation_distance", above=0.0)
+    if stall_distance > rotation_distance / 4.0:
+        raise config.error(
+            f"stall_distance {stall_distance:.3f} in [{name}] must be at most a quarter of "
+            f"rotation_distance ({rotation_distance / 4.0:.3f})"
+        )
     planner_steps_per_rev = microsteps * full_steps
     if not 1 <= planner_steps_per_rev <= 16_777_216:
         raise config.error(
@@ -566,6 +595,9 @@ def parse_driver_config(config) -> FociDriverConfig:
         encoder_ppr=encoder_ppr,
         voltage_limit=voltage_limit,
         encoder_reversed=encoder_reversed,
+        homing_current=homing_current,
+        stall_distance=stall_distance,
+        stall_persistence=stall_persistence,
         rotation_distance=rotation_distance,
         microsteps=microsteps,
         full_steps=full_steps,
@@ -717,6 +749,11 @@ def parse_driver_config(config) -> FociDriverConfig:
         autotune_band_upper_percent=autotune_band_upper_percent,
         autotune_band_position_q=autotune_band_position_q,
     )
+
+
+def stall_threshold_units(config: FociDriverConfig) -> int:
+    """Convert stall_distance to TMC position units (65536 per revolution)."""
+    return max(1, round(config.stall_distance / config.rotation_distance * POSITION_UNITS_PER_REV))
 
 
 def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult:
