@@ -90,6 +90,8 @@ class FociMcuCommands:
         self.set_auto_calibrate_on_enable = None
         self.dev_tmc_write_register = None
         self.dev_tmc_read_register = None
+        self.config_homing = None
+        self.query_stall = None
 
     def bind(self, driver, mcu, oid: int) -> None:
         """Bind MCU command handles and response callbacks for one FOCI OID."""
@@ -254,6 +256,15 @@ class FociMcuCommands:
             mcu,
             "tmc_read_register oid=%c addr=%c",
             "tmc_register_value oid=%c addr=%c value=%u",
+            oid=oid,
+        )
+        self.config_homing = mcu.lookup_command(
+            "foci_config_homing oid=%c homing_ma=%u stall_units=%u persistence=%c"
+        )
+        self.query_stall = mcu.lookup_query_command(
+            "foci_stall_query oid=%c",
+            "foci_stall_result oid=%c latched=%c peak_error_units=%u"
+            " trigger_tick=%u clamp_active=%c",
             oid=oid,
         )
 

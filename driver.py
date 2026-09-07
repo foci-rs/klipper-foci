@@ -14,6 +14,7 @@ from .config import (
     check_autotune_staleness,
     gain_to_permille,
     parse_driver_config,
+    stall_threshold_units,
     validate_runtime_config,
 )
 from .controls import (
@@ -212,6 +213,11 @@ class FociDriver:
                 gain_to_permille(settings.velocity_feedforward_gain),
             ),
             velocity_limit=settings.pid_velocity_limit,
+            homing=(
+                round(parsed.homing_current * 1000.0),
+                stall_threshold_units(parsed),
+                parsed.stall_persistence,
+            ),
         )
         self._report_motion_scale_mapping()
         validation = validate_runtime_config(self.config)

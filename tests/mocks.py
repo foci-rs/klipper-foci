@@ -462,6 +462,10 @@ class MockMCU:
                     "status": 0,
                 }
             )
+        if _send_fmt == "foci_stall_query oid=%c":
+            return MockCommand(
+                {"latched": 1, "peak_error_units": 1234, "trigger_tick": 7, "clamp_active": 0}
+            )
         return MockCommand()
 
     def get_constants(self):

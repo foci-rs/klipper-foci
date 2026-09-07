@@ -291,6 +291,7 @@ class FociProtocol:
         position_gains: tuple[int, int, int, int] | None,
         velocity_feedforward: tuple[bool, int],
         velocity_limit: int | None,
+        homing: tuple[int, int, int],
     ) -> None:
         """Apply connect-time firmware configuration in the existing order."""
         self.set_current(current_ma)
@@ -319,6 +320,7 @@ class FociProtocol:
             self.set_velocity_feedforward(True, gain_permille)
         if velocity_limit is not None:
             self.set_velocity_limit(velocity_limit)
+        self.configure_homing(*homing)
 
     def set_auto_calibrate_on_enable(self, allowed: bool) -> None:
         self.commands.set_auto_calibrate_on_enable.send([self.driver.oid, int(allowed)])
@@ -406,3 +408,15 @@ class FociProtocol:
 
     def dump_registers(self) -> None:
         self.commands.dump_registers.send([self.driver.oid])
+
+    def configure_homing(self, homing_ma: int, stall_units: int, persistence: int) -> None:
+        self.commands.config_homing.send([self.driver.oid, homing_ma, stall_units, persistence])
+
+    def query_stall(self) -> dict[str, int]:
+        response = self.commands.query_stall.send([self.driver.oid])
+        if response is None:
+            raise self.driver.printer.command_error("FOCI stall query returned no data")
+        return {
+            key: int(response[key])
+            for key in ("latched", "peak_error_units", "trigger_tick", "clamp_active")
+        }
