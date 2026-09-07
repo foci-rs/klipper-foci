@@ -1,12 +1,12 @@
-"""Strict relay for firmware-authored fixed-I confidence matrices."""
+"""Strict relay for firmware-authored fixed-I fixed-gain amplitude validation runs."""
 
 from __future__ import annotations
 
 import itertools
 import struct
 
-# Firmware also defines mirrored matrix actions (wire 3 and 4). They are
-# removed and reserved. A mirrored matrix run could produce a better
+# Firmware also defines mirrored amplitude actions (wire 3 and 4). They are
+# removed and reserved. A mirrored amplitude run could produce a better
 # shared floor and would then function as a favourable re-roll of a spent
 # retention lifecycle, so firmware never decodes them via
 # `AutotuneAction::from_u8`, and the host cannot even name them since
@@ -15,21 +15,21 @@ import struct
 # breakaway_seeded is the production and measurement path.
 from ._vocabulary_generated import (
     ACTION_CODES,
-    SHAPE_MATRIX_ASCENDING,
-    SHAPE_MATRIX_DESCENDING,
-    WORKFLOW_SHAPE_TO_MATRIX_ORDER,
+    SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
+    SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
+    WORKFLOW_SHAPE_TO_AMPLITUDE_ORDER,
 )
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-MATRIX_SCHEMA_REVISION = 7
-MATRIX_SCHEMA_REVISIONS = (1, 2, 3, 4, 5, 6, MATRIX_SCHEMA_REVISION)
+AMPLITUDE_SCHEMA_REVISION = 7
+AMPLITUDE_SCHEMA_REVISIONS = (1, 2, 3, 4, 5, 6, AMPLITUDE_SCHEMA_REVISION)
 PLAN_REPLY_FRAGMENTS = 2
-MATRIX_AMPLITUDE_COUNT = 5
-MATRIX_EXPECTED_OBSERVATIONS = 40
-MATRIX_MASK = (1 << MATRIX_AMPLITUDE_COUNT) - 1
-MATRIX_ORDER_ASCENDING = 1
-MATRIX_ORDER_DESCENDING = 2
+AMPLITUDE_COUNT = 5
+AMPLITUDE_EXPECTED_OBSERVATIONS = 40
+AMPLITUDE_MASK = (1 << AMPLITUDE_COUNT) - 1
+AMPLITUDE_ORDER_ASCENDING = 1
+AMPLITUDE_ORDER_DESCENDING = 2
 SLOT_ORDER_FORWARD_FIRST = 0
 SLOT_ORDER_REVERSE_FIRST = 1
 
@@ -45,7 +45,7 @@ CAUSE_NAMES = {
     2: "recovery_unavailable",
     3: "missing_acceptance_point",
     4: "acceptance_point_identity_mismatch",
-    5: "matrix_order_mismatch",
+    5: "amplitude_order_mismatch",
     6: "evidence_capacity",
     7: "evidence_integrity",
     53: "velocity_rest_not_confirmed",
@@ -56,8 +56,8 @@ _PLAN_V2 = struct.Struct("<HIBQQHH5hHHBIIQQ")
 _TERMINAL = struct.Struct("<HIHBBQQ8sHBH")
 
 
-class AcceptanceMatrixProtocolError(Exception):
-    """Raised when a compact matrix relay violates its wire contract."""
+class FixedGainAmplitudeProtocolError(Exception):
+    """Raised when a compact amplitude relay violates its wire contract."""
 
 
 def parse_autotune_action(value: str | None) -> int:
@@ -66,7 +66,7 @@ def parse_autotune_action(value: str | None) -> int:
     try:
         return ACTION_CODES[name]
     except KeyError as err:
-        raise AcceptanceMatrixProtocolError(
+        raise FixedGainAmplitudeProtocolError(
             f"unknown ACTION '{name}' (expected: {', '.join(sorted(ACTION_CODES))})"
         ) from err
 
@@ -83,20 +83,20 @@ def _raw_payload(params: dict, kind: str) -> bytes:
     try:
         return bytes(params["payload"])
     except (KeyError, TypeError, ValueError) as err:
-        raise AcceptanceMatrixProtocolError(f"{kind} payload is missing") from err
+        raise FixedGainAmplitudeProtocolError(f"{kind} payload is missing") from err
 
 
 def _payload(params: dict, size: int, kind: str) -> bytes:
     payload = _raw_payload(params, kind)
     if len(payload) != size:
-        raise AcceptanceMatrixProtocolError(
+        raise FixedGainAmplitudeProtocolError(
             f"{kind} payload has {len(payload)} bytes, expected {int(size)}"
         )
     return payload
 
 
-class AcceptanceMatrixAssembler:
-    """Validate and relay one firmware-authored matrix without re-deciding it."""
+class FixedGainAmplitudeAssembler:
+    """Validate and relay one firmware-authored amplitude without re-deciding it."""
 
     def __init__(self) -> None:
         self.workflow_plan: dict | None = None
@@ -108,7 +108,7 @@ class AcceptanceMatrixAssembler:
 
     @property
     def maximum_duration_s(self) -> float | None:
-        """Return the disclosed fixed matrix timeout."""
+        """Return the disclosed fixed amplitude timeout."""
         if self.workflow_plan is None:
             return None
         return self.workflow_plan["maximum_workflow_ms"] / 1000.0
@@ -128,10 +128,13 @@ class AcceptanceMatrixAssembler:
 
     def handle_workflow_plan(self, params: dict) -> None:
         if self.workflow_plan is not None:
-            raise AcceptanceMatrixProtocolError("duplicate workflow plan")
+            raise FixedGainAmplitudeProtocolError("duplicate workflow plan")
         shape = int(params.get("shape", -1))
-        if shape not in (SHAPE_MATRIX_ASCENDING, SHAPE_MATRIX_DESCENDING):
-            raise AcceptanceMatrixProtocolError("invalid matrix workflow shape")
+        if shape not in (
+            SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
+            SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
+        ):
+            raise FixedGainAmplitudeProtocolError("invalid amplitude workflow shape")
         duration = (
             int(params["nominal_workflow_ms"]),
             int(params["maximum_workflow_ms"]),
@@ -139,7 +142,7 @@ class AcceptanceMatrixAssembler:
         expected = self.workflow_digest_halves(params)
         reported = (int(params["digest_low"]), int(params["digest_high"]))
         if reported != expected:
-            raise AcceptanceMatrixProtocolError("workflow digest mismatch")
+            raise FixedGainAmplitudeProtocolError("workflow digest mismatch")
         self.workflow_plan = {
             "run_sequence": int(params["run_sequence"]),
             "shape": shape,
@@ -155,14 +158,14 @@ class AcceptanceMatrixAssembler:
         as ``PLAN_REPLY_FRAGMENTS`` equal fragments. Retained single-message
         captures predate fragmentation and carry no ``fragment`` field.
         """
-        payload = _raw_payload(params, "matrix plan")
+        payload = _raw_payload(params, "amplitude plan")
         if "fragment" not in params:
             self._plan_fragments = []
             return payload
         fragment = int(params["fragment"])
         if fragment != len(self._plan_fragments):
             self._plan_fragments = []
-            raise AcceptanceMatrixProtocolError("reordered matrix plan fragment")
+            raise FixedGainAmplitudeProtocolError("reordered amplitude plan fragment")
         self._plan_fragments.append(payload)
         if len(self._plan_fragments) < PLAN_REPLY_FRAGMENTS:
             return None
@@ -172,14 +175,14 @@ class AcceptanceMatrixAssembler:
 
     def handle_plan(self, params: dict) -> None:
         if self.plan is not None:
-            raise AcceptanceMatrixProtocolError("duplicate matrix plan")
+            raise FixedGainAmplitudeProtocolError("duplicate amplitude plan")
         if self.workflow_plan is None:
-            raise AcceptanceMatrixProtocolError("matrix plan arrived before workflow")
+            raise FixedGainAmplitudeProtocolError("amplitude plan arrived before workflow")
         payload = self._collect_plan_payload(params)
         if payload is None:
             return
         if len(payload) < 2:
-            raise AcceptanceMatrixProtocolError("matrix plan payload is truncated")
+            raise FixedGainAmplitudeProtocolError("amplitude plan payload is truncated")
         schema = struct.unpack_from("<H", payload)[0]
         plan_struct = {
             1: _PLAN_V1,
@@ -191,10 +194,10 @@ class AcceptanceMatrixAssembler:
             7: _PLAN_V2,
         }.get(schema)
         if plan_struct is None:
-            raise AcceptanceMatrixProtocolError("unsupported matrix schema")
+            raise FixedGainAmplitudeProtocolError("unsupported amplitude schema")
         if len(payload) != plan_struct.size:
-            raise AcceptanceMatrixProtocolError(
-                f"matrix plan payload has {len(payload)} bytes, expected {int(plan_struct.size)}"
+            raise FixedGainAmplitudeProtocolError(
+                f"amplitude plan payload has {len(payload)} bytes, expected {int(plan_struct.size)}"
             )
         unpacked = plan_struct.unpack(payload)
         (
@@ -207,39 +210,39 @@ class AcceptanceMatrixAssembler:
             selected_i,
             *tail,
         ) = unpacked
-        targets = tuple(tail[:MATRIX_AMPLITUDE_COUNT])
+        targets = tuple(tail[:AMPLITUDE_COUNT])
         family_size, observations, amplitude_count, nominal_ms, maximum_ms = tail[
-            MATRIX_AMPLITUDE_COUNT : MATRIX_AMPLITUDE_COUNT + 5
+            AMPLITUDE_COUNT : AMPLITUDE_COUNT + 5
         ]
-        recovery_lower_rate_q = None if schema == 1 else tuple(tail[MATRIX_AMPLITUDE_COUNT + 5 :])
+        recovery_lower_rate_q = None if schema == 1 else tuple(tail[AMPLITUDE_COUNT + 5 :])
         # From schema 5 the amplitude order occupies the low nibble and the slot
         # order the high one. Forward-first encodes as zero, so earlier schemas
         # decode unchanged.
         amplitude_order = order & 0x0F
         slot_order = order >> 4
-        if amplitude_order not in (MATRIX_ORDER_ASCENDING, MATRIX_ORDER_DESCENDING):
-            raise AcceptanceMatrixProtocolError("invalid matrix amplitude order")
+        if amplitude_order not in (AMPLITUDE_ORDER_ASCENDING, AMPLITUDE_ORDER_DESCENDING):
+            raise FixedGainAmplitudeProtocolError("invalid amplitude order")
         if slot_order not in (SLOT_ORDER_FORWARD_FIRST, SLOT_ORDER_REVERSE_FIRST):
-            raise AcceptanceMatrixProtocolError("invalid matrix slot order")
+            raise FixedGainAmplitudeProtocolError("invalid amplitude slot order")
         order = amplitude_order
-        expected_order = WORKFLOW_SHAPE_TO_MATRIX_ORDER[int(self.workflow_plan["shape"])]
+        expected_order = WORKFLOW_SHAPE_TO_AMPLITUDE_ORDER[int(self.workflow_plan["shape"])]
         if run_sequence != self.workflow_plan["run_sequence"]:
-            raise AcceptanceMatrixProtocolError("matrix plan run sequence changed")
+            raise FixedGainAmplitudeProtocolError("amplitude plan run sequence changed")
         if order != expected_order:
-            raise AcceptanceMatrixProtocolError("matrix order disagrees with workflow")
+            raise FixedGainAmplitudeProtocolError("amplitude order disagrees with workflow")
         ordered = (
             all(left < right for left, right in itertools.pairwise(targets))
-            if order == MATRIX_ORDER_ASCENDING
+            if order == AMPLITUDE_ORDER_ASCENDING
             else all(left > right for left, right in itertools.pairwise(targets))
         )
         if not ordered or any(target <= 0 for target in targets):
-            raise AcceptanceMatrixProtocolError("invalid matrix target order")
+            raise FixedGainAmplitudeProtocolError("invalid amplitude target order")
         if plan_digest == 0 or acceptance_digest == 0 or selected_p == 0 or selected_i == 0:
-            raise AcceptanceMatrixProtocolError("matrix authority is incomplete")
+            raise FixedGainAmplitudeProtocolError("amplitude authority is incomplete")
         if schema >= 2 and (
             recovery_lower_rate_q is None or any(value == 0 for value in recovery_lower_rate_q)
         ):
-            raise AcceptanceMatrixProtocolError("matrix recovery authority is incomplete")
+            raise FixedGainAmplitudeProtocolError("amplitude recovery authority is incomplete")
         self.plan = {
             "schema_revision": schema,
             "run_sequence": run_sequence,
@@ -260,8 +263,8 @@ class AcceptanceMatrixAssembler:
 
     def handle_terminal(self, params: dict) -> None:
         if self.terminal is not None:
-            raise AcceptanceMatrixProtocolError("duplicate terminal")
-        unpacked = _TERMINAL.unpack(_payload(params, _TERMINAL.size, "matrix terminal"))
+            raise FixedGainAmplitudeProtocolError("duplicate terminal")
+        unpacked = _TERMINAL.unpack(_payload(params, _TERMINAL.size, "amplitude terminal"))
         (
             schema,
             run_sequence,
@@ -275,12 +278,12 @@ class AcceptanceMatrixAssembler:
             emitted_amplitudes,
             qualifier_bits,
         ) = unpacked
-        if schema not in MATRIX_SCHEMA_REVISIONS:
-            raise AcceptanceMatrixProtocolError("unsupported matrix schema")
+        if schema not in AMPLITUDE_SCHEMA_REVISIONS:
+            raise FixedGainAmplitudeProtocolError("unsupported amplitude schema")
         if self.plan is not None and schema != self.plan["schema_revision"]:
-            raise AcceptanceMatrixProtocolError("matrix terminal schema disagrees with plan")
+            raise FixedGainAmplitudeProtocolError("amplitude terminal schema disagrees with plan")
         if outcome not in OUTCOME_NAMES or cause not in CAUSE_NAMES:
-            raise AcceptanceMatrixProtocolError("invalid matrix terminal taxonomy")
+            raise FixedGainAmplitudeProtocolError("invalid amplitude terminal taxonomy")
         expected_causes = {
             0: {0},
             1: {1, 2, 53},
@@ -288,53 +291,57 @@ class AcceptanceMatrixAssembler:
             3: {3, 4, 5, 7},
         }
         if cause not in expected_causes[outcome]:
-            raise AcceptanceMatrixProtocolError("matrix outcome and cause disagree")
+            raise FixedGainAmplitudeProtocolError("amplitude outcome and cause disagree")
         masks = tuple(packed_masks)
-        if any(mask & ~MATRIX_MASK for mask in masks):
-            raise AcceptanceMatrixProtocolError("matrix mask exceeds five amplitudes")
+        if any(mask & ~AMPLITUDE_MASK for mask in masks):
+            raise FixedGainAmplitudeProtocolError("amplitude mask exceeds five amplitudes")
         attempted = masks[0:2]
         eligible = masks[2:4]
         current = masks[4:6]
         unattempted = masks[6:8]
         for direction in range(2):
             if eligible[direction] & ~attempted[direction]:
-                raise AcceptanceMatrixProtocolError("eligible mask was not attempted")
+                raise FixedGainAmplitudeProtocolError("eligible mask was not attempted")
             if current[direction] & ~attempted[direction]:
-                raise AcceptanceMatrixProtocolError("current-terminus mask was not attempted")
+                raise FixedGainAmplitudeProtocolError("current-terminus mask was not attempted")
             if attempted[direction] & unattempted[direction]:
-                raise AcceptanceMatrixProtocolError("attempted and unattempted masks overlap")
-            if outcome != 3 and attempted[direction] | unattempted[direction] != MATRIX_MASK:
-                raise AcceptanceMatrixProtocolError(
+                raise FixedGainAmplitudeProtocolError("attempted and unattempted masks overlap")
+            if outcome != 3 and attempted[direction] | unattempted[direction] != AMPLITUDE_MASK:
+                raise FixedGainAmplitudeProtocolError(
                     "attempted and unattempted masks do not cover the plan"
                 )
-        if emitted_observations > MATRIX_EXPECTED_OBSERVATIONS:
-            raise AcceptanceMatrixProtocolError("too many matrix observations")
-        if emitted_amplitudes > MATRIX_AMPLITUDE_COUNT:
-            raise AcceptanceMatrixProtocolError("too many matrix amplitudes")
+        if emitted_observations > AMPLITUDE_EXPECTED_OBSERVATIONS:
+            raise FixedGainAmplitudeProtocolError("too many amplitude observations")
+        if emitted_amplitudes > AMPLITUDE_COUNT:
+            raise FixedGainAmplitudeProtocolError("too many amplitudes")
 
         if outcome == 3:
             if self.workflow_plan is not None or self.plan is not None:
-                raise AcceptanceMatrixProtocolError("pre-motion failure followed matrix disclosure")
+                raise FixedGainAmplitudeProtocolError(
+                    "pre-motion failure followed amplitude disclosure"
+                )
             if plan_digest != 0 or digest != 0:
-                raise AcceptanceMatrixProtocolError("pre-motion failure carried evidence digests")
+                raise FixedGainAmplitudeProtocolError("pre-motion failure carried evidence digests")
             if any(masks) or emitted_observations or emitted_amplitudes:
-                raise AcceptanceMatrixProtocolError("pre-motion failure carried matrix evidence")
+                raise FixedGainAmplitudeProtocolError(
+                    "pre-motion failure carried amplitude evidence"
+                )
             if evidence_sequence != 0:
-                raise AcceptanceMatrixProtocolError(
+                raise FixedGainAmplitudeProtocolError(
                     "pre-motion failure carried an evidence sequence"
                 )
         else:
             if self.workflow_plan is None or self.plan is None:
-                raise AcceptanceMatrixProtocolError("matrix terminal arrived before plan")
+                raise FixedGainAmplitudeProtocolError("amplitude terminal arrived before plan")
             if run_sequence != self.plan["run_sequence"]:
-                raise AcceptanceMatrixProtocolError("matrix terminal run sequence changed")
+                raise FixedGainAmplitudeProtocolError("amplitude terminal run sequence changed")
             if plan_digest != self.plan["plan_digest"]:
-                raise AcceptanceMatrixProtocolError("matrix plan digest changed")
+                raise FixedGainAmplitudeProtocolError("amplitude plan digest changed")
             if outcome == 0 and any(mask.bit_count() < 3 for mask in eligible):
-                raise AcceptanceMatrixProtocolError("complete matrix lacks directional floor")
+                raise FixedGainAmplitudeProtocolError("complete amplitude lacks directional floor")
             if evidence_sequence == 0:
-                raise AcceptanceMatrixProtocolError(
-                    "resolved matrix terminal has no evidence sequence"
+                raise FixedGainAmplitudeProtocolError(
+                    "resolved amplitude terminal has no evidence sequence"
                 )
 
         outcome_name = (
@@ -346,7 +353,7 @@ class AcceptanceMatrixAssembler:
             "evidence_sequence": evidence_sequence,
             "outcome": outcome,
             "outcome_name": outcome_name,
-            "outcome_namespace": "acceptance_matrix",
+            "outcome_namespace": "fixed_gain_amplitude",
             "cause": cause,
             "cause_name": CAUSE_NAMES[cause],
             "plan_digest": plan_digest,

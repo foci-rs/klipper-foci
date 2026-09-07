@@ -4,9 +4,9 @@ import struct
 import unittest
 from unittest.mock import patch
 
-from klipper_foci.acceptance_matrix import ACTION_CODES
 from klipper_foci.autotune import OUTER_SAFETY_FAULT_NAMES
 from klipper_foci.commissioning import format_inner_warning_flags
+from klipper_foci.fixed_gain_amplitude import ACTION_CODES
 from klipper_foci.registers import REGISTERS
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
@@ -974,9 +974,9 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIsNotNone(d.autotune.robustness_reversal_terminal)
         self.assertIsNone(d.autotune.robustness_reversal_error)
         # The robustness plan alone armed the extended timeout, not the
-        # acceptance-matrix or velocity-integral paths.
+        # fixed-gain-amplitude or velocity-integral paths.
         self.assertIsNotNone(d.autotune.robustness_workflow_plan)
-        self.assertIsNone(d.autotune.acceptance_matrix.workflow_plan)
+        self.assertIsNone(d.autotune.fixed_gain_amplitude.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
 
     def test_robustness_reject_preserves_prior_gains_and_skips_persistence(self):

@@ -7,8 +7,8 @@ import struct
 from ._vocabulary_generated import (
     BREAKAWAY_PHASE_NAMES,
     SHAPE_BREAKAWAY_SEEDED,
-    SHAPE_MATRIX_ASCENDING,
-    SHAPE_MATRIX_DESCENDING,
+    SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
+    SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
     SHAPE_RESUME,
     SHAPE_ROBUSTNESS_REVERSAL,
 )
@@ -151,8 +151,8 @@ class VelocityIntegralAssembler:
         shape = int(params.get("shape", -1))
         if shape not in (
             SHAPE_RESUME,
-            SHAPE_MATRIX_ASCENDING,
-            SHAPE_MATRIX_DESCENDING,
+            SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
+            SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
             SHAPE_BREAKAWAY_SEEDED,
             SHAPE_ROBUSTNESS_REVERSAL,
         ):

@@ -319,7 +319,7 @@ def test_commissioning_registers_timing_reply():
 def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
     """All 16 `FociBreakaway*` replies (replies.rs) must reach a live MCU's
     handler, mirroring the sibling `foci_velocity_integral_*` /
-    `foci_acceptance_matrix_*` registrations exactly."""
+    `foci_fixed_gain_amplitude_*` registrations exactly."""
     driver = make_driver()
     serial = MockSerial()
 

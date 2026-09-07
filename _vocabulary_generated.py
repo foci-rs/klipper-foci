@@ -24,20 +24,20 @@ BREAKAWAY_PHASE_NAMES: dict[int, str] = {
 }
 
 ACTION_CODES: dict[str, int] = {
-    "matrix_ascending": 1,
-    "matrix_descending": 2,
+    "amplitude_up": 1,
+    "amplitude_down": 2,
     "breakaway_seeded": 7,
     "stage_c_resume": 8,
     "robustness_reversal": 9,
 }
 
 SHAPE_RESUME = 0
-SHAPE_MATRIX_ASCENDING = 1
-SHAPE_MATRIX_DESCENDING = 2
+SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING = 1
+SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING = 2
 SHAPE_BREAKAWAY_SEEDED = 3
 SHAPE_ROBUSTNESS_REVERSAL = 4
 
-WORKFLOW_SHAPE_TO_MATRIX_ORDER: dict[int, int] = {
-    SHAPE_MATRIX_ASCENDING: 1,
-    SHAPE_MATRIX_DESCENDING: 2,
+WORKFLOW_SHAPE_TO_AMPLITUDE_ORDER: dict[int, int] = {
+    SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING: 1,
+    SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING: 2,
 }

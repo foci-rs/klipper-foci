@@ -380,8 +380,8 @@ class RegisterDumpWorkflow:
             lines.append("-- Last sustained-hold gate (not persisted) --")
             lines.extend(self._format_last_current_loop_hold(last_current_loop_hold))
 
-        last_closed_loop_activation = self.driver.diagnostics.active.last_closed_loop_activation_evidence(
-            self.driver.oid
+        last_closed_loop_activation = (
+            self.driver.diagnostics.active.last_closed_loop_activation_evidence(self.driver.oid)
         )
         if last_closed_loop_activation:
             lines.append("-- Last closed-loop entry (not persisted) --")

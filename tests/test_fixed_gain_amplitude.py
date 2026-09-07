@@ -1,13 +1,13 @@
-"""Strict relay tests for fixed-I velocity confidence matrices."""
+"""Strict relay tests for fixed-I fixed-gain amplitude validation runs."""
 
 import struct
 
 import pytest
 from klipper_foci._vocabulary_generated import ACTION_CODES
-from klipper_foci.acceptance_matrix import (
-    MATRIX_ORDER_ASCENDING,
-    AcceptanceMatrixAssembler,
-    AcceptanceMatrixProtocolError,
+from klipper_foci.fixed_gain_amplitude import (
+    AMPLITUDE_ORDER_ASCENDING,
+    FixedGainAmplitudeAssembler,
+    FixedGainAmplitudeProtocolError,
     parse_autotune_action,
 )
 from klipper_foci.registers import REGISTERS
@@ -139,8 +139,8 @@ def terminal_payload(
     ("value", "expected"),
     (
         (None, 7),
-        ("matrix_ascending", 1),
-        ("matrix_descending", 2),
+        ("amplitude_up", 1),
+        ("amplitude_down", 2),
         ("stage_c_resume", 8),
         ("robustness_reversal", 9),
     ),
@@ -150,7 +150,7 @@ def test_action_mapping_is_selector_only(value, expected):
 
 
 def test_unknown_action_is_rejected():
-    with pytest.raises(AcceptanceMatrixProtocolError, match="unknown ACTION"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="unknown ACTION"):
         parse_autotune_action("pick_p_1024")
 
 
@@ -162,7 +162,7 @@ def test_removed_combined_actions_are_rejected(name):
     dropping the names from ACTION_CODES entirely, so they now fail the same
     unknown-ACTION path as any other unrecognized selector.
     """
-    with pytest.raises(AcceptanceMatrixProtocolError, match="unknown ACTION"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="unknown ACTION"):
         parse_autotune_action(name)
 
 
@@ -188,22 +188,22 @@ def test_reserved_selectors_issue_no_mcu_command(selector):
     assert driver.protocol.commands.tune.last_args is None
 
 
-def test_only_compact_matrix_replies_are_registered():
+def test_only_compact_amplitude_replies_are_registered():
     driver = make_driver()
     registrations = {
         name
         for _callback, name, oid in driver.mcu._serial.responses
-        if oid == driver.oid and "acceptance_matrix" in name
+        if oid == driver.oid and "fixed_gain_amplitude" in name
     }
     assert registrations == {
-        "foci_acceptance_matrix_plan",
-        "foci_acceptance_matrix_terminal",
+        "foci_fixed_gain_amplitude_plan",
+        "foci_fixed_gain_amplitude_terminal",
     }
 
 
 @pytest.mark.parametrize(("shape", "order"), ((1, 1), (2, 2)))
-def test_exact_plan_and_terminal_close_one_matrix(shape, order):
-    assembler = AcceptanceMatrixAssembler()
+def test_exact_plan_and_terminal_close_one_amplitude(shape, order):
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler, shape)
     targets = TARGETS if order == 1 else tuple(reversed(TARGETS))
     assembler.handle_plan({"oid": 1, "payload": plan_payload(order, targets)})
@@ -217,7 +217,7 @@ def test_exact_plan_and_terminal_close_one_matrix(shape, order):
 
 
 def test_historical_schema_one_plan_and_terminal_remain_decodable():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
 
     assembler.handle_plan({"oid": 1, "payload": plan_payload(schema=1)})
@@ -237,20 +237,20 @@ def test_schema_two_requires_exact_nonzero_recovery_bounds_and_matching_terminal
     invalid_payloads[0][0:2] = (2).to_bytes(2, "little")
 
     for payload in invalid_payloads:
-        assembler = AcceptanceMatrixAssembler()
+        assembler = FixedGainAmplitudeAssembler()
         workflow(assembler)
-        with pytest.raises(AcceptanceMatrixProtocolError):
+        with pytest.raises(FixedGainAmplitudeProtocolError):
             assembler.handle_plan({"oid": 1, "payload": bytes(payload)})
 
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     assembler.handle_plan({"oid": 1, "payload": plan_payload()})
-    with pytest.raises(AcceptanceMatrixProtocolError, match="schema"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="schema"):
         assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=1)})
 
 
 def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     params = {
         "oid": 1,
         "run_sequence": RUN_SEQUENCE,
@@ -272,7 +272,7 @@ def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
 
 
 def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     params = {
         "oid": 1,
         "run_sequence": RUN_SEQUENCE,
@@ -298,7 +298,7 @@ def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
 
     assert assembler.outcome == "inconclusive"
     assert assembler.terminal["outcome_name"] == "InconclusiveRest"
-    assert assembler.terminal["outcome_namespace"] == "acceptance_matrix"
+    assert assembler.terminal["outcome_namespace"] == "fixed_gain_amplitude"
     assert assembler.terminal["cause_name"] == "velocity_rest_not_confirmed"
 
 
@@ -310,10 +310,10 @@ def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
         (4, 60_541, 66_456),
     ),
 )
-def test_matrix_workflow_rejects_non_matrix_shapes(shape, nominal, maximum):
+def test_amplitude_workflow_rejects_non_amplitude_shapes(shape, nominal, maximum):
     """Shape is the compatibility gate. Durations are firmware-authored and
     consumed, so a schedule change must not require a host edit."""
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     params = {
         "oid": 1,
         "run_sequence": RUN_SEQUENCE,
@@ -322,7 +322,7 @@ def test_matrix_workflow_rejects_non_matrix_shapes(shape, nominal, maximum):
         "maximum_workflow_ms": maximum,
     }
     params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
-    with pytest.raises(AcceptanceMatrixProtocolError):
+    with pytest.raises(FixedGainAmplitudeProtocolError):
         assembler.handle_workflow_plan(params)
 
 
@@ -335,18 +335,18 @@ def test_plan_rejects_wrong_order_target_geometry_and_counts():
         plan_payload(targets=(16, 33, 66, 132, 132)),
     )
     for payload in cases:
-        assembler = AcceptanceMatrixAssembler()
+        assembler = FixedGainAmplitudeAssembler()
         workflow(assembler)
-        with pytest.raises(AcceptanceMatrixProtocolError):
+        with pytest.raises(FixedGainAmplitudeProtocolError):
             assembler.handle_plan({"oid": 1, "payload": bytes(payload)})
 
 
 def test_terminal_rejects_duplicates_digest_mismatch_and_invalid_masks():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     assembler.handle_plan({"oid": 1, "payload": plan_payload()})
     assembler.handle_terminal({"oid": 1, "payload": terminal_payload()})
-    with pytest.raises(AcceptanceMatrixProtocolError, match="duplicate terminal"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="duplicate terminal"):
         assembler.handle_terminal({"oid": 1, "payload": terminal_payload()})
 
     for payload in (
@@ -354,23 +354,23 @@ def test_terminal_rejects_duplicates_digest_mismatch_and_invalid_masks():
         terminal_payload(eligible=(0x20, 0)),
         terminal_payload(outcome=3, cause=0),
     ):
-        candidate = AcceptanceMatrixAssembler()
+        candidate = FixedGainAmplitudeAssembler()
         workflow(candidate)
         candidate.handle_plan({"oid": 1, "payload": plan_payload()})
-        with pytest.raises(AcceptanceMatrixProtocolError):
+        with pytest.raises(FixedGainAmplitudeProtocolError):
             candidate.handle_terminal({"oid": 1, "payload": payload})
 
 
 def test_terminal_requires_complete_plan():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
-    with pytest.raises(AcceptanceMatrixProtocolError, match="before plan"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="before plan"):
         assembler.handle_terminal({"oid": 1, "payload": terminal_payload()})
 
 
 @pytest.mark.parametrize("cause", (3, 4, 5))
 def test_pre_motion_failed_terminal_is_complete_without_plan(cause):
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     assembler.handle_terminal(
         {
             "oid": 1,
@@ -393,8 +393,8 @@ def test_pre_motion_failed_terminal_is_complete_without_plan(cause):
 
 @pytest.mark.parametrize("cause", (3, 4, 5))
 def test_pre_motion_failed_terminal_rejects_nonzero_evidence_sequence(cause):
-    assembler = AcceptanceMatrixAssembler()
-    with pytest.raises(AcceptanceMatrixProtocolError, match="evidence"):
+    assembler = FixedGainAmplitudeAssembler()
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="evidence"):
         assembler.handle_terminal(
             {
                 "oid": 1,
@@ -414,18 +414,18 @@ def test_pre_motion_failed_terminal_rejects_nonzero_evidence_sequence(cause):
 
 
 def test_resolved_terminal_rejects_zero_evidence_sequence():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     assembler.handle_plan({"oid": 1, "payload": plan_payload()})
-    with pytest.raises(AcceptanceMatrixProtocolError, match="evidence"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="evidence"):
         assembler.handle_terminal({"oid": 1, "payload": terminal_payload(evidence_sequence=0)})
 
 
-def test_autotune_relays_one_complete_matrix_without_host_decisions():
+def test_autotune_relays_one_complete_amplitude_without_host_decisions():
     driver = ready_driver()
     reactor = driver.printer.get_reactor()
 
-    def finish_matrix(deadline):
+    def finish_amplitude(deadline):
         reactor._time = deadline
         params = {
             "oid": driver.oid,
@@ -435,23 +435,23 @@ def test_autotune_relays_one_complete_matrix_without_host_decisions():
             "maximum_workflow_ms": 66_456,
         }
         params["digest_low"], params["digest_high"] = (
-            driver.autotune.acceptance_matrix.workflow_digest_halves(params)
+            driver.autotune.fixed_gain_amplitude.workflow_digest_halves(params)
         )
         driver.autotune.handle_commissioning_workflow_plan(params)
-        driver.autotune.handle_acceptance_matrix_plan(
+        driver.autotune.handle_fixed_gain_amplitude_plan(
             {"oid": driver.oid, "payload": plan_payload()}
         )
-        driver.autotune.handle_acceptance_matrix_terminal(
+        driver.autotune.handle_fixed_gain_amplitude_terminal(
             {"oid": driver.oid, "payload": terminal_payload()}
         )
         return reactor._time
 
-    reactor.pause = finish_matrix
-    gcmd = MockGCmd({"ACTION": "matrix_ascending"})
+    reactor.pause = finish_amplitude
+    gcmd = MockGCmd({"ACTION": "amplitude_up"})
     driver.autotune.autotune(gcmd)
 
     assert driver.protocol.commands.tune.last_args[1] == 1
-    assert "velocity confidence matrix: complete" in gcmd.last_info
+    assert "fixed-gain amplitude validation: complete" in gcmd.last_info
 
 
 PLAN_FRAGMENT_BYTES = 33
@@ -466,7 +466,7 @@ def feed_plan_fragments(assembler, payload: bytes, *, oid: int = 1) -> None:
 
 
 def test_plan_assembles_from_two_firmware_fragments():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     payload = plan_payload()
 
@@ -478,7 +478,7 @@ def test_plan_assembles_from_two_firmware_fragments():
 
 
 def test_plan_is_incomplete_until_its_second_fragment():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     payload = plan_payload()
 
@@ -488,11 +488,11 @@ def test_plan_is_incomplete_until_its_second_fragment():
 
 
 def test_plan_rejects_a_reordered_fragment():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     payload = plan_payload()
 
-    with pytest.raises(AcceptanceMatrixProtocolError, match="reordered matrix plan fragment"):
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="reordered amplitude plan fragment"):
         assembler.handle_plan({"oid": 1, "fragment": 1, "payload": payload[PLAN_FRAGMENT_BYTES:]})
 
 
@@ -517,32 +517,32 @@ def test_breakaway_seeded_action_resolves_to_firmware_wire_code_seven():
 
 def test_schema_five_plan_unpacks_the_packed_schedule_order_byte():
     """Slot order rides in the high nibble of the amplitude-order byte."""
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
     assembler.handle_plan(
         {"oid": 1, "payload": plan_payload(0x11, TARGETS, schema=5, nominal_ms=63_041)}
     )
 
-    assert assembler.plan["order"] == MATRIX_ORDER_ASCENDING
+    assert assembler.plan["order"] == AMPLITUDE_ORDER_ASCENDING
     assert assembler.plan["slot_order"] == 1
 
 
 def test_schema_five_plan_accepts_the_unmirrored_order():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
     assembler.handle_plan(
         {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=5, nominal_ms=63_041)}
     )
 
-    assert assembler.plan["order"] == MATRIX_ORDER_ASCENDING
+    assert assembler.plan["order"] == AMPLITUDE_ORDER_ASCENDING
     assert assembler.plan["slot_order"] == 0
 
 
 def test_plan_rejects_an_unusable_packed_schedule_order_byte():
     for order_byte in (0x00, 0x03, 0x21):
-        assembler = AcceptanceMatrixAssembler()
+        assembler = FixedGainAmplitudeAssembler()
         recovery_wide_workflow(assembler)
-        with pytest.raises(AcceptanceMatrixProtocolError):
+        with pytest.raises(FixedGainAmplitudeProtocolError):
             assembler.handle_plan(
                 {
                     "oid": 1,
@@ -551,11 +551,11 @@ def test_plan_rejects_an_unusable_packed_schedule_order_byte():
             )
 
 
-def test_matrix_terminals_are_accepted_at_the_revision_firmware_emits():
+def test_amplitude_terminals_are_accepted_at_the_revision_firmware_emits():
     """Terminal validation sat at 4 while firmware emitted 5, so a live
     schema-5 terminal was rejected. Pin acceptance to the emitted revision
     rather than to a literal, so the two cannot drift apart again."""
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
     assembler.handle_plan(
         {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=5, nominal_ms=63_041)}
@@ -570,7 +570,7 @@ def test_matrix_terminals_are_accepted_at_the_revision_firmware_emits():
 
 
 def test_terminal_carries_the_evidence_sequence():
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     assembler.handle_plan({"oid": 1, "payload": plan_payload()})
     payload = struct.pack(
@@ -593,11 +593,11 @@ def test_terminal_carries_the_evidence_sequence():
     assert assembler.terminal["evidence_sequence"] == 91
 
 
-def test_matrix_schema_six_plan_and_terminal_are_accepted():
-    """Each matrix schema gate fails closed and silently, so this asserts
+def test_amplitude_schema_six_plan_and_terminal_are_accepted():
+    """Each amplitude schema gate fails closed and silently, so this asserts
     acceptance of the current firmware revision rather than the absence of a
     crash."""
-    assembler = AcceptanceMatrixAssembler()
+    assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
     assembler.handle_plan(
         {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=6, nominal_ms=63_041)}
@@ -611,8 +611,8 @@ def test_matrix_schema_six_plan_and_terminal_are_accepted():
     assert assembler.terminal["schema_revision"] == 6
 
 
-def test_matrix_schema_seven_plan_and_terminal_are_accepted():
-    assembler = AcceptanceMatrixAssembler()
+def test_amplitude_schema_seven_plan_and_terminal_are_accepted():
+    assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
     assembler.handle_plan(
         {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=7, nominal_ms=63_041)}

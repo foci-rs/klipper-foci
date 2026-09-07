@@ -6,15 +6,9 @@ import logging
 
 from ._vocabulary_generated import (
     SHAPE_BREAKAWAY_SEEDED,
-    SHAPE_MATRIX_ASCENDING,
-    SHAPE_MATRIX_DESCENDING,
+    SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
+    SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
     SHAPE_ROBUSTNESS_REVERSAL,
-)
-from .acceptance_matrix import (
-    ACTION_CODES,
-    AcceptanceMatrixAssembler,
-    AcceptanceMatrixProtocolError,
-    parse_autotune_action,
 )
 from .autotune_budget import (
     AutotuneBudgetError,
@@ -26,6 +20,12 @@ from .commissioning import (
     HARD_FAULT_CODES,
     PROFILE_MAP,
     format_inner_warning_flags,
+)
+from .fixed_gain_amplitude import (
+    ACTION_CODES,
+    FixedGainAmplitudeAssembler,
+    FixedGainAmplitudeProtocolError,
+    parse_autotune_action,
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 from .robustness_reversal import (
@@ -156,8 +156,8 @@ class AutotuneWorkflow:
         self.outer_safety_fault: dict | None = None
         self.velocity_integral = VelocityIntegralAssembler()
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
-        self.acceptance_matrix = AcceptanceMatrixAssembler()
-        self.acceptance_matrix_error: AcceptanceMatrixProtocolError | None = None
+        self.fixed_gain_amplitude = FixedGainAmplitudeAssembler()
+        self.fixed_gain_amplitude_error: FixedGainAmplitudeProtocolError | None = None
         self.breakaway_campaign = BreakawayCampaignAssembler()
         self.breakaway_campaign_error: BreakawayCampaignProtocolError | None = None
         self.robustness_reversal_terminal: dict | None = None
@@ -229,37 +229,37 @@ class AutotuneWorkflow:
 
     def handle_commissioning_workflow_plan(self, params: dict) -> None:
         shape = int(params.get("shape", -1))
-        if shape in (SHAPE_MATRIX_ASCENDING, SHAPE_MATRIX_DESCENDING):
+        if shape in (SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING, SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING):
             try:
-                self.acceptance_matrix.handle_workflow_plan(params)
-            except AcceptanceMatrixProtocolError as err:
-                self.acceptance_matrix_error = err
+                self.fixed_gain_amplitude.handle_workflow_plan(params)
+            except FixedGainAmplitudeProtocolError as err:
+                self.fixed_gain_amplitude_error = err
             return
         if shape == SHAPE_ROBUSTNESS_REVERSAL:
             # Robustness reversal: record the run's worst-case duration so the
             # wait loop arms its extended timeout. It does not feed the
-            # acceptance-matrix or velocity-integral assemblers.
+            # fixed-gain-amplitude or velocity-integral assemblers.
             self.robustness_workflow_plan = params
             return
         self._handle_velocity_integral("handle_workflow_plan", params)
 
-    def handle_acceptance_matrix_plan(self, params: dict) -> None:
-        """Relay one compact firmware-authored matrix plan."""
-        if self.acceptance_matrix_error is not None:
+    def handle_fixed_gain_amplitude_plan(self, params: dict) -> None:
+        """Relay one compact firmware-authored amplitude plan."""
+        if self.fixed_gain_amplitude_error is not None:
             return
         try:
-            self.acceptance_matrix.handle_plan(params)
-        except AcceptanceMatrixProtocolError as err:
-            self.acceptance_matrix_error = err
+            self.fixed_gain_amplitude.handle_plan(params)
+        except FixedGainAmplitudeProtocolError as err:
+            self.fixed_gain_amplitude_error = err
 
-    def handle_acceptance_matrix_terminal(self, params: dict) -> None:
-        """Relay one compact firmware-authored matrix terminal."""
-        if self.acceptance_matrix_error is not None:
+    def handle_fixed_gain_amplitude_terminal(self, params: dict) -> None:
+        """Relay one compact firmware-authored amplitude terminal."""
+        if self.fixed_gain_amplitude_error is not None:
             return
         try:
-            self.acceptance_matrix.handle_terminal(params)
-        except AcceptanceMatrixProtocolError as err:
-            self.acceptance_matrix_error = err
+            self.fixed_gain_amplitude.handle_terminal(params)
+        except FixedGainAmplitudeProtocolError as err:
+            self.fixed_gain_amplitude_error = err
 
     def handle_robustness_reversal_terminal(self, params: dict) -> None:
         """Parse one compact firmware-authored robustness-reversal terminal."""
@@ -345,7 +345,7 @@ class AutotuneWorkflow:
         """Whether the disclosed firmware workflow reached its terminal stage."""
         if self.robustness_reversal_terminal is not None:
             return True
-        if self.acceptance_matrix.done:
+        if self.fixed_gain_amplitude.done:
             return True
         workflow = self.velocity_integral.workflow_plan
         if workflow is None:
@@ -389,11 +389,12 @@ class AutotuneWorkflow:
         )
         self._disable_kinematic_motors(toolhead)
 
-    def _format_acceptance_matrix_result(self) -> str:
-        terminal = self.acceptance_matrix.terminal or {}
+    def _format_fixed_gain_amplitude_result(self) -> str:
+        terminal = self.fixed_gain_amplitude.terminal or {}
         return (
-            f"velocity confidence matrix: {terminal.get('outcome_name', 'unknown')} (namespace="
-            f"{terminal.get('outcome_namespace', 'acceptance_matrix')} cause="
+            f"fixed-gain amplitude validation: {terminal.get('outcome_name', 'unknown')} "
+            f"(namespace="
+            f"{terminal.get('outcome_namespace', 'fixed_gain_amplitude')} cause="
             f"{terminal.get('cause_name', 'unknown')} attempted="
             f"{terminal.get('attempted_masks', (0, 0))} eligible="
             f"{terminal.get('eligible_masks', (0, 0))})"
@@ -614,8 +615,8 @@ class AutotuneWorkflow:
         self.outer_safety_fault = None
         self.velocity_integral = VelocityIntegralAssembler()
         self.velocity_integral_error = None
-        self.acceptance_matrix = AcceptanceMatrixAssembler()
-        self.acceptance_matrix_error = None
+        self.fixed_gain_amplitude = FixedGainAmplitudeAssembler()
+        self.fixed_gain_amplitude_error = None
         self.breakaway_campaign = BreakawayCampaignAssembler()
         self.breakaway_campaign_error = None
         self.robustness_reversal_terminal = None
@@ -713,7 +714,7 @@ class AutotuneWorkflow:
         Returns the velocity-integral outcome name (for example
         "complete_candidate" or "inconclusive") when the workflow finished via a
         plain velocity-integral evidence terminal instead. Any other workflow (velocity
-        confidence matrix, robustness reversal, or breakaway campaign) is fully
+        confidence amplitude, robustness reversal, or breakaway campaign) is fully
         handled inline -- including raising on fault -- and returns its own
         marker, since none of those retry through a second dispatch.
         """
@@ -733,10 +734,10 @@ class AutotuneWorkflow:
                         f"FOCI {self.driver.name}: velocity integral transport failure: "
                         f"{self.velocity_integral_error}"
                     )
-                if self.acceptance_matrix_error is not None:
+                if self.fixed_gain_amplitude_error is not None:
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: velocity confidence transport failure: "
-                        f"{self.acceptance_matrix_error}"
+                        f"{self.fixed_gain_amplitude_error}"
                     )
                 if self.breakaway_campaign_error is not None:
                     raise gcmd.error(
@@ -750,15 +751,15 @@ class AutotuneWorkflow:
                     )
                 if (
                     self.velocity_integral.workflow_plan is not None
-                    or self.acceptance_matrix.workflow_plan is not None
+                    or self.fixed_gain_amplitude.workflow_plan is not None
                     or self.robustness_workflow_plan is not None
                 ) and not workflow_timeout_armed:
                     if self.robustness_workflow_plan is not None:
                         maximum_duration_s = (
                             int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
                         )
-                    elif self.acceptance_matrix.workflow_plan is not None:
-                        maximum_duration_s = self.acceptance_matrix.maximum_duration_s
+                    elif self.fixed_gain_amplitude.workflow_plan is not None:
+                        maximum_duration_s = self.fixed_gain_amplitude.maximum_duration_s
                     else:
                         maximum_duration_s = self.velocity_integral.maximum_duration_s
                     timeout = eventtime + maximum_duration_s + COMMISSIONING_WORKFLOW_COMMS_MARGIN_S
@@ -783,14 +784,16 @@ class AutotuneWorkflow:
             return "tune_result"
 
         self._synchronize_disarmed_workflow_terminal(toolhead)
-        if self.acceptance_matrix.done:
-            gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_acceptance_matrix_result()}")
-            if self.acceptance_matrix.outcome in ("fault", "failed"):
+        if self.fixed_gain_amplitude.done:
+            gcmd.respond_info(
+                f"FOCI {self.driver.name}: {self._format_fixed_gain_amplitude_result()}"
+            )
+            if self.fixed_gain_amplitude.outcome in ("fault", "failed"):
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: velocity confidence matrix "
-                    f"{self.acceptance_matrix.outcome}"
+                    f"FOCI {self.driver.name}: fixed-gain amplitude validation "
+                    f"{self.fixed_gain_amplitude.outcome}"
                 )
-            return "acceptance_matrix"
+            return "fixed_gain_amplitude"
         if self.robustness_reversal_terminal is not None:
             safety_detail = self._format_outer_safety_fault()
             detail_suffix = f"; {safety_detail}" if safety_detail else ""
@@ -879,7 +882,7 @@ class AutotuneWorkflow:
         """
         try:
             action = parse_autotune_action(gcmd.get("ACTION", None))
-        except AcceptanceMatrixProtocolError as err:
+        except FixedGainAmplitudeProtocolError as err:
             raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
