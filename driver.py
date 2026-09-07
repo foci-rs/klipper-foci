@@ -32,6 +32,7 @@ from .registry import (
 )
 from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
+from .virtual_endstop import FociVirtualEndstop
 
 ######################################################################
 # FociDriver - per-axis driver instance
@@ -63,6 +64,7 @@ class FociDriver:
         self.dump = RegisterDumpWorkflow(self)
         self.controls = ControlsWorkflow(self)
         self.homing = HomingWorkflow(self)
+        self.virtual_endstop = FociVirtualEndstop(self)
         self.commissioning = CommissioningWorkflow(self)
         self.selftest = SelftestWorkflow(self)
         self.autotune = AutotuneWorkflow(self)

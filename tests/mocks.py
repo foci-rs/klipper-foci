@@ -7,6 +7,8 @@ state fields directly and call methods under test.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
 from klipper_foci.config import FociControlSettings, parse_driver_config
@@ -19,6 +21,7 @@ from klipper_foci.protocol import FociProtocol
 from klipper_foci.registry import FociGlobalConfig
 from klipper_foci.selftest import SelftestWorkflow
 from klipper_foci.state import FociRuntimeState
+from klipper_foci.virtual_endstop import FociVirtualEndstop
 
 SAMPLE_ACTIVE_GAINS = {
     "flux_p": 256,
@@ -471,12 +474,19 @@ class MockMCU:
     def get_constants(self):
         return self.constants.copy()
 
+    def get_name(self):
+        return self.name
+
 
 class MockPins:
     """Mock pins object that resolves chip-prefixed virtual FOCI pins."""
 
+    error = CommandError
+
     def __init__(self, chips):
         self._chips = chips
+        self.registered_chips = {}
+        self.setup_calls = []
 
     def parse_pin(self, pin, can_invert=False):
         chip_name, pin_name = pin.split(":", 1)
@@ -484,6 +494,13 @@ class MockPins:
         if chip.allowed_pins is not None and pin_name not in chip.allowed_pins:
             raise CommandError(f"Unknown pin {pin_name} on chip {chip_name}")
         return {"chip": chip, "pin": pin_name}
+
+    def register_chip(self, name, chip):
+        self.registered_chips[name] = chip
+
+    def setup_pin(self, pin_type, pin_desc):
+        self.setup_calls.append((pin_type, pin_desc))
+        return SimpleNamespace(pin_type=pin_type, pin_desc=pin_desc)
 
 
 class MockConfig:
@@ -675,6 +692,7 @@ def make_driver(
     driver.stepper_name = driver.config.stepper_name
     driver.mcu = driver.config.mcu
     driver.channel = driver.config.channel
+    driver.virtual_endstop = FociVirtualEndstop(driver)
 
     if bind_protocol:
         driver.protocol.bind_mcu(driver.mcu, driver.oid)
