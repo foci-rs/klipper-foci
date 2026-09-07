@@ -82,6 +82,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     72: "origin recovery start offset mismatch",
     73: "resistance nonpositive slope (reversed current polarity or sign error)",
     74: "cancelled",
+    75: "safe-state cleanup incomplete",
 }
 
 # Error codes for which the failure message should point at a dedicated
