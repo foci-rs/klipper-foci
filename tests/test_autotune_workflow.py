@@ -83,7 +83,7 @@ def feed_no_transition_terminal(workflow, run_sequence):
     workflow.handle_velocity_integral_terminal({"oid": 0, "payload": payload})
 
 
-SAMPLE_STAGE_C_RESUME_RESULT = {
+SAMPLE_INTEGRAL_RESUME_RESULT = {
     "status": 0,
     "warning_code": 0,
     "velocity_p": 1152,
@@ -125,7 +125,7 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     """Inject the terminal named by ``terminal`` into one dispatch's assemblers.
 
     "tune_result" delivers a full firmware TuneResult (``handle_tune_result``),
-    defaulting to ``SAMPLE_STAGE_C_RESUME_RESULT`` unless ``tune_result`` names a
+    defaulting to ``SAMPLE_INTEGRAL_RESUME_RESULT`` unless ``tune_result`` names a
     different payload. Any other name is treated as a velocity-integral outcome
     and is stamped directly onto the assembler -- the same lightweight pattern
     already used by ``test_workflow_finishes_for_a_refusal_that_declared_no_envelope``
@@ -133,7 +133,7 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     the right outcome name, not that the underlying evidence is wire-valid.
     """
     if terminal == "tune_result":
-        workflow.handle_tune_result(dict(tune_result or SAMPLE_STAGE_C_RESUME_RESULT))
+        workflow.handle_tune_result(dict(tune_result or SAMPLE_INTEGRAL_RESUME_RESULT))
         return
     if terminal == "breakaway_accepted_first_run_retained":
         # Real firmware behavior: an accepted breakaway_seeded run reaches
@@ -284,7 +284,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(enable_line.is_motor_enabled())
 
-    def test_stage_b_changed_request_is_not_normalized_to_retained_plan(self):
+    def test_proportional_changed_request_is_not_normalized_to_retained_plan(self):
         d = self._commissioned_driver()
         retained = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
         changed = {"profile_code": 1, "requested_velocity_mrev_s": 3000}
@@ -2412,7 +2412,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
 
         self.assertNotIn("sufficiency reached before rest rejected", message)
 
-    def test_names_a_dispatch_cause_from_the_stage_c_table(self):
+    def test_names_a_dispatch_cause_from_the_integral_table(self):
         workflow = self._workflow(
             {
                 "outcome_name": "Fault",
@@ -2456,7 +2456,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         self.assertIn("namespace=error cause=4", message)
         self.assertNotIn("evidence_integrity", message)
 
-    def test_only_offers_stage_c_remediation_for_a_dispatch_cause(self):
+    def test_only_offers_integral_remediation_for_a_dispatch_cause(self):
         workflow = self._workflow(
             {
                 "outcome_name": "Fault",

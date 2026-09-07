@@ -361,7 +361,7 @@ def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
         )
 
 
-def test_schema_fourteen_assembles_the_breakaway_stage_c_plan():
+def test_schema_fourteen_assembles_the_breakaway_integral_plan():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
@@ -384,7 +384,7 @@ def test_schema_fourteen_requires_breakaway_workflow():
         feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
 
 
-def test_breakaway_shape_stage_c_plan_rejects_a_non_breakaway_schema():
+def test_breakaway_shape_integral_plan_rejects_a_non_breakaway_schema():
     """Schema 13 is below the breakaway floor and, since the classic combined
     range (8-13) is no longer accepted at all, is now rejected at the plan-core
     schema gate rather than at the later shape-pairing check."""
