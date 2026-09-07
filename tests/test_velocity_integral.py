@@ -455,8 +455,8 @@ def test_handle_terminal_parses_the_compact_payload():
     )
 
     assert assembler.done is True
-    assert assembler.outcome == "complete"
-    assert assembler.terminal["outcome_name"] == "complete"
+    assert assembler.outcome == "repeatability_confirmed"
+    assert assembler.terminal["outcome_name"] == "repeatability_confirmed"
     assert assembler.terminal["cause"] == 4
     assert assembler.terminal["cause_namespace"] == 0
     assert assembler.terminal["forward_eligible_mask"] == 0x0000_0007
@@ -638,7 +638,7 @@ def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_cont
 
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
 
-    assert assembler.outcome == "complete"
+    assert assembler.outcome == "repeatability_confirmed"
 
 
 # ============================================================================

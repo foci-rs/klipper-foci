@@ -336,7 +336,7 @@ class AutotuneWorkflow:
         if not self.velocity_integral.done:
             return
         outcome = self.velocity_integral.outcome
-        if outcome in ("complete_candidate", "inconclusive"):
+        if outcome in ("first_run_retained", "inconclusive"):
             self._stage_b_candidate_request = dict(request_fields)
         elif outcome != "rejected_plan_mismatch":
             self._stage_b_candidate_request = None
@@ -606,7 +606,7 @@ class AutotuneWorkflow:
         """Clear the per-dispatch assemblers before issuing one firmware dispatch.
 
         Runs once before each ``_run_one_dispatch`` call, including the second
-        one auto-issued after a CompleteCandidate terminal, so the resume
+        one auto-issued after a FirstRunRetained terminal, so the resume
         dispatch assembles its own evidence rather than mixing state left over
         from the candidate run.
         """
@@ -633,7 +633,7 @@ class AutotuneWorkflow:
         identically: a plain velocity-integral dispatch, and an accepted breakaway
         campaign (where it lands in the same dispatch as the campaign's own
         acceptance terminal). Both call this helper so the returned outcome
-        -- for example "complete_candidate" -- always reaches the caller
+        -- for example "first_run_retained" -- always reaches the caller
         instead of being masked by a workflow-specific marker.
         """
         gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}")
@@ -712,7 +712,7 @@ class AutotuneWorkflow:
 
         Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
         Returns the velocity-integral outcome name (for example
-        "complete_candidate" or "inconclusive") when the workflow finished via a
+        "first_run_retained" or "inconclusive") when the workflow finished via a
         plain velocity-integral evidence terminal instead. Any other workflow (velocity
         confidence amplitude, robustness reversal, or breakaway campaign) is fully
         handled inline -- including raising on fault -- and returns its own
@@ -861,7 +861,7 @@ class AutotuneWorkflow:
                 # An accepted breakaway campaign reaches its
                 # velocity-integral terminal in the SAME dispatch as this
                 # campaign-acceptance terminal -- resolve it the same way
-                # the non-breakaway path below does, so a complete_candidate
+                # the non-breakaway path below does, so a first_run_retained
                 # outcome still drives the caller's stage_c_resume dispatch
                 # instead of being masked by the generic marker below.
                 return self._finish_velocity_integral_terminal(gcmd, request_fields)
@@ -990,7 +990,7 @@ class AutotuneWorkflow:
             )
 
             outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead, safe_pose_move)
-            if outcome == "complete_candidate":
+            if outcome == "first_run_retained":
                 # The accepted candidate has not yet reproduced. Re-dispatch the
                 # exact same request under stage_c_resume so firmware rebuilds
                 # the identical plan digest against its retained authority.
@@ -1002,7 +1002,7 @@ class AutotuneWorkflow:
                     toolhead,
                     safe_pose_move,
                 )
-                if outcome == "complete":
+                if outcome == "repeatability_confirmed":
                     # Reproduced: the accepted candidate still needs a
                     # robustness verdict before it can deploy. Firmware emits
                     # a full TuneResult directly on a robustness pass.

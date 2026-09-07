@@ -135,14 +135,26 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     if terminal == "tune_result":
         workflow.handle_tune_result(dict(tune_result or SAMPLE_STAGE_C_RESUME_RESULT))
         return
-    if terminal == "breakaway_accepted_complete_candidate":
+    if terminal == "breakaway_accepted_first_run_retained":
         # Real firmware behavior: an accepted breakaway_seeded run reaches
         # its velocity-integral terminal in the SAME dispatch as the
         # breakaway campaign's own acceptance terminal -- both terminals
         # land together, not one after the other.
         workflow.breakaway_campaign.done = True
         workflow.breakaway_campaign.accepted = True
-        workflow.velocity_integral.outcome = "complete_candidate"
+        workflow.velocity_integral.outcome = "first_run_retained"
+        workflow.velocity_integral.terminal = {"cause": 0}
+        workflow.velocity_integral.done = True
+        return
+    if terminal == "breakaway_accepted_repeatability_confirmed":
+        # The combined-workflow completion case: the breakaway_seeded run's
+        # own dispatch reproduces retained authority from an earlier attempt,
+        # so the accepted campaign's dispatch lands directly on
+        # "repeatability_confirmed" instead of "first_run_retained" -- no
+        # separate stage_c_resume dispatch precedes it.
+        workflow.breakaway_campaign.done = True
+        workflow.breakaway_campaign.accepted = True
+        workflow.velocity_integral.outcome = "repeatability_confirmed"
         workflow.velocity_integral.terminal = {"cause": 0}
         workflow.velocity_integral.done = True
         return
@@ -160,13 +172,14 @@ def drive_two_dispatch_scenario(
 
     Each firmware dispatch gets exactly one simulated ``reactor.pause``: the
     first delivers ``first_terminal``, the second (issued only when the first
-    was "complete_candidate") delivers ``second_terminal``, and the third
-    (issued only when the second was "complete", i.e. a reproduced resume)
-    delivers ``third_terminal``. This wraps whatever ``run_tune`` is already
-    installed (tests may replace it beforehand to observe the dispatched
-    actions) purely to count dispatches. ``tune_result`` is forwarded to
-    ``_feed_dispatch_terminal`` when any terminal is "tune_result", letting
-    callers assert on distinguishable field values.
+    was "first_run_retained") delivers ``second_terminal``, and the third
+    (issued only when the second was "repeatability_confirmed", i.e. a
+    reproduced resume) delivers ``third_terminal``. This wraps whatever
+    ``run_tune`` is already installed (tests may replace it beforehand to
+    observe the dispatched actions) purely to count dispatches.
+    ``tune_result`` is forwarded to ``_feed_dispatch_terminal`` when any
+    terminal is "tune_result", letting callers assert on distinguishable
+    field values.
     """
     reactor = d.printer.get_reactor()
     previous_run_tune = d.protocol.run_tune
@@ -211,9 +224,9 @@ def drive_orchestrated_robustness_scenario(d, *, outcome, cause):
     def pause(deadline):
         reactor._time = deadline
         if dispatch_count["n"] == 1:
-            _feed_dispatch_terminal(d.autotune, "breakaway_accepted_complete_candidate")
+            _feed_dispatch_terminal(d.autotune, "breakaway_accepted_first_run_retained")
         elif dispatch_count["n"] == 2:
-            _feed_dispatch_terminal(d.autotune, "complete")
+            _feed_dispatch_terminal(d.autotune, "repeatability_confirmed")
         else:
             d.autotune.handle_robustness_reversal_terminal(
                 {"payload": build_terminal_payload(outcome=outcome, cause=cause)}
@@ -281,7 +294,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertEqual(dispatched, changed)
 
-    def test_complete_candidate_auto_issues_stage_c_resume(self):
+    def test_first_run_retained_auto_issues_stage_c_resume(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
         gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded
@@ -289,7 +302,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
         )
 
@@ -535,7 +548,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.protocol.run_tune = lambda **kw: events.append(("run_tune", kw["action"]))
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
         )
 
@@ -561,7 +574,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.autotune.persist_tune_results = lambda *a, **k: persisted.append((a, k))
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="velocity_integral_inconclusive",
         )
 
@@ -580,7 +593,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.printer._objects["configfile"] = cfg
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
             tune_result=SAMPLE_TUNE_RESULT,
         )
@@ -596,7 +609,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
 
     def test_reproduced_resume_dispatches_robustness_then_tune_result(self):
-        """A reproduced resume ("complete") is no longer the end of the road:
+        """A reproduced resume ("repeatability_confirmed") is no longer the end of the road:
         firmware now needs an explicit, host-orchestrated robustness_reversal
         dispatch to verify the accepted candidate before a TuneResult can
         deploy. Each of the three dispatches must be preceded by its own
@@ -610,8 +623,8 @@ class TestAutotuneGates(unittest.TestCase):
         d.protocol.run_tune = lambda **kw: events.append(("run_tune", kw["action"]))
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
-            second_terminal="complete",
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="repeatability_confirmed",
             third_terminal="tune_result",
             tune_result=SAMPLE_TUNE_RESULT,
         )
@@ -748,7 +761,7 @@ class TestAutotuneGates(unittest.TestCase):
         y_enable.motor_enable(toolhead.get_last_move_time())
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
             tune_result=SAMPLE_TUNE_RESULT,
         )
@@ -783,7 +796,7 @@ class TestAutotuneGates(unittest.TestCase):
         y_enable.motor_enable(toolhead.get_last_move_time())
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
             tune_result=SAMPLE_TUNE_RESULT,
         )
@@ -1066,7 +1079,7 @@ class TestAutotuneGates(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         drive_two_dispatch_scenario(
             d,
-            first_terminal="breakaway_accepted_complete_candidate",
+            first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
             tune_result=SAMPLE_TUNE_RESULT,
         )
@@ -2013,7 +2026,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                         BREAKAWAY_INTEGRAL_DIGEST[0] | (BREAKAWAY_INTEGRAL_DIGEST[1] << 32)
                     )
                 }
-                d.autotune.velocity_integral.outcome = "complete"
+                d.autotune.velocity_integral.outcome = "repeatability_confirmed"
                 d.autotune.velocity_integral.terminal = {"cause": 0}
                 d.autotune.velocity_integral.done = True
             return reactor._time
@@ -2046,7 +2059,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         d.autotune.breakaway_campaign.done = True
         d.autotune.breakaway_campaign.accepted = True
-        d.autotune.velocity_integral.outcome = "complete_candidate"
+        d.autotune.velocity_integral.outcome = "first_run_retained"
         d.autotune.velocity_integral.terminal = {"cause": 0}
         d.autotune.velocity_integral.done = True
 
@@ -2059,8 +2072,65 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
             "G0 X100.000 Y100.000",
         )
 
-        self.assertEqual(outcome, "complete_candidate")
+        self.assertEqual(outcome, "first_run_retained")
         self.assertEqual(d.autotune._stage_b_candidate_request, request_fields)
+
+    def test_accepted_breakaway_dual_terminal_returns_confirmed_outcome(self):
+        """Combined-workflow completion: the breakaway_seeded dispatch's own
+        velocity-integral terminal can land directly on
+        "repeatability_confirmed" (retained authority from an earlier attempt
+        reproduced on the very first try), not only "first_run_retained".
+        The dispatch must surface that outcome unmasked, the same as the
+        first-run case above, and must not retain a stale candidate request
+        since a confirmed run needs no further resume."""
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcmd = MockGCmd({})
+        d.protocol.run_tune = lambda **kw: None
+
+        d.autotune.breakaway_campaign.done = True
+        d.autotune.breakaway_campaign.accepted = True
+        d.autotune.velocity_integral.outcome = "repeatability_confirmed"
+        d.autotune.velocity_integral.terminal = {"cause": 0}
+        d.autotune.velocity_integral.done = True
+
+        request_fields = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
+        outcome = d.autotune._run_one_dispatch(
+            gcmd,
+            ACTION_CODES["breakaway_seeded"],
+            request_fields,
+            toolhead,
+            "G0 X100.000 Y100.000",
+        )
+
+        self.assertEqual(outcome, "repeatability_confirmed")
+        self.assertIsNone(d.autotune._stage_b_candidate_request)
+
+    def test_combined_workflow_completion_does_not_auto_issue_resume(self):
+        """Full FOCI_AUTOTUNE orchestration for the combined-workflow
+        completion case: the first (and only) dispatch's breakaway campaign
+        acceptance and velocity-integral terminal land together with outcome
+        "repeatability_confirmed" directly, never "first_run_retained". The
+        top-level dispatcher only auto-issues stage_c_resume after
+        "first_run_retained"; a "repeatability_confirmed" outcome on the
+        first dispatch does not match that branch, so autotune() returns
+        without issuing a second dispatch and without publishing a tune
+        result."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        issued = []
+        d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_repeatability_confirmed",
+            second_terminal=None,
+        )
+
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(issued, [ACTION_CODES["breakaway_seeded"]])
+        self.assertEqual(d.state.runtime_status, "commissioned")
 
     def test_operator_report_relays_geometry_margin_and_confirmation_bounds(self):
         """Brief step 3: the breakaway seed, additive geometry, nomination

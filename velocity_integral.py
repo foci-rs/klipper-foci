@@ -17,8 +17,8 @@ FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
 
 OUTCOME_NAMES = {
-    0: "complete_candidate",
-    1: "complete",
+    0: "first_run_retained",
+    1: "repeatability_confirmed",
     2: "inconclusive",
     3: "fault",
     4: "rejected_plan_mismatch",
@@ -303,9 +303,13 @@ class VelocityIntegralAssembler:
             and self.workflow_plan is not None
             and int(self.workflow_plan["shape"]) == SHAPE_BREAKAWAY_SEEDED
         )
-        if outcome_name == "complete" and not reproduction_available and not breakaway:
+        if (
+            outcome_name == "repeatability_confirmed"
+            and not reproduction_available
+            and not breakaway
+        ):
             raise VelocityIntegralProtocolError(
-                "complete integral response omitted reproduction evidence"
+                "reproduced integral response omitted reproduction evidence"
             )
         rest_rejection_after_sufficiency = bool(
             recovery_flags & TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY
