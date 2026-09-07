@@ -566,7 +566,7 @@ def test_handle_terminal_decodes_rest_rejection_owner():
     assembler.handle_terminal(_terminal_params(recovery_flags=flags, reproduction_available=1))
 
     assert assembler.terminal["rest_rejection_after_sufficiency"] is True
-    assert assembler.terminal["rest_rejection_owner"] == "stage_c_recovery"
+    assert assembler.terminal["rest_rejection_owner"] == "integral_recovery"
 
 
 def test_handle_terminal_marks_inconclusive_rest_by_cause():

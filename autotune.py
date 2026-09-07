@@ -44,10 +44,10 @@ from .velocity_integral import (
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
     BREAKAWAY_TERMINAL_REMEDIATION,
     FLOOR_ORIGIN_NAMES,
-    STAGE_C_CAUSE_DISPATCH_NAMESPACE,
-    STAGE_C_CAUSE_NAMESPACE_NAMES,
-    STAGE_C_TERMINAL_CAUSE_NAMES,
-    STAGE_C_TERMINAL_CAUSE_REMEDIATION,
+    INTEGRAL_CAUSE_DISPATCH_NAMESPACE,
+    INTEGRAL_CAUSE_NAMESPACE_NAMES,
+    INTEGRAL_TERMINAL_CAUSE_NAMES,
+    INTEGRAL_TERMINAL_CAUSE_REMEDIATION,
     BreakawayCampaignAssembler,
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
@@ -82,7 +82,7 @@ OUTER_SAFETY_FAULT_NAMES = {
 
 def _stage_c_cause_namespace_text(cause_namespace: int) -> str:
     """Render a velocity-integral terminal's cause namespace as its wire-carried name."""
-    return STAGE_C_CAUSE_NAMESPACE_NAMES.get(cause_namespace, "unknown")
+    return INTEGRAL_CAUSE_NAMESPACE_NAMES.get(cause_namespace, "unknown")
 
 
 def _stage_c_cause_text(cause_namespace: int, cause: int) -> str:
@@ -91,8 +91,8 @@ def _stage_c_cause_text(cause_namespace: int, cause: int) -> str:
     namespace -- the same number from the engine or error namespace means
     something else."""
     name = (
-        STAGE_C_TERMINAL_CAUSE_NAMES.get(cause)
-        if cause_namespace == STAGE_C_CAUSE_DISPATCH_NAMESPACE
+        INTEGRAL_TERMINAL_CAUSE_NAMES.get(cause)
+        if cause_namespace == INTEGRAL_CAUSE_DISPATCH_NAMESPACE
         else None
     )
     return str(cause) if name is None else f"{cause} ({name})"
@@ -105,13 +105,13 @@ def _robustness_reversal_cause_text(cause: int) -> str:
 
 
 # Display-only translation of `velocity_integral.py`'s `REST_REJECTION_OWNER_NAMES`
-# wire-mirrored values (which stay `stage_c_*` for parity with firmware's
-# `RestSelectionOwner::StageC*` variants) into the physical phrasing operators see.
+# wire-mirrored values (which stay `integral_*` for parity with firmware's
+# `RestSelectionOwner::Integral*` variants) into the physical phrasing operators see.
 _REST_REJECTION_OWNER_TEXT = {
-    "stage_c_anchor": "velocity-integral anchor",
-    "stage_c_positive_observation": "velocity-integral positive-current observation",
-    "stage_c_recovery": "velocity-integral origin recovery",
-    "stage_c_cleanup": "velocity-integral cleanup",
+    "integral_anchor": "velocity-integral anchor",
+    "integral_positive_observation": "velocity-integral positive-current observation",
+    "integral_recovery": "velocity-integral origin recovery",
+    "integral_cleanup": "velocity-integral cleanup",
 }
 
 
@@ -164,7 +164,7 @@ class AutotuneWorkflow:
         self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
         self.robustness_cycle_evidence: dict[int, dict] = {}
         self.robustness_workflow_plan: dict | None = None
-        self._stage_b_candidate_request: dict | None = None
+        self._proportional_candidate_request: dict | None = None
         self.done = False
 
     def handle_tune_result(self, params: dict) -> None:
@@ -322,13 +322,13 @@ class AutotuneWorkflow:
     def handle_breakaway_campaign_terminal(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_campaign_terminal", params)
 
-    def _request_for_stage_b_dispatch(self, request_fields: dict) -> dict:
+    def _request_for_proportional_dispatch(self, request_fields: dict) -> dict:
         """Reuse the exact retained encoding when the explicit request matches."""
         if (
-            self._stage_b_candidate_request is not None
-            and request_fields == self._stage_b_candidate_request
+            self._proportional_candidate_request is not None
+            and request_fields == self._proportional_candidate_request
         ):
-            return dict(self._stage_b_candidate_request)
+            return dict(self._proportional_candidate_request)
         return request_fields
 
     def _retain_request_from_terminal(self, request_fields: dict) -> None:
@@ -337,9 +337,9 @@ class AutotuneWorkflow:
             return
         outcome = self.velocity_integral.outcome
         if outcome in ("first_run_retained", "inconclusive"):
-            self._stage_b_candidate_request = dict(request_fields)
+            self._proportional_candidate_request = dict(request_fields)
         elif outcome != "rejected_plan_mismatch":
-            self._stage_b_candidate_request = None
+            self._proportional_candidate_request = None
 
     def _workflow_finished(self) -> bool:
         """Whether the disclosed firmware workflow reached its terminal stage."""
@@ -467,8 +467,8 @@ class AutotuneWorkflow:
             f"{_stage_c_cause_text(cause_namespace, cause)}"
         )
         remediation = (
-            STAGE_C_TERMINAL_CAUSE_REMEDIATION.get(cause)
-            if cause_namespace == STAGE_C_CAUSE_DISPATCH_NAMESPACE
+            INTEGRAL_TERMINAL_CAUSE_REMEDIATION.get(cause)
+            if cause_namespace == INTEGRAL_CAUSE_DISPATCH_NAMESPACE
             else None
         )
         if remediation is not None:
@@ -962,7 +962,7 @@ class AutotuneWorkflow:
 
             self._reset_dispatch_state()
 
-            request_fields = self._request_for_stage_b_dispatch(
+            request_fields = self._request_for_proportional_dispatch(
                 {
                     "action": action,
                     "profile_code": PROFILE_MAP[profile_name],

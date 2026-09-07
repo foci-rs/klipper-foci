@@ -40,10 +40,10 @@ TERMINAL_REST_REJECTION_OWNER_SHIFT = 5
 TERMINAL_REST_REJECTION_OWNER_MASK = 0b11 << TERMINAL_REST_REJECTION_OWNER_SHIFT
 
 REST_REJECTION_OWNER_NAMES = {
-    0b00: "stage_c_anchor",
-    0b01: "stage_c_positive_observation",
-    0b10: "stage_c_recovery",
-    0b11: "stage_c_cleanup",
+    0b00: "integral_anchor",
+    0b01: "integral_positive_observation",
+    0b10: "integral_recovery",
+    0b11: "integral_cleanup",
 }
 
 VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION = 1
@@ -327,7 +327,7 @@ class VelocityIntegralAssembler:
             "run_sequence": run_sequence,
             "outcome": outcome,
             "outcome_name": ("InconclusiveRest" if outcome == 2 and cause == 53 else outcome_name),
-            "outcome_namespace": "stage_c",
+            "outcome_namespace": "integral",
             "cause": cause,
             "cause_namespace": cause_namespace,
             "rest_rejection_after_sufficiency": rest_rejection_after_sufficiency,
@@ -461,11 +461,11 @@ STAGE_C_CAUSE_NO_RETAINED_AUTHORITY = 12
 # A velocity-integral terminal's `cause` number is only unambiguous once paired with
 # `cause_namespace`: the engine, error, and dispatch producers each number
 # their own causes independently and can emit the same raw value.
-STAGE_C_CAUSE_NAMESPACE_NAMES = {0: "engine", 1: "error", 2: "dispatch"}
-STAGE_C_CAUSE_DISPATCH_NAMESPACE = 2
+INTEGRAL_CAUSE_NAMESPACE_NAMES = {0: "engine", 1: "error", 2: "dispatch"}
+INTEGRAL_CAUSE_DISPATCH_NAMESPACE = 2
 
 # Dispatch-namespace causes attached to a velocity-integral terminal.
-STAGE_C_TERMINAL_CAUSE_NAMES = {
+INTEGRAL_TERMINAL_CAUSE_NAMES = {
     STAGE_C_CAUSE_EVIDENCE_INTEGRITY: "evidence_integrity",
     STAGE_C_CAUSE_REPRODUCTION_MISMATCH: "reproduction_mismatch",
     STAGE_C_CAUSE_PLAN_MISMATCH: "plan_mismatch",
@@ -485,7 +485,7 @@ STAGE_C_FAILED_ADMISSION_CAUSES = frozenset(
     )
 )
 
-STAGE_C_TERMINAL_CAUSE_REMEDIATION = {
+INTEGRAL_TERMINAL_CAUSE_REMEDIATION = {
     STAGE_C_CAUSE_NO_RETAINED_AUTHORITY: (
         "no retained velocity-integral authority; run a campaign first, in this power cycle"
     ),
@@ -519,7 +519,7 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     23: "probe_internal_fault",
     24: "discovery_internal_fault",
     25: "confirmation_internal_fault",
-    26: "confirmation_stage_c_plan_refused",
+    26: "confirmation_integral_plan_refused",
     27: "confirmation_no_transition_capable_candidate",
 }
 

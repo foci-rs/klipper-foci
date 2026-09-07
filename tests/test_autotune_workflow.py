@@ -288,9 +288,9 @@ class TestAutotuneGates(unittest.TestCase):
         d = self._commissioned_driver()
         retained = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
         changed = {"profile_code": 1, "requested_velocity_mrev_s": 3000}
-        d.autotune._stage_b_candidate_request = dict(retained)
+        d.autotune._proportional_candidate_request = dict(retained)
 
-        dispatched = d.autotune._request_for_stage_b_dispatch(changed)
+        dispatched = d.autotune._request_for_proportional_dispatch(changed)
 
         self.assertEqual(dispatched, changed)
 
@@ -2073,7 +2073,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         )
 
         self.assertEqual(outcome, "first_run_retained")
-        self.assertEqual(d.autotune._stage_b_candidate_request, request_fields)
+        self.assertEqual(d.autotune._proportional_candidate_request, request_fields)
 
     def test_accepted_breakaway_dual_terminal_returns_confirmed_outcome(self):
         """Combined-workflow completion: the breakaway_seeded dispatch's own
@@ -2104,7 +2104,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         )
 
         self.assertEqual(outcome, "repeatability_confirmed")
-        self.assertIsNone(d.autotune._stage_b_candidate_request)
+        self.assertIsNone(d.autotune._proportional_candidate_request)
 
     def test_combined_workflow_completion_does_not_auto_issue_resume(self):
         """Full FOCI_AUTOTUNE orchestration for the combined-workflow
@@ -2238,7 +2238,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         message = d.autotune._format_breakaway_campaign_result()
 
-        self.assertIn("cause=confirmation_stage_c_plan_refused", message)
+        self.assertIn("cause=confirmation_integral_plan_refused", message)
         self.assertIn("error=velocity validation failed", message)
 
     def test_confirmation_inconclusive_preserves_prior_p_and_skips_persistence(self):
@@ -2383,10 +2383,10 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         workflow = self._workflow(
             {
                 "outcome_name": "inconclusive",
-                "outcome_namespace": "stage_c",
+                "outcome_namespace": "integral",
                 "cause": 53,
                 "rest_rejection_after_sufficiency": True,
-                "rest_rejection_owner": "stage_c_recovery",
+                "rest_rejection_owner": "integral_recovery",
             }
         )
 
@@ -2401,7 +2401,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         workflow = self._workflow(
             {
                 "outcome_name": "InconclusiveRest",
-                "outcome_namespace": "stage_c",
+                "outcome_namespace": "integral",
                 "cause": 53,
                 "rest_rejection_after_sufficiency": False,
                 "rest_rejection_owner": None,
@@ -2416,7 +2416,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         workflow = self._workflow(
             {
                 "outcome_name": "Fault",
-                "outcome_namespace": "stage_c",
+                "outcome_namespace": "integral",
                 "cause_namespace": 2,
                 "cause": 4,
             }
@@ -2430,7 +2430,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         workflow = self._workflow(
             {
                 "outcome_name": "Fault",
-                "outcome_namespace": "stage_c",
+                "outcome_namespace": "integral",
                 "cause_namespace": 0,
                 "cause": 4,
             }
@@ -2445,7 +2445,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         workflow = self._workflow(
             {
                 "outcome_name": "Fault",
-                "outcome_namespace": "stage_c",
+                "outcome_namespace": "integral",
                 "cause_namespace": 1,
                 "cause": 4,
             }
@@ -2460,7 +2460,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
         workflow = self._workflow(
             {
                 "outcome_name": "Fault",
-                "outcome_namespace": "stage_c",
+                "outcome_namespace": "integral",
                 "cause_namespace": 0,
                 "cause": 12,
             }
