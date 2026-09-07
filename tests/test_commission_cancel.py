@@ -106,6 +106,9 @@ class CancelAndAwaitQuiescenceTests(unittest.TestCase):
     def test_commission_error_names_recognizes_cancelled(self):
         self.assertEqual(COMMISSION_ERROR_NAMES[74], "cancelled")
 
+    def test_commission_error_names_recognizes_safe_state_incomplete(self):
+        self.assertEqual(COMMISSION_ERROR_NAMES[75], "safe-state cleanup incomplete")
+
 
 class SelftestTimeoutCancelTests(unittest.TestCase):
     def test_selftest_timeout_sends_cancel_before_raising(self):
