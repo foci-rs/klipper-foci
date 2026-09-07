@@ -127,7 +127,7 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.homing.ensure_calibrated()
 
-        self.assertIn("CLOSED_LOOP_ENTRY_UNSTABLE", str(ctx.exception))
+        self.assertIn("CLOSED_LOOP_ACTIVATION_UNSTABLE", str(ctx.exception))
         gcode = d.printer.lookup_object("gcode")
         self.assertEqual(len(gcode._responses), 1)
         self.assertIn("calibration diagnostics", gcode._responses[0])

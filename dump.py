@@ -146,7 +146,7 @@ CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
     4: "fail_sample_error",
 }
 
-CLOSED_LOOP_ENTRY_STATUS_LABELS: dict[int, str] = {
+CLOSED_LOOP_ACTIVATION_STATUS_LABELS: dict[int, str] = {
     0: "not_run",
     1: "pass",
     2: "fail_runaway",
@@ -691,7 +691,9 @@ class RegisterDumpWorkflow:
         return [
             self._format_hold_pair(
                 "last.entry_status",
-                self._label_code(evidence.get("entry_status"), CLOSED_LOOP_ENTRY_STATUS_LABELS),
+                self._label_code(
+                    evidence.get("entry_status"), CLOSED_LOOP_ACTIVATION_STATUS_LABELS
+                ),
             ),
             self._format_hold_pair(
                 "last.entry_position",

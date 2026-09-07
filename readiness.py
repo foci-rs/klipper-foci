@@ -20,8 +20,8 @@ CURRENT_GAIN_FIELDS: tuple[str, ...] = ("flux_p", "flux_i", "torque_p", "torque_
 CONSERVATIVE_INNER_FLAGS = (1 << 5) | (1 << 6)
 DERATING_INNER_FLAGS = (1 << 0) | (1 << 1) | (1 << 3)
 CURRENT_HOLD_BLOCKING_STATUSES = frozenset((2, 3, 4))
-CLOSED_LOOP_ENTRY_BLOCKING_STATUSES = frozenset((2, 3))
-CLOSED_LOOP_ENTRY_WARN_DRIFT = 4
+CLOSED_LOOP_ACTIVATION_BLOCKING_STATUSES = frozenset((2, 3))
+CLOSED_LOOP_ACTIVATION_WARN_DRIFT = 4
 REQUIRED_STAGE2_INPUTS = frozenset(("average_inductance",))
 
 
@@ -332,9 +332,9 @@ def _classify_last_hold_and_entry(
 
     entry = active.last_closed_loop_activation_evidence(driver.oid)
     entry_status = entry.get("entry_status") if entry else None
-    if entry_status in CLOSED_LOOP_ENTRY_BLOCKING_STATUSES:
+    if entry_status in CLOSED_LOOP_ACTIVATION_BLOCKING_STATUSES:
         blockers.append(f"closed-loop entry hard failure status={entry_status}")
-    elif entry_status == CLOSED_LOOP_ENTRY_WARN_DRIFT:
+    elif entry_status == CLOSED_LOOP_ACTIVATION_WARN_DRIFT:
         warnings.append("bounded closed-loop entry drift")
 
 
