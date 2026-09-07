@@ -27,7 +27,7 @@ ACTION_CODES: dict[str, int] = {
     "amplitude_up": 1,
     "amplitude_down": 2,
     "breakaway_seeded": 7,
-    "stage_c_resume": 8,
+    "integral_resume": 8,
     "robustness_reversal": 9,
 }
 

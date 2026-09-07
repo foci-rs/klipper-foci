@@ -151,7 +151,7 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
         # own dispatch reproduces retained authority from an earlier attempt,
         # so the accepted campaign's dispatch lands directly on
         # "repeatability_confirmed" instead of "first_run_retained" -- no
-        # separate stage_c_resume dispatch precedes it.
+        # separate integral_resume dispatch precedes it.
         workflow.breakaway_campaign.done = True
         workflow.breakaway_campaign.accepted = True
         workflow.velocity_integral.outcome = "repeatability_confirmed"
@@ -294,7 +294,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertEqual(dispatched, changed)
 
-    def test_first_run_retained_auto_issues_stage_c_resume(self):
+    def test_first_run_retained_auto_issues_integral_resume(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
         gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded
@@ -310,7 +310,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertEqual(
             issued,
-            [ACTION_CODES["breakaway_seeded"], ACTION_CODES["stage_c_resume"]],
+            [ACTION_CODES["breakaway_seeded"], ACTION_CODES["integral_resume"]],
         )
 
     def test_cold_start_self_homes_without_up_front_calibration(self):
@@ -536,7 +536,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertLessEqual(len(pause_calls), 2)
 
     def test_each_stage_dispatch_is_preceded_by_a_rehome(self):
-        """Both the breakaway_seeded dispatch and the auto-issued stage_c_resume
+        """Both the breakaway_seeded dispatch and the auto-issued integral_resume
         dispatch must be preceded by their own G28 re-home -- the chained
         resume otherwise runs against the encoder the first dispatch re-zeroed."""
         d = self._commissioned_driver()
@@ -636,7 +636,7 @@ class TestAutotuneGates(unittest.TestCase):
             dispatched_actions,
             [
                 ACTION_CODES["breakaway_seeded"],
-                ACTION_CODES["stage_c_resume"],
+                ACTION_CODES["integral_resume"],
                 ACTION_CODES["robustness_reversal"],
             ],
         )
@@ -2049,7 +2049,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         its velocity-integral terminal in the SAME dispatch as the
         breakaway campaign's own acceptance terminal, both done together.
         The dispatch must surface the velocity-integral outcome (so the
-        orchestrator can auto-issue stage_c_resume) and retain the request
+        orchestrator can auto-issue integral_resume) and retain the request
         identity, not fall back to the generic "breakaway_campaign" marker
         that only applies when no velocity-integral terminal arrived yet."""
         d = self._commissioned_driver()
@@ -2111,7 +2111,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         completion case: the first (and only) dispatch's breakaway campaign
         acceptance and velocity-integral terminal land together with outcome
         "repeatability_confirmed" directly, never "first_run_retained". The
-        top-level dispatcher only auto-issues stage_c_resume after
+        top-level dispatcher only auto-issues integral_resume after
         "first_run_retained"; a "repeatability_confirmed" outcome on the
         first dispatch does not match that branch, so autotune() returns
         without issuing a second dispatch and without publishing a tune

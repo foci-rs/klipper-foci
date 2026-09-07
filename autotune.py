@@ -627,7 +627,7 @@ class AutotuneWorkflow:
 
     def _finish_velocity_integral_terminal(self, gcmd, request_fields: dict) -> str:
         """Report a velocity-integral terminal, raise on fault, and retain
-        the request identity for a possible stage_c_resume dispatch.
+        the request identity for a possible integral_resume dispatch.
 
         Firmware emits this terminal from two places that must resolve
         identically: a plain velocity-integral dispatch, and an accepted breakaway
@@ -699,7 +699,7 @@ class AutotuneWorkflow:
         unhomes the axes and re-zeroes the encoder, so a chained dispatch would
         otherwise run against an unaligned encoder and fail with "encoder not
         aligned". The re-home runs unconditionally so it covers the first
-        dispatch, the auto-issued stage_c_resume, and any future chained stage.
+        dispatch, the auto-issued integral_resume, and any future chained stage.
 
         ``orchestrated`` marks a robustness_reversal dispatch the host itself
         chained after a reproduced resume, as opposed to the standalone
@@ -862,7 +862,7 @@ class AutotuneWorkflow:
                 # velocity-integral terminal in the SAME dispatch as this
                 # campaign-acceptance terminal -- resolve it the same way
                 # the non-breakaway path below does, so a first_run_retained
-                # outcome still drives the caller's stage_c_resume dispatch
+                # outcome still drives the caller's integral_resume dispatch
                 # instead of being masked by the generic marker below.
                 return self._finish_velocity_integral_terminal(gcmd, request_fields)
             # Accepted with no velocity-integral terminal in this dispatch
@@ -992,12 +992,12 @@ class AutotuneWorkflow:
             outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead, safe_pose_move)
             if outcome == "first_run_retained":
                 # The accepted candidate has not yet reproduced. Re-dispatch the
-                # exact same request under stage_c_resume so firmware rebuilds
+                # exact same request under integral_resume so firmware rebuilds
                 # the identical plan digest against its retained authority.
                 self._reset_dispatch_state()
                 outcome = self._run_one_dispatch(
                     gcmd,
-                    ACTION_CODES["stage_c_resume"],
+                    ACTION_CODES["integral_resume"],
                     request_fields,
                     toolhead,
                     safe_pose_move,

@@ -88,7 +88,7 @@ Run `FOCI_AUTOTUNE STEPPER=stepper_x` and `FOCI_AUTOTUNE STEPPER=stepper_y`
 separately (no `ACTION=` needed for the production path), each after the
 normal commissioning and homing prerequisites. Each invocation drives both
 firmware dispatches internally -- `breakaway_seeded`, then an auto-issued
-`stage_c_resume` -- and, on a full pass, deploys the conservative gain and
+`integral_resume` -- and, on a full pass, deploys the conservative gain and
 persists it. Stage-C reproduction is stochastic; an occasional `inconclusive`
 result is expected and not a regression, and the command is simply re-run.
 
