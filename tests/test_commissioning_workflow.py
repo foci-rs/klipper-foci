@@ -474,16 +474,17 @@ class TestNameMaps(unittest.TestCase):
 
         Codes 9-15 are permanently retired (the removed `MechanicalId`,
         `VelocityTune`, `VelocityValidate` and the pre-renumber outer block) and
-        must not appear.
+        must not appear. Codes 22-25 are likewise retired (the removed
+        `PositionTune`, `FilterTune`, `Commit`, `OuterDone`) and must not appear.
         """
-        live_codes = {1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}
+        live_codes = {1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21}
         for phase_id in live_codes:
             self.assertIn(
                 phase_id,
                 PHASE_NAMES,
                 f"CommissionPhase wire code {phase_id} missing from PHASE_NAMES",
             )
-        for retired_id in (9, 10, 11, 12, 13, 14, 15):
+        for retired_id in (9, 10, 11, 12, 13, 14, 15, 22, 23, 24, 25):
             self.assertNotIn(
                 retired_id,
                 PHASE_NAMES,
