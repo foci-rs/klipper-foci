@@ -5,6 +5,14 @@ from __future__ import annotations
 import itertools
 import struct
 
+# Firmware also defines mirrored matrix actions (wire 3 and 4). They are
+# removed and reserved. A mirrored matrix run could produce a better
+# shared floor and would then function as a favourable re-roll of a spent
+# retention lifecycle, so firmware never decodes them via
+# `AutotuneAction::from_u8`, and the host cannot even name them since
+# they're absent from the generated `ACTION_CODES`. Stage C carries the
+# same slot-order confound and is not lifecycle-limited, so
+# breakaway_seeded is the production and measurement path.
 from ._vocabulary_generated import (
     ACTION_CODES,
     SHAPE_MATRIX_ASCENDING,
@@ -25,13 +33,6 @@ MATRIX_ORDER_DESCENDING = 2
 SLOT_ORDER_FORWARD_FIRST = 0
 SLOT_ORDER_REVERSE_FIRST = 1
 
-# Firmware also defines mirrored matrix actions (wire 3 and 4). They are
-# removed and reserved. A mirrored matrix run could produce a better
-# shared floor and would then function as a favourable re-roll of a spent
-# retention lifecycle, so leaving it unreachable from the host is a safety
-# boundary rather than a convention. Stage C carries the same slot-order
-# confound and is not lifecycle-limited, so breakaway_seeded is the
-# production and measurement path.
 OUTCOME_NAMES = {
     0: "complete",
     1: "inconclusive",
