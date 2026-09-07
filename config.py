@@ -752,7 +752,6 @@ def parse_driver_config(config) -> FociDriverConfig:
 
 
 def stall_threshold_units(config: FociDriverConfig) -> int:
-    """Convert stall_distance to TMC position units (65536 per revolution)."""
     return max(1, round(config.stall_distance / config.rotation_distance * POSITION_UNITS_PER_REV))
 
 

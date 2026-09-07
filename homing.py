@@ -344,7 +344,6 @@ class HomingWorkflow:
             return
 
     def _report_stall_result(self, gcode) -> None:
-        """Report the firmware stall latch after a clamped homing move."""
         if self.driver.config.homing_current <= 0.0:
             return
         result = self.driver.protocol.query_stall()

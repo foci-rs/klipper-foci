@@ -9,8 +9,6 @@ from __future__ import annotations
 
 
 class FociVirtualEndstop:
-    """Serve ``foci_<stepper>:virtual_endstop`` as the board's STALL pin."""
-
     def __init__(self, driver) -> None:
         self.driver = driver
         ppins = driver.printer.lookup_object("pins")

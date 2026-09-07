@@ -1,5 +1,3 @@
-"""Tests for the foci_<stepper>:virtual_endstop pin chip."""
-
 import pytest
 
 from tests.mocks import CommandError, make_driver
