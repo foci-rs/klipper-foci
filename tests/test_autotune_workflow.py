@@ -1716,7 +1716,7 @@ BREAKAWAY_RUN_SEQUENCE = 21
 BREAKAWAY_PROBE_DIGEST = (0x1111_1111, 0x2222_2222)
 BREAKAWAY_DISCOVERY_DIGEST = (0x3333_3333, 0x4444_4444)
 BREAKAWAY_CONFIRMATION_DIGEST = (0x5555_5555, 0x6666_6666)
-BREAKAWAY_STAGE_C_DIGEST = (0x7777_7777, 0x8888_8888)
+BREAKAWAY_INTEGRAL_DIGEST = (0x7777_7777, 0x8888_8888)
 
 
 def feed_breakaway_workflow_plan(driver, run_sequence, maximum_workflow_ms):
@@ -1875,8 +1875,8 @@ def feed_breakaway_discovery_internal_fault(
             "phase": 1,
             "terminal_cause": 24,
             "accepted": 0,
-            "stage_c_plan_digest_low": 0,
-            "stage_c_plan_digest_high": 0,
+            "integral_plan_digest_low": 0,
+            "integral_plan_digest_high": 0,
             "error_code": error_code,
         }
     )
@@ -1899,7 +1899,7 @@ def feed_breakaway_confirmation(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, 
             "prior_plan_digest_high": discovery_high,
             "family_size": 8,
             "observations_per_direction": 4,
-            "candidate_p_raw": 400,
+            "nominated_p_raw": 400,
             "band_lower_percent": 70,
             "band_upper_percent": 80,
             "capture_profile": 0,
@@ -1938,7 +1938,7 @@ def feed_breakaway_confirmation(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, 
             "has_safety_fault": 0,
         }
     )
-    stage_c_low, stage_c_high = BREAKAWAY_STAGE_C_DIGEST if accepted else (0, 0)
+    integral_low, integral_high = BREAKAWAY_INTEGRAL_DIGEST if accepted else (0, 0)
     driver.autotune.handle_breakaway_campaign_terminal(
         {
             "oid": 0,
@@ -1947,8 +1947,8 @@ def feed_breakaway_confirmation(driver, run_sequence=BREAKAWAY_RUN_SEQUENCE, *, 
             "phase": 2,
             "terminal_cause": 21 if accepted else 15,
             "accepted": int(accepted),
-            "stage_c_plan_digest_low": stage_c_low,
-            "stage_c_plan_digest_high": stage_c_high,
+            "integral_plan_digest_low": integral_low,
+            "integral_plan_digest_high": integral_high,
             "error_code": 0,
         }
     )
@@ -2010,7 +2010,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                 feed_breakaway_confirmation(d, accepted=True)
                 d.autotune.velocity_integral.plan = {
                     "plan_digest": (
-                        BREAKAWAY_STAGE_C_DIGEST[0] | (BREAKAWAY_STAGE_C_DIGEST[1] << 32)
+                        BREAKAWAY_INTEGRAL_DIGEST[0] | (BREAKAWAY_INTEGRAL_DIGEST[1] << 32)
                     )
                 }
                 d.autotune.velocity_integral.outcome = "complete"
@@ -2113,7 +2113,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                 "prior_plan_digest_high": discovery_high,
                 "family_size": 8,
                 "observations_per_direction": 4,
-                "candidate_p_raw": 400,
+                "nominated_p_raw": 400,
                 "band_lower_percent": 70,
                 "band_upper_percent": 80,
                 "capture_profile": 0,
@@ -2160,8 +2160,8 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                 "phase": 2,
                 "terminal_cause": 26,
                 "accepted": 0,
-                "stage_c_plan_digest_low": 0,
-                "stage_c_plan_digest_high": 0,
+                "integral_plan_digest_low": 0,
+                "integral_plan_digest_high": 0,
                 "error_code": 11,
             }
         )
@@ -2265,7 +2265,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                 "prior_plan_digest_high": discovery_high,
                 "family_size": 8,
                 "observations_per_direction": 4,
-                "candidate_p_raw": 360,  # a different candidate: never chosen
+                "nominated_p_raw": 360,  # a different candidate: never chosen
                 "band_lower_percent": 70,
                 "band_upper_percent": 80,
                 "capture_profile": 0,
@@ -2297,7 +2297,7 @@ class FormatVelocityIntegralResultTest(unittest.TestCase):
     def _workflow(self, terminal):
         d = make_driver()
         d.autotune.velocity_integral = _StubVelocityIntegralResponse(
-            plan={"final_p": 724, "planned_velocity_mrev_s": 2929, "positive_rung_count": 12},
+            plan={"fixed_p": 724, "planned_velocity_mrev_s": 2929, "positive_rung_count": 12},
             summary={
                 "forward_eligible_mask": 0xFFF,
                 "reverse_eligible_mask": 0xFFF,

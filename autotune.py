@@ -206,7 +206,7 @@ class AutotuneWorkflow:
             and int(workflow["shape"]) == SHAPE_BREAKAWAY_SEEDED
             and self.velocity_integral.plan is not None
             and int(self.velocity_integral.plan["plan_digest"])
-            != self.breakaway_campaign.stage_c_plan_digest
+            != self.breakaway_campaign.integral_plan_digest
         ):
             self.velocity_integral_error = VelocityIntegralProtocolError(
                 "breakaway velocity-integral plan digest does not match the accepted "
@@ -457,7 +457,7 @@ class AutotuneWorkflow:
         cause = int(terminal.get("cause", 0))
         message = (
             f"velocity integral response {terminal.get('outcome_name', response.outcome)}: P="
-            f"{int(plan.get('final_p', 0))} velocity={int(plan.get('planned_velocity_mrev_s', 0))}"
+            f"{int(plan.get('fixed_p', 0))} velocity={int(plan.get('planned_velocity_mrev_s', 0))}"
             f"mrev/s positive_rungs={int(plan.get('positive_rung_count', 0))} eligible=0x"
             f"{terminal.get('forward_eligible_mask', 0):08x}/0x"
             f"{terminal.get('reverse_eligible_mask', 0):08x} bookend=0x"
@@ -543,7 +543,7 @@ class AutotuneWorkflow:
         confirmation = campaign.confirmation_plan
         if confirmation is not None:
             message += (
-                f"; nominated P={int(confirmation.get('candidate_p_raw', 0))} margin="
+                f"; nominated P={int(confirmation.get('nominated_p_raw', 0))} margin="
                 f"{int(confirmation.get('nominated_margin_percent_milli', 0))}pctm"
             )
         confirmation_terminal = campaign.confirmation_terminal

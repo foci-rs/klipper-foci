@@ -354,7 +354,9 @@ class VelocityIntegralAssembler:
         core, geometry, timing, travel, recovery = self._plan_parts
         plan = self._merge((core, geometry, timing, travel, recovery))
         plan["plan_digest"] = self._reported_plan_digest(core)
-        plan["stage_b_plan_digest"] = _u64(core["stage_b_digest_low"], core["stage_b_digest_high"])
+        plan["proportional_plan_digest"] = _u64(
+            core["proportional_digest_low"], core["proportional_digest_high"]
+        )
         plan["authorities"] = list(self._authorities)
         plan["positive_i"] = [int(rung["i_raw"]) for rung in self._plan_rungs]
         plan["rungs"] = list(self._plan_rungs)
@@ -593,7 +595,7 @@ class BreakawayCampaignAssembler:
         self.confirmation_terminal: dict | None = None
         self.campaign_terminal: dict | None = None
         self.accepted = False
-        self.stage_c_plan_digest: int | None = None
+        self.integral_plan_digest: int | None = None
         self.done = False
         self._run_sequence: int | None = None
         self._last_evidence_sequence: int | None = None
@@ -935,7 +937,7 @@ class BreakawayCampaignAssembler:
         accepted = int(params.get("accepted", -1))
         if accepted not in (0, 1):
             raise BreakawayCampaignProtocolError("invalid campaign accepted flag")
-        digest = _u64(params["stage_c_plan_digest_low"], params["stage_c_plan_digest_high"])
+        digest = _u64(params["integral_plan_digest_low"], params["integral_plan_digest_high"])
         if bool(accepted) != (digest != 0):
             raise BreakawayCampaignProtocolError(
                 "campaign accepted flag disagrees with the velocity-integral plan digest"
@@ -957,5 +959,5 @@ class BreakawayCampaignAssembler:
             )
         self.campaign_terminal = _metadata_free(params)
         self.accepted = bool(accepted)
-        self.stage_c_plan_digest = digest
+        self.integral_plan_digest = digest
         self.done = True

@@ -15,7 +15,7 @@ from klipper_foci.velocity_integral import (
 )
 
 PLAN_DIGEST = 0x0123_4567_89AB_CDEF
-STAGE_B_DIGEST = 0xFEDC_BA98_7654_3210
+PROPORTIONAL_DIGEST = 0xFEDC_BA98_7654_3210
 RUN_SEQUENCE = 9
 POSITIVE_I = (5, 10, 20)
 NATIVE_Q4_12_POSITIVE_I = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
@@ -44,7 +44,7 @@ def feed_plan(
     nominal_workflow_ms=49_920,
     maximum_workflow_ms=49_920,
     recovery_flags=0,
-    final_p=1448,
+    fixed_p=1448,
     joint_membership=0x0038_0000,
 ):
     common = {"oid": 0, "run_sequence": RUN_SEQUENCE, "evidence_sequence": 0}
@@ -54,12 +54,12 @@ def feed_plan(
             "fragment": 0,
             "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
             "plan_digest_high": PLAN_DIGEST >> 32,
-            "stage_b_digest_low": STAGE_B_DIGEST & 0xFFFF_FFFF,
-            "stage_b_digest_high": STAGE_B_DIGEST >> 32,
+            "proportional_digest_low": PROPORTIONAL_DIGEST & 0xFFFF_FFFF,
+            "proportional_digest_high": PROPORTIONAL_DIGEST >> 32,
             "build_revision": 7,
             "schema_revision": schema_revision,
             "channel": 0,
-            "final_p": final_p,
+            "fixed_p": fixed_p,
         }
     )
     assembler.handle_plan_geometry(
@@ -217,12 +217,12 @@ def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
         nominal_workflow_ms=165_950,
         maximum_workflow_ms=182_512,
         recovery_flags=0b10,
-        final_p=724,
+        fixed_p=724,
         joint_membership=0x000E_0000,
     )
 
     assert assembler.plan["schema_revision"] == 7
-    assert assembler.plan["final_p"] == 724
+    assert assembler.plan["fixed_p"] == 724
     assert assembler.plan["authorities"][0]["joint_membership"] == 0x000E_0000
     assert assembler.plan["probe_constrained_test_point"] is True
 
@@ -245,7 +245,7 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=999_999,
         maximum_workflow_ms=1_000_000,
-        final_p=1024,
+        fixed_p=1024,
         joint_membership=0,
     )
 
@@ -368,12 +368,12 @@ def test_schema_fourteen_assembles_the_breakaway_stage_c_plan():
         assembler,
         schema_revision=14,
         positive_i=POSITIVE_I,
-        final_p=1024,
+        fixed_p=1024,
         joint_membership=0,
     )
 
     assert assembler.plan["schema_revision"] == 14
-    assert assembler.plan["final_p"] == 1024
+    assert assembler.plan["fixed_p"] == 1024
 
 
 def test_schema_fourteen_requires_breakaway_workflow():
@@ -531,12 +531,12 @@ def test_handle_terminal_rejects_failed_admission_shape_after_a_partial_plan():
             "fragment": 0,
             "plan_digest_low": PLAN_DIGEST & 0xFFFF_FFFF,
             "plan_digest_high": PLAN_DIGEST >> 32,
-            "stage_b_digest_low": STAGE_B_DIGEST & 0xFFFF_FFFF,
-            "stage_b_digest_high": STAGE_B_DIGEST >> 32,
+            "proportional_digest_low": PROPORTIONAL_DIGEST & 0xFFFF_FFFF,
+            "proportional_digest_high": PROPORTIONAL_DIGEST >> 32,
             "build_revision": 7,
             "schema_revision": 2,
             "channel": 0,
-            "final_p": 1448,
+            "fixed_p": 1448,
         }
     )
 
@@ -633,7 +633,7 @@ def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_cont
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=14, positive_i=POSITIVE_I, final_p=1024, joint_membership=0
+        assembler, schema_revision=14, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
@@ -649,7 +649,7 @@ BREAKAWAY_RUN_SEQUENCE = 21
 PROBE_DIGEST = (0x1111_1111, 0x2222_2222)
 DISCOVERY_DIGEST = (0x3333_3333, 0x4444_4444)
 CONFIRMATION_DIGEST = (0x5555_5555, 0x6666_6666)
-STAGE_C_DIGEST = (0x7777_7777, 0x8888_8888)
+INTEGRAL_DIGEST = (0x7777_7777, 0x8888_8888)
 
 
 def feed_probe_plan(assembler, *, run_sequence=BREAKAWAY_RUN_SEQUENCE, digest=PROBE_DIGEST):
@@ -760,7 +760,7 @@ def feed_confirmation_plan(
     run_sequence=BREAKAWAY_RUN_SEQUENCE,
     prior_digest=DISCOVERY_DIGEST,
     digest=CONFIRMATION_DIGEST,
-    candidate_p_raw=400,
+    nominated_p_raw=400,
 ):
     prior_low, prior_high = prior_digest
     low, high = digest
@@ -775,7 +775,7 @@ def feed_confirmation_plan(
             "prior_plan_digest_high": prior_high,
             "family_size": 8,
             "observations_per_direction": 4,
-            "candidate_p_raw": candidate_p_raw,
+            "nominated_p_raw": nominated_p_raw,
             "band_lower_percent": 70,
             "band_upper_percent": 80,
             "capture_profile": 0,
@@ -833,11 +833,11 @@ def feed_campaign_terminal(
     *,
     run_sequence=BREAKAWAY_RUN_SEQUENCE,
     accepted,
-    stage_c_digest=STAGE_C_DIGEST,
+    integral_digest=INTEGRAL_DIGEST,
     terminal_cause=None,
     error_code=0,
 ):
-    low, high = stage_c_digest if accepted else (0, 0)
+    low, high = integral_digest if accepted else (0, 0)
     assembler.handle_campaign_terminal(
         {
             "oid": 0,
@@ -848,8 +848,8 @@ def feed_campaign_terminal(
             if terminal_cause is not None
             else (21 if accepted else 15),
             "accepted": int(accepted),
-            "stage_c_plan_digest_low": low,
-            "stage_c_plan_digest_high": high,
+            "integral_plan_digest_low": low,
+            "integral_plan_digest_high": high,
             "error_code": error_code,
         }
     )
@@ -1146,7 +1146,7 @@ def test_breakaway_campaign_terminal_confirmed_refusal_is_not_a_protocol_error()
     assert assembler.campaign_terminal["error_code"] == 11
 
 
-def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
+def test_breakaway_campaign_terminal_accepted_requires_an_integral_digest():
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
     feed_probe_result(assembler)
@@ -1164,8 +1164,8 @@ def test_breakaway_campaign_terminal_accepted_requires_a_stage_c_digest():
                 "phase": 2,
                 "terminal_cause": 21,
                 "accepted": 1,
-                "stage_c_plan_digest_low": 0,
-                "stage_c_plan_digest_high": 0,
+                "integral_plan_digest_low": 0,
+                "integral_plan_digest_high": 0,
                 "error_code": 0,
             }
         )
@@ -1183,19 +1183,19 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
 
     assert assembler.done
     assert assembler.accepted is True
-    assert assembler.stage_c_plan_digest == (STAGE_C_DIGEST[0] | (STAGE_C_DIGEST[1] << 32))
+    assert assembler.integral_plan_digest == (INTEGRAL_DIGEST[0] | (INTEGRAL_DIGEST[1] << 32))
     # The confirmed gain is the exact confirmation candidate, never a
     # host-reselected value.
     assert (
         assembler.confirmation_terminal["confirmed_p_raw"]
-        == (assembler.confirmation_plan["candidate_p_raw"])
+        == (assembler.confirmation_plan["nominated_p_raw"])
     )
 
 
 def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
     """On an inconclusive confirmation the campaign never nominates a gain.
 
-    No Stage-C authority may be derived, so `stage_c_plan_digest` reads as the
+    No Stage-C authority may be derived, so `integral_plan_digest` reads as the
     empty identity and a second confirmation plan (a "retry") is refused --
     the assembler exposes no path to keep trying candidates.
     """
@@ -1210,10 +1210,10 @@ def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
 
     assert assembler.done
     assert assembler.accepted is False
-    assert assembler.stage_c_plan_digest == 0
+    assert assembler.integral_plan_digest == 0
 
     with pytest.raises(BreakawayCampaignProtocolError, match="duplicate confirmation"):
-        feed_confirmation_plan(assembler, candidate_p_raw=360)
+        feed_confirmation_plan(assembler, nominated_p_raw=360)
 
 
 def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
@@ -1250,7 +1250,7 @@ def test_breakaway_campaign_assembler_exposes_no_decision_making_surface():
             "confirmation_terminal",
             "campaign_terminal",
             "accepted",
-            "stage_c_plan_digest",
+            "integral_plan_digest",
             "done",
         ), f"unexpected non-relay method on the assembler: {name}"
         for verb in banned_verbs:
