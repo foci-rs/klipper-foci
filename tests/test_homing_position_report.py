@@ -32,11 +32,15 @@ def test_homing_move_end_reports_matching_stepper_positions():
 
     driver.homing.handle_homing_move_end(homing_move)
 
-    assert len(gcode._responses) == 1
+    assert len(gcode._responses) == 2
     assert gcode._responses[0] == (
         "FOCI_HOME_POSITION stepper_y endstop=x start=-13904 trig=13692 "
         "halt=26934 move_steps=40838 over_steps=13242 "
         "move_mm=408.380 over_mm=132.420"
+    )
+    assert gcode._responses[1] == (
+        "FOCI_HOME_STALL stepper_y latched=1 peak_error_units=1234 "
+        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0"
     )
 
 
@@ -85,7 +89,7 @@ def test_homing_move_end_reports_step_history_summary():
     toolhead.last_move_time = 13.0
     driver.homing.handle_homing_move_end(homing_move)
 
-    assert len(gcode._responses) == 3
+    assert len(gcode._responses) == 4
     assert gcode._responses[1] == (
         "FOCI_HOME_STEP_HISTORY stepper_y start_clock=12000 end_clock=13000 "
         "segments=2 move_segments=2 marker_segments=0 signed_steps=800 "
@@ -97,6 +101,10 @@ def test_homing_move_end_reports_step_history_summary():
         "FOCI_HOME_STEP_SEGMENTS stepper_y first="
         "12050:-13000:+300@10/+0,12100:-12700:+500@10/+0 last="
         "12050:-13000:+300@10/+0,12100:-12700:+500@10/+0 markers=none"
+    )
+    assert gcode._responses[3] == (
+        "FOCI_HOME_STALL stepper_y latched=1 peak_error_units=1234 "
+        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0"
     )
 
 
@@ -161,7 +169,7 @@ def test_homing_move_end_reports_signed_step_history_details():
     toolhead.last_move_time = 21.0
     driver.homing.handle_homing_move_end(homing_move)
 
-    assert len(gcode._responses) == 3
+    assert len(gcode._responses) == 4
     assert gcode._responses[1] == (
         "FOCI_HOME_STEP_HISTORY stepper_x start_clock=20000 end_clock=21000 "
         "segments=4 move_segments=3 marker_segments=1 signed_steps=50 "
@@ -175,6 +183,10 @@ def test_homing_move_end_reports_signed_step_history_details():
         "20200:30:+20@12/+1 last="
         "20010:0:+100@10/+0,20100:100:-70@11/-1,"
         "20200:30:+20@12/+1 markers=20310:50"
+    )
+    assert gcode._responses[3] == (
+        "FOCI_HOME_STALL stepper_x latched=1 peak_error_units=1234 "
+        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0"
     )
 
 
@@ -197,3 +209,24 @@ def test_homing_move_end_ignores_unrelated_moves():
     driver.homing.handle_homing_move_end(homing_move)
 
     assert gcode._responses == []
+
+
+def test_homing_move_end_skips_stall_line_when_clamp_disabled():
+    driver = make_driver(stepper_name="stepper_y")
+    driver.config.homing_current = 0.0
+    gcode = driver.printer.lookup_object("gcode")
+    stepper = MockStepper("stepper_y", step_dist=0.01)
+    homing_move = SimpleNamespace(
+        stepper_positions=[
+            SimpleNamespace(
+                stepper=stepper,
+                stepper_name="stepper_y",
+                endstop_name="y",
+                start_pos=0,
+                trig_pos=100,
+                halt_pos=100,
+            )
+        ]
+    )
+    driver.homing.handle_homing_move_end(homing_move)
+    assert len(gcode._responses) == 1

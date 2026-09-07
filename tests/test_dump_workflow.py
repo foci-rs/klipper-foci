@@ -21,12 +21,21 @@ DEFAULT_DUMP_VALUES = {
 }
 
 
+DEFAULT_STALL_RESULT = {
+    "latched": 1,
+    "peak_error_units": 1234,
+    "trigger_tick": 7,
+    "clamp_active": 0,
+}
+
+
 class DumpOnlyProtocol:
     """Protocol fake that permits only the existing dump request."""
 
-    def __init__(self, driver, dump_values):
+    def __init__(self, driver, dump_values, stall_result=None):
         self.driver = driver
         self.dump_values = dump_values
+        self.stall_result = stall_result or DEFAULT_STALL_RESULT
         self.calls = []
 
     def dump_registers(self):
@@ -35,15 +44,18 @@ class DumpOnlyProtocol:
             self.driver.dump.handle_dump_value({"addr": addr, "value": value})
         self.driver.dump.handle_dump_done({})
 
+    def query_stall(self):
+        return self.stall_result
+
     def __getattr__(self, name):
         raise AssertionError(f"unexpected protocol call: {name}")
 
 
-def _install_dump_response(driver, values=None):
+def _install_dump_response(driver, values=None, stall_result=None):
     dump_values = DEFAULT_DUMP_VALUES.copy()
     if values is not None:
         dump_values.update(values)
-    protocol = DumpOnlyProtocol(driver, dump_values)
+    protocol = DumpOnlyProtocol(driver, dump_values, stall_result)
     driver.protocol = protocol
     return protocol
 
@@ -774,3 +786,15 @@ def test_dump_tmc_alias_accepts_tuning_flag():
 
     assert protocol.calls == ["dump_registers"]
     assert "========== Tuning Analysis ==========" in gcmd.last_info
+
+
+def test_dump_reports_homing_stall_state():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, calls = _run_dump(driver)
+
+    assert calls == ["dump_registers"]
+    assert (
+        "homing clamp_active=0 last_stall latched=1 peak_error_units=1234 trigger_tick=7" in output
+    )

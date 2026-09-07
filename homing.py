@@ -340,7 +340,20 @@ class HomingWorkflow:
                 f"{move_steps * step_dist:.3f} over_mm={over_steps * step_dist:.3f}"
             )
             self._report_homing_step_history(gcode, homing_move, sp, start_time)
+            self._report_stall_result(gcode)
             return
+
+    def _report_stall_result(self, gcode) -> None:
+        """Report the firmware stall latch after a clamped homing move."""
+        if self.driver.config.homing_current <= 0.0:
+            return
+        result = self.driver.protocol.query_stall()
+        peak_mm = result["peak_error_units"] / 65536.0 * self.driver.config.rotation_distance
+        gcode.respond_info(
+            f"FOCI_HOME_STALL {self.driver.stepper_name} latched={result['latched']} "
+            f"peak_error_units={result['peak_error_units']} peak_error_mm={peak_mm:.3f} "
+            f"trigger_tick={result['trigger_tick']} clamp_active={result['clamp_active']}"
+        )
 
     def _report_homing_step_history(self, gcode, homing_move, sp, start_time) -> None:
         """Report Kalico stepcompress history for one homing stepper."""

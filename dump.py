@@ -264,6 +264,12 @@ class RegisterDumpWorkflow:
                 else:
                     lines.append(f"  {reg_name:30} = (not in dump)")
 
+        stall = self.driver.protocol.query_stall()
+        lines.append(
+            f"homing clamp_active={stall['clamp_active']} last_stall latched={stall['latched']} "
+            f"peak_error_units={stall['peak_error_units']} trigger_tick={stall['trigger_tick']}"
+        )
+
         if include_tuning:
             lines.extend(self._format_tuning_analysis())
 
