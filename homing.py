@@ -6,6 +6,7 @@ import logging
 from typing import ClassVar
 
 from .commissioning import COMMISSION_ERROR_NAMES, format_commission_detail
+from .config import POSITION_UNITS_PER_REV
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
 
@@ -347,7 +348,11 @@ class HomingWorkflow:
         if self.driver.config.homing_current <= 0.0:
             return
         result = self.driver.protocol.query_stall()
-        peak_mm = result["peak_error_units"] / 65536.0 * self.driver.config.rotation_distance
+        peak_mm = (
+            result["peak_error_units"]
+            / POSITION_UNITS_PER_REV
+            * self.driver.config.rotation_distance
+        )
         gcode.respond_info(
             f"FOCI_HOME_STALL {self.driver.stepper_name} latched={result['latched']} "
             f"peak_error_units={result['peak_error_units']} peak_error_mm={peak_mm:.3f} "

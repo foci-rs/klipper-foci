@@ -20,6 +20,13 @@ MOTION_FILTER_MAX_HZ = 1000
 CURRENT_FILTER_MAX_HZ = 6000
 MAX_ENCODER_PPR = 0x3FFF_FFFF
 DEFAULT_HOMING_CURRENT_AMPS = 0.7
+# Firmware quantizes both currents to TMC4671 register units before comparing
+# them; a real board's per-LSB step is on the order of 1-2 mA
+# (current_scale_ma_per_lsb), so a host-side check with less margin than this
+# can pass in amps while landing on the identical register value as
+# run_current, tripping the firmware's own quantized >= check on the first
+# homing move.
+HOMING_CURRENT_MARGIN_AMPS = 0.05
 DEFAULT_STALL_DISTANCE_MM = 0.5
 DEFAULT_STALL_PERSISTENCE_TICKS = 3
 MAX_STALL_PERSISTENCE_TICKS = 255
@@ -291,10 +298,11 @@ def parse_driver_config(config) -> FociDriverConfig:
     homing_current = config.getfloat(
         "homing_current", DEFAULT_HOMING_CURRENT_AMPS, minval=0.0, maxval=MAX_RUN_CURRENT_AMPS
     )
-    if homing_current > 0.0 and homing_current >= run_current:
+    if homing_current > 0.0 and homing_current > run_current - HOMING_CURRENT_MARGIN_AMPS:
         raise config.error(
-            f"homing_current {homing_current:.3f} in [{name}] must be below run_current "
-            f"{run_current:.3f} (or 0 to disable the homing clamp)"
+            f"homing_current {homing_current:.3f} in [{name}] must be at least "
+            f"{HOMING_CURRENT_MARGIN_AMPS:.3f} below run_current {run_current:.3f} "
+            "(or 0 to disable the homing clamp)"
         )
     stall_distance = config.getfloat("stall_distance", DEFAULT_STALL_DISTANCE_MM, above=0.0)
     stall_persistence = config.getint(
@@ -752,6 +760,7 @@ def parse_driver_config(config) -> FociDriverConfig:
 
 
 def stall_threshold_units(config: FociDriverConfig) -> int:
+    """Convert stall_distance (mm) to TMC position units (65536 per revolution)."""
     return max(1, round(config.stall_distance / config.rotation_distance * POSITION_UNITS_PER_REV))
 
 

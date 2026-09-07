@@ -1179,6 +1179,7 @@ def test_homing_defaults_and_threshold_units():
     "values",
     [
         {"homing_current": "2.3"},
+        {"homing_current": "2.26"},
         {"homing_current": "-0.1"},
         {"stall_distance": "0"},
         {"stall_distance": "10.1"},
@@ -1201,7 +1202,7 @@ def test_homing_config_rejects_out_of_range(values):
         ({"stall_distance": "10.0"}, "stall_distance", 10.0),
         ({"stall_persistence": "1"}, "stall_persistence", 1),
         ({"stall_persistence": "255"}, "stall_persistence", 255),
-        ({"homing_current": "2.2999"}, "homing_current", 2.2999),
+        ({"homing_current": "2.0"}, "homing_current", 2.0),
     ],
 )
 def test_homing_config_accepts_boundary_values(values, field_name, expected):
