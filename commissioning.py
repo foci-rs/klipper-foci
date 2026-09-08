@@ -83,6 +83,7 @@ COMMISSION_ERROR_NAMES: dict[int, str] = {
     73: "resistance nonpositive slope (reversed current polarity or sign error)",
     74: "cancelled",
     75: "safe-state cleanup incomplete",
+    76: "inductance current envelope exceeded",
 }
 
 # Error codes for which the failure message should point at a dedicated

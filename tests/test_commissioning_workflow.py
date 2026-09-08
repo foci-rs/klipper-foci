@@ -56,6 +56,10 @@ def test_unconfirmed_velocity_rest_has_a_dedicated_operator_label():
     assert format_commission_error_name(53) == "velocity rest not confirmed"
 
 
+def test_inductance_current_envelope_code_has_a_name():
+    assert COMMISSION_ERROR_NAMES.get(76) == "inductance current envelope exceeded"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
