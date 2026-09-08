@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from .formatting import (
-    OPENFFBOARD_CPU_CYCLES_PER_US,
+    cpu_cycles_per_us,
     format_stepper_event,
     format_stepper_perf_event,
     stepper_dir_inverted,
@@ -35,7 +35,9 @@ class PassiveDiagnostics:
 
     def handle_stepper_perf_event(self, params: dict) -> None:
         """Handle fatal firmware step-dispatch performance snapshots."""
-        message = format_stepper_perf_event(self.driver.stepper_name, params)
+        message = format_stepper_perf_event(
+            self.driver.stepper_name, params, cpu_cycles_per_us(self.driver.mcu)
+        )
         log.info(message)
         gcode = self.driver.printer.lookup_object("gcode", None)
         if gcode is not None:
@@ -142,12 +144,13 @@ class PassiveDiagnostics:
         """Query MCU step-dispatch cycle counters."""
         clear = gcmd.get_int("RESET", 0, minval=0, maxval=1)
         response = self.driver.protocol.get_stepper_perf_stats(clear=clear != 0)
+        cycles_per_us = cpu_cycles_per_us(self.driver.mcu)
 
         def cycles_to_us(field: str) -> int | str:
             value = response.get(field)
             if value is None:
                 return "?"
-            return int(value) // OPENFFBOARD_CPU_CYCLES_PER_US
+            return int(value) // cycles_per_us
 
         fields = [
             "channel",

@@ -2,7 +2,26 @@
 
 from __future__ import annotations
 
-OPENFFBOARD_CPU_CYCLES_PER_US = 168
+CPU_CYCLES_PER_US_BY_MCU: dict[str, int] = {
+    "stm32f407xx": 168,
+    "stm32h723xx": 520,
+}
+DEFAULT_CPU_CYCLES_PER_US = CPU_CYCLES_PER_US_BY_MCU["stm32f407xx"]
+
+
+def cpu_cycles_per_us(mcu) -> int:
+    """Return this board's CPU-cycle counter frequency in cycles/us.
+
+    Resolved from the `MCU` constant Klipper's MCU protocol object reports
+    (e.g. "stm32f407xx", "stm32h723xx" — the literal `MCU` constant each
+    board's firmware publishes). Falls back to the OpenFFBoard value when
+    the constant is missing or unrecognized, so diagnostics degrade to the
+    historical behavior rather than crashing.
+    """
+    get_constants = getattr(mcu, "get_constants", None)
+    constants = get_constants() if get_constants is not None else {}
+    return CPU_CYCLES_PER_US_BY_MCU.get(constants.get("MCU"), DEFAULT_CPU_CYCLES_PER_US)
+
 
 STEPPER_EVENT_REASON_NAMES: dict[int, str] = {
     1: "queue_empty",
@@ -39,7 +58,7 @@ def format_stepper_event(stepper_name: str, params: dict) -> str:
     )
 
 
-def format_stepper_perf_event(stepper_name: str, params: dict) -> str:
+def format_stepper_perf_event(stepper_name: str, params: dict, cycles_per_us: int) -> str:
     """Format one fatal firmware step-dispatch performance snapshot."""
     reason_code = params.get("reason", 0)
     reason_name = STEPPER_EVENT_REASON_NAMES.get(reason_code, "unknown")
@@ -48,7 +67,7 @@ def format_stepper_perf_event(stepper_name: str, params: dict) -> str:
         value = params.get(field)
         if value is None:
             return "?"
-        return int(value) // OPENFFBOARD_CPU_CYCLES_PER_US
+        return int(value) // cycles_per_us
 
     return (
         f"FOCI_STEPPER_PERF_EVENT {stepper_name} reason={reason_name}({int(reason_code)}) channel="

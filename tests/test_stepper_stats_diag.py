@@ -208,3 +208,57 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "stepper_load_lateness_max_ticks=1234" in gcmd.last_info
     assert "stepper_load_lateness_last_ticks=-20" in gcmd.last_info
     assert "build_trace_enabled=0" in gcmd.last_info
+
+
+def test_dispatch_stats_diagnostic_uses_ouroboros_cpu_clock():
+    driver = make_driver(stepper_name="stepper_x")
+    driver.oid = 10
+    driver.mcu.constants["MCU"] = "stm32h723xx"
+    driver.protocol.commands.stepper_perf_stats = MockCommand(
+        {
+            "oid": 10,
+            "channel": 0,
+            "crit_max_cycles": 190000,
+            "crit_max_site": 1,
+            "crit_over_10us": 9,
+            "crit_over_50us": 4,
+            "crit_over_100us": 2,
+            "crit_over_1000us": 1,
+            "queue_step_count": 23,
+            "queue_step_max_cycles": 175000,
+            "shutdown_site_count": 3,
+            "shutdown_site_max_cycles": 6000,
+            "reset_site_count": 2,
+            "reset_site_max_cycles": 4200,
+            "trigger_stop_site_count": 15,
+            "trigger_stop_site_max_cycles": 900,
+            "tim5_activation_count": 400,
+            "tim5_irq_max_cycles": 2400,
+            "tim5_dispatch_max_cycles": 2100,
+            "tim5_dispatch_max_cycles_events": 5,
+            "tim5_events_max_per_irq": 3,
+            "tim5_event_count_total": 800,
+            "tim5_defer_count": 5,
+            "tim5_burst_cycles_per_event_max_cycles": 2100,
+            "tim5_burst_cycles_per_event_max_events": 3,
+            "tim5_burst_cycles_per_event_floor3_max": 700,
+            "tim5_entry_latency_max_ticks": 8400,
+            "tim5_pop_lateness_max_ticks": 41,
+            "scheduler_cycles_max": 555,
+            "scheduler_cycles_events_at_max": 4,
+            "scheduler_cycles_per_event_max": 111,
+            "scheduler_cycles_per_event_floor3_max": 111,
+            "scheduler_full_count": 2,
+            "stepper_load_lateness_max_ticks": 1234,
+            "stepper_load_lateness_last_ticks": -20,
+            "build_trace_enabled": 0,
+        }
+    )
+    gcmd = MockGCmd({"RESET": 1})
+
+    driver.diagnostics.dispatch_stats(gcmd)
+
+    assert "crit_max_us=365" in gcmd.last_info
+    assert "queue_step_max_us=336" in gcmd.last_info
+    assert "tim5_irq_max_us=4" in gcmd.last_info
+    assert "tim5_dispatch_max_us=4" in gcmd.last_info
