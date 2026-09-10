@@ -1019,6 +1019,111 @@ def test_handle_connect_installs_validation_result():
     assert driver.state.active_gains["velocity_p"] == 1100
 
 
+# Config for a stepper with saved commissioned gains that differ from the
+# printer.cfg pid_position_p/i, pid_velocity_p/i, pid_velocity_limit values.
+# Captured against the pre-change (two-pass) `_handle_connect` so the expected
+# values below are the actual two-pass result, not a hand-derived guess: the
+# saved commissioned_* gains run second and win over the printer.cfg values.
+_CONNECT_SAVED_GAINS_DIFFER_FROM_CFG = {
+    "autotune_status": "commissioned",
+    "pid_flux_p": 256,
+    "pid_flux_i": 416,
+    "pid_torque_p": 257,
+    "pid_torque_i": 432,
+    "identified_lambda_us": 12,
+    "identified_theta_e_us": 160,
+    "identified_ringing_count": 7,
+    "identified_bandwidth_hz": 1600,
+    "commissioned_velocity_p": 1100,
+    "commissioned_velocity_i": 48,
+    "commissioned_position_p": 600,
+    "commissioned_position_i": 64,
+    "commissioned_velocity_limit": 300000,
+    "pid_position_p": 111,
+    "pid_position_i": 22,
+    "pid_velocity_p": 33,
+    "pid_velocity_i": 44,
+    "pid_velocity_limit": 5000,
+    "position_filter_hz": 200,
+    "voltage_limit": 16000,
+}
+
+
+def test_handle_connect_sends_each_command_once_with_saved_gains():
+    """Saved commissioned gains differ from printer.cfg: single send, active gains win."""
+    _printer, _chips, sections, config = make_foci_config(
+        foci_values=_CONNECT_SAVED_GAINS_DIFFER_FROM_CFG
+    )
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    cmds = driver.protocol.commands
+    expected_last_args = {
+        "set_current": [10, 800],
+        "set_voltage_limit": [10, 16000],
+        "query_adc_vm_offset": [10],
+        "set_motion_scale": [10, 0, 1000, 4000],
+        "set_encoder_dir": [10, 0, 0],
+        "set_pid_gains": [10, 256, 416, 257, 432],
+        "set_position_filter": [10, 200],
+        "set_position_gains": [10, 600, 64, 1100, 48],
+        "set_velocity_limit": [10, 300000],
+    }
+    for name, args in expected_last_args.items():
+        command = getattr(cmds, name)
+        assert command.call_count <= 1, f"{name} sent more than once"
+        assert command.last_args == args
+
+    for name in (
+        "set_velocity_filter",
+        "set_torque_filter",
+        "set_flux_filter",
+        "set_velocity_feedforward",
+    ):
+        assert getattr(cmds, name).call_count == 0
+
+
+def test_handle_connect_matches_configure_startup_output_with_no_saved_gains():
+    """Uncommissioned config: connect sequence is unchanged from configure_startup alone."""
+    _printer, _chips, sections, config = make_foci_config(
+        foci_values={
+            "run_current": 0.8,
+            "voltage_limit": 16000,
+            "pid_position_p": 111,
+            "pid_position_i": 22,
+            "pid_velocity_p": 33,
+            "pid_velocity_i": 44,
+            "pid_velocity_limit": 5000,
+            "position_filter_hz": 200,
+        }
+    )
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert driver.state.active_gains is None
+    cmds = driver.protocol.commands
+    assert cmds.set_current.last_args == [10, 800]
+    assert cmds.set_voltage_limit.last_args == [10, 16000]
+    assert cmds.set_voltage_limit.call_count == 1
+    assert cmds.set_position_gains.last_args == [10, 111, 22, 33, 44]
+    assert cmds.set_position_gains.call_count == 1
+    assert cmds.set_velocity_limit.last_args == [10, 5000]
+    assert cmds.set_velocity_limit.call_count == 1
+    assert cmds.set_position_filter.last_args == [10, 200]
+    assert cmds.set_position_filter.call_count == 1
+    for name in (
+        "set_velocity_filter",
+        "set_torque_filter",
+        "set_flux_filter",
+        "set_velocity_feedforward",
+    ):
+        assert getattr(cmds, name).call_count == 0
+
+
 def test_handle_connect_reads_payloads_from_settings_not_config():
     _printer, _chips, sections, config = make_foci_config(
         foci_values={

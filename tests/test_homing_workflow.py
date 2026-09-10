@@ -211,7 +211,8 @@ class TestHomingStateTransitions(unittest.TestCase):
 
         self.assertEqual(calls, ["apply_initial_state"])
 
-    def test_initial_homing_state_applies_active_gains_when_enabled(self):
+    def test_initial_homing_state_does_not_resend_active_gains_when_enabled(self):
+        """Connect already sent the resolved gains once; apply_initial_state must not resend."""
         d = make_driver()
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         calls = []
@@ -224,7 +225,7 @@ class TestHomingStateTransitions(unittest.TestCase):
 
         d.homing.apply_initial_state()
 
-        self.assertEqual(calls, ["apply", ("auto", True), "hooks"])
+        self.assertEqual(calls, [("auto", True), "hooks"])
 
     def test_initial_homing_state_keeps_auto_calibrate_closed_when_inhibited(self):
         d = make_driver()

@@ -94,8 +94,6 @@ class HomingWorkflow:
         allow_auto_calibrate = (
             self.driver.state.active_gains is not None and not self.driver.state.inhibited
         )
-        if allow_auto_calibrate:
-            self.apply_active_gains_to_firmware()
         self.set_auto_calibrate_on_enable_allowed(allow_auto_calibrate)
         self.install_enable_hooks()
 

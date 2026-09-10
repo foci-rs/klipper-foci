@@ -179,22 +179,15 @@ class FociDriver:
         settings = self.settings
         parsed = self.config
         run_ma: int = int(settings.run_current * 1000.0)
-        pid_gains = None
-        if settings.pid_flux_p is not None:
-            pid_gains = (
-                settings.pid_flux_p,
-                settings.pid_flux_i,
-                settings.pid_torque_p,
-                settings.pid_torque_i,
-            )
-        position_gains = None
-        if settings.pid_position_p is not None:
-            position_gains = (
-                settings.pid_position_p,
-                settings.pid_position_i,
-                settings.pid_velocity_p,
-                settings.pid_velocity_i,
-            )
+
+        validation = validate_runtime_config(self.config)
+        self.state.runtime_status = validation.runtime_status
+        self.state.active_gains = validation.active_gains
+        active_gains = validation.active_gains
+
+        pid_gains, position_gains, velocity_limit, filter_hz = self._resolve_startup_gains(
+            settings, active_gains
+        )
         self.protocol.configure_startup(
             current_ma=run_ma,
             voltage_limit=settings.voltage_limit,
@@ -203,18 +196,13 @@ class FociDriver:
             planner_steps_per_rev=parsed.planner_steps_per_rev,
             encoder_reversed=parsed.encoder_reversed,
             pid_gains=pid_gains,
-            filter_hz={
-                "velocity": settings.velocity_filter_hz,
-                "torque": settings.torque_filter_hz,
-                "position": settings.position_filter_hz,
-                "flux": settings.flux_filter_hz,
-            },
+            filter_hz=filter_hz,
             position_gains=position_gains,
             velocity_feedforward=(
                 settings.velocity_feedforward,
                 gain_to_permille(settings.velocity_feedforward_gain),
             ),
-            velocity_limit=settings.pid_velocity_limit,
+            velocity_limit=velocity_limit,
             homing=(
                 round(parsed.homing_current * 1000.0),
                 stall_threshold_units(parsed),
@@ -222,11 +210,64 @@ class FociDriver:
             ),
         )
         self._report_motion_scale_mapping()
-        validation = validate_runtime_config(self.config)
-        self.state.runtime_status = validation.runtime_status
-        self.state.active_gains = validation.active_gains
         self._warn_if_tuned_below_operating_range()
         self.homing.apply_initial_state()
+
+    @staticmethod
+    def _resolve_startup_gains(
+        settings: FociControlSettings,
+        active_gains: dict[str, int | None] | None,
+    ) -> tuple[
+        tuple[int, int, int, int] | None,
+        tuple[int, int, int, int] | None,
+        int | None,
+        dict[str, int | None],
+    ]:
+        """Resolve the single connect-time send, preferring saved gains over config.
+
+        Saved autotune gains (when present) take the same precedence they held under
+        the old two-pass connect sequence, where the second pass ran after and
+        therefore won on every field it touched. voltage_limit is deliberately not
+        resolved here: it is `settings.voltage_limit` in both the old first and
+        second pass, so there is nothing to resolve.
+        """
+        flux_p = active_gains["flux_p"] if active_gains is not None else settings.pid_flux_p
+        pid_gains = None
+        if flux_p is not None:
+            pid_gains = (
+                flux_p,
+                active_gains["flux_i"] if active_gains is not None else settings.pid_flux_i,
+                active_gains["torque_p"] if active_gains is not None else settings.pid_torque_p,
+                active_gains["torque_i"] if active_gains is not None else settings.pid_torque_i,
+            )
+
+        position_gains = None
+        if active_gains is not None and active_gains.get("velocity_p") is not None:
+            position_gains = (
+                active_gains["position_p"],
+                active_gains["position_i"],
+                active_gains["velocity_p"],
+                active_gains["velocity_i"],
+            )
+        elif settings.pid_position_p is not None:
+            position_gains = (
+                settings.pid_position_p,
+                settings.pid_position_i,
+                settings.pid_velocity_p,
+                settings.pid_velocity_i,
+            )
+
+        if active_gains is not None and active_gains.get("velocity_limit"):
+            velocity_limit = active_gains["velocity_limit"]
+        else:
+            velocity_limit = settings.pid_velocity_limit
+
+        filter_hz: dict[str, int | None] = {}
+        for name in ("velocity", "torque", "position", "flux"):
+            value = active_gains.get(f"{name}_filter_hz") if active_gains is not None else None
+            filter_hz[name] = value if value is not None else getattr(settings, f"{name}_filter_hz")
+
+        return pid_gains, position_gains, velocity_limit, filter_hz
 
     def _warn_if_tuned_below_operating_range(self) -> None:
         """Compare the configured operating velocity against the probed tune.
