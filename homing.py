@@ -9,23 +9,23 @@ from .commissioning import COMMISSION_REASON_NAMES, format_commission_detail
 from .config import POSITION_UNITS_PER_REV
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
+# Status codes for foci_calibrate_response (CalibrationError::status_code).
+# This is a separate namespace from commissioning errors because calibration
+# and commission paths report through different message types.
+CALIBRATION_REASON_NAMES: dict[int, str] = {
+    1: "SPI_ERROR (TMC4671 not responding)",
+    2: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
+    5: "ALREADY_ENABLED",
+    6: "INTERNAL_ERROR",
+    7: "CONFIG_FAULT (run-time configuration missing)",
+    8: "ENCODER_FAULT (encoder did not report expected calibration movement)",
+    9: "CLOSED_LOOP_ACTIVATION_UNSTABLE (position hold runaway or excess drift)",
+    10: "CANCELLED (operator-requested cancel)",
+}
+
 
 class HomingWorkflow:
     """Coordinate calibration-on-enable and homing-related reporting."""
-
-    # Status codes for foci_calibrate_response (CalibrationError::status_code).
-    # This is a separate namespace from commissioning errors because calibration
-    # and commission paths report through different message types.
-    CALIBRATION_ERROR_NAMES: ClassVar[dict[int, str]] = {
-        1: "SPI_ERROR (TMC4671 not responding)",
-        2: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
-        5: "ALREADY_ENABLED",
-        6: "INTERNAL_ERROR",
-        7: "CONFIG_FAULT (run-time configuration missing)",
-        8: "ENCODER_FAULT (encoder did not report expected calibration movement)",
-        9: "CLOSED_LOOP_ACTIVATION_UNSTABLE (position hold runaway or excess drift)",
-        10: "CANCELLED (operator-requested cancel)",
-    }
 
     # Kinematics coupling map: in coupled kinematics a single motor affects
     # multiple Cartesian axes. Maps rail index -> affected axes.
@@ -133,8 +133,8 @@ class HomingWorkflow:
 
     def format_calibration_status(self, status: int) -> str:
         """Format a non-zero foci_calibrate_result status for operators."""
-        if status in self.CALIBRATION_ERROR_NAMES:
-            return self.CALIBRATION_ERROR_NAMES[status]
+        if status in CALIBRATION_REASON_NAMES:
+            return CALIBRATION_REASON_NAMES[status]
         if status in COMMISSION_REASON_NAMES:
             return (
                 f"legacy commissioning status {int(status)} in calibration reply: "

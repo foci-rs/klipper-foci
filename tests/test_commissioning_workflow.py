@@ -15,7 +15,7 @@ from klipper_foci.commissioning import (
     format_commission_error_name,
     format_current_loop_failure_summary,
 )
-from klipper_foci.homing import HomingWorkflow
+from klipper_foci.homing import CALIBRATION_REASON_NAMES
 
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
@@ -297,12 +297,12 @@ class TestChipResetDetected(unittest.TestCase):
     """Verify host recovery when firmware reports CHIP_RESET_DETECTED."""
 
     def test_calibration_error_names_includes_code_2(self):
-        self.assertIn(2, HomingWorkflow.CALIBRATION_ERROR_NAMES)
-        self.assertIn("CHIP_RESET_DETECTED", HomingWorkflow.CALIBRATION_ERROR_NAMES[2])
+        self.assertIn(2, CALIBRATION_REASON_NAMES)
+        self.assertIn("CHIP_RESET_DETECTED", CALIBRATION_REASON_NAMES[2])
 
     def test_calibration_error_names_includes_encoder_fault(self):
-        self.assertIn(8, HomingWorkflow.CALIBRATION_ERROR_NAMES)
-        self.assertIn("ENCODER_FAULT", HomingWorkflow.CALIBRATION_ERROR_NAMES[8])
+        self.assertIn(8, CALIBRATION_REASON_NAMES)
+        self.assertIn("ENCODER_FAULT", CALIBRATION_REASON_NAMES[8])
 
     def test_commission_error_names_includes_code_18(self):
         self.assertIn(18, COMMISSION_REASON_NAMES)
