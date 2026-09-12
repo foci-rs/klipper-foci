@@ -172,7 +172,7 @@ INDUCTANCE_CAPTURE_REJECT_REASON_NAMES: dict[int, str] = {
     10: "saliency average above bracket",
 }
 
-CURRENT_LOOP_FAILURE_NAMES: dict[int, str] = {
+CURRENT_LOOP_FAILURE_REASON_NAMES: dict[int, str] = {
     0: "none",
     1: "resistance_invalid",
     2: "impedance_invalid",
@@ -438,7 +438,7 @@ def format_current_loop_failure_summary(
     reason = run.get("failure_reason")
     if reason in (None, 0):
         return None
-    reason_name = CURRENT_LOOP_FAILURE_NAMES.get(reason, f"reason {reason}")
+    reason_name = CURRENT_LOOP_FAILURE_REASON_NAMES.get(reason, f"reason {reason}")
     parts = [reason_name]
     axis_key = "flux" if reason == 4 else "torque" if reason == 5 else None
     if samples is not None and axis_key is not None:

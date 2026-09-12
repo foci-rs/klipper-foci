@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .commissioning import CURRENT_LOOP_FAILURE_NAMES
+from .commissioning import CURRENT_LOOP_FAILURE_REASON_NAMES
 from .readiness import format_readiness_report, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
@@ -550,7 +550,7 @@ class RegisterDumpWorkflow:
             config.identified_current_gains_tier, CURRENT_GAINS_TIER_NAMES
         )
         failure_reason_name = self._label_code(
-            config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_NAMES
+            config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_REASON_NAMES
         )
         return [
             f"  current_gains_source: {gains_source_name}",
@@ -622,7 +622,7 @@ class RegisterDumpWorkflow:
             ),
             self._format_pair(
                 "last.failure_reason",
-                self._label_code(run.get("failure_reason"), CURRENT_LOOP_FAILURE_NAMES),
+                self._label_code(run.get("failure_reason"), CURRENT_LOOP_FAILURE_REASON_NAMES),
             ),
         ]
 

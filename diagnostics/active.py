@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..commissioning import (
-    CURRENT_LOOP_FAILURE_NAMES,
+    CURRENT_LOOP_FAILURE_REASON_NAMES,
     format_commission_error_detail_name,
 )
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
@@ -456,7 +456,7 @@ class ActiveDiagnostics:
             f"{int(params['axis_split_clamped'])} axes={int(params['current_validation_axes'])} "
             f"retry_exhausted={int(params['retry_budget_exhausted'])} failure_reason="
             f"{int(params['failure_reason'])}/"
-            f"{CURRENT_LOOP_FAILURE_NAMES.get(params['failure_reason'], 'unknown')} "
+            f"{CURRENT_LOOP_FAILURE_REASON_NAMES.get(params['failure_reason'], 'unknown')} "
             f"candidate_source={int(params['candidate_gains_source'])} candidate_tier="
             f"{int(params['candidate_gains_tier'])} candidate_attempt="
             f"{int(params['candidate_attempt'])} candidate_flux={int(params['candidate_flux_p'])}/"
