@@ -563,22 +563,22 @@ class RegisterDumpWorkflow:
     def _format_current_loop_summary(self) -> list[str]:
         config = self.driver.config
         validation_axes = config.identified_current_validation_axes
-        gains_source_label = self._label_code(
+        gains_source_name = self._label_code(
             config.identified_current_gains_source, CURRENT_GAINS_SOURCE_NAMES
         )
-        gains_tier_label = self._label_code(
+        gains_tier_name = self._label_code(
             config.identified_current_gains_tier, CURRENT_GAINS_TIER_NAMES
         )
-        failure_reason_label = self._label_code(
+        failure_reason_name = self._label_code(
             config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_LABELS
         )
         return [
-            f"  current_gains_source: {gains_source_label}",
+            f"  current_gains_source: {gains_source_name}",
             (
                 f"  axis_split_source: "
                 f"{self._label_code(config.identified_axis_split_source, AXIS_SPLIT_SOURCE_NAMES)}"
             ),
-            f"  current_gains_tier: {gains_tier_label}",
+            f"  current_gains_tier: {gains_tier_name}",
             (
                 f"  current_validation: flux="
                 f"{self._axis_validation_label(validation_axes, CURRENT_VALIDATION_AXIS_FLUX)} "
@@ -589,17 +589,17 @@ class RegisterDumpWorkflow:
                 f"  retry_budget_exhausted: "
                 f"{self._bool_code(config.identified_current_retry_budget_exhausted)}"
             ),
-            f"  failure_reason: {failure_reason_label}",
+            f"  failure_reason: {failure_reason_name}",
         ]
 
     def _format_last_current_loop_summary(self, run: dict) -> list[str]:
         validation_axes = run.get("current_validation_axes")
         flux_sample_count = run.get("flux_validation_sample_count")
         torque_sample_count = run.get("torque_validation_sample_count")
-        flux_validation_label = self._axis_validation_label_for_count(
+        flux_validation_name = self._axis_validation_label_for_count(
             validation_axes, CURRENT_VALIDATION_AXIS_FLUX, flux_sample_count
         )
-        torque_validation_label = self._axis_validation_label_for_count(
+        torque_validation_name = self._axis_validation_label_for_count(
             validation_axes, CURRENT_VALIDATION_AXIS_TORQUE, torque_sample_count
         )
         return [
@@ -634,7 +634,7 @@ class RegisterDumpWorkflow:
             self._format_pair("last.candidate_attempt", run.get("candidate_attempt")),
             self._format_pair(
                 "last.current_validation",
-                f"flux={flux_validation_label} torque={torque_validation_label}",
+                f"flux={flux_validation_name} torque={torque_validation_name}",
             ),
             self._format_pair(
                 "last.retry_budget_exhausted",
