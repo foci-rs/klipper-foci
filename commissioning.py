@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from ._vocabulary_generated import PHASE_NAMES
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S, ELECTRICAL_ID_WAIT_TIMEOUT_S
 
-COMMISSION_ERROR_NAMES: dict[int, str] = {
+COMMISSION_REASON_NAMES: dict[int, str] = {
     1: "motor already enabled",
     2: "no current detected",
     3: "SPI communication error",
@@ -402,7 +402,7 @@ def format_commission_error_name(code: int) -> str:
 
 def format_commission_error_detail_name(code: int) -> str:
     """Render the precise firmware status code name without operator grouping."""
-    return COMMISSION_ERROR_NAMES.get(code, f"UNKNOWN({int(code)})")
+    return COMMISSION_REASON_NAMES.get(code, f"UNKNOWN({int(code)})")
 
 
 def _format_current_axis_sample(sample: dict) -> str:
@@ -547,7 +547,7 @@ class CommissioningWorkflow:
             raise ValueError("timing rejection flag does not match method statuses")
         if rejected:
             method = next(method for method in details if details[method]["status"] == 2)
-            raise ValueError(COMMISSION_ERROR_NAMES[TIMING_REJECTION_ERROR_CODES[method]])
+            raise ValueError(COMMISSION_REASON_NAMES[TIMING_REJECTION_ERROR_CODES[method]])
         return accepted
 
     def cancel_and_await_quiescence(self, reactor, wait_predicate, eventtime: float) -> float:

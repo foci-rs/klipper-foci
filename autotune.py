@@ -16,7 +16,7 @@ from .autotune_budget import (
     format_safe_pose_move,
 )
 from .commissioning import (
-    COMMISSION_ERROR_NAMES,
+    COMMISSION_REASON_NAMES,
     HARD_FAULT_CODES,
     PROFILE_MAP,
     format_inner_warning_flags,
@@ -512,7 +512,7 @@ class AutotuneWorkflow:
         error_code = int(terminal.get("error_code", 0))
         error_suffix = ""
         if error_code:
-            error_name = COMMISSION_ERROR_NAMES.get(error_code, f"unknown_{error_code}")
+            error_name = COMMISSION_REASON_NAMES.get(error_code, f"unknown_{error_code}")
             error_suffix = f" error={error_name}"
         message = (
             f"breakaway campaign {'accepted' if campaign.accepted else 'not accepted'} (phase="
@@ -768,7 +768,7 @@ class AutotuneWorkflow:
                     phase = "run" if workflow_timeout_armed else "waiting for plan"
                     raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE timed out {phase}")
                 if self.driver.commissioning.error_code != 0:
-                    error_name = COMMISSION_ERROR_NAMES.get(
+                    error_name = COMMISSION_REASON_NAMES.get(
                         self.driver.commissioning.error_code,
                         f"UNKNOWN({int(self.driver.commissioning.error_code)})",
                     )
@@ -1034,7 +1034,7 @@ class AutotuneWorkflow:
             result = self.result
             status = result.get("status", 255)
             if status > 1:
-                error_name = COMMISSION_ERROR_NAMES.get(status, f"UNKNOWN({int(status)})")
+                error_name = COMMISSION_REASON_NAMES.get(status, f"UNKNOWN({int(status)})")
                 if status == 18:
                     self.driver.commissioning.handle_chip_reset_detected()
                     self._disable_kinematic_motors(toolhead)

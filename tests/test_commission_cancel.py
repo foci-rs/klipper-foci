@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from klipper_foci.commissioning import COMMISSION_ERROR_NAMES
+from klipper_foci.commissioning import COMMISSION_REASON_NAMES
 from klipper_foci.constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
 from tests.mocks import SAMPLE_ACTIVE_GAINS, MockGCmd, make_driver
@@ -104,10 +104,10 @@ class CancelAndAwaitQuiescenceTests(unittest.TestCase):
         self.assertGreaterEqual(reactor._time - 0.0, COMMISSION_CANCEL_GRACE_PERIOD_S)
 
     def test_commission_error_names_recognizes_cancelled(self):
-        self.assertEqual(COMMISSION_ERROR_NAMES[74], "cancelled")
+        self.assertEqual(COMMISSION_REASON_NAMES[74], "cancelled")
 
     def test_commission_error_names_recognizes_safe_state_incomplete(self):
-        self.assertEqual(COMMISSION_ERROR_NAMES[75], "safe-state cleanup incomplete")
+        self.assertEqual(COMMISSION_REASON_NAMES[75], "safe-state cleanup incomplete")
 
 
 class SelftestTimeoutCancelTests(unittest.TestCase):

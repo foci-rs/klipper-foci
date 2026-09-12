@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .commissioning import COMMISSION_ERROR_NAMES, format_commission_detail
+from .commissioning import COMMISSION_REASON_NAMES, format_commission_detail
 from .constants import ELECTRICAL_ID_WAIT_TIMEOUT_S
 
 SELFTEST_STAGES: dict[int, str] = {
@@ -121,14 +121,14 @@ class SelftestWorkflow:
         if self.status == 0:
             overall = "PASS"
         else:
-            err = COMMISSION_ERROR_NAMES.get(self.status, f"unknown error {int(self.status)}")
+            err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
             overall = f"FAIL ({err})"
         lines.append(f"Result: {overall} ({int(passed)}/{int(total)} stages)")
         gcmd.respond_info("\n".join(lines))
 
         if self.status != 0:
-            err = COMMISSION_ERROR_NAMES.get(self.status, f"unknown error {int(self.status)}")
+            err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.stepper_name}: selftest failed: {err}"

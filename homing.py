@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from .commissioning import COMMISSION_ERROR_NAMES, format_commission_detail
+from .commissioning import COMMISSION_REASON_NAMES, format_commission_detail
 from .config import POSITION_UNITS_PER_REV
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S
 
@@ -135,10 +135,10 @@ class HomingWorkflow:
         """Format a non-zero foci_calibrate_result status for operators."""
         if status in self.CALIBRATION_ERROR_NAMES:
             return self.CALIBRATION_ERROR_NAMES[status]
-        if status in COMMISSION_ERROR_NAMES:
+        if status in COMMISSION_REASON_NAMES:
             return (
                 f"legacy commissioning status {int(status)} in calibration reply: "
-                f"{COMMISSION_ERROR_NAMES[status]}"
+                f"{COMMISSION_REASON_NAMES[status]}"
             )
         return f"UNKNOWN_CALIBRATION_STATUS({int(status)})"
 

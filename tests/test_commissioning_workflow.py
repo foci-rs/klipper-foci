@@ -7,7 +7,7 @@ from typing import ClassVar
 import pytest
 from klipper_foci import commissioning
 from klipper_foci.commissioning import (
-    COMMISSION_ERROR_NAMES,
+    COMMISSION_REASON_NAMES,
     ELECTRICAL_ID_DETAIL_NAMES,
     HARD_FAULT_CODES,
     PHASE_NAMES,
@@ -29,7 +29,7 @@ from tests.mocks import (
 
 
 def test_sustained_hold_failure_has_operator_label_and_is_hard_fault():
-    assert COMMISSION_ERROR_NAMES.get(42) == "sustained hold validation failed"
+    assert COMMISSION_REASON_NAMES.get(42) == "sustained hold validation failed"
     assert format_commission_error_name(42) == "sustained hold validation failed"
     assert 42 in HARD_FAULT_CODES
 
@@ -42,22 +42,22 @@ def test_timing_error_names_match_firmware_wire_codes():
         50: "inductance_timing",
         51: "delay_timing",
     }
-    assert {code: COMMISSION_ERROR_NAMES[code] for code in expected} == expected
+    assert {code: COMMISSION_REASON_NAMES[code] for code in expected} == expected
     assert {code: ELECTRICAL_ID_DETAIL_NAMES[code] for code in expected} == expected
 
 
 def test_analysis_overrun_has_a_dedicated_operator_label():
-    assert COMMISSION_ERROR_NAMES[52] == "velocity sweep analysis overrun"
+    assert COMMISSION_REASON_NAMES[52] == "velocity sweep analysis overrun"
     assert format_commission_error_name(52) == "velocity sweep analysis overrun"
 
 
 def test_unconfirmed_velocity_rest_has_a_dedicated_operator_label():
-    assert COMMISSION_ERROR_NAMES[53] == "velocity rest not confirmed"
+    assert COMMISSION_REASON_NAMES[53] == "velocity rest not confirmed"
     assert format_commission_error_name(53) == "velocity rest not confirmed"
 
 
 def test_inductance_current_envelope_code_has_a_name():
-    assert COMMISSION_ERROR_NAMES.get(76) == "inductance current envelope exceeded"
+    assert COMMISSION_REASON_NAMES.get(76) == "inductance current envelope exceeded"
 
 
 def test_current_loop_failure_summary_decodes_gate_sample_status():
@@ -305,8 +305,8 @@ class TestChipResetDetected(unittest.TestCase):
         self.assertIn("ENCODER_FAULT", HomingWorkflow.CALIBRATION_ERROR_NAMES[8])
 
     def test_commission_error_names_includes_code_18(self):
-        self.assertIn(18, COMMISSION_ERROR_NAMES)
-        self.assertIn("CHIP_RESET_DETECTED", COMMISSION_ERROR_NAMES[18])
+        self.assertIn(18, COMMISSION_REASON_NAMES)
+        self.assertIn("CHIP_RESET_DETECTED", COMMISSION_REASON_NAMES[18])
 
     def test_ensure_calibrated_chip_reset_clears_is_calibrated(self):
         d = make_driver()
@@ -383,12 +383,12 @@ class TestResistanceIdFailed(unittest.TestCase):
     """Verify host reporting when firmware reports ResistanceIdFailed (19)."""
 
     def test_commission_error_names_includes_code_19(self):
-        self.assertIn(19, COMMISSION_ERROR_NAMES)
-        self.assertNotEqual(COMMISSION_ERROR_NAMES[19], "UNKNOWN(19)")
+        self.assertIn(19, COMMISSION_REASON_NAMES)
+        self.assertNotEqual(COMMISSION_REASON_NAMES[19], "UNKNOWN(19)")
 
     def test_commission_error_names_includes_resistance_envelope_code(self):
-        self.assertIn(31, COMMISSION_ERROR_NAMES)
-        self.assertNotEqual(COMMISSION_ERROR_NAMES[31], "UNKNOWN(31)")
+        self.assertIn(31, COMMISSION_REASON_NAMES)
+        self.assertNotEqual(COMMISSION_REASON_NAMES[31], "UNKNOWN(31)")
 
     def test_commission_resistance_id_failed_names_and_links_doc(self):
         d = make_driver()
@@ -407,7 +407,7 @@ class TestResistanceIdFailed(unittest.TestCase):
 
         message = str(ctx.exception)
         self.assertNotIn("UNKNOWN(19)", message)
-        self.assertIn(COMMISSION_ERROR_NAMES[19], message)
+        self.assertIn(COMMISSION_REASON_NAMES[19], message)
         self.assertIn("docs/troubleshooting/resistance-identification.md", message)
         self.assertTrue(d.state.inhibited)
 
@@ -450,7 +450,7 @@ class TestResistanceIdFailed(unittest.TestCase):
 
         message = str(ctx.exception)
         self.assertNotIn("UNKNOWN(73)", message)
-        self.assertIn(COMMISSION_ERROR_NAMES[73], message)
+        self.assertIn(COMMISSION_REASON_NAMES[73], message)
         self.assertIn("docs/troubleshooting/resistance-identification.md", message)
         self.assertTrue(d.state.inhibited)
 
@@ -499,8 +499,8 @@ class TestNameMaps(unittest.TestCase):
         for code in HARD_FAULT_CODES:
             self.assertIn(
                 code,
-                COMMISSION_ERROR_NAMES,
-                f"Hard fault code {code} missing from COMMISSION_ERROR_NAMES",
+                COMMISSION_REASON_NAMES,
+                f"Hard fault code {code} missing from COMMISSION_REASON_NAMES",
             )
 
 
