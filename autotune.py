@@ -64,7 +64,7 @@ IDLE_PRINT_STATES = frozenset(("standby", "complete", "cancelled"))
 COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S = 5.0
 COMMISSIONING_WORKFLOW_COMMS_MARGIN_S = 5.0
 
-OUTER_SAFETY_FAULT_NAMES = {
+OUTER_SAFETY_REASON_NAMES = {
     0: "none",
     1: "invalid_budget",
     2: "unusable_budget",
@@ -563,11 +563,11 @@ class AutotuneWorkflow:
         if not fault:
             return ""
         reason_code = int(fault.get("reason", 0))
-        reason = OUTER_SAFETY_FAULT_NAMES.get(reason_code)
+        reason = OUTER_SAFETY_REASON_NAMES.get(reason_code)
         if reason is None:
             logging.warning(
                 "FOCI: unmapped OUTER_SAFETY_FAULT_ code %d -- "
-                "OUTER_SAFETY_FAULT_NAMES is out of sync with firmware",
+                "OUTER_SAFETY_REASON_NAMES is out of sync with firmware",
                 reason_code,
             )
             reason = f"unknown_{reason_code}"

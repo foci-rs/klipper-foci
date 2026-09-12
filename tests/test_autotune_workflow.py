@@ -4,7 +4,7 @@ import struct
 import unittest
 from unittest.mock import patch
 
-from klipper_foci.autotune import OUTER_SAFETY_FAULT_NAMES
+from klipper_foci.autotune import OUTER_SAFETY_REASON_NAMES
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.fixed_gain_amplitude import ACTION_CODES
 from klipper_foci.registers import REGISTERS
@@ -1436,14 +1436,14 @@ class TestOuterSafetyFaultNames(unittest.TestCase):
 
     def test_every_known_firmware_code_has_a_name(self):
         for code in self.KNOWN_FIRMWARE_CODES:
-            self.assertIn(code, OUTER_SAFETY_FAULT_NAMES, f"code {code} has no host-side name")
+            self.assertIn(code, OUTER_SAFETY_REASON_NAMES, f"code {code} has no host-side name")
 
     def test_names_map_has_no_codes_outside_the_known_set(self):
-        unexpected = set(OUTER_SAFETY_FAULT_NAMES) - self.KNOWN_FIRMWARE_CODES
+        unexpected = set(OUTER_SAFETY_REASON_NAMES) - self.KNOWN_FIRMWARE_CODES
         self.assertEqual(
             unexpected,
             set(),
-            "OUTER_SAFETY_FAULT_NAMES has codes not in KNOWN_FIRMWARE_CODES -- "
+            "OUTER_SAFETY_REASON_NAMES has codes not in KNOWN_FIRMWARE_CODES -- "
             "update this test's known-code list to match types.rs",
         )
 
