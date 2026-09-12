@@ -98,18 +98,18 @@ CURRENT_LOOP_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_current_torque_encoder_delta_counts",
 )
 
-CURRENT_GAINS_SOURCE_LABELS: dict[int, str] = {
+CURRENT_GAINS_SOURCE_NAMES: dict[int, str] = {
     0: "failed",
     1: "measured",
     2: "default",
 }
 
-AXIS_SPLIT_SOURCE_LABELS: dict[int, str] = {
+AXIS_SPLIT_SOURCE_NAMES: dict[int, str] = {
     0: "none",
     1: "impedance",
 }
 
-CURRENT_GAINS_TIER_LABELS: dict[int, str] = {
+CURRENT_GAINS_TIER_NAMES: dict[int, str] = {
     0: "none",
     1: "measured_symmetric",
     2: "measured_split",
@@ -138,7 +138,7 @@ CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
     17: "closed_loop_activation",
 }
 
-CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
+CURRENT_LOOP_HOLD_STATUS_NAMES: dict[int, str] = {
     0: "not_run",
     1: "pass",
     2: "fail_position_span",
@@ -146,7 +146,7 @@ CURRENT_LOOP_HOLD_STATUS_LABELS: dict[int, str] = {
     4: "fail_sample_error",
 }
 
-CLOSED_LOOP_ACTIVATION_STATUS_LABELS: dict[int, str] = {
+CLOSED_LOOP_ACTIVATION_STATUS_NAMES: dict[int, str] = {
     0: "not_run",
     1: "pass",
     2: "fail_runaway",
@@ -564,10 +564,10 @@ class RegisterDumpWorkflow:
         config = self.driver.config
         validation_axes = config.identified_current_validation_axes
         gains_source_label = self._label_code(
-            config.identified_current_gains_source, CURRENT_GAINS_SOURCE_LABELS
+            config.identified_current_gains_source, CURRENT_GAINS_SOURCE_NAMES
         )
         gains_tier_label = self._label_code(
-            config.identified_current_gains_tier, CURRENT_GAINS_TIER_LABELS
+            config.identified_current_gains_tier, CURRENT_GAINS_TIER_NAMES
         )
         failure_reason_label = self._label_code(
             config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_LABELS
@@ -576,7 +576,7 @@ class RegisterDumpWorkflow:
             f"  current_gains_source: {gains_source_label}",
             (
                 f"  axis_split_source: "
-                f"{self._label_code(config.identified_axis_split_source, AXIS_SPLIT_SOURCE_LABELS)}"
+                f"{self._label_code(config.identified_axis_split_source, AXIS_SPLIT_SOURCE_NAMES)}"
             ),
             f"  current_gains_tier: {gains_tier_label}",
             (
@@ -605,27 +605,27 @@ class RegisterDumpWorkflow:
         return [
             self._format_pair(
                 "last.current_gains_source",
-                self._label_code(run.get("gains_source"), CURRENT_GAINS_SOURCE_LABELS),
+                self._label_code(run.get("gains_source"), CURRENT_GAINS_SOURCE_NAMES),
             ),
             self._format_pair(
                 "last.candidate_gains_source",
-                self._label_code(run.get("candidate_gains_source"), CURRENT_GAINS_SOURCE_LABELS),
+                self._label_code(run.get("candidate_gains_source"), CURRENT_GAINS_SOURCE_NAMES),
             ),
             self._format_pair(
                 "last.axis_split_source",
-                self._label_code(run.get("axis_split_source"), AXIS_SPLIT_SOURCE_LABELS),
+                self._label_code(run.get("axis_split_source"), AXIS_SPLIT_SOURCE_NAMES),
             ),
             self._format_pair(
                 "last.candidate_axis_split_source",
-                self._label_code(run.get("candidate_axis_split_source"), AXIS_SPLIT_SOURCE_LABELS),
+                self._label_code(run.get("candidate_axis_split_source"), AXIS_SPLIT_SOURCE_NAMES),
             ),
             self._format_pair(
                 "last.current_gains_tier",
-                self._label_code(run.get("gains_tier"), CURRENT_GAINS_TIER_LABELS),
+                self._label_code(run.get("gains_tier"), CURRENT_GAINS_TIER_NAMES),
             ),
             self._format_pair(
                 "last.candidate_gains_tier",
-                self._label_code(run.get("candidate_gains_tier"), CURRENT_GAINS_TIER_LABELS),
+                self._label_code(run.get("candidate_gains_tier"), CURRENT_GAINS_TIER_NAMES),
             ),
             self._format_pair("last.candidate_flux_p", run.get("candidate_flux_p")),
             self._format_pair("last.candidate_flux_i", run.get("candidate_flux_i")),
@@ -650,7 +650,7 @@ class RegisterDumpWorkflow:
         return [
             self._format_hold_pair(
                 "last.hold_status",
-                self._label_code(evidence.get("hold_status"), CURRENT_LOOP_HOLD_STATUS_LABELS),
+                self._label_code(evidence.get("hold_status"), CURRENT_LOOP_HOLD_STATUS_NAMES),
             ),
             self._format_hold_pair(
                 "last.hold_samples",
@@ -697,9 +697,7 @@ class RegisterDumpWorkflow:
         return [
             self._format_hold_pair(
                 "last.entry_status",
-                self._label_code(
-                    evidence.get("entry_status"), CLOSED_LOOP_ACTIVATION_STATUS_LABELS
-                ),
+                self._label_code(evidence.get("entry_status"), CLOSED_LOOP_ACTIVATION_STATUS_NAMES),
             ),
             self._format_hold_pair(
                 "last.entry_position",
