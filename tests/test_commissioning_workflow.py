@@ -91,7 +91,7 @@ def test_current_loop_failure_summary_decodes_gate_sample_status():
     text = format_current_loop_failure_summary(run, samples)
 
     assert text is not None
-    assert "flux validation" in text
+    assert "flux_validation" in text
     assert "cross-axis coupling" in text
     assert "delay=100ms" in text
     assert "cross=156 permille" in text

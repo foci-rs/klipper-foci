@@ -58,6 +58,35 @@ def test_current_loop_hold_caches_last_evidence():
         assert field_name in out
 
 
+def test_current_loop_run_prints_failure_reason_name():
+    d = make_driver()
+    params = {
+        "oid": d.oid,
+        "status": 1,
+        "gains_source": 1,
+        "gains_tier": 1,
+        "axis_split_source": 0,
+        "measured_axis_split_permille": 500,
+        "applied_axis_split_permille": 500,
+        "axis_split_clamped": 0,
+        "current_validation_axes": 3,
+        "retry_budget_exhausted": 0,
+        "failure_reason": 4,
+        "candidate_gains_source": 1,
+        "candidate_gains_tier": 1,
+        "candidate_attempt": 0,
+        "candidate_flux_p": 100,
+        "candidate_flux_i": 50,
+        "candidate_torque_p": 100,
+        "candidate_torque_i": 50,
+    }
+
+    d.diagnostics.active.handle_current_loop_run(params)
+
+    out = d.printer.lookup_object("gcode")._responses[-1]
+    assert "failure_reason=4/flux_validation" in out
+
+
 def test_closed_loop_activation_caches_last_evidence():
     d = make_driver()
     params = {

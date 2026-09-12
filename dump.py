@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .commissioning import CURRENT_LOOP_FAILURE_NAMES
 from .readiness import format_readiness_report, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
@@ -115,27 +116,6 @@ CURRENT_GAINS_TIER_NAMES: dict[int, str] = {
     2: "measured_split",
     3: "default",
     4: "physical_symmetric",
-}
-
-CURRENT_LOOP_FAILURE_LABELS: dict[int, str] = {
-    0: "none",
-    1: "resistance_invalid",
-    2: "impedance_invalid",
-    3: "gain_synthesis",
-    4: "flux_validation",
-    5: "torque_validation",
-    6: "saturation",
-    7: "motion",
-    8: "status_flags",
-    9: "retry_exhausted",
-    10: "spi",
-    11: "hold_position_span",
-    12: "hold_status_flags",
-    13: "hold_sample_error",
-    14: "response_magnitude",
-    15: "cross_axis_coupling",
-    16: "wrong_sign",
-    17: "closed_loop_activation",
 }
 
 CURRENT_LOOP_HOLD_STATUS_NAMES: dict[int, str] = {
@@ -570,7 +550,7 @@ class RegisterDumpWorkflow:
             config.identified_current_gains_tier, CURRENT_GAINS_TIER_NAMES
         )
         failure_reason_name = self._label_code(
-            config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_LABELS
+            config.identified_current_failure_reason, CURRENT_LOOP_FAILURE_NAMES
         )
         return [
             f"  current_gains_source: {gains_source_name}",
@@ -642,7 +622,7 @@ class RegisterDumpWorkflow:
             ),
             self._format_pair(
                 "last.failure_reason",
-                self._label_code(run.get("failure_reason"), CURRENT_LOOP_FAILURE_LABELS),
+                self._label_code(run.get("failure_reason"), CURRENT_LOOP_FAILURE_NAMES),
             ),
         ]
 
