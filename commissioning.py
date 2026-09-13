@@ -86,6 +86,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     76: "inductance current envelope exceeded",
     79: "pid gain invalid",
     80: "malformed interval",
+    81: "missing rate table entry",
 }
 
 # Error codes for which the failure message should point at a dedicated

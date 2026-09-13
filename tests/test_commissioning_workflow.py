@@ -68,6 +68,10 @@ def test_malformed_interval_reason_present():
     assert COMMISSION_REASON_NAMES[80] == "malformed interval"
 
 
+def test_missing_rate_table_entry_reason_present():
+    assert COMMISSION_REASON_NAMES[81] == "missing rate table entry"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
