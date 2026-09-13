@@ -80,6 +80,14 @@ def test_elapsed_time_conversion_invalid_reason_present():
     assert COMMISSION_REASON_NAMES[83] == "elapsed time conversion invalid"
 
 
+def test_velocity_envelope_ceiling_zero_reason_present():
+    assert COMMISSION_REASON_NAMES[84] == "velocity envelope ceiling zero"
+
+
+def test_velocity_envelope_exceeds_ceiling_reason_present():
+    assert COMMISSION_REASON_NAMES[85] == "velocity envelope exceeds ceiling"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,

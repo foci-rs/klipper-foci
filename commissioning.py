@@ -89,6 +89,8 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     81: "missing rate table entry",
     82: "mismatched observation",
     83: "elapsed time conversion invalid",
+    84: "velocity envelope ceiling zero",
+    85: "velocity envelope exceeds ceiling",
 }
 
 # Error codes for which the failure message should point at a dedicated
