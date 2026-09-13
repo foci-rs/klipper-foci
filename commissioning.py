@@ -85,6 +85,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     75: "safe-state cleanup incomplete",
     76: "inductance current envelope exceeded",
     79: "pid gain invalid",
+    80: "malformed interval",
 }
 
 # Error codes for which the failure message should point at a dedicated

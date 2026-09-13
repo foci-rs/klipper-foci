@@ -64,6 +64,10 @@ def test_pid_gain_invalid_reason_present():
     assert COMMISSION_REASON_NAMES.get(79) == "pid gain invalid"
 
 
+def test_malformed_interval_reason_present():
+    assert COMMISSION_REASON_NAMES[80] == "malformed interval"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
