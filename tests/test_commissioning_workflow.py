@@ -88,6 +88,10 @@ def test_velocity_envelope_exceeds_ceiling_reason_present():
     assert COMMISSION_REASON_NAMES[85] == "velocity envelope exceeds ceiling"
 
 
+def test_safety_timing_gap_invalid_reason_present():
+    assert COMMISSION_REASON_NAMES[86] == "safety timing gap invalid"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,

@@ -91,6 +91,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     83: "elapsed time conversion invalid",
     84: "velocity envelope ceiling zero",
     85: "velocity envelope exceeds ceiling",
+    86: "safety timing gap invalid",
 }
 
 # Error codes for which the failure message should point at a dedicated
