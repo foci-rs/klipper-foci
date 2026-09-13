@@ -60,6 +60,10 @@ def test_inductance_current_envelope_code_has_a_name():
     assert COMMISSION_REASON_NAMES.get(76) == "inductance current envelope exceeded"
 
 
+def test_pid_gain_invalid_reason_present():
+    assert COMMISSION_REASON_NAMES.get(79) == "pid gain invalid"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
