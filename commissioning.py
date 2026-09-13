@@ -88,6 +88,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     80: "malformed interval",
     81: "missing rate table entry",
     82: "mismatched observation",
+    83: "elapsed time conversion invalid",
 }
 
 # Error codes for which the failure message should point at a dedicated

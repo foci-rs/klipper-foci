@@ -76,6 +76,10 @@ def test_mismatched_observation_reason_present():
     assert COMMISSION_REASON_NAMES[82] == "mismatched observation"
 
 
+def test_elapsed_time_conversion_invalid_reason_present():
+    assert COMMISSION_REASON_NAMES[83] == "elapsed time conversion invalid"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
