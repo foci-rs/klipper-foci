@@ -72,6 +72,10 @@ def test_missing_rate_table_entry_reason_present():
     assert COMMISSION_REASON_NAMES[81] == "missing rate table entry"
 
 
+def test_mismatched_observation_reason_present():
+    assert COMMISSION_REASON_NAMES[82] == "mismatched observation"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,
