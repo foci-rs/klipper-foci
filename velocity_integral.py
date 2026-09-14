@@ -457,6 +457,8 @@ INTEGRAL_CAUSE_REPRODUCTION_MISMATCH = 6
 INTEGRAL_CAUSE_PLAN_MISMATCH = 7
 INTEGRAL_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT = 11
 INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY = 12
+INTEGRAL_CAUSE_AUTHORITY_LOST_MID_RUN = 14
+INTEGRAL_CAUSE_UNEXPECTED_TERMINAL_OUTCOME = 15
 
 # A velocity-integral terminal's `cause` number is only unambiguous once paired with
 # `cause_namespace`: the engine, error, and dispatch producers each number
@@ -471,6 +473,8 @@ INTEGRAL_TERMINAL_CAUSE_NAMES = {
     INTEGRAL_CAUSE_PLAN_MISMATCH: "plan_mismatch",
     INTEGRAL_CAUSE_NO_TRANSITION_CAPABLE_OPERATING_POINT: ("no_transition_capable_operating_point"),
     INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY: "no_retained_velocity_integral_authority",
+    INTEGRAL_CAUSE_AUTHORITY_LOST_MID_RUN: "authority_lost_mid_run",
+    INTEGRAL_CAUSE_UNEXPECTED_TERMINAL_OUTCOME: "unexpected_terminal_outcome",
 }
 
 # Causes a velocity-integral terminal may carry when it arrives with no exact plan: the
