@@ -537,9 +537,10 @@ class MockConfig:
         return sorted(set(self._sections.get(self._name, {})) - self._accessed_keys)
 
     def getint(self, key, default=None, minval=None, maxval=None):
+        present = key in self._sections.get(self._name, {})
         value = self.get(key, default)
-        if value is None:
-            return None
+        if not present or value is None:
+            return value
         value = int(value)
         if minval is not None and value < minval:
             raise self.error(f"{key} below minimum")
@@ -548,9 +549,10 @@ class MockConfig:
         return value
 
     def getfloat(self, key, default=None, minval=None, maxval=None, above=None):
+        present = key in self._sections.get(self._name, {})
         value = self.get(key, default)
-        if value is None:
-            return None
+        if not present or value is None:
+            return value
         value = float(value)
         if minval is not None and value < minval:
             raise self.error(f"{key} below minimum")

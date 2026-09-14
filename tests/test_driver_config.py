@@ -1157,3 +1157,19 @@ def test_homing_current_zero_opts_out():
     printer, _chips, sections, _config = make_foci_config(foci_values={"homing_current": "0"})
     driver = make_config_driver(printer, sections, "foci stepper_x")
     assert driver.config.homing_current == 0.0
+
+
+def test_mock_getfloat_does_not_validate_absent_default():
+    """A default value must not be run through minval/maxval/above.
+
+    Real Klipper's configfile.py returns the default immediately when the
+    option is absent, before any bounds check. This is a regression test for
+    the mock, independent of any FOCI-specific config field.
+    """
+    from tests.mocks import MockConfig
+
+    config = MockConfig(printer=None, sections={"section": {}}, name="section")
+    # A default of 0.0 with above=0.0 would fail this bound if it were
+    # validated; it must not be, since the key is absent.
+    assert config.getfloat("missing_key", 0.0, above=0.0) == 0.0
+    assert config.getint("missing_int_key", 0, minval=1) == 0
