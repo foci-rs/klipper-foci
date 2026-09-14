@@ -599,26 +599,6 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         result.update(
             {
                 "resistance_selected_count_slope_milli": 1042,
-                "resistance_gain_path_count_slope_milli": 66752,
-                "resistance_axis0_count_slope_milli": 1038,
-                "resistance_axis1_count_slope_milli": 1046,
-                "resistance_axis0_intercept_count": 24,
-                "resistance_axis1_intercept_count": 27,
-                "resistance_axis0_rmse_permille": 8,
-                "resistance_axis1_rmse_permille": 9,
-                "resistance_selected_mask_axis0": 0b11111000,
-                "resistance_selected_mask_axis1": 0b11110000,
-                "resistance_axis0_signed_count_slope_milli": 1041,
-                "resistance_axis1_signed_count_slope_milli": 1047,
-                "resistance_axis0_signed_asymmetry_permille": 12,
-                "resistance_axis1_signed_asymmetry_permille": 15,
-                "resistance_axis0_drift_permille": 5,
-                "resistance_axis1_drift_permille": 6,
-                "resistance_status_flags_or": 0x00080000,
-                "resistance_warning_flags": 0,
-                "resistance_peak_abs_current_count": 1200,
-                "resistance_max_abs_steady_mean_current_count": 900,
-                "resistance_current_ceiling_count": 1600,
             }
         )
 
@@ -627,38 +607,6 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_count_slope_milli")],
             "1042",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_gain_path_count_slope_milli")],
-            "66752",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_count_slope_milli")],
-            "1038",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_count_slope_milli")],
-            "1046",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_drift_permille")],
-            "5",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_status_flags_or")],
-            "524288",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_peak_abs_current_count")],
-            "1200",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_max_abs_steady_mean_current_count")],
-            "900",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_current_ceiling_count")],
-            "1600",
         )
         self.assertNotIn((driver.name, "identified_r_power_stage_tripped"), configfile.values)
 
@@ -750,90 +698,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             configfile.values[(driver.name, "identified_r_count_slope_milli")],
             "1042",
         )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_gain_path_count_slope_milli")],
-            "66752",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_status_flags_or")],
-            f"{524288}",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_warning_flags")],
-            "0",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_peak_abs_current_count")],
-            "1200",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_max_abs_steady_mean_current_count")],
-            "900",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_current_ceiling_count")],
-            "1600",
-        )
         self.assertNotIn((driver.name, "identified_r_power_stage_tripped"), configfile.values)
-        # Distinct axis0/axis1 values, routed by electrical_axis despite
-        # arriving axis1-before-axis0 above. A swapped-routing bug would
-        # fail these assertions.
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_count_slope_milli")],
-            "1038",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_count_slope_milli")],
-            "1046",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_intercept_count")],
-            "24",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_intercept_count")],
-            "27",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_rmse_permille")],
-            "8",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_rmse_permille")],
-            "9",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_selected_mask_axis0")],
-            f"{248}",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_selected_mask_axis1")],
-            f"{240}",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_signed_count_slope_milli")],
-            "1041",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_signed_count_slope_milli")],
-            "1047",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_signed_asymmetry_permille")],
-            "12",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_signed_asymmetry_permille")],
-            "15",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis0_drift_permille")],
-            "5",
-        )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_r_axis1_drift_permille")],
-            "6",
-        )
 
     def test_commission_with_partial_resistance_cache_persists_nothing(self):
         """A commission that completes with a partial resistance cache.

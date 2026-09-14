@@ -113,26 +113,6 @@ def _seed_tuning_state(driver):
     driver.config.identified_current_failure_reason = 0
 
     driver.config.identified_r_count_slope_milli = 1042
-    driver.config.identified_r_gain_path_count_slope_milli = 66752
-    driver.config.identified_r_axis0_count_slope_milli = 1038
-    driver.config.identified_r_axis1_count_slope_milli = 1046
-    driver.config.identified_r_axis0_intercept_count = 24
-    driver.config.identified_r_axis1_intercept_count = 27
-    driver.config.identified_r_axis0_rmse_permille = 8
-    driver.config.identified_r_axis1_rmse_permille = 9
-    driver.config.identified_r_selected_mask_axis0 = 0b11111000
-    driver.config.identified_r_selected_mask_axis1 = 0b11110000
-    driver.config.identified_r_axis0_signed_count_slope_milli = 1041
-    driver.config.identified_r_axis1_signed_count_slope_milli = 1047
-    driver.config.identified_r_axis0_signed_asymmetry_permille = 12
-    driver.config.identified_r_axis1_signed_asymmetry_permille = 15
-    driver.config.identified_r_axis0_drift_permille = 5
-    driver.config.identified_r_axis1_drift_permille = 6
-    driver.config.identified_r_status_flags_or = 524288
-    driver.config.identified_r_warning_flags = 0
-    driver.config.identified_r_peak_abs_current_count = 1200
-    driver.config.identified_r_max_abs_steady_mean_current_count = 900
-    driver.config.identified_r_current_ceiling_count = 1600
 
 
 def _run_dump(driver, params=None, values=None):
@@ -335,15 +315,6 @@ def test_tuning_flag_appends_resistance_identification_evidence():
     assert "-- Resistance identification evidence --" in output
     assert "config.identified_r_count_slope_milli" in output
     assert "1042" in output
-    assert "config.identified_r_gain_path_count_slope_milli" in output
-    assert "66752" in output
-    assert "config.identified_r_axis0_count_slope_milli" in output
-    assert "config.identified_r_axis1_drift_permille" in output
-    assert "config.identified_r_status_flags_or" in output
-    assert "config.identified_r_peak_abs_current_count" in output
-    assert "config.identified_r_max_abs_steady_mean_current_count" in output
-    assert "config.identified_r_current_ceiling_count" in output
-    assert "host performs no" in output
 
 
 def test_tuning_flag_separates_persisted_and_last_inductance_evidence():

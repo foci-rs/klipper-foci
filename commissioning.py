@@ -865,68 +865,6 @@ class CommissioningWorkflow:
     # fabricated zeros.
     RESISTANCE_RESULT_KEYS: tuple[tuple[str, str], ...] = (
         ("resistance_selected_count_slope_milli", "identified_r_count_slope_milli"),
-        (
-            "resistance_gain_path_count_slope_milli",
-            "identified_r_gain_path_count_slope_milli",
-        ),
-        (
-            "resistance_axis0_count_slope_milli",
-            "identified_r_axis0_count_slope_milli",
-        ),
-        (
-            "resistance_axis1_count_slope_milli",
-            "identified_r_axis1_count_slope_milli",
-        ),
-        (
-            "resistance_axis0_intercept_count",
-            "identified_r_axis0_intercept_count",
-        ),
-        (
-            "resistance_axis1_intercept_count",
-            "identified_r_axis1_intercept_count",
-        ),
-        ("resistance_axis0_rmse_permille", "identified_r_axis0_rmse_permille"),
-        ("resistance_axis1_rmse_permille", "identified_r_axis1_rmse_permille"),
-        (
-            "resistance_selected_mask_axis0",
-            "identified_r_selected_mask_axis0",
-        ),
-        (
-            "resistance_selected_mask_axis1",
-            "identified_r_selected_mask_axis1",
-        ),
-        (
-            "resistance_axis0_signed_count_slope_milli",
-            "identified_r_axis0_signed_count_slope_milli",
-        ),
-        (
-            "resistance_axis1_signed_count_slope_milli",
-            "identified_r_axis1_signed_count_slope_milli",
-        ),
-        (
-            "resistance_axis0_signed_asymmetry_permille",
-            "identified_r_axis0_signed_asymmetry_permille",
-        ),
-        (
-            "resistance_axis1_signed_asymmetry_permille",
-            "identified_r_axis1_signed_asymmetry_permille",
-        ),
-        ("resistance_axis0_drift_permille", "identified_r_axis0_drift_permille"),
-        ("resistance_axis1_drift_permille", "identified_r_axis1_drift_permille"),
-        ("resistance_status_flags_or", "identified_r_status_flags_or"),
-        ("resistance_warning_flags", "identified_r_warning_flags"),
-        (
-            "resistance_peak_abs_current_count",
-            "identified_r_peak_abs_current_count",
-        ),
-        (
-            "resistance_max_abs_steady_mean_current_count",
-            "identified_r_max_abs_steady_mean_current_count",
-        ),
-        (
-            "resistance_current_ceiling_count",
-            "identified_r_current_ceiling_count",
-        ),
     )
 
     def _persist_resistance_identification(self, configfile, result: dict) -> None:

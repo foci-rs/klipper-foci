@@ -117,29 +117,7 @@ CURRENT_VALIDATION_AXIS_TORQUE = 0x02
 
 # Firmware-owned resistance-identification evidence (count-space, no
 # host-side fitting). Displayed as persisted; not recomputed here.
-RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
-    "identified_r_count_slope_milli",
-    "identified_r_gain_path_count_slope_milli",
-    "identified_r_axis0_count_slope_milli",
-    "identified_r_axis1_count_slope_milli",
-    "identified_r_axis0_intercept_count",
-    "identified_r_axis1_intercept_count",
-    "identified_r_axis0_rmse_permille",
-    "identified_r_axis1_rmse_permille",
-    "identified_r_selected_mask_axis0",
-    "identified_r_selected_mask_axis1",
-    "identified_r_axis0_signed_count_slope_milli",
-    "identified_r_axis1_signed_count_slope_milli",
-    "identified_r_axis0_signed_asymmetry_permille",
-    "identified_r_axis1_signed_asymmetry_permille",
-    "identified_r_axis0_drift_permille",
-    "identified_r_axis1_drift_permille",
-    "identified_r_status_flags_or",
-    "identified_r_warning_flags",
-    "identified_r_peak_abs_current_count",
-    "identified_r_max_abs_steady_mean_current_count",
-    "identified_r_current_ceiling_count",
-)
+RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = ("identified_r_count_slope_milli",)
 
 INDUCTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_l_source",
@@ -367,14 +345,6 @@ class RegisterDumpWorkflow:
             self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in RESISTANCE_IDENTIFICATION_FIELDS
         )
-        lines.append(
-            "  Note: identified_r_* resistance fields are firmware-reported"
-            " count-space evidence (selected/gain-path/per-axis slopes,"
-            " fit quality, signed-anchor, drift, current maxima, and the"
-            " applied ceiling); the host performs no fitting or quality-gate"
-            " evaluation."
-        )
-
         lines.append("-- Comparison --")
         lines.extend(self._format_gain_comparison(live_gains, active_gains))
         return lines

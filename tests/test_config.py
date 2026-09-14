@@ -815,52 +815,12 @@ def test_saved_resistance_identification_fields_are_accepted_on_restart():
     sections["foci stepper_x"].update(
         {
             "identified_r_count_slope_milli": 1042,
-            "identified_r_gain_path_count_slope_milli": 66752,
-            "identified_r_axis0_count_slope_milli": 1038,
-            "identified_r_axis1_count_slope_milli": 1046,
-            "identified_r_axis0_intercept_count": 24,
-            "identified_r_axis1_intercept_count": 27,
-            "identified_r_axis0_rmse_permille": 8,
-            "identified_r_axis1_rmse_permille": 9,
-            "identified_r_selected_mask_axis0": 0b11111000,
-            "identified_r_selected_mask_axis1": 0b11110000,
-            "identified_r_axis0_signed_count_slope_milli": 1041,
-            "identified_r_axis1_signed_count_slope_milli": 1047,
-            "identified_r_axis0_signed_asymmetry_permille": 12,
-            "identified_r_axis1_signed_asymmetry_permille": 15,
-            "identified_r_axis0_drift_permille": 5,
-            "identified_r_axis1_drift_permille": 6,
-            "identified_r_status_flags_or": 524288,
-            "identified_r_warning_flags": 0,
-            "identified_r_peak_abs_current_count": 1200,
-            "identified_r_max_abs_steady_mean_current_count": 900,
-            "identified_r_current_ceiling_count": 1600,
         }
     )
 
     driver = make_config_driver(printer, sections, "foci stepper_x")
 
     assert driver.config.identified_r_count_slope_milli == 1042
-    assert driver.config.identified_r_gain_path_count_slope_milli == 66752
-    assert driver.config.identified_r_axis0_count_slope_milli == 1038
-    assert driver.config.identified_r_axis1_count_slope_milli == 1046
-    assert driver.config.identified_r_axis0_intercept_count == 24
-    assert driver.config.identified_r_axis1_intercept_count == 27
-    assert driver.config.identified_r_axis0_rmse_permille == 8
-    assert driver.config.identified_r_axis1_rmse_permille == 9
-    assert driver.config.identified_r_selected_mask_axis0 == 0b11111000
-    assert driver.config.identified_r_selected_mask_axis1 == 0b11110000
-    assert driver.config.identified_r_axis0_signed_count_slope_milli == 1041
-    assert driver.config.identified_r_axis1_signed_count_slope_milli == 1047
-    assert driver.config.identified_r_axis0_signed_asymmetry_permille == 12
-    assert driver.config.identified_r_axis1_signed_asymmetry_permille == 15
-    assert driver.config.identified_r_axis0_drift_permille == 5
-    assert driver.config.identified_r_axis1_drift_permille == 6
-    assert driver.config.identified_r_status_flags_or == 524288
-    assert driver.config.identified_r_warning_flags == 0
-    assert driver.config.identified_r_peak_abs_current_count == 1200
-    assert driver.config.identified_r_max_abs_steady_mean_current_count == 900
-    assert driver.config.identified_r_current_ceiling_count == 1600
 
 
 def test_resistance_identification_fields_default_to_none():
@@ -877,60 +837,6 @@ def test_resistance_identification_fields_default_to_none():
     driver = make_config_driver(printer, sections, "foci stepper_x")
 
     assert driver.config.identified_r_count_slope_milli is None
-    assert driver.config.identified_r_gain_path_count_slope_milli is None
-    assert driver.config.identified_r_warning_flags is None
-    assert driver.config.identified_r_peak_abs_current_count is None
-    assert driver.config.identified_r_max_abs_steady_mean_current_count is None
-    assert driver.config.identified_r_current_ceiling_count is None
-
-
-@pytest.mark.parametrize(
-    "field_name",
-    (
-        "identified_r_peak_abs_current_count",
-        "identified_r_max_abs_steady_mean_current_count",
-        "identified_r_current_ceiling_count",
-    ),
-)
-def test_resistance_current_evidence_accepts_full_u16_range(field_name):
-    printer, _chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        }
-    )
-    sections["foci stepper_x"][field_name] = 0xFFFF
-
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-
-    assert getattr(driver.config, field_name) == 0xFFFF
-
-
-@pytest.mark.parametrize(
-    "field_name",
-    (
-        "identified_r_peak_abs_current_count",
-        "identified_r_max_abs_steady_mean_current_count",
-        "identified_r_current_ceiling_count",
-    ),
-)
-def test_resistance_current_evidence_rejects_values_above_u16(field_name):
-    printer, _chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        }
-    )
-    sections["foci stepper_x"][field_name] = 0x10000
-
-    with pytest.raises(CommandError):
-        make_config_driver(printer, sections, "foci stepper_x")
 
 
 def test_resistance_test_registers_in_expert_mode():

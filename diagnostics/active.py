@@ -694,30 +694,7 @@ class ActiveDiagnostics:
 
         folded: dict = {
             "resistance_selected_count_slope_milli": run["selected_r_count_slope_milli"],
-            "resistance_gain_path_count_slope_milli": run["gain_path_count_slope_milli"],
-            "resistance_status_flags_or": run["status_flags_or"],
-            "resistance_warning_flags": run["warning_flags"],
-            "resistance_peak_abs_current_count": run["peak_abs_current_count"],
-            "resistance_max_abs_steady_mean_current_count": run[
-                "max_abs_steady_mean_current_count"
-            ],
-            "resistance_current_ceiling_count": run["current_ceiling_count"],
         }
-
-        for axis_index, axis in ((0, axis0), (1, axis1)):
-            folded[f"resistance_axis{int(axis_index)}_count_slope_milli"] = axis[
-                "r_count_slope_milli"
-            ]
-            folded[f"resistance_axis{int(axis_index)}_intercept_count"] = axis["intercept_count"]
-            folded[f"resistance_axis{int(axis_index)}_rmse_permille"] = axis["rmse_permille"]
-            folded[f"resistance_selected_mask_axis{int(axis_index)}"] = axis["selected_mask"]
-            folded[f"resistance_axis{int(axis_index)}_signed_count_slope_milli"] = axis[
-                "signed_count_slope_milli"
-            ]
-            folded[f"resistance_axis{int(axis_index)}_signed_asymmetry_permille"] = axis[
-                "signed_asymmetry_permille"
-            ]
-            folded[f"resistance_axis{int(axis_index)}_drift_permille"] = axis["drift_permille"]
 
         return folded
 

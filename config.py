@@ -126,26 +126,6 @@ class FociDriverConfig:
     identified_current_retry_budget_exhausted: int | None
     identified_current_failure_reason: int | None
     identified_r_count_slope_milli: int | None
-    identified_r_gain_path_count_slope_milli: int | None
-    identified_r_axis0_count_slope_milli: int | None
-    identified_r_axis1_count_slope_milli: int | None
-    identified_r_axis0_intercept_count: int | None
-    identified_r_axis1_intercept_count: int | None
-    identified_r_axis0_rmse_permille: int | None
-    identified_r_axis1_rmse_permille: int | None
-    identified_r_selected_mask_axis0: int | None
-    identified_r_selected_mask_axis1: int | None
-    identified_r_axis0_signed_count_slope_milli: int | None
-    identified_r_axis1_signed_count_slope_milli: int | None
-    identified_r_axis0_signed_asymmetry_permille: int | None
-    identified_r_axis1_signed_asymmetry_permille: int | None
-    identified_r_axis0_drift_permille: int | None
-    identified_r_axis1_drift_permille: int | None
-    identified_r_status_flags_or: int | None
-    identified_r_warning_flags: int | None
-    identified_r_peak_abs_current_count: int | None
-    identified_r_max_abs_steady_mean_current_count: int | None
-    identified_r_current_ceiling_count: int | None
     autotune_profile: str | None
     autotune_mode: str | None
     autotune_status: str | None
@@ -396,61 +376,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
 
     identified_r_count_slope_milli = config.getint("identified_r_count_slope_milli", None)
-    identified_r_gain_path_count_slope_milli = config.getint(
-        "identified_r_gain_path_count_slope_milli", None
-    )
-    identified_r_axis0_count_slope_milli = config.getint(
-        "identified_r_axis0_count_slope_milli", None
-    )
-    identified_r_axis1_count_slope_milli = config.getint(
-        "identified_r_axis1_count_slope_milli", None
-    )
-    identified_r_axis0_intercept_count = config.getint("identified_r_axis0_intercept_count", None)
-    identified_r_axis1_intercept_count = config.getint("identified_r_axis1_intercept_count", None)
-    identified_r_axis0_rmse_permille = config.getint(
-        "identified_r_axis0_rmse_permille", None, minval=0, maxval=1000
-    )
-    identified_r_axis1_rmse_permille = config.getint(
-        "identified_r_axis1_rmse_permille", None, minval=0, maxval=1000
-    )
-    identified_r_selected_mask_axis0 = config.getint(
-        "identified_r_selected_mask_axis0", None, minval=0, maxval=0xFFFF
-    )
-    identified_r_selected_mask_axis1 = config.getint(
-        "identified_r_selected_mask_axis1", None, minval=0, maxval=0xFFFF
-    )
-    identified_r_axis0_signed_count_slope_milli = config.getint(
-        "identified_r_axis0_signed_count_slope_milli", None
-    )
-    identified_r_axis1_signed_count_slope_milli = config.getint(
-        "identified_r_axis1_signed_count_slope_milli", None
-    )
-    identified_r_axis0_signed_asymmetry_permille = config.getint(
-        "identified_r_axis0_signed_asymmetry_permille", None, minval=0, maxval=1000
-    )
-    identified_r_axis1_signed_asymmetry_permille = config.getint(
-        "identified_r_axis1_signed_asymmetry_permille", None, minval=0, maxval=1000
-    )
-    identified_r_axis0_drift_permille = config.getint(
-        "identified_r_axis0_drift_permille", None, minval=0, maxval=1000
-    )
-    identified_r_axis1_drift_permille = config.getint(
-        "identified_r_axis1_drift_permille", None, minval=0, maxval=1000
-    )
-    identified_r_status_flags_or = config.getint("identified_r_status_flags_or", None, minval=0)
-    identified_r_warning_flags = config.getint("identified_r_warning_flags", None, minval=0)
-    identified_r_peak_abs_current_count = config.getint(
-        "identified_r_peak_abs_current_count", None, minval=0, maxval=0xFFFF
-    )
-    identified_r_max_abs_steady_mean_current_count = config.getint(
-        "identified_r_max_abs_steady_mean_current_count",
-        None,
-        minval=0,
-        maxval=0xFFFF,
-    )
-    identified_r_current_ceiling_count = config.getint(
-        "identified_r_current_ceiling_count", None, minval=0, maxval=0xFFFF
-    )
 
     autotune_profile = config.get("autotune_profile", None)
     autotune_mode = config.get("autotune_mode", None)
@@ -583,28 +508,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_current_retry_budget_exhausted=(identified_current_retry_budget_exhausted),
         identified_current_failure_reason=identified_current_failure_reason,
         identified_r_count_slope_milli=identified_r_count_slope_milli,
-        identified_r_gain_path_count_slope_milli=(identified_r_gain_path_count_slope_milli),
-        identified_r_axis0_count_slope_milli=identified_r_axis0_count_slope_milli,
-        identified_r_axis1_count_slope_milli=identified_r_axis1_count_slope_milli,
-        identified_r_axis0_intercept_count=identified_r_axis0_intercept_count,
-        identified_r_axis1_intercept_count=identified_r_axis1_intercept_count,
-        identified_r_axis0_rmse_permille=identified_r_axis0_rmse_permille,
-        identified_r_axis1_rmse_permille=identified_r_axis1_rmse_permille,
-        identified_r_selected_mask_axis0=identified_r_selected_mask_axis0,
-        identified_r_selected_mask_axis1=identified_r_selected_mask_axis1,
-        identified_r_axis0_signed_count_slope_milli=(identified_r_axis0_signed_count_slope_milli),
-        identified_r_axis1_signed_count_slope_milli=(identified_r_axis1_signed_count_slope_milli),
-        identified_r_axis0_signed_asymmetry_permille=(identified_r_axis0_signed_asymmetry_permille),
-        identified_r_axis1_signed_asymmetry_permille=(identified_r_axis1_signed_asymmetry_permille),
-        identified_r_axis0_drift_permille=identified_r_axis0_drift_permille,
-        identified_r_axis1_drift_permille=identified_r_axis1_drift_permille,
-        identified_r_status_flags_or=identified_r_status_flags_or,
-        identified_r_warning_flags=identified_r_warning_flags,
-        identified_r_peak_abs_current_count=identified_r_peak_abs_current_count,
-        identified_r_max_abs_steady_mean_current_count=(
-            identified_r_max_abs_steady_mean_current_count
-        ),
-        identified_r_current_ceiling_count=identified_r_current_ceiling_count,
         autotune_profile=autotune_profile,
         autotune_mode=autotune_mode,
         autotune_status=autotune_status,
