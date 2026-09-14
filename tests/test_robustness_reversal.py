@@ -216,8 +216,8 @@ def test_terminal_parse_decodes_plant_rate_and_iae_max():
     assert terminal["iae_max_q_qs"] == 8_400_000
 
 
-def test_cause_names_cover_firmware_values_zero_through_eleven():
-    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(12))
+def test_cause_names_cover_firmware_values_zero_through_twenty_two():
+    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(23))
     assert ROBUSTNESS_CAUSE_IAE_EXCEEDED == 3
     assert ROBUSTNESS_CAUSE_NAMES[ROBUSTNESS_CAUSE_IAE_EXCEEDED] == "iae_exceeded"
     assert ROBUSTNESS_CAUSE_NAMES[7] == "evidence_integrity"
@@ -225,6 +225,17 @@ def test_cause_names_cover_firmware_values_zero_through_eleven():
     assert ROBUSTNESS_CAUSE_NAMES[9] == "rest_not_confirmed"
     assert ROBUSTNESS_CAUSE_NAMES[10] == "tail_repeated"
     assert ROBUSTNESS_CAUSE_NAMES[11] == "origin_not_recovered"
+    assert ROBUSTNESS_CAUSE_NAMES[12] == "io_fault"
+    assert ROBUSTNESS_CAUSE_NAMES[13] == "safety_arm_failed"
+    assert ROBUSTNESS_CAUSE_NAMES[14] == "recovery_plan_invalid"
+    assert ROBUSTNESS_CAUSE_NAMES[15] == "invalid_gains"
+    assert ROBUSTNESS_CAUSE_NAMES[16] == "deadline_overflow"
+    assert ROBUSTNESS_CAUSE_NAMES[17] == "analysis_timeout"
+    assert ROBUSTNESS_CAUSE_NAMES[18] == "analysis_poll_failed"
+    assert ROBUSTNESS_CAUSE_NAMES[19] == "scoring_failed"
+    assert ROBUSTNESS_CAUSE_NAMES[20] == "unexpected_state"
+    assert ROBUSTNESS_CAUSE_NAMES[21] == "origin_recovery_fault"
+    assert ROBUSTNESS_CAUSE_NAMES[22] == "dispatch_abort"
 
 
 def test_outcome_names_cover_firmware_values_zero_through_three():
@@ -249,7 +260,7 @@ def test_terminal_rejects_invalid_outcome():
 
 def test_terminal_rejects_invalid_cause():
     with pytest.raises(RobustnessReversalProtocolError, match="taxonomy"):
-        handle_and_return(build_terminal_payload(cause=12))
+        handle_and_return(build_terminal_payload(cause=23))
 
 
 def test_terminal_rejects_unsupported_schema():

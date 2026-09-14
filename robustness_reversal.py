@@ -50,6 +50,17 @@ ROBUSTNESS_CAUSE_NAMES = {
     9: "rest_not_confirmed",
     10: "tail_repeated",
     11: "origin_not_recovered",
+    12: "io_fault",
+    13: "safety_arm_failed",
+    14: "recovery_plan_invalid",
+    15: "invalid_gains",
+    16: "deadline_overflow",
+    17: "analysis_timeout",
+    18: "analysis_poll_failed",
+    19: "scoring_failed",
+    20: "unexpected_state",
+    21: "origin_recovery_fault",
+    22: "dispatch_abort",
 }
 
 _HEADER = "<BIBBHHi"
