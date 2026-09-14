@@ -92,6 +92,10 @@ def test_safety_timing_gap_invalid_reason_present():
     assert COMMISSION_REASON_NAMES[86] == "safety timing gap invalid"
 
 
+def test_net_displacement_overflow_reason_present():
+    assert COMMISSION_REASON_NAMES[87] == "net displacement overflow"
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,

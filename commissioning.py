@@ -92,6 +92,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     84: "velocity envelope ceiling zero",
     85: "velocity envelope exceeds ceiling",
     86: "safety timing gap invalid",
+    87: "net displacement overflow",
 }
 
 # Error codes for which the failure message should point at a dedicated
