@@ -19,8 +19,6 @@ SELFTEST_STAGES: dict[int, str] = {
 
 def format_selftest_value(stage: int, status: int, value: int) -> str:
     """Return a stage-specific detail string, or empty string for bare PASS."""
-    if status != 0:
-        return f" (FAIL, raw={int(value)})"
     if stage == 1:
         offset_i0 = value & 0xFFFF
         offset_i1 = (value >> 16) & 0xFFFF
@@ -29,8 +27,6 @@ def format_selftest_value(stage: int, status: int, value: int) -> str:
         low16 = value & 0xFFFF
         signed = low16 if low16 < 0x8000 else low16 - 0x10000
         return f" (current={int(signed)})"
-    if stage == 4:
-        return ""
     if stage == 5:
         return f" (delta={int(value)})"
     if stage == 6:
@@ -39,6 +35,8 @@ def format_selftest_value(stage: int, status: int, value: int) -> str:
         return f" (r_count_milli={int(value)})"
     if stage == 8:
         return f" (control_l_count_micro={int(value)})"
+    if status != 0:
+        return f" (raw={int(value)})"
     return ""
 
 

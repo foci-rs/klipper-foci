@@ -383,9 +383,16 @@ def test_format_inductance_uses_diagnostic_count_units():
     assert "mH" not in out
 
 
-def test_format_fail_status_returns_error_marker():
-    out = format_selftest_value(7, 1, 0)
-    assert "FAIL" in out or "fail" in out.lower()
+def test_format_fail_status_decodes_stage_value_instead_of_raw_dump():
+    out = format_selftest_value(7, 1, 1714)
+    assert "r_count_milli=1714" in out
+    assert "raw" not in out
+
+
+def test_format_fail_status_falls_back_to_raw_when_stage_has_no_decode():
+    out = format_selftest_value(4, 1, 99)
+    assert "raw=99" in out
+    assert "FAIL" not in out
 
 
 def test_cmd_selftest_builds_multiline_report():
