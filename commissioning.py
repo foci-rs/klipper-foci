@@ -93,6 +93,16 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     85: "velocity envelope exceeds ceiling",
     86: "safety timing gap invalid",
     87: "net displacement overflow",
+    88: "capture timing: time moved backwards or violated poll ordering",
+    89: "capture timing: deadline or interval arithmetic overflowed",
+    90: "capture timing: sample-start lateness exceeded one quarter period",
+    91: "capture timing: sample service exceeded one requested period",
+    92: "capture timing: missed more sample slots than permitted",
+    93: "capture timing: too many consecutive missed sample slots",
+    94: "capture timing: SPI time exceeded poll wall time",
+    95: "capture timing: telemetry counter or duration saturated",
+    96: "capture timing: timestamp offset out of range",
+    97: "capture buffer desync (internal invariant violation)",
 }
 
 # Error codes for which the failure message should point at a dedicated
