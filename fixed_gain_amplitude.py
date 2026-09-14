@@ -48,6 +48,12 @@ CAUSE_NAMES = {
     5: "amplitude_order_mismatch",
     6: "evidence_capacity",
     7: "evidence_integrity",
+    8: "progress_transition_rejected",
+    9: "disarm_incomplete",
+    10: "missing_amplitude_context",
+    11: "cancelled",
+    12: "shutdown",
+    13: "invalid_run_masks",
     53: "velocity_rest_not_confirmed",
 }
 
