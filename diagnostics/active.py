@@ -727,18 +727,8 @@ class ActiveDiagnostics:
 
         return {
             "inductance_source": run["source"],
-            "inductance_warning_flags": run["warning_flags"],
-            "inductance_frequency_millihz": run["realized_frequency_millihz"],
             "inductance_reactance_count_ratio_milli": estimate["x_average_count_ratio_milli"],
-            "inductance_d_reactance_count_ratio_milli": estimate["x_d_count_ratio_milli"],
-            "inductance_q_reactance_count_ratio_milli": estimate["x_q_count_ratio_milli"],
             "inductance_saliency_status": estimate["saliency_status"],
-            "inductance_saliency_permille": estimate["saliency_permille"],
-            "inductance_iq_mean_milli_count": frame["iq_mean_milli_count"],
-            "inductance_drift_permille": frame["drift_permille"],
-            "inductance_r_shift_minus_permille": estimate["x_mag_shift_minus_permille"],
-            "inductance_r_shift_plus_permille": estimate["x_mag_shift_plus_permille"],
-            "inductance_x_mag_vs_quad_permille": estimate["x_mag_vs_quad_permille"],
         }
 
     def pop_current_loop_cache(self, oid: int) -> dict:

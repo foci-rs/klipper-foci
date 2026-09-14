@@ -818,11 +818,6 @@ class CommissioningWorkflow:
             "identified_r_count_milli",
             f"{int(result['r_count_milli'])}",
         )
-        configfile.set(
-            self.driver.name,
-            "identified_l_count_micro",
-            f"{int(result['l_count_micro'])}",
-        )
         configfile.set(self.driver.name, "identified_lambda_us", f"{int(result['lambda_us'])}")
         configfile.set(
             self.driver.name,
@@ -889,36 +884,11 @@ class CommissioningWorkflow:
 
     INDUCTANCE_RESULT_KEYS: Sequence[tuple[str, str]] = (
         ("inductance_source", "identified_l_source"),
-        ("inductance_warning_flags", "identified_l_warning_flags"),
-        ("inductance_frequency_millihz", "identified_l_frequency_millihz"),
         (
             "inductance_reactance_count_ratio_milli",
             "identified_l_reactance_count_ratio_milli",
         ),
-        (
-            "inductance_d_reactance_count_ratio_milli",
-            "identified_l_d_reactance_count_ratio_milli",
-        ),
-        (
-            "inductance_q_reactance_count_ratio_milli",
-            "identified_l_q_reactance_count_ratio_milli",
-        ),
         ("inductance_saliency_status", "identified_l_saliency_status"),
-        ("inductance_saliency_permille", "identified_l_saliency_permille"),
-        ("inductance_iq_mean_milli_count", "identified_l_iq_mean_milli_count"),
-        ("inductance_drift_permille", "identified_l_drift_permille"),
-        (
-            "inductance_r_shift_minus_permille",
-            "identified_l_r_shift_minus_permille",
-        ),
-        (
-            "inductance_r_shift_plus_permille",
-            "identified_l_r_shift_plus_permille",
-        ),
-        (
-            "inductance_x_mag_vs_quad_permille",
-            "identified_l_x_mag_vs_quad_permille",
-        ),
     )
 
     def _persist_inductance_identification(self, configfile, result: dict) -> None:

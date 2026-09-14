@@ -61,7 +61,6 @@ CONFIG_GAIN_FIELDS: tuple[str, ...] = (
 
 IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
     "identified_r_count_milli",
-    "identified_l_count_micro",
     "identified_lambda_us",
     "identified_tau_e_us",
     "identified_theta_e_us",
@@ -121,18 +120,8 @@ RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = ("identified_r_count_slope_m
 
 INDUCTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_l_source",
-    "identified_l_warning_flags",
-    "identified_l_frequency_millihz",
     "identified_l_reactance_count_ratio_milli",
-    "identified_l_d_reactance_count_ratio_milli",
-    "identified_l_q_reactance_count_ratio_milli",
     "identified_l_saliency_status",
-    "identified_l_saliency_permille",
-    "identified_l_iq_mean_milli_count",
-    "identified_l_drift_permille",
-    "identified_l_r_shift_minus_permille",
-    "identified_l_r_shift_plus_permille",
-    "identified_l_x_mag_vs_quad_permille",
 )
 
 COMPARE_GAIN_FIELDS: tuple[str, ...] = tuple(

@@ -534,10 +534,6 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             configfile.values[(driver.name, "identified_r_count_milli")],
             "1706",
         )
-        self.assertEqual(
-            configfile.values[(driver.name, "identified_l_count_micro")],
-            "1245",
-        )
         self.assertNotIn((driver.name, "identified_r_mohm"), configfile.values)
         self.assertNotIn((driver.name, "identified_l_uh"), configfile.values)
         self.assertNotIn((driver.name, "identified_r_int"), configfile.values)
@@ -1240,18 +1236,8 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
     }
     EXPECTED_CONFIG: ClassVar[dict[str, str]] = {
         "identified_l_source": "1",
-        "identified_l_warning_flags": "0",
-        "identified_l_frequency_millihz": "1000000",
         "identified_l_reactance_count_ratio_milli": "8600",
-        "identified_l_d_reactance_count_ratio_milli": "9200",
-        "identified_l_q_reactance_count_ratio_milli": "8000",
         "identified_l_saliency_status": "1",
-        "identified_l_saliency_permille": "140",
-        "identified_l_iq_mean_milli_count": "-84000",
-        "identified_l_drift_permille": "40",
-        "identified_l_r_shift_minus_permille": "4",
-        "identified_l_r_shift_plus_permille": "4",
-        "identified_l_x_mag_vs_quad_permille": "20",
     }
 
     def _emit_run(self, driver, params=None) -> None:

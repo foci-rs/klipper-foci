@@ -85,7 +85,6 @@ def _seed_tuning_state(driver):
     driver.config.commissioned_velocity_limit = 500000
 
     driver.config.identified_r_count_milli = 3002
-    driver.config.identified_l_count_micro = 4046
     driver.config.identified_lambda_us = 0
     driver.config.identified_tau_e_us = 1348
     driver.config.identified_theta_e_us = 160
@@ -94,18 +93,8 @@ def _seed_tuning_state(driver):
     driver.config.identified_inner_warning_flags = 36
 
     driver.config.identified_l_source = 1
-    driver.config.identified_l_warning_flags = 0
-    driver.config.identified_l_frequency_millihz = 1_000_000
     driver.config.identified_l_reactance_count_ratio_milli = 8600
-    driver.config.identified_l_d_reactance_count_ratio_milli = 9200
-    driver.config.identified_l_q_reactance_count_ratio_milli = 8000
     driver.config.identified_l_saliency_status = 1
-    driver.config.identified_l_saliency_permille = 140
-    driver.config.identified_l_iq_mean_milli_count = -84000
-    driver.config.identified_l_drift_permille = 40
-    driver.config.identified_l_r_shift_minus_permille = 4
-    driver.config.identified_l_r_shift_plus_permille = 4
-    driver.config.identified_l_x_mag_vs_quad_permille = 20
 
     driver.config.identified_current_gains_source = 1
     driver.config.identified_current_gains_tier = 2
@@ -367,8 +356,6 @@ def test_tuning_flag_separates_persisted_and_last_inductance_evidence():
     assert "-- Persisted inductance evidence --" in output
     assert "config.identified_l_reactance_count_ratio_milli" in output
     assert "8600" in output
-    assert "config.identified_l_d_reactance_count_ratio_milli" in output
-    assert "config.identified_l_q_reactance_count_ratio_milli" in output
     assert "persisted identified_l_* inductance fields" in output
     assert "-- Last inductance evidence (not persisted) --" in output
     assert "last.inductance_run.source" in output

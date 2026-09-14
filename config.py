@@ -101,7 +101,6 @@ class FociDriverConfig:
     commissioned_position_i: int | None
     commissioned_velocity_limit: int | None
     identified_r_count_milli: int | None
-    identified_l_count_micro: int | None
     identified_lambda_us: int | None
     identified_theta_e_us: int | None
     identified_ringing_count: int | None
@@ -109,18 +108,8 @@ class FociDriverConfig:
     identified_tau_e_us: int | None
     identified_inner_warning_flags: int | None
     identified_l_source: int | None
-    identified_l_warning_flags: int | None
-    identified_l_frequency_millihz: int | None
     identified_l_reactance_count_ratio_milli: int | None
-    identified_l_d_reactance_count_ratio_milli: int | None
-    identified_l_q_reactance_count_ratio_milli: int | None
     identified_l_saliency_status: int | None
-    identified_l_saliency_permille: int | None
-    identified_l_iq_mean_milli_count: int | None
-    identified_l_drift_permille: int | None
-    identified_l_r_shift_minus_permille: int | None
-    identified_l_r_shift_plus_permille: int | None
-    identified_l_x_mag_vs_quad_permille: int | None
     identified_current_gains_source: int | None
     identified_current_gains_tier: int | None
     identified_current_retry_budget_exhausted: int | None
@@ -320,7 +309,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
 
     identified_r_count_milli = config.getint("identified_r_count_milli", None, minval=0)
-    identified_l_count_micro = config.getint("identified_l_count_micro", None, minval=0)
     identified_lambda_us = config.getint("identified_lambda_us", None, minval=0)
     identified_theta_e_us = config.getint("identified_theta_e_us", None, minval=0)
     identified_ringing_count = config.getint("identified_ringing_count", None, minval=0, maxval=255)
@@ -330,37 +318,11 @@ def parse_driver_config(config) -> FociDriverConfig:
         "identified_inner_warning_flags", None, minval=0, maxval=255
     )
     identified_l_source = config.getint("identified_l_source", None, minval=0, maxval=255)
-    identified_l_warning_flags = config.getint(
-        "identified_l_warning_flags", None, minval=0, maxval=0xFFFF
-    )
-    identified_l_frequency_millihz = config.getint("identified_l_frequency_millihz", None, minval=0)
     identified_l_reactance_count_ratio_milli = config.getint(
         "identified_l_reactance_count_ratio_milli", None, minval=0
     )
-    identified_l_d_reactance_count_ratio_milli = config.getint(
-        "identified_l_d_reactance_count_ratio_milli", None, minval=0
-    )
-    identified_l_q_reactance_count_ratio_milli = config.getint(
-        "identified_l_q_reactance_count_ratio_milli", None, minval=0
-    )
     identified_l_saliency_status = config.getint(
         "identified_l_saliency_status", None, minval=0, maxval=255
-    )
-    identified_l_saliency_permille = config.getint(
-        "identified_l_saliency_permille", None, minval=0, maxval=1000
-    )
-    identified_l_iq_mean_milli_count = config.getint("identified_l_iq_mean_milli_count", None)
-    identified_l_drift_permille = config.getint(
-        "identified_l_drift_permille", None, minval=0, maxval=1000
-    )
-    identified_l_r_shift_minus_permille = config.getint(
-        "identified_l_r_shift_minus_permille", None, minval=0, maxval=1000
-    )
-    identified_l_r_shift_plus_permille = config.getint(
-        "identified_l_r_shift_plus_permille", None, minval=0, maxval=1000
-    )
-    identified_l_x_mag_vs_quad_permille = config.getint(
-        "identified_l_x_mag_vs_quad_permille", None, minval=0, maxval=1000
     )
     identified_current_gains_source = config.getint(
         "identified_current_gains_source", None, minval=0, maxval=255
@@ -483,7 +445,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         commissioned_position_i=commissioned_position_i,
         commissioned_velocity_limit=commissioned_velocity_limit,
         identified_r_count_milli=identified_r_count_milli,
-        identified_l_count_micro=identified_l_count_micro,
         identified_lambda_us=identified_lambda_us,
         identified_theta_e_us=identified_theta_e_us,
         identified_ringing_count=identified_ringing_count,
@@ -491,18 +452,8 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_tau_e_us=identified_tau_e_us,
         identified_inner_warning_flags=identified_inner_warning_flags,
         identified_l_source=identified_l_source,
-        identified_l_warning_flags=identified_l_warning_flags,
-        identified_l_frequency_millihz=identified_l_frequency_millihz,
         identified_l_reactance_count_ratio_milli=(identified_l_reactance_count_ratio_milli),
-        identified_l_d_reactance_count_ratio_milli=(identified_l_d_reactance_count_ratio_milli),
-        identified_l_q_reactance_count_ratio_milli=(identified_l_q_reactance_count_ratio_milli),
         identified_l_saliency_status=identified_l_saliency_status,
-        identified_l_saliency_permille=identified_l_saliency_permille,
-        identified_l_iq_mean_milli_count=identified_l_iq_mean_milli_count,
-        identified_l_drift_permille=identified_l_drift_permille,
-        identified_l_r_shift_minus_permille=identified_l_r_shift_minus_permille,
-        identified_l_r_shift_plus_permille=identified_l_r_shift_plus_permille,
-        identified_l_x_mag_vs_quad_permille=identified_l_x_mag_vs_quad_permille,
         identified_current_gains_source=identified_current_gains_source,
         identified_current_gains_tier=identified_current_gains_tier,
         identified_current_retry_budget_exhausted=(identified_current_retry_budget_exhausted),
