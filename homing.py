@@ -30,6 +30,7 @@ CALIBRATION_REASON_NAMES: dict[int, str] = {
     17: "CURRENT_HOLD_FAILED (current-loop hold validation failed)",
     18: "FAULT_INTERLOCK (latched fault or STATUS pin asserted)",
     19: "SHUTDOWN (hardware shutdown requested during calibration)",
+    20: "SAFE_STATE_INCOMPLETE (prior safe-state restore had write failures)",
 }
 
 
