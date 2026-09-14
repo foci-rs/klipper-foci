@@ -21,6 +21,15 @@ CALIBRATION_REASON_NAMES: dict[int, str] = {
     8: "ENCODER_FAULT (encoder did not report expected calibration movement)",
     9: "CLOSED_LOOP_ACTIVATION_UNSTABLE (position hold runaway or excess drift)",
     10: "CANCELLED (operator-requested cancel)",
+    11: "ADC_FAULT (ADC calibration offsets out of range)",
+    12: "COIL_FAULT (coil connectivity check failed)",
+    13: "PHASE_FAULT (current on wrong ADC channel during phase wiring check)",
+    14: "NO_CURRENT (no current detected in motor windings)",
+    15: "CURRENT_VALIDATION_FAILED (retained gain storage corrupt)",
+    16: "INVALID_SCHEDULE (internal deadline computation error)",
+    17: "CURRENT_HOLD_FAILED (current-loop hold validation failed)",
+    18: "FAULT_INTERLOCK (latched fault or STATUS pin asserted)",
+    19: "SHUTDOWN (hardware shutdown requested during calibration)",
 }
 
 
