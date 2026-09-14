@@ -865,17 +865,13 @@ class CommissioningWorkflow:
     def _persist_resistance_identification(self, configfile, result: dict) -> None:
         """Persist firmware-owned resistance-identification evidence.
 
-        Every value here is reported by firmware as-is: the selected
-        count-space slope, the slope actually consumed by the gain path,
-        per-axis fit evidence, point-selection masks, signed-anchor
-        evidence, thermal-drift evidence, current sample/window maxima,
-        the applied current ceiling, and warning/status flags. The host
-        performs no fitting, point selection, unit conversion, or
-        quality-gate evaluation; it only stores what firmware reported.
+        Persists only the selected count-space slope, reported by firmware
+        as-is; the host performs no fitting, point selection, unit
+        conversion, or quality-gate evaluation.
 
-        Skips this group entirely when ``result`` does not contain these
-        keys, so commissioning against older firmware that has not yet
-        added these fields to its reply still persists cleanly.
+        Skips this group entirely when ``result`` does not contain this
+        key, so commissioning against older firmware that has not yet
+        added it to its reply still persists cleanly.
         """
         if "resistance_selected_count_slope_milli" not in result:
             return
