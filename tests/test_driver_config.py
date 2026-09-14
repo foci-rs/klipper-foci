@@ -1108,7 +1108,7 @@ def test_homing_defaults_and_threshold_units():
     )
     driver = make_config_driver(printer, sections, "foci stepper_x")
     cfg = driver.config
-    assert cfg.homing_current == 0.7
+    assert cfg.homing_current == 0.0
     assert cfg.stall_distance == 0.5
     assert cfg.stall_persistence == 3
     assert stall_threshold_units(cfg) == 819
@@ -1120,6 +1120,7 @@ def test_homing_defaults_and_threshold_units():
         {"homing_current": "2.3"},
         {"homing_current": "2.26"},
         {"homing_current": "-0.1"},
+        {"homing_current": "0"},
         {"stall_distance": "0"},
         {"stall_distance": "10.1"},
         {"stall_persistence": "0"},
@@ -1153,10 +1154,10 @@ def test_homing_config_accepts_boundary_values(values, field_name, expected):
     assert getattr(driver.config, field_name) == expected
 
 
-def test_homing_current_zero_opts_out():
-    printer, _chips, sections, _config = make_foci_config(foci_values={"homing_current": "0"})
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-    assert driver.config.homing_current == 0.0
+def test_homing_current_zero_is_rejected():
+    with pytest.raises(CommandError):
+        printer, _chips, sections, _config = make_foci_config(foci_values={"homing_current": "0"})
+        make_config_driver(printer, sections, "foci stepper_x")
 
 
 def test_mock_getfloat_does_not_validate_absent_default():

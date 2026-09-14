@@ -19,7 +19,6 @@ FILTER_MIN_HZ = 10
 MOTION_FILTER_MAX_HZ = 1000
 CURRENT_FILTER_MAX_HZ = 6000
 MAX_ENCODER_PPR = 0x3FFF_FFFF
-DEFAULT_HOMING_CURRENT_AMPS = 0.7
 # Firmware quantizes both currents to TMC4671 register units before comparing
 # them; a real board's per-LSB step is on the order of 1-2 mA
 # (current_scale_ma_per_lsb), so a host-side check with less margin than this
@@ -242,9 +241,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         default="default",
     )
 
-    homing_current = config.getfloat(
-        "homing_current", DEFAULT_HOMING_CURRENT_AMPS, minval=0.0, maxval=MAX_RUN_CURRENT_AMPS
-    )
+    homing_current = config.getfloat("homing_current", 0.0, above=0.0, maxval=MAX_RUN_CURRENT_AMPS)
     if homing_current > 0.0 and homing_current > run_current - HOMING_CURRENT_MARGIN_AMPS:
         raise config.error(
             f"homing_current {homing_current:.3f} in [{name}] must be at least "

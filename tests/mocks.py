@@ -680,6 +680,7 @@ def make_driver(
         },
         driver.name: {
             "run_current": 0.8,
+            "homing_current": "0.7",
             "encoder_ppr": 1000,
             "voltage_limit": 16000,
             "identified_lambda_us": 0,
