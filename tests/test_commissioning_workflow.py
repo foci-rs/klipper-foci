@@ -229,24 +229,6 @@ def test_commission_start_clears_stale_timing_cache():
     assert driver.commissioning.timing_by_method == {}
 
 
-def test_persistence_ignores_rejected_timing_evidence():
-    driver = make_driver()
-    configfile = MockConfigFile()
-    driver.printer._objects["configfile"] = configfile
-    result = complete_commission_result()
-    result["commission_timing"] = {
-        0: timing_reply(status=1),
-        1: timing_reply(method=1, status=2),
-    }
-
-    driver.commissioning.persist_commission_results(result, "balanced")
-
-    timing_keys = {key for section, key in configfile.values if section == driver.name}
-    assert configfile.values[(driver.name, "identified_timing_resistance_status")] == ("accepted")
-    assert "identified_timing_resistance_period_us" in timing_keys
-    assert not any("timing_inductance" in key for key in timing_keys)
-
-
 class MockConfigFile:
     def __init__(self):
         self.values = {}

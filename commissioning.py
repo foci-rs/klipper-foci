@@ -852,37 +852,8 @@ class CommissioningWorkflow:
         self._persist_resistance_identification(configfile, result)
         self._persist_inductance_identification(configfile, result)
         self._persist_current_loop_identification(configfile, result)
-        self._persist_timing_evidence(configfile, result)
         configfile.set(self.driver.name, "autotune_profile", profile_name)
         configfile.set(self.driver.name, "autotune_status", "commissioned")
-
-    def _persist_timing_evidence(self, configfile, result: dict) -> None:
-        """Persist only firmware-accepted per-method timing evidence."""
-        key_names = {
-            "requested_period_us": "period_us",
-            "valid_samples": "valid",
-            "missed_samples": "missed",
-            "max_consecutive_misses": "max_consecutive_misses",
-            "max_lateness_us": "max_lateness_us",
-            "max_interval_us": "max_interval_us",
-            "max_poll_wall_us": "max_poll_wall_us",
-            "max_spi_wall_us": "max_spi_wall_us",
-        }
-        for method, evidence in result.get("commission_timing", {}).items():
-            if evidence.get("status") != 1 or method not in TIMING_METHOD_NAMES:
-                continue
-            method_name = TIMING_METHOD_NAMES[method]
-            configfile.set(
-                self.driver.name,
-                f"identified_timing_{method_name}_status",
-                TIMING_STATUS_NAMES[evidence["status"]],
-            )
-            for reply_key, config_suffix in key_names.items():
-                configfile.set(
-                    self.driver.name,
-                    f"identified_timing_{method_name}_{config_suffix}",
-                    f"{int(evidence[reply_key])}",
-                )
 
     # Maps each firmware-reported resistance-identification result key to
     # the persisted config key. All values are firmware-owned: the host
