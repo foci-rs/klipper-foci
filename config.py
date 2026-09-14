@@ -246,7 +246,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         raise config.error(
             f"homing_current {homing_current:.3f} in [{name}] must be at least "
             f"{HOMING_CURRENT_MARGIN_AMPS:.3f} below run_current {run_current:.3f} "
-            "(or 0 to disable the homing clamp)"
+            "(omit homing_current to disable the homing clamp)"
         )
     stall_distance = config.getfloat("stall_distance", DEFAULT_STALL_DISTANCE_MM, above=0.0)
     stall_persistence = config.getint(
