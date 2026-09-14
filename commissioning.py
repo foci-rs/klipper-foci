@@ -103,6 +103,18 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     95: "capture timing: telemetry counter or duration saturated",
     96: "capture timing: timestamp offset out of range",
     97: "capture buffer desync (internal invariant violation)",
+    98: "velocity confidence estimation failed",
+    99: "velocity rate calculation failed",
+    100: "velocity conversion invalid",
+    101: "velocity disturbance calculation failed",
+    102: "velocity block geometry invalid",
+    103: "velocity interval invalid",
+    104: "velocity lag-one evaluation failed",
+    105: "velocity analysis poll failed",
+    106: "velocity unexpected poll variant",
+    107: "velocity wrong direction",
+    108: "velocity invalid evidence",
+    109: "velocity integral plan invalid",
 }
 
 # Error codes for which the failure message should point at a dedicated
