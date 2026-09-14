@@ -108,31 +108,9 @@ def _seed_tuning_state(driver):
     driver.config.identified_l_x_mag_vs_quad_permille = 20
 
     driver.config.identified_current_gains_source = 1
-    driver.config.identified_current_candidate_gains_source = 1
-    driver.config.identified_axis_split_source = 1
-    driver.config.identified_current_candidate_axis_split_source = 1
     driver.config.identified_current_gains_tier = 2
-    driver.config.identified_current_candidate_gains_tier = 2
-    driver.config.identified_current_measured_axis_split_permille = 1840
-    driver.config.identified_current_candidate_measured_axis_split_permille = 1840
-    driver.config.identified_current_applied_axis_split_permille = 1500
-    driver.config.identified_current_candidate_applied_axis_split_permille = 1500
-    driver.config.identified_current_axis_split_clamped = 1
-    driver.config.identified_current_candidate_axis_split_clamped = 1
-    driver.config.identified_current_candidate_flux_p = 711
-    driver.config.identified_current_candidate_flux_i = 416
-    driver.config.identified_current_candidate_torque_p = 650
-    driver.config.identified_current_candidate_torque_i = 336
-    driver.config.identified_current_candidate_attempt = 1
-    driver.config.identified_current_validation_axes = 3
-    driver.config.identified_current_flux_validation_sample_count = 4
-    driver.config.identified_current_torque_validation_sample_count = 2
     driver.config.identified_current_retry_budget_exhausted = 0
     driver.config.identified_current_failure_reason = 0
-    driver.config.identified_current_flux_response_min_permille = 710
-    driver.config.identified_current_torque_response_min_permille = 590
-    driver.config.identified_current_flux_encoder_delta_counts = 0
-    driver.config.identified_current_torque_encoder_delta_counts = 4
 
     driver.config.identified_r_count_slope_milli = 1042
     driver.config.identified_r_gain_path_count_slope_milli = 66752
@@ -438,36 +416,27 @@ def test_tuning_flag_appends_current_loop_evidence():
 
     assert "-- Current-loop commissioning evidence --" in output
     assert "current_gains_source: measured" in output
-    assert "axis_split_source: impedance" in output
     assert "current_gains_tier: measured_split" in output
-    assert "current_validation: flux=pass torque=pass" in output
     assert "config.identified_current_gains_source" in output
-    assert "config.identified_axis_split_source" in output
-    assert "config.identified_current_measured_axis_split_permille" in output
-    assert "1840" in output
-    assert "config.identified_current_torque_response_min_permille" in output
-    assert "590" in output
-    assert "config.identified_current_torque_encoder_delta_counts" in output
+    assert "config.identified_current_gains_tier" in output
+    assert "config.identified_current_retry_budget_exhausted" in output
+    assert "config.identified_current_failure_reason" in output
     assert "firmware-reported current-loop" in output
-    assert "identified_current_* and identified_axis_split_source" in output
+    assert "identified_current_* fields" in output
 
 
 def test_tuning_flag_names_failed_current_loop_evidence():
     driver = make_driver()
     _seed_tuning_state(driver)
     driver.config.identified_current_gains_source = 0
-    driver.config.identified_axis_split_source = 0
     driver.config.identified_current_gains_tier = 0
-    driver.config.identified_current_validation_axes = 0
     driver.config.identified_current_retry_budget_exhausted = 1
     driver.config.identified_current_failure_reason = 6
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
     assert "current_gains_source: failed" in output
-    assert "axis_split_source: none" in output
     assert "current_gains_tier: none" in output
-    assert "current_validation: flux=fail torque=fail" in output
     assert "retry_budget_exhausted: yes" in output
     assert "failure_reason: saturation" in output
 
@@ -476,18 +445,14 @@ def test_tuning_flag_names_physical_current_gain_tier():
     driver = make_driver()
     _seed_tuning_state(driver)
     driver.config.identified_current_gains_source = 1
-    driver.config.identified_axis_split_source = 0
     driver.config.identified_current_gains_tier = 4
-    driver.config.identified_current_validation_axes = 3
     driver.config.identified_current_retry_budget_exhausted = 0
     driver.config.identified_current_failure_reason = 0
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
     assert "current_gains_source: measured" in output
-    assert "axis_split_source: none" in output
     assert "current_gains_tier: physical_symmetric" in output
-    assert "current_validation: flux=pass torque=pass" in output
     assert "retry_budget_exhausted: no" in output
     assert "failure_reason: none" in output
 
@@ -711,18 +676,14 @@ def test_tuning_flag_names_default_current_loop_evidence():
     driver = make_driver()
     _seed_tuning_state(driver)
     driver.config.identified_current_gains_source = 2
-    driver.config.identified_axis_split_source = 0
     driver.config.identified_current_gains_tier = 3
-    driver.config.identified_current_validation_axes = 1
     driver.config.identified_current_retry_budget_exhausted = 0
     driver.config.identified_current_failure_reason = 0
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
     assert "current_gains_source: default" in output
-    assert "axis_split_source: none" in output
     assert "current_gains_tier: default" in output
-    assert "current_validation: flux=pass torque=fail" in output
     assert "retry_budget_exhausted: no" in output
     assert "failure_reason: none" in output
 

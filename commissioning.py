@@ -992,76 +992,12 @@ class CommissioningWorkflow:
 
     CURRENT_LOOP_RESULT_KEYS: tuple[tuple[str, str], ...] = (
         ("current_gains_source", "identified_current_gains_source"),
-        (
-            "current_candidate_gains_source",
-            "identified_current_candidate_gains_source",
-        ),
-        ("current_axis_split_source", "identified_axis_split_source"),
-        (
-            "current_candidate_axis_split_source",
-            "identified_current_candidate_axis_split_source",
-        ),
         ("current_gains_tier", "identified_current_gains_tier"),
-        (
-            "current_candidate_gains_tier",
-            "identified_current_candidate_gains_tier",
-        ),
-        (
-            "current_measured_axis_split_permille",
-            "identified_current_measured_axis_split_permille",
-        ),
-        (
-            "current_candidate_measured_axis_split_permille",
-            "identified_current_candidate_measured_axis_split_permille",
-        ),
-        (
-            "current_applied_axis_split_permille",
-            "identified_current_applied_axis_split_permille",
-        ),
-        (
-            "current_candidate_applied_axis_split_permille",
-            "identified_current_candidate_applied_axis_split_permille",
-        ),
-        ("current_axis_split_clamped", "identified_current_axis_split_clamped"),
-        (
-            "current_candidate_axis_split_clamped",
-            "identified_current_candidate_axis_split_clamped",
-        ),
-        ("current_candidate_flux_p", "identified_current_candidate_flux_p"),
-        ("current_candidate_flux_i", "identified_current_candidate_flux_i"),
-        ("current_candidate_torque_p", "identified_current_candidate_torque_p"),
-        ("current_candidate_torque_i", "identified_current_candidate_torque_i"),
-        ("current_candidate_attempt", "identified_current_candidate_attempt"),
-        ("current_validation_axes", "identified_current_validation_axes"),
-        (
-            "current_flux_validation_sample_count",
-            "identified_current_flux_validation_sample_count",
-        ),
-        (
-            "current_torque_validation_sample_count",
-            "identified_current_torque_validation_sample_count",
-        ),
         (
             "current_retry_budget_exhausted",
             "identified_current_retry_budget_exhausted",
         ),
         ("current_failure_reason", "identified_current_failure_reason"),
-        (
-            "current_flux_response_min_permille",
-            "identified_current_flux_response_min_permille",
-        ),
-        (
-            "current_torque_response_min_permille",
-            "identified_current_torque_response_min_permille",
-        ),
-        (
-            "current_flux_encoder_delta_counts",
-            "identified_current_flux_encoder_delta_counts",
-        ),
-        (
-            "current_torque_encoder_delta_counts",
-            "identified_current_torque_encoder_delta_counts",
-        ),
     )
 
     def _persist_current_loop_identification(self, configfile, result: dict) -> None:

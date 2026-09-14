@@ -799,35 +799,10 @@ class ActiveDiagnostics:
         return {
             **folded_filters,
             "current_gains_source": run["gains_source"],
-            "current_candidate_gains_source": run["candidate_gains_source"],
-            "current_axis_split_source": run["axis_split_source"],
-            "current_candidate_axis_split_source": run["candidate_axis_split_source"],
             "current_gains_tier": run["gains_tier"],
-            "current_candidate_gains_tier": run["candidate_gains_tier"],
-            "current_measured_axis_split_permille": run["measured_axis_split_permille"],
-            "current_candidate_measured_axis_split_permille": run[
-                "candidate_measured_axis_split_permille"
-            ],
-            "current_applied_axis_split_permille": run["applied_axis_split_permille"],
-            "current_candidate_applied_axis_split_permille": run[
-                "candidate_applied_axis_split_permille"
-            ],
-            "current_axis_split_clamped": run["axis_split_clamped"],
-            "current_candidate_axis_split_clamped": run["candidate_axis_split_clamped"],
-            "current_candidate_flux_p": run["candidate_flux_p"],
-            "current_candidate_flux_i": run["candidate_flux_i"],
-            "current_candidate_torque_p": run["candidate_torque_p"],
-            "current_candidate_torque_i": run["candidate_torque_i"],
-            "current_candidate_attempt": run["candidate_attempt"],
-            "current_validation_axes": run["current_validation_axes"],
-            "current_flux_validation_sample_count": run["flux_validation_sample_count"],
-            "current_torque_validation_sample_count": run["torque_validation_sample_count"],
             "current_retry_budget_exhausted": run["retry_budget_exhausted"],
             "current_failure_reason": run["failure_reason"],
-            "current_flux_response_min_permille": self._axis_response_min(flux_samples),
-            "current_torque_response_min_permille": self._axis_response_min(torque_samples),
-            "current_flux_encoder_delta_counts": self._axis_encoder_delta_max(flux_samples),
-            "current_torque_encoder_delta_counts": self._axis_encoder_delta_max(torque_samples),
+            "current_candidate_attempt": run["candidate_attempt"],
         }
 
     def clear_current_loop_cache(self, oid: int) -> dict:
@@ -861,18 +836,6 @@ class ActiveDiagnostics:
     def clear_last_encoder_alignment_evidence(self, oid: int) -> dict:
         """Discard and return the last encoder-alignment reply for `oid`."""
         return self.last_encoder_alignment.pop(oid, None) or {}
-
-    def _axis_response_min(self, samples: list[dict]) -> int:
-        return min(
-            min(
-                sample["positive_response_permille"],
-                sample["negative_response_permille"],
-            )
-            for sample in samples
-        )
-
-    def _axis_encoder_delta_max(self, samples: list[dict]) -> int:
-        return max(sample["encoder_delta_counts"] for sample in samples)
 
     def _copy_inductance_cache(self, cached: dict) -> dict:
         copied = {}

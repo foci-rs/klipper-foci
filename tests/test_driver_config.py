@@ -107,31 +107,9 @@ CONFIG_FIELD_NAMES = {
     "identified_l_r_shift_plus_permille",
     "identified_l_x_mag_vs_quad_permille",
     "identified_current_gains_source",
-    "identified_current_candidate_gains_source",
-    "identified_axis_split_source",
-    "identified_current_candidate_axis_split_source",
     "identified_current_gains_tier",
-    "identified_current_candidate_gains_tier",
-    "identified_current_measured_axis_split_permille",
-    "identified_current_candidate_measured_axis_split_permille",
-    "identified_current_applied_axis_split_permille",
-    "identified_current_candidate_applied_axis_split_permille",
-    "identified_current_axis_split_clamped",
-    "identified_current_candidate_axis_split_clamped",
-    "identified_current_candidate_flux_p",
-    "identified_current_candidate_flux_i",
-    "identified_current_candidate_torque_p",
-    "identified_current_candidate_torque_i",
-    "identified_current_candidate_attempt",
-    "identified_current_validation_axes",
-    "identified_current_flux_validation_sample_count",
-    "identified_current_torque_validation_sample_count",
     "identified_current_retry_budget_exhausted",
     "identified_current_failure_reason",
-    "identified_current_flux_response_min_permille",
-    "identified_current_torque_response_min_permille",
-    "identified_current_flux_encoder_delta_counts",
-    "identified_current_torque_encoder_delta_counts",
     "identified_r_count_slope_milli",
     "identified_r_gain_path_count_slope_milli",
     "identified_r_axis0_count_slope_milli",
@@ -221,31 +199,9 @@ EXPECTED_CONTROL_SETTING_FIELDS = (
 
 CURRENT_LOOP_FIELD_MAX_VALUES = {
     "identified_current_gains_source": 255,
-    "identified_current_candidate_gains_source": 255,
-    "identified_axis_split_source": 255,
-    "identified_current_candidate_axis_split_source": 255,
     "identified_current_gains_tier": 255,
-    "identified_current_candidate_gains_tier": 255,
-    "identified_current_measured_axis_split_permille": 65535,
-    "identified_current_candidate_measured_axis_split_permille": 65535,
-    "identified_current_applied_axis_split_permille": 65535,
-    "identified_current_candidate_applied_axis_split_permille": 65535,
-    "identified_current_axis_split_clamped": 255,
-    "identified_current_candidate_axis_split_clamped": 255,
-    "identified_current_candidate_flux_p": 65535,
-    "identified_current_candidate_flux_i": 65535,
-    "identified_current_candidate_torque_p": 65535,
-    "identified_current_candidate_torque_i": 65535,
-    "identified_current_candidate_attempt": 255,
-    "identified_current_validation_axes": 255,
-    "identified_current_flux_validation_sample_count": 255,
-    "identified_current_torque_validation_sample_count": 255,
     "identified_current_retry_budget_exhausted": 255,
     "identified_current_failure_reason": 255,
-    "identified_current_flux_response_min_permille": 65535,
-    "identified_current_torque_response_min_permille": 65535,
-    "identified_current_flux_encoder_delta_counts": 65535,
-    "identified_current_torque_encoder_delta_counts": 65535,
 }
 
 
@@ -274,13 +230,6 @@ ACTIVE_PID_GAIN_FIELDS = (
     "pid_position_i",
     "pid_velocity_p",
     "pid_velocity_i",
-)
-
-CURRENT_CANDIDATE_GAIN_FIELDS = (
-    "identified_current_candidate_flux_p",
-    "identified_current_candidate_flux_i",
-    "identified_current_candidate_torque_p",
-    "identified_current_candidate_torque_i",
 )
 
 
@@ -444,31 +393,9 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_l_r_shift_plus_permille": 4,
             "identified_l_x_mag_vs_quad_permille": 20,
             "identified_current_gains_source": 1,
-            "identified_current_candidate_gains_source": 1,
-            "identified_axis_split_source": 1,
-            "identified_current_candidate_axis_split_source": 1,
             "identified_current_gains_tier": 2,
-            "identified_current_candidate_gains_tier": 2,
-            "identified_current_measured_axis_split_permille": 1840,
-            "identified_current_candidate_measured_axis_split_permille": 1840,
-            "identified_current_applied_axis_split_permille": 1500,
-            "identified_current_candidate_applied_axis_split_permille": 1500,
-            "identified_current_axis_split_clamped": 1,
-            "identified_current_candidate_axis_split_clamped": 1,
-            "identified_current_candidate_flux_p": 711,
-            "identified_current_candidate_flux_i": 416,
-            "identified_current_candidate_torque_p": 650,
-            "identified_current_candidate_torque_i": 336,
-            "identified_current_candidate_attempt": 1,
-            "identified_current_validation_axes": 3,
-            "identified_current_flux_validation_sample_count": 4,
-            "identified_current_torque_validation_sample_count": 2,
             "identified_current_retry_budget_exhausted": 0,
             "identified_current_failure_reason": 0,
-            "identified_current_flux_response_min_permille": 710,
-            "identified_current_torque_response_min_permille": 590,
-            "identified_current_flux_encoder_delta_counts": 0,
-            "identified_current_torque_encoder_delta_counts": 4,
             "autotune_profile": "balanced",
             "autotune_mode": "nominal",
             "autotune_status": "commissioned",
@@ -528,31 +455,9 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_l_r_shift_plus_permille == 4
     assert parsed.identified_l_x_mag_vs_quad_permille == 20
     assert parsed.identified_current_gains_source == 1
-    assert parsed.identified_current_candidate_gains_source == 1
-    assert parsed.identified_axis_split_source == 1
-    assert parsed.identified_current_candidate_axis_split_source == 1
     assert parsed.identified_current_gains_tier == 2
-    assert parsed.identified_current_candidate_gains_tier == 2
-    assert parsed.identified_current_measured_axis_split_permille == 1840
-    assert parsed.identified_current_candidate_measured_axis_split_permille == 1840
-    assert parsed.identified_current_applied_axis_split_permille == 1500
-    assert parsed.identified_current_candidate_applied_axis_split_permille == 1500
-    assert parsed.identified_current_axis_split_clamped == 1
-    assert parsed.identified_current_candidate_axis_split_clamped == 1
-    assert parsed.identified_current_candidate_flux_p == 711
-    assert parsed.identified_current_candidate_flux_i == 416
-    assert parsed.identified_current_candidate_torque_p == 650
-    assert parsed.identified_current_candidate_torque_i == 336
-    assert parsed.identified_current_candidate_attempt == 1
-    assert parsed.identified_current_validation_axes == 3
-    assert parsed.identified_current_flux_validation_sample_count == 4
-    assert parsed.identified_current_torque_validation_sample_count == 2
     assert parsed.identified_current_retry_budget_exhausted == 0
     assert parsed.identified_current_failure_reason == 0
-    assert parsed.identified_current_flux_response_min_permille == 710
-    assert parsed.identified_current_torque_response_min_permille == 590
-    assert parsed.identified_current_flux_encoder_delta_counts == 0
-    assert parsed.identified_current_torque_encoder_delta_counts == 4
     assert parsed.autotune_profile == "balanced"
     assert parsed.autotune_mode == "nominal"
     assert parsed.autotune_status == "commissioned"
@@ -614,15 +519,6 @@ def test_parse_driver_config_bounds_active_pid_gains(field_name):
     values[field_name] = 32768
     with pytest.raises(CommandError, match=f"{field_name} above maximum"):
         parsed_config_with(values)
-
-
-@pytest.mark.parametrize("field_name", CURRENT_CANDIDATE_GAIN_FIELDS)
-def test_parse_driver_config_preserves_raw_candidate_gain_range(field_name):
-    parsed = parsed_config_with({field_name: 65535})
-    assert getattr(parsed, field_name) == 65535
-
-    with pytest.raises(CommandError, match=f"{field_name} above maximum"):
-        parsed_config_with({field_name: 65536})
 
 
 def test_parse_driver_config_bounds_inductance_evidence_fields():

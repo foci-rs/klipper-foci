@@ -1189,31 +1189,9 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
     }
     EXPECTED_CURRENT_CONFIG: ClassVar[dict[str, str]] = {
         "identified_current_gains_source": "1",
-        "identified_current_candidate_gains_source": "1",
-        "identified_axis_split_source": "1",
-        "identified_current_candidate_axis_split_source": "1",
         "identified_current_gains_tier": "2",
-        "identified_current_candidate_gains_tier": "2",
-        "identified_current_measured_axis_split_permille": "1840",
-        "identified_current_candidate_measured_axis_split_permille": "1840",
-        "identified_current_applied_axis_split_permille": "1500",
-        "identified_current_candidate_applied_axis_split_permille": "1500",
-        "identified_current_axis_split_clamped": "1",
-        "identified_current_candidate_axis_split_clamped": "1",
-        "identified_current_candidate_flux_p": "711",
-        "identified_current_candidate_flux_i": "416",
-        "identified_current_candidate_torque_p": "650",
-        "identified_current_candidate_torque_i": "336",
-        "identified_current_candidate_attempt": "1",
-        "identified_current_validation_axes": "3",
-        "identified_current_flux_validation_sample_count": "4",
-        "identified_current_torque_validation_sample_count": "3",
         "identified_current_retry_budget_exhausted": "0",
         "identified_current_failure_reason": "0",
-        "identified_current_flux_response_min_permille": "710",
-        "identified_current_torque_response_min_permille": "590",
-        "identified_current_flux_encoder_delta_counts": "0",
-        "identified_current_torque_encoder_delta_counts": "4",
     }
 
     def _emit_current_validation_sample(self, driver, sample) -> None:

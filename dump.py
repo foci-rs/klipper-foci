@@ -72,31 +72,9 @@ IDENTIFIED_MODEL_FIELDS: tuple[str, ...] = (
 
 CURRENT_LOOP_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_current_gains_source",
-    "identified_current_candidate_gains_source",
-    "identified_axis_split_source",
-    "identified_current_candidate_axis_split_source",
     "identified_current_gains_tier",
-    "identified_current_candidate_gains_tier",
-    "identified_current_measured_axis_split_permille",
-    "identified_current_candidate_measured_axis_split_permille",
-    "identified_current_applied_axis_split_permille",
-    "identified_current_candidate_applied_axis_split_permille",
-    "identified_current_axis_split_clamped",
-    "identified_current_candidate_axis_split_clamped",
-    "identified_current_candidate_flux_p",
-    "identified_current_candidate_flux_i",
-    "identified_current_candidate_torque_p",
-    "identified_current_candidate_torque_i",
-    "identified_current_candidate_attempt",
-    "identified_current_validation_axes",
-    "identified_current_flux_validation_sample_count",
-    "identified_current_torque_validation_sample_count",
     "identified_current_retry_budget_exhausted",
     "identified_current_failure_reason",
-    "identified_current_flux_response_min_permille",
-    "identified_current_torque_response_min_permille",
-    "identified_current_flux_encoder_delta_counts",
-    "identified_current_torque_encoder_delta_counts",
 )
 
 CURRENT_GAINS_SOURCE_NAMES: dict[int, str] = {
@@ -340,11 +318,10 @@ class RegisterDumpWorkflow:
             for field_name in CURRENT_LOOP_IDENTIFICATION_FIELDS
         )
         lines.append(
-            "  Note: identified_current_* and identified_axis_split_source"
-            " fields are firmware-reported current-loop evidence (accepted"
-            " gains source, split source, validation sample counts,"
-            " response minima, and encoder-delta maxima); the host performs"
-            " no gain selection or quality-gate evaluation."
+            "  Note: identified_current_* fields are firmware-reported"
+            " current-loop evidence (accepted gains source/tier, retry"
+            " budget, failure reason); the host performs no gain"
+            " selection or quality-gate evaluation."
         )
 
         last_current_loop = self.driver.diagnostics.active.last_current_loop_evidence(
@@ -542,7 +519,6 @@ class RegisterDumpWorkflow:
 
     def _format_current_loop_summary(self) -> list[str]:
         config = self.driver.config
-        validation_axes = config.identified_current_validation_axes
         gains_source_name = self._label_code(
             config.identified_current_gains_source, CURRENT_GAINS_SOURCE_NAMES
         )
@@ -554,17 +530,7 @@ class RegisterDumpWorkflow:
         )
         return [
             f"  current_gains_source: {gains_source_name}",
-            (
-                f"  axis_split_source: "
-                f"{self._label_code(config.identified_axis_split_source, AXIS_SPLIT_SOURCE_NAMES)}"
-            ),
             f"  current_gains_tier: {gains_tier_name}",
-            (
-                f"  current_validation: flux="
-                f"{self._axis_validation_label(validation_axes, CURRENT_VALIDATION_AXIS_FLUX)} "
-                f"torque="
-                f"{self._axis_validation_label(validation_axes, CURRENT_VALIDATION_AXIS_TORQUE)}"
-            ),
             (
                 f"  retry_budget_exhausted: "
                 f"{self._bool_code(config.identified_current_retry_budget_exhausted)}"
