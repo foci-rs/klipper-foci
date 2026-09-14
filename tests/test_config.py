@@ -731,8 +731,6 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
             "identified_bandwidth_hz": 0,
             "identified_tau_e_us": 1154,
             "identified_inner_warning_flags": 36,
-            "identified_j_eff": 12345,
-            "identified_b_eff": 678,
             "autotune_profile": "conservative",
             "autotune_mode": "nominal",
             "autotune_status": "commissioned",

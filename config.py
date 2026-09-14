@@ -404,10 +404,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_l_x_mag_vs_quad_permille = config.getint(
         "identified_l_x_mag_vs_quad_permille", None, minval=0, maxval=1000
     )
-    # Deprecated: consumed and discarded so printer.cfg written by older
-    # firmware/host builds still loads without error.
-    config.getint("identified_j_eff", None, minval=0)
-    config.getint("identified_b_eff", None, minval=0)
     identified_current_gains_source = config.getint(
         "identified_current_gains_source", None, minval=0, maxval=255
     )
