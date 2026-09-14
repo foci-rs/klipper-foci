@@ -266,6 +266,22 @@ def format_commission_detail(detail: dict) -> str:
             f"{phase_name}: direction sweep {status} (start={int(value0)}, end={int(value1)}, "
             f"delta={int(value2)})"
         )
+    if detail["phase"] == 4 and code == 40:
+        expected = _signed_u32(value1)
+        observed = _signed_u32(value2)
+        wrong_direction = ", wrong direction" if expected * observed < 0 else ""
+        return (
+            f"{phase_name}: encoder direction FAIL (commanded={int(value0)} PHI_E, "
+            f"expected={int(expected)} counts, observed={int(observed)} counts"
+            f"{wrong_direction})"
+        )
+    if detail["phase"] == 4 and code == 41:
+        min_counts = _signed_u32(value0)
+        max_counts = _signed_u32(value1)
+        return (
+            f"{phase_name}: encoder direction bounds (accepted={int(min_counts)}.."
+            f"{int(max_counts)} counts, pole_pairs={int(value2)})"
+        )
     if detail["phase"] == 16 and code == 1:
         status = "FAIL" if detail["status"] else "PASS"
         return (

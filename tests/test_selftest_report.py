@@ -276,6 +276,58 @@ def test_format_commission_detail_encoder_alignment_result():
     assert "stability=0" in line
 
 
+def test_format_commission_detail_encoder_direction_expected():
+    line = format_commission_detail(
+        {
+            "phase": 4,
+            "code": 40,
+            "status": 1,
+            "value0": 32768,
+            "value1": 40,
+            "value2": 4294967258,
+        }
+    )
+
+    assert "Encoder check" in line
+    assert "commanded=32768" in line
+    assert "expected=40 counts" in line
+    assert "observed=-38 counts" in line
+    assert "wrong direction" in line
+
+
+def test_format_commission_detail_encoder_direction_expected_same_sign_omits_wrong_direction():
+    line = format_commission_detail(
+        {
+            "phase": 4,
+            "code": 40,
+            "status": 1,
+            "value0": 32768,
+            "value1": 40,
+            "value2": 25,
+        }
+    )
+
+    assert "observed=25 counts" in line
+    assert "wrong direction" not in line
+
+
+def test_format_commission_detail_encoder_direction_bounds():
+    line = format_commission_detail(
+        {
+            "phase": 4,
+            "code": 41,
+            "status": 1,
+            "value0": 30,
+            "value1": 50,
+            "value2": 50,
+        }
+    )
+
+    assert "Encoder check" in line
+    assert "accepted=30..50 counts" in line
+    assert "pole_pairs=50" in line
+
+
 def test_stage_names_map_contains_all_eight():
     assert SELFTEST_STAGES[1] == "ADC calibration"
     assert SELFTEST_STAGES[2] == "Motor coil A"
