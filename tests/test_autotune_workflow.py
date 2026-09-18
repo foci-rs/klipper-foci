@@ -1207,6 +1207,45 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIsNone(d.autotune.fixed_gain_amplitude.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
 
+    def test_position_tune_workflow_arms_extended_timeout_past_setup_window(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"ACTION": "position_tune"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_position_tune_plan(deadline):
+            reactor._time = deadline
+            if d.autotune.position_tune_workflow_plan is None:
+                # The firmware discloses the sweep duration before any motion.
+                d.autotune.handle_commissioning_workflow_plan(
+                    {
+                        "run_sequence": 7,
+                        "shape": 5,
+                        "nominal_workflow_ms": 3_040,
+                        "maximum_workflow_ms": 31_376,
+                        "digest_low": 0,
+                        "digest_high": 0,
+                    }
+                )
+            # The terminal only arrives well past the 5 s initial plan window;
+            # without the extended arming this run would already have timed out.
+            if reactor._time >= 6.0:
+                d.autotune.handle_tune_result({"status": 2})
+            return reactor._time
+
+        reactor.pause = pause_with_position_tune_plan
+
+        # status 2 is a terminal failure here only to end the reactor.pause
+        # loop once the extended timeout has been armed.
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertNotIn("timed out", str(ctx.exception))
+        self.assertGreaterEqual(reactor._time, 6.0)
+        self.assertIsNotNone(d.autotune.position_tune_workflow_plan)
+        self.assertIsNone(d.autotune.fixed_gain_amplitude.workflow_plan)
+        self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
+        self.assertIsNone(d.autotune.velocity_integral_error)
+
     def test_robustness_reject_preserves_prior_gains_and_skips_persistence(self):
         """A rejected robustness-reversal terminal validates an already-accepted
         candidate from an earlier tune; it must never write gains itself, so a

@@ -9,6 +9,7 @@ from ._vocabulary_generated import (
     SHAPE_BREAKAWAY_SEEDED,
     SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
     SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
+    SHAPE_POSITION_TUNE,
     SHAPE_ROBUSTNESS_REVERSAL,
 )
 from .autotune_budget import (
@@ -181,6 +182,7 @@ class AutotuneWorkflow:
         self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
         self.robustness_cycle_evidence: dict[int, dict] = {}
         self.robustness_workflow_plan: dict | None = None
+        self.position_tune_workflow_plan: dict | None = None
         self._proportional_candidate_request: dict | None = None
         self.done = False
 
@@ -257,6 +259,12 @@ class AutotuneWorkflow:
             # wait loop arms its extended timeout. It does not feed the
             # fixed-gain-amplitude or velocity-integral assemblers.
             self.robustness_workflow_plan = params
+            return
+        if shape == SHAPE_POSITION_TUNE:
+            # Position-P sweep: record the sweep's worst-case duration so the
+            # wait loop arms its extended timeout. It does not feed the
+            # fixed-gain-amplitude or velocity-integral assemblers.
+            self.position_tune_workflow_plan = params
             return
         self._handle_velocity_integral("handle_workflow_plan", params)
 
@@ -649,6 +657,7 @@ class AutotuneWorkflow:
         self.robustness_reversal_error = None
         self.robustness_cycle_evidence = {}
         self.robustness_workflow_plan = None
+        self.position_tune_workflow_plan = None
         self.driver.commissioning.error_code = 0
 
     def _finish_velocity_integral_terminal(self, gcmd, request_fields: dict) -> str:
@@ -791,10 +800,15 @@ class AutotuneWorkflow:
                     self.velocity_integral.workflow_plan is not None
                     or self.fixed_gain_amplitude.workflow_plan is not None
                     or self.robustness_workflow_plan is not None
+                    or self.position_tune_workflow_plan is not None
                 ) and not workflow_timeout_armed:
                     if self.robustness_workflow_plan is not None:
                         maximum_duration_s = (
                             int(self.robustness_workflow_plan["maximum_workflow_ms"]) / 1000.0
+                        )
+                    elif self.position_tune_workflow_plan is not None:
+                        maximum_duration_s = (
+                            int(self.position_tune_workflow_plan["maximum_workflow_ms"]) / 1000.0
                         )
                     elif self.fixed_gain_amplitude.workflow_plan is not None:
                         maximum_duration_s = self.fixed_gain_amplitude.maximum_duration_s
