@@ -776,6 +776,32 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(blocked, [False])
         self.assertEqual(cfg.values, {})
 
+    def test_orchestrated_generic_reject_summary_has_no_raw_cause_code(self):
+        """The FAILED console summary for an orchestrated robustness reject
+        (outside the dedicated IAE-exceeded and safety-fault branches) must
+        read as a plain-language phrase, never as a raw numeric cause code
+        plus its enum-symbol-style name. The gcmd.error() message raised
+        right after it is a different, unrelated string and is intentionally
+        not asserted here -- it keeps its internal cause code, unchanged."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = None
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=1)
+        gcmd = MockGCmd({})
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(gcmd)
+
+        summary = gcmd._responses[-1]
+        self.assertIn("FAILED", summary)
+        # "FOCI_AUTOTUNE" (the command name) legitimately contains an
+        # underscore, so scope the leak check to the cause phrase itself --
+        # everything after "FAILED — ".
+        cause_phrase = summary.split("FAILED — ", 1)[1]
+        self.assertNotRegex(cause_phrase, r"\d", f"console summary leaks a raw digit: {summary!r}")
+        self.assertNotIn("_", cause_phrase, f"console summary leaks an enum symbol: {summary!r}")
+
     def test_pass_log_failure_does_not_skip_kinematic_motor_disable(self):
         d = self._commissioned_driver(
             kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
@@ -1477,26 +1503,71 @@ def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     )
 
 
-def test_every_autotune_gcmd_error_message_is_unchanged_by_this_feature():
-    """Byte-for-byte guard: converting respond_info() to SUCCEEDED/FAILED
-    summaries must never alter an existing gcmd.error() message."""
+def _gcmd_error_message_literals(module) -> list[str]:
+    """Every complete literal expression passed as the first argument to a
+    ``gcmd.error(...)`` call in ``module``'s source, via ``ast.unparse`` --
+    not a substring match, so a prefix/suffix change to the message (or a
+    coincidental substring match at an unrelated call site) is caught."""
+    import ast
     import inspect
 
+    tree = ast.parse(inspect.getsource(module))
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.messages: list[str] = []
+
+        def visit_Call(self, node):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "error"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "gcmd"
+                and node.args
+            ):
+                self.messages.append(ast.unparse(node.args[0]))
+            self.generic_visit(node)
+
+    visitor = Visitor()
+    visitor.visit(tree)
+    return visitor.messages
+
+
+def test_every_autotune_gcmd_error_message_is_unchanged_by_this_feature():
+    """Byte-for-byte guard: converting respond_info() to SUCCEEDED/FAILED
+    summaries must never alter an existing gcmd.error() message. Checks the
+    COMPLETE literal argument of every gcmd.error() call this task's diff is
+    adjacent to, not merely a substring -- a prefix/suffix change to one of
+    these messages, or a match on an unrelated call site, fails this test."""
     import klipper_foci.autotune as autotune_module
 
-    source = inspect.getsource(autotune_module)
-    # Every error string this task's plan named must still appear verbatim.
-    for expected_substring in (
-        "fixed-gain amplitude validation ",
-        "no robust gain within the response band.",
-        "FOCI_AUTOTUNE robustness reversal on ",
-        "breakaway campaign safety fault",
-        "FOCI_AUTOTUNE breakaway campaign not ",
-        "velocity integral response fault (cause=",
-        "robustness evidence-integrity fault; ",
-        "robustness reject, no robust gain ",
+    messages = _gcmd_error_message_literals(autotune_module)
+    # Every error message this task's plan named must still appear as the
+    # complete literal argument of some gcmd.error() call.
+    for expected_message in (
+        "f'FOCI {self.driver.name}: fixed-gain amplitude validation "
+        "{self.fixed_gain_amplitude.outcome}'",
+        'f"FOCI {self.driver.name}: no robust gain within the response band. '
+        "The most aggressive in-band candidate (P={int(terminal.get('selected_p', 0))} "
+        "I={int(terminal.get('selected_i', 0))}) failed the robustness gate: measured IAE "
+        "{measured} exceeds bound {int(terminal.get('iae_max_q_qs', 0))}. The plant cannot "
+        'be robustly controlled within the response band."',
+        'f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on the production path: '
+        "{terminal.get('outcome_name', 'unknown')} "
+        "(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
+        '{detail_suffix}"',
+        "f'FOCI {self.driver.name}: breakaway campaign safety fault{detail_suffix}'",
+        "f'FOCI {self.driver.name}: FOCI_AUTOTUNE breakaway campaign not accepted "
+        "({cause_name}); existing gains retained'",
+        'f"FOCI {self.driver.name}: velocity integral response fault '
+        "(cause={int(self.velocity_integral.terminal.get('cause', 0))}){detail_suffix}\"",
+        "f'FOCI {self.driver.name}: robustness evidence-integrity fault; "
+        "retained the pre-tune gain'",
+        "f'FOCI {self.driver.name}: robustness reject, no robust gain deployed; "
+        "retained commissioned gains'",
     ):
-        assert expected_substring in source, expected_substring
+        assert expected_message in messages, expected_message
 
 
 class TestOuterSafetyFaultNames(unittest.TestCase):

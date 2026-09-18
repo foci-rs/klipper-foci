@@ -491,19 +491,52 @@ def test_commission_terminal_status_failure_prints_failed_summary():
     assert gcmd.last_info == ("FOCI_SETUP manual_stepper stepper_x: FAILED — encoder fault.")
 
 
-def test_every_commission_gcmd_error_message_is_unchanged_by_this_feature():
+def _gcmd_error_message_literals(module) -> list[str]:
+    """Every complete literal expression passed as the first argument to a
+    ``gcmd.error(...)`` call in ``module``'s source, via ``ast.unparse`` --
+    not a substring match, so a prefix/suffix change to the message (or a
+    coincidental substring match at an unrelated call site) is caught."""
+    import ast
     import inspect
 
+    tree = ast.parse(inspect.getsource(module))
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.messages: list[str] = []
+
+        def visit_Call(self, node):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "error"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "gcmd"
+                and node.args
+            ):
+                self.messages.append(ast.unparse(node.args[0]))
+            self.generic_visit(node)
+
+    visitor = Visitor()
+    visitor.visit(tree)
+    return visitor.messages
+
+
+def test_every_commission_gcmd_error_message_is_unchanged_by_this_feature():
+    """Byte-for-byte guard: checks the COMPLETE literal argument of every
+    gcmd.error() call this task's diff is adjacent to, not merely a
+    substring -- a prefix/suffix change to one of these messages, or a match
+    on an unrelated call site, fails this test."""
     import klipper_foci.commissioning as commissioning_module
 
-    source = inspect.getsource(commissioning_module)
-    for expected_substring in (
-        "FOCI_SETUP timed out",
-        "FOCI_SETUP failed at ",
-        "FOCI_SETUP timing evidence rejected: ",
-        "FOCI_SETUP failed: ",
+    messages = _gcmd_error_message_literals(commissioning_module)
+    for expected_message in (
+        "f'FOCI {self.driver.name}: FOCI_SETUP timed out'",
+        "f'FOCI {self.driver.name}: FOCI_SETUP failed at {phase_name}: {error_name}'",
+        "f'FOCI {self.driver.name}: FOCI_SETUP timing evidence rejected: {error}'",
+        "f'FOCI {self.driver.name}: FOCI_SETUP failed: {error_name}'",
     ):
-        assert expected_substring in source, expected_substring
+        assert expected_message in messages, expected_message
 
 
 class TestChipResetDetected(unittest.TestCase):

@@ -869,11 +869,12 @@ class AutotuneWorkflow:
                         f"{int(terminal.get('iae_max_q_qs', 0))}. "
                         f"The plant cannot be robustly controlled within the response band."
                     )
+                cause_name = ROBUSTNESS_CAUSE_NAMES.get(int(terminal.get("cause", 0)), "unknown")
                 report_summary(
                     gcmd,
                     f"{self._summary_prefix()}: FAILED — "
-                    f"{humanize(terminal.get('outcome_name', 'unknown'))} (cause="
-                    f"{_robustness_reversal_cause_text(int(terminal.get('cause', 0)))}).",
+                    f"{humanize(terminal.get('outcome_name', 'unknown'))} "
+                    f"({humanize(cause_name)}).",
                 )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
