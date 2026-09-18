@@ -1,5 +1,6 @@
 """Strict relay tests for fixed-I fixed-gain amplitude validation runs."""
 
+import logging
 import struct
 
 import pytest
@@ -451,7 +452,80 @@ def test_autotune_relays_one_complete_amplitude_without_host_decisions():
     driver.autotune.autotune(gcmd)
 
     assert driver.protocol.commands.tune.last_args[1] == 1
-    assert "fixed-gain amplitude validation: complete" in gcmd.last_info
+    assert gcmd._responses[0] == "FOCI_AUTOTUNE stepper_x: SUCCEEDED — complete."
+
+
+def test_autotune_prints_failed_summary_on_fixed_gain_amplitude_failure():
+    # outcome=3 ("failed") is a pre-motion failure: no plan/workflow may have
+    # been disclosed yet, and (per handle_terminal's expected_causes table)
+    # it only pairs with cause in {3, 4, 5, 7} -- cause=3 here
+    # ("missing_acceptance_point"), not the post-motion cause=1
+    # ("insufficient_shared_floor") that pairs only with outcome=1.
+    driver = ready_driver()
+    reactor = driver.printer.get_reactor()
+
+    def finish_amplitude(deadline):
+        reactor._time = deadline
+        driver.autotune.handle_fixed_gain_amplitude_terminal(
+            {
+                "oid": driver.oid,
+                "payload": terminal_payload(
+                    outcome=3,
+                    cause=3,
+                    plan_digest=0,
+                    digest=0,
+                    attempted=(0, 0),
+                    eligible=(0, 0),
+                    emitted_observations=0,
+                    emitted_amplitudes=0,
+                    evidence_sequence=0,
+                ),
+            }
+        )
+        return reactor._time
+
+    reactor.pause = finish_amplitude
+    gcmd = MockGCmd({"ACTION": "amplitude_up"})
+
+    with pytest.raises(CommandError, match="fixed-gain amplitude validation failed"):
+        driver.autotune.autotune(gcmd)
+
+    assert gcmd._responses[0] == ("FOCI_AUTOTUNE stepper_x: FAILED — missing acceptance point.")
+
+
+def test_fixed_gain_amplitude_detail_is_absent_from_log_when_debug_disabled(caplog):
+    driver = ready_driver()  # debug defaults to False, per make_driver()
+    reactor = driver.printer.get_reactor()
+
+    def finish_amplitude(deadline):
+        reactor._time = deadline
+        params = {
+            "oid": driver.oid,
+            "run_sequence": RUN_SEQUENCE,
+            "shape": 1,
+            "nominal_workflow_ms": 60_541,
+            "maximum_workflow_ms": 66_456,
+        }
+        params["digest_low"], params["digest_high"] = (
+            driver.autotune.fixed_gain_amplitude.workflow_digest_halves(params)
+        )
+        driver.autotune.handle_commissioning_workflow_plan(params)
+        driver.autotune.handle_fixed_gain_amplitude_plan(
+            {"oid": driver.oid, "payload": plan_payload()}
+        )
+        driver.autotune.handle_fixed_gain_amplitude_terminal(
+            {"oid": driver.oid, "payload": terminal_payload()}
+        )
+        return reactor._time
+
+    reactor.pause = finish_amplitude
+    gcmd = MockGCmd({"ACTION": "amplitude_up"})
+
+    with caplog.at_level(logging.INFO, logger="klipper_foci.autotune"):
+        driver.autotune.autotune(gcmd)
+
+    assert "klipper_foci.autotune" not in {r.name for r in caplog.records}
+    assert gcmd._responses[0] == "FOCI_AUTOTUNE stepper_x: SUCCEEDED — complete."
 
 
 PLAN_FRAGMENT_BYTES = 33

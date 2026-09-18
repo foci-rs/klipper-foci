@@ -1,5 +1,6 @@
 """Parse tests for the reversal-standstill robustness terminal and evidence replies."""
 
+import logging
 import struct
 
 import pytest
@@ -546,8 +547,9 @@ def ready_driver():
     return driver
 
 
-def test_autotune_reports_the_robustness_reversal_terminal():
+def test_autotune_reports_the_robustness_reversal_terminal(caplog):
     driver = ready_driver()
+    driver.global_config.debug = True
     reactor = driver.printer.get_reactor()
 
     def finish_robustness(deadline):
@@ -568,14 +570,15 @@ def test_autotune_reports_the_robustness_reversal_terminal():
 
     reactor.pause = finish_robustness
     gcmd = MockGCmd({"ACTION": "robustness_reversal"})
-    driver.autotune.autotune(gcmd)
+    with caplog.at_level(logging.INFO, logger="klipper_foci.autotune"):
+        driver.autotune.autotune(gcmd)
 
-    assert "robustness reversal: rejected" in gcmd.last_info
-    assert "cause=1 (reconvergence_time_exceeded)" in gcmd.last_info
-    assert "median_forward_settle=30ms" in gcmd.last_info
+    assert "robustness reversal: rejected" in caplog.text
+    assert "cause=1 (reconvergence_time_exceeded)" in caplog.text
+    assert "median_forward_settle=30ms" in caplog.text
 
 
-def test_robustness_safety_fault_reports_outer_envelope_detail():
+def test_robustness_safety_fault_reports_outer_envelope_detail(caplog):
     """A cause=6 robustness terminal must surface the outer-envelope detail and
     inhibit motor enable until restart.
 
@@ -585,6 +588,7 @@ def test_robustness_safety_fault_reports_outer_envelope_detail():
     blocks in-session enable (chip state is unknown after a safety fault).
     """
     driver = ready_driver()
+    driver.global_config.debug = True
     reactor = driver.printer.get_reactor()
 
     def finish_with_safety_fault(deadline):
@@ -612,10 +616,13 @@ def test_robustness_safety_fault_reports_outer_envelope_detail():
 
     reactor.pause = finish_with_safety_fault
     gcmd = MockGCmd({"ACTION": "robustness_reversal"})
-    with pytest.raises(CommandError, match="robustness safety fault"):
+    with (
+        caplog.at_level(logging.INFO, logger="klipper_foci.autotune"),
+        pytest.raises(CommandError, match="robustness safety fault"),
+    ):
         driver.autotune.autotune(gcmd)
 
-    message = gcmd.last_info
+    message = caplog.text
     assert "robustness reversal: failed" in message
     assert "cause=6 (safety_fault)" in message
     assert "outer safety velocity" in message

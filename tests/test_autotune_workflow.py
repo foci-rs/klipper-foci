@@ -1025,6 +1025,7 @@ class TestAutotuneGates(unittest.TestCase):
         from tests.test_robustness_reversal import build_terminal_payload
 
         d = self._commissioned_driver()
+        d.global_config.debug = True
         gcmd = MockGCmd({"ACTION": "robustness_reversal"})
         reactor = d.printer.get_reactor()
         persisted = []
@@ -1051,7 +1052,8 @@ class TestAutotuneGates(unittest.TestCase):
 
         reactor.pause = pause_with_rejected_robustness
 
-        d.autotune.autotune(gcmd)
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
 
         self.assertIsNotNone(d.autotune.robustness_reversal_terminal)
         self.assertEqual(d.autotune.robustness_reversal_terminal["outcome_name"], "rejected")
@@ -1059,7 +1061,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
         self.assertEqual(persisted, [])
         self.assertTrue(
-            any("robustness reversal: rejected" in message for message in gcmd._responses)
+            any("robustness reversal: rejected" in message for message in log_ctx.output)
         )
 
     def test_standalone_robustness_still_reports_only(self):
@@ -1069,6 +1071,7 @@ class TestAutotuneGates(unittest.TestCase):
         from tests.test_robustness_reversal import build_terminal_payload
 
         d = self._commissioned_driver()
+        d.global_config.debug = True
         gcmd = MockGCmd({"ACTION": "robustness_reversal"})
         reactor = d.printer.get_reactor()
         persisted = []
@@ -1095,11 +1098,12 @@ class TestAutotuneGates(unittest.TestCase):
 
         reactor.pause = pause_with_rejected_robustness
 
-        d.autotune.autotune(gcmd)
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
 
         self.assertEqual(persisted, [])
         self.assertTrue(
-            any("robustness reversal: rejected" in message for message in gcmd._responses)
+            any("robustness reversal: rejected" in message for message in log_ctx.output)
         )
 
     def test_successful_autotune_logs_landed_gain(self):
@@ -1244,10 +1248,12 @@ class TestAutotuneGates(unittest.TestCase):
     def test_reject_without_snapshot_reports_only(self):
         d = self._commissioned_driver()
         d.state.pre_tune_snapshot = None
+        d.global_config.debug = True
         before = d.state.active_gains.copy()
-        gcmd = self._run_robustness(d, outcome=1, cause=3)
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            self._run_robustness(d, outcome=1, cause=3)
         self.assertEqual(d.state.active_gains, before)
-        self.assertTrue(any("robustness reversal" in m for m in gcmd._responses))
+        self.assertTrue(any("robustness reversal" in m for m in log_ctx.output))
 
     def test_safety_fault_inhibits_without_repush(self):
         d = self._commissioned_driver()
@@ -1272,6 +1278,7 @@ class TestAutotuneGates(unittest.TestCase):
 
     def test_no_transition_direct_resume_finishes_without_plan_timeout(self):
         d = self._commissioned_driver()
+        d.global_config.debug = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
         enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
@@ -1297,12 +1304,13 @@ class TestAutotuneGates(unittest.TestCase):
 
         reactor.pause = pause_with_failed_resume
 
-        d.autotune.autotune(gcmd)
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
 
         self.assertEqual(pauses, 1)
         self.assertIsNone(d.autotune.velocity_integral.plan)
         self.assertEqual(d.autotune.velocity_integral.outcome, "failed")
-        self.assertTrue(any("response failed" in message for message in gcmd._responses))
+        self.assertTrue(any("response failed" in message for message in log_ctx.output))
         self.assertFalse(d.state.is_calibrated)
         self.assertFalse(enable_line.is_motor_enabled())
 
@@ -1451,6 +1459,46 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(gcmd._responses, [])
 
 
+def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
+    d = make_driver()
+    d.printer._objects["configfile"] = MockConfigFile()
+    d.state.pre_tune_snapshot = {
+        "runtime_status": "installed",
+        "active_gains": dict(SAMPLE_ACTIVE_GAINS),
+    }
+    d.autotune.robustness_reversal_terminal = {"outcome": 1, "cause": 0}
+    gcmd = MockGCmd({})
+
+    d.autotune._handle_robustness_verdict(gcmd)
+
+    assert gcmd._responses[-1] == (
+        "FOCI_AUTOTUNE manual_stepper stepper_x: FAILED — robustness check "
+        "reject; retained the pre-tune gain."
+    )
+
+
+def test_every_autotune_gcmd_error_message_is_unchanged_by_this_feature():
+    """Byte-for-byte guard: converting respond_info() to SUCCEEDED/FAILED
+    summaries must never alter an existing gcmd.error() message."""
+    import inspect
+
+    import klipper_foci.autotune as autotune_module
+
+    source = inspect.getsource(autotune_module)
+    # Every error string this task's plan named must still appear verbatim.
+    for expected_substring in (
+        "fixed-gain amplitude validation ",
+        "no robust gain within the response band.",
+        "FOCI_AUTOTUNE robustness reversal on ",
+        "breakaway campaign safety fault",
+        "FOCI_AUTOTUNE breakaway campaign not ",
+        "velocity integral response fault (cause=",
+        "robustness evidence-integrity fault; ",
+        "robustness reject, no robust gain ",
+    ):
+        assert expected_substring in source, expected_substring
+
+
 class TestOuterSafetyFaultNames(unittest.TestCase):
     # Mirrors the OUTER_SAFETY_FAULT_* constants in
     # foci-firmware/src/commissioning/types.rs:1776-1796. Firmware and host
@@ -1597,17 +1645,47 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
     def test_resolver_preserves_host_default_confidence_bit6(self):
         d = self._ready_driver()
+        d.global_config.debug = True
         d.config.identified_inner_warning_flags = None
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        self._finish_tune_on_next_pause(d)
+
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
+
+        args = d.protocol.commands.tune.last_args
+        self.assertIsNotNone(args)
+        self.assertEqual(args[8], 0x40)
+        self.assertTrue(any("inner confidence" in m for m in log_ctx.output))
+
+    def test_autotune_success_prints_succeeded_summary(self):
+        d = self._ready_driver()
         d.printer._objects["configfile"] = MockConfigFile()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         self._finish_tune_on_next_pause(d)
 
         d.autotune.autotune(gcmd)
 
-        args = d.protocol.commands.tune.last_args
-        self.assertIsNotNone(args)
-        self.assertEqual(args[8], 0x40)
-        self.assertIn("inner confidence", gcmd.last_info)
+        self.assertTrue(gcmd._responses[-1].startswith("FOCI_AUTOTUNE stepper_x: SUCCEEDED"))
+        self.assertNotIn("vel_p=", gcmd._responses[-1])
+        self.assertNotIn("pos_p=", gcmd._responses[-1])
+
+    def test_readiness_warning_is_reported_before_dispatch(self):
+        d = self._ready_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.config.identified_bandwidth_hz = 0  # trips _classify_bandwidth's warning
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        self._finish_tune_on_next_pause(d)
+
+        d.autotune.autotune(gcmd)
+
+        self.assertTrue(
+            any(
+                "readiness warnings" in line and "current bandwidth missing or zero" in line
+                for line in gcmd._responses
+            )
+        )
 
     def test_tune_captures_pre_tune_snapshot_before_overwrite(self):
         d = self._ready_driver()
@@ -2031,6 +2109,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         time is pushed well past 5s below and the run still completes instead
         of raising "timed out waiting for plan"."""
         d = self._commissioned_driver()
+        d.global_config.debug = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
         pauses = 0
@@ -2061,16 +2140,15 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         reactor.pause = pause_with_breakaway_campaign
 
-        d.autotune.autotune(gcmd)
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
 
         self.assertGreater(reactor._time, 5.0)
         self.assertIsNone(d.autotune.breakaway_campaign_error)
         self.assertIsNone(d.autotune.velocity_integral_error)
         self.assertTrue(d.autotune.breakaway_campaign.accepted)
-        self.assertTrue(
-            any("breakaway campaign accepted" in message for message in gcmd._responses)
-        )
-        self.assertTrue(any("integral response" in message for message in gcmd._responses))
+        self.assertTrue(any("breakaway campaign accepted" in message for message in log_ctx.output))
+        self.assertTrue(any("integral response" in message for message in log_ctx.output))
 
     def test_accepted_breakaway_dual_terminal_returns_candidate_outcome(self):
         """Real firmware behavior: an accepted breakaway_seeded run reaches
@@ -2274,6 +2352,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         the rejection cause, and leaves the previously commissioned P untouched
         -- neither Stage-C completion nor the persistence callback runs."""
         d = self._commissioned_driver()
+        d.global_config.debug = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
         persisted = []
@@ -2290,7 +2369,10 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         reactor.pause = pause_with_inconclusive_confirmation
 
-        with self.assertRaises(CommandError) as ctx:
+        with (
+            self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx,
+            self.assertRaises(CommandError) as ctx,
+        ):
             d.autotune.autotune(gcmd)
 
         self.assertIn("not accepted", str(ctx.exception))
@@ -2301,7 +2383,15 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
         self.assertEqual(persisted, [])
         self.assertTrue(
-            any("breakaway campaign not accepted" in message for message in gcmd._responses)
+            any("breakaway campaign not accepted" in message for message in log_ctx.output)
+        )
+        # A console message still reaches the operator: the detail moved to
+        # the log, but the FAILED summary line is still printed to console.
+        self.assertTrue(
+            any(
+                message.startswith("FOCI_AUTOTUNE") and "FAILED" in message
+                for message in gcmd._responses
+            )
         )
 
     def test_discovery_internal_fault_raises_and_names_cause(self):
@@ -2310,6 +2400,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         distinguishable from a still-running campaign, not a silent return --
         and the underlying CommissionError is surfaced in the operator report."""
         d = self._commissioned_driver()
+        d.global_config.debug = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         reactor = d.printer.get_reactor()
         persisted = []
@@ -2325,7 +2416,10 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         reactor.pause = pause_with_discovery_internal_fault
 
-        with self.assertRaises(CommandError) as ctx:
+        with (
+            self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx,
+            self.assertRaises(CommandError) as ctx,
+        ):
             d.autotune.autotune(gcmd)
 
         self.assertIn("not accepted", str(ctx.exception))
@@ -2333,7 +2427,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
         self.assertEqual(persisted, [])
         self.assertTrue(
-            any("error=SPI communication error" in message for message in gcmd._responses)
+            any("error=SPI communication error" in message for message in log_ctx.output)
         )
 
     def test_dumb_host_never_reissues_a_second_confirmation_after_acceptance(self):

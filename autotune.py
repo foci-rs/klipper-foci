@@ -28,6 +28,7 @@ from .fixed_gain_amplitude import (
     parse_autotune_action,
 )
 from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
+from .report import humanize, report_detail, report_summary
 from .robustness_reversal import (
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
@@ -63,6 +64,8 @@ MODE_MAP: dict[str, int] = {
 IDLE_PRINT_STATES = frozenset(("standby", "complete", "cancelled"))
 COMMISSIONING_WORKFLOW_PLAN_TIMEOUT_S = 5.0
 COMMISSIONING_WORKFLOW_COMMS_MARGIN_S = 5.0
+
+log = logging.getLogger(__name__)
 
 OUTER_SAFETY_REASON_NAMES = {
     0: "none",
@@ -389,6 +392,12 @@ class AutotuneWorkflow:
         )
         self._disable_kinematic_motors(toolhead)
 
+    def _debug_enabled(self) -> bool:
+        return self.driver.global_config.debug
+
+    def _summary_prefix(self) -> str:
+        return f"FOCI_AUTOTUNE {self.driver.stepper_name}"
+
     def _format_fixed_gain_amplitude_result(self) -> str:
         terminal = self.fixed_gain_amplitude.terminal or {}
         return (
@@ -636,15 +645,27 @@ class AutotuneWorkflow:
         -- for example "first_run_retained" -- always reaches the caller
         instead of being masked by a workflow-specific marker.
         """
-        gcmd.respond_info(f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}")
+        report_detail(
+            log,
+            self._debug_enabled(),
+            f"FOCI {self.driver.name}: {self._format_velocity_integral_result()}",
+        )
         if self.velocity_integral.outcome == "fault":
             safety_detail = self._format_outer_safety_fault()
             detail_suffix = f"; {safety_detail}" if safety_detail else ""
+            report_summary(
+                gcmd,
+                f"{self._summary_prefix()}: FAILED — {humanize(self.velocity_integral.outcome)}.",
+            )
             raise gcmd.error(
                 f"FOCI {self.driver.name}: velocity integral response fault (cause="
                 f"{int(self.velocity_integral.terminal.get('cause', 0))})"
                 f"{detail_suffix}"
             )
+        report_summary(
+            gcmd,
+            f"{self._summary_prefix()}: SUCCEEDED — {humanize(self.velocity_integral.outcome)}.",
+        )
         self._retain_request_from_terminal(request_fields)
         return self.velocity_integral.outcome
 
@@ -785,29 +806,41 @@ class AutotuneWorkflow:
 
         self._synchronize_disarmed_workflow_terminal(toolhead)
         if self.fixed_gain_amplitude.done:
-            gcmd.respond_info(
-                f"FOCI {self.driver.name}: {self._format_fixed_gain_amplitude_result()}"
+            report_detail(
+                log,
+                self._debug_enabled(),
+                f"FOCI {self.driver.name}: {self._format_fixed_gain_amplitude_result()}",
+            )
+            outcome_name = (self.fixed_gain_amplitude.terminal or {}).get(
+                "outcome_name", self.fixed_gain_amplitude.outcome
             )
             if self.fixed_gain_amplitude.outcome in ("fault", "failed"):
+                fail_cause = (self.fixed_gain_amplitude.terminal or {}).get(
+                    "cause_name", outcome_name
+                )
+                report_summary(gcmd, f"{self._summary_prefix()}: FAILED — {humanize(fail_cause)}.")
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: fixed-gain amplitude validation "
                     f"{self.fixed_gain_amplitude.outcome}"
                 )
+            report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — {humanize(outcome_name)}.")
             return "fixed_gain_amplitude"
         if self.robustness_reversal_terminal is not None:
             safety_detail = self._format_outer_safety_fault()
             detail_suffix = f"; {safety_detail}" if safety_detail else ""
-            gcmd.respond_info(
+            report_detail(
+                log,
+                self._debug_enabled(),
                 f"FOCI {self.driver.name}: "
-                f"{self._format_robustness_reversal_result()}{detail_suffix}"
+                f"{self._format_robustness_reversal_result()}{detail_suffix}",
             )
+            terminal = self.robustness_reversal_terminal
             if orchestrated:
                 # The orchestrated dispatch deployed nothing: there is no
                 # pre_tune_snapshot to revert (fresh) or one may be stale
                 # (from an earlier diagnostic run), so this branch must
                 # never read or mutate it. printer.cfg already holds the
                 # operator baseline; firmware restores its own registers.
-                terminal = self.robustness_reversal_terminal
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
                     # Safety fault: same in-session enable-inhibit as the
                     # standalone diagnostic below, without the config
@@ -822,6 +855,11 @@ class AutotuneWorkflow:
                         )
                         for index in (0, 1)
                     )
+                    report_summary(
+                        gcmd,
+                        f"{self._summary_prefix()}: FAILED — no robust gain within the "
+                        "response band.",
+                    )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: no robust gain within the response band. "
                         "The most aggressive in-band candidate "
@@ -831,21 +869,43 @@ class AutotuneWorkflow:
                         f"{int(terminal.get('iae_max_q_qs', 0))}. "
                         f"The plant cannot be robustly controlled within the response band."
                     )
+                report_summary(
+                    gcmd,
+                    f"{self._summary_prefix()}: FAILED — "
+                    f"{humanize(terminal.get('outcome_name', 'unknown'))} (cause="
+                    f"{_robustness_reversal_cause_text(int(terminal.get('cause', 0)))}).",
+                )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
                     f"the production path: {terminal.get('outcome_name', 'unknown')} "
                     f"(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
                     f"{detail_suffix}"
                 )
+            if int(terminal.get("outcome", -1)) == 0:
+                # The one non-error path: a genuine pass. Every non-pass
+                # outcome is reported by _handle_robustness_verdict itself
+                # (its own FAILED summary, or an unchanged gcmd.error()).
+                report_summary(
+                    gcmd,
+                    f"{self._summary_prefix()}: SUCCEEDED — "
+                    f"{humanize(terminal.get('outcome_name', 'unknown'))}.",
+                )
             self._handle_robustness_verdict(gcmd)
             return "robustness_reversal"
         if self.breakaway_campaign.done:
-            gcmd.respond_info(
-                f"FOCI {self.driver.name}: {self._format_breakaway_campaign_result()}"
+            report_detail(
+                log,
+                self._debug_enabled(),
+                f"FOCI {self.driver.name}: {self._format_breakaway_campaign_result()}",
             )
             if self._breakaway_campaign_has_safety_fault():
                 safety_detail = self._format_outer_safety_fault()
                 detail_suffix = f"; {safety_detail}" if safety_detail else ""
+                terminal = self.breakaway_campaign.campaign_terminal or {}
+                cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(
+                    int(terminal.get("terminal_cause", 0)), "unknown"
+                )
+                report_summary(gcmd, f"{self._summary_prefix()}: FAILED — {humanize(cause_name)}.")
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: breakaway campaign safety fault{detail_suffix}"
                 )
@@ -853,6 +913,7 @@ class AutotuneWorkflow:
                 terminal = self.breakaway_campaign.campaign_terminal or {}
                 cause = int(terminal.get("terminal_cause", 0))
                 cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{cause}")
+                report_summary(gcmd, f"{self._summary_prefix()}: FAILED — {humanize(cause_name)}.")
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE breakaway campaign not "
                     f"accepted ({cause_name}); existing gains retained"
@@ -864,9 +925,11 @@ class AutotuneWorkflow:
                 # the non-breakaway path below does, so a first_run_retained
                 # outcome still drives the caller's integral_resume dispatch
                 # instead of being masked by the generic marker below.
+                report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — campaign accepted.")
                 return self._finish_velocity_integral_terminal(gcmd, request_fields)
             # Accepted with no velocity-integral terminal in this dispatch
             # yet: a degenerate, rare shape with nothing further to report.
+            report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — campaign accepted.")
             return "breakaway_campaign"
         if self.velocity_integral.done:
             return self._finish_velocity_integral_terminal(gcmd, request_fields)
@@ -934,14 +997,15 @@ class AutotuneWorkflow:
                 )
 
             if readiness.warnings:
-                gcmd.respond_info(
-                    f"FOCI {self.driver.name} autotune readiness warnings: "
-                    f"{'; '.join(readiness.warnings)}"
+                report_summary(
+                    gcmd,
+                    f"{self._summary_prefix()} readiness warnings: {'; '.join(readiness.warnings)}",
                 )
             if readiness.unavailable_inputs:
-                gcmd.respond_info(
-                    f"FOCI {self.driver.name} autotune unavailable inputs: "
-                    f"{', '.join(readiness.unavailable_inputs)}"
+                report_summary(
+                    gcmd,
+                    f"{self._summary_prefix()} unavailable inputs: "
+                    f"{', '.join(readiness.unavailable_inputs)}",
                 )
 
             safe_pose_move = format_safe_pose_move(motion_budget)
@@ -1079,14 +1143,19 @@ class AutotuneWorkflow:
 
             self.persist_tune_results(result, mode_name, tune_status)
 
-            gcmd.respond_info(
+            report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — tuned ({tune_status}).")
+            report_detail(
+                log,
+                self.driver.global_config.debug,
                 f"FOCI {self.driver.name} tuned ({tune_status}): vel_p="
-                f"{int(result['velocity_p'])} pos_p={int(result['position_p'])}"
+                f"{int(result['velocity_p'])} pos_p={int(result['position_p'])}",
             )
             if inner_warning_flags:
-                gcmd.respond_info(
+                report_detail(
+                    log,
+                    self.driver.global_config.debug,
                     f"FOCI {self.driver.name} inner confidence: "
-                    f"{format_inner_warning_flags(inner_warning_flags)}"
+                    f"{format_inner_warning_flags(inner_warning_flags)}",
                 )
             self._disable_kinematic_motors(toolhead)
             logging.info(
@@ -1144,8 +1213,10 @@ class AutotuneWorkflow:
                 f"deployed; retained commissioned gains"
             )
         detail = "inconclusive - re-run" if outcome == 2 else "reject"
-        gcmd.respond_info(
-            f"FOCI {self.driver.name}: robustness {detail}; retained the pre-tune gain"
+        report_summary(
+            gcmd,
+            f"{self._summary_prefix()}: FAILED — robustness check {detail}; retained "
+            "the pre-tune gain.",
         )
 
     def _handle_robustness_safety_fault(self, gcmd) -> None:
