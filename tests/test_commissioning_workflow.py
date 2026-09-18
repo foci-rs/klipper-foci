@@ -229,6 +229,92 @@ def test_commission_start_clears_stale_timing_cache():
     assert driver.commissioning.timing_by_method == {}
 
 
+def test_phase_progress_uses_the_active_label_not_hardcoded_autotune():
+    d = make_driver()
+    d.state.active_label = "selftest"
+    d.commissioning.handle_commission_phase({"phase": 2, "status": 0})
+    gcode = d.printer.lookup_object("gcode")
+    assert gcode._responses[-1] == "FOCI manual_stepper stepper_x selftest: Coil check"
+
+
+def test_phase_progress_says_setup_during_foci_setup():
+    d = make_driver()
+    d.state.active_label = "setup"
+    d.commissioning.handle_commission_phase({"phase": 2, "status": 0})
+    gcode = d.printer.lookup_object("gcode")
+    assert gcode._responses[-1] == "FOCI manual_stepper stepper_x setup: Coil check"
+
+
+def test_operator_failure_phrase_has_no_doc_links_raw_symbols_or_gaps():
+    from klipper_foci.commissioning import operator_failure_phrase
+
+    for code in COMMISSION_REASON_NAMES:
+        phrase = operator_failure_phrase(code)
+        assert "(" not in phrase, code
+        assert "_" not in phrase, code
+        assert "troubleshooting" not in phrase.lower(), code
+
+
+def test_encoder_direction_helper_ignores_other_phase_4_diagnostics():
+    from klipper_foci.commissioning import _encoder_direction_sweep_failed
+
+    details = [
+        {"phase": 4, "code": 1, "status": 1, "value0": 0, "value1": 0, "value2": 0},
+    ]
+    assert _encoder_direction_sweep_failed(details) is False
+
+
+def test_encoder_direction_no_code_40_is_generic_fault_wording():
+    d = make_driver()
+    d.commissioning.clear_details()
+    d.commissioning.handle_commission_detail(
+        {"phase": 4, "code": 2, "status": 1, "value0": 3977, "value1": 3939, "value2": 38}
+    )
+    from klipper_foci.commissioning import format_encoder_direction_failure
+
+    message = format_encoder_direction_failure(d.commissioning.details)
+    assert "encoder_direction" not in message
+    assert "didn't move as expected" in message
+
+
+def test_encoder_direction_opposite_sign_reports_config_inversion():
+    d = make_driver()
+    d.commissioning.clear_details()
+    d.commissioning.handle_commission_detail(
+        {"phase": 4, "code": 2, "status": 1, "value0": 3977, "value1": 3939, "value2": 38}
+    )
+    d.commissioning.handle_commission_detail(
+        {
+            "phase": 4,
+            "code": 40,
+            "status": 1,
+            "value0": 16384,
+            "value1": 4096,
+            "value2": (2**32 - 100),  # negative when re-decoded signed
+        }
+    )
+    from klipper_foci.commissioning import format_encoder_direction_failure
+
+    message = format_encoder_direction_failure(d.commissioning.details)
+    assert "encoder_direction looks inverted" in message
+
+
+def test_encoder_direction_same_sign_out_of_window_is_generic_fault_wording():
+    d = make_driver()
+    d.commissioning.clear_details()
+    d.commissioning.handle_commission_detail(
+        {"phase": 4, "code": 2, "status": 1, "value0": 3977, "value1": 3939, "value2": 38}
+    )
+    d.commissioning.handle_commission_detail(
+        {"phase": 4, "code": 40, "status": 1, "value0": 16384, "value1": 4096, "value2": 100}
+    )
+    from klipper_foci.commissioning import format_encoder_direction_failure
+
+    message = format_encoder_direction_failure(d.commissioning.details)
+    assert "encoder_direction" not in message
+    assert "didn't move as expected" in message
+
+
 class MockConfigFile:
     def __init__(self):
         self.values = {}
@@ -305,10 +391,10 @@ class TestCommissionGates(unittest.TestCase):
         with self.assertRaises(CommandError):
             d.commissioning.commission(gcmd)
 
-        self.assertIn("commissioning diagnostics", gcmd.last_info)
-        self.assertIn("legacy inductance fit rejected", gcmd.last_info)
-        self.assertIn("usable_points=0", gcmd.last_info)
-        self.assertIn("selected_mask=0x0000", gcmd.last_info)
+        self.assertNotIn("commissioning diagnostics", gcmd.last_info)
+        self.assertNotIn("legacy inductance fit rejected", gcmd.last_info)
+        self.assertNotIn("usable_points=0", gcmd.last_info)
+        self.assertNotIn("selected_mask=0x0000", gcmd.last_info)
 
 
 class TestChipResetDetected(unittest.TestCase):

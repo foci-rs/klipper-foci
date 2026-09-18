@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 from ._vocabulary_generated import PHASE_NAMES
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S, ELECTRICAL_ID_WAIT_TIMEOUT_S
+from .report import report_summary
+
+log = logging.getLogger(__name__)
 
 COMMISSION_REASON_NAMES: dict[int, str] = {
     1: "motor already enabled",
@@ -116,6 +120,31 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     108: "velocity invalid evidence",
     109: "velocity integral plan invalid",
 }
+
+_FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
+    18: "the TMC4671 lost its calibration state and needs to be re-commissioned",
+    47: "an invalid measurement schedule",
+    48: "a resistance-measurement timing fault",
+    49: "a resistance-measurement timeout",
+    50: "an inductance-measurement timing fault",
+    51: "a measurement delay timing fault",
+    73: "a resistance measurement with reversed current polarity or a sign error",
+    97: "an internal capture-buffer synchronization fault",
+}
+
+
+def operator_failure_phrase(code: int) -> str:
+    """Console-safe FAILED phrase for a COMMISSION_REASON_NAMES code.
+
+    Plain English only: no doc links, no raw evidence, no enum-symbol
+    names. Used exclusively for the report_summary FAILED line -- never for
+    gcmd.error()/command_error() text, which keeps using
+    format_commission_failure()/COMMISSION_REASON_NAMES directly, unchanged.
+    """
+    if code in _FAILURE_PHRASE_OVERRIDES:
+        return _FAILURE_PHRASE_OVERRIDES[code]
+    return COMMISSION_REASON_NAMES.get(code, f"unknown error {int(code)}")
+
 
 # Error codes for which the failure message should point at a dedicated
 # troubleshooting doc instead of just the bare error name.
@@ -402,6 +431,38 @@ def format_commission_detail(detail: dict) -> str:
     return f"{phase_name}: {name}"
 
 
+def _encoder_direction_sweep_failed(details: list[dict]) -> bool:
+    """True when the collected details include a failed direction-sweep
+    result (phase 4/"EncoderCheck", code 2, DIAG_ENCODER_DIRECTION_RESULT,
+    status != 0) -- the specific diagnostic format_encoder_direction_failure
+    interprets. A phase-4 detail of any other code (e.g. code 1, unstable
+    encoder read) is a different failure and must not take this path.
+    """
+    return any(
+        detail["phase"] == 4 and detail["code"] == 2 and detail["status"] != 0 for detail in details
+    )
+
+
+def format_encoder_direction_failure(details: list[dict]) -> str:
+    """Build the FAILED summary phrase for a failed direction-sweep phase.
+
+    Only call this when _encoder_direction_sweep_failed(details) is True.
+
+    Correlates code 2 (DIAG_ENCODER_DIRECTION_RESULT, unsigned delta only)
+    with code 40 (DIAG_ENCODER_DIRECTION_EXPECTED, signed expected/observed),
+    which the firmware pushes alongside code 2 whenever pole_pairs != 0.
+    """
+    generic = "encoder direction sweep didn't move as expected"
+    expected_detail = next((d for d in details if d["phase"] == 4 and d["code"] == 40), None)
+    if expected_detail is None:
+        return generic
+    expected = _signed_u32(expected_detail["value1"])
+    observed = _signed_u32(expected_detail["value2"])
+    if expected * observed < 0:
+        return "encoder_direction looks inverted"
+    return generic
+
+
 def format_inner_warning_flags(flags: int) -> str:
     """Decode an inner_warning_flags bitfield into warning names."""
     names = [name for bit, name in INNER_WARNING_FLAG_NAMES if flags & bit]
@@ -526,7 +587,8 @@ class CommissioningWorkflow:
             self.last_phase_id = phase_id
             phase_name = PHASE_NAMES.get(phase_id, f"Phase {int(phase_id)}")
             gcode = self.driver.printer.lookup_object("gcode")
-            gcode.respond_info(f"FOCI {self.driver.stepper_name} autotune: {phase_name}")
+            active_label = self.driver.state.active_label or "commissioning"
+            report_summary(gcode, f"FOCI {self.driver.stepper_name} {active_label}: {phase_name}")
         elif phase_id == 0 and status != 0:
             self.error_code = status
 
