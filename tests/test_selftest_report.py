@@ -1,5 +1,7 @@
 """Tests for FOCI_SELFTEST streaming result handling and report formatting."""
 
+import logging
+
 import pytest
 from klipper_foci.commissioning import format_commission_detail
 from klipper_foci.selftest import SELFTEST_STAGES, format_selftest_value
@@ -395,8 +397,9 @@ def test_format_fail_status_falls_back_to_raw_when_stage_has_no_decode():
     assert "FAIL" not in out
 
 
-def test_cmd_selftest_builds_multiline_report():
+def test_cmd_selftest_builds_multiline_report(caplog):
     d = make_driver()
+    d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
     # Drive the response stream synchronously when the self-test command is sent.
@@ -417,9 +420,10 @@ def test_cmd_selftest_builds_multiline_report():
     d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
-    d.selftest.selftest(gcmd)
+    with caplog.at_level(logging.INFO, logger="klipper_foci.selftest"):
+        d.selftest.selftest(gcmd)
 
-    out = gcmd.last_info
+    out = caplog.text
     assert "Self-Test" in out
     assert "ADC calibration" in out
     assert "Motor coil A" in out
@@ -429,12 +433,16 @@ def test_cmd_selftest_builds_multiline_report():
     assert "Encoder direction" in out
     assert "R-model evidence" in out
     assert "L control-model evidence" in out
-    assert "8/8 stages" in out
+    assert "8/8 stages" not in out
     assert "PASS" in out
+    assert gcmd._responses[0] == (
+        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 8 stages passed."
+    )
 
 
-def test_cmd_selftest_duplicate_stage_updates_without_inflating_report():
+def test_cmd_selftest_duplicate_stage_updates_without_inflating_report(caplog):
     d = make_driver()
+    d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
     def drive_stream(_args):
@@ -453,17 +461,22 @@ def test_cmd_selftest_duplicate_stage_updates_without_inflating_report():
     d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
-    d.selftest.selftest(gcmd)
+    with caplog.at_level(logging.INFO, logger="klipper_foci.selftest"):
+        d.selftest.selftest(gcmd)
 
-    out = gcmd.last_info
+    out = caplog.text
     assert out.count("Encoder direction") == 1
     assert "reversed" in out
     assert "7/7 stages" not in out
-    assert "6/6 stages" in out
+    assert "6/6 stages" not in out
+    assert gcmd._responses[0] == (
+        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 6 stages passed."
+    )
 
 
-def test_cmd_selftest_failure_raises_and_still_emits_report():
+def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     d = make_driver()
+    d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
     # Stage 1 fails; firmware emits a foci_selftest_result then foci_selftest_done
@@ -485,20 +498,27 @@ def test_cmd_selftest_failure_raises_and_still_emits_report():
     d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
-    with pytest.raises(CommandError):
+    with (
+        caplog.at_level(logging.INFO, logger="klipper_foci.selftest"),
+        pytest.raises(CommandError),
+    ):
         d.selftest.selftest(gcmd)
 
-    # respond_info was called before the raise — report is still available.
-    out = gcmd.last_info
+    # report_summary was called before the raise — the console line is still available.
+    assert gcmd._responses[0] == (
+        "FOCI_SELFTEST manual_stepper stepper_x: FAILED — ADC calibration fault."
+    )
+
+    out = caplog.text
     assert "FAIL" in out
-    assert "ADC calibration fault" in out
     assert "legacy inductance fit rejected" in out
     assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
-    assert "0/1 stages" in out
+    assert "0/1 stages" not in out
 
 
-def test_cmd_selftest_pass_does_not_raise():
+def test_cmd_selftest_pass_does_not_raise(caplog):
     d = make_driver()
+    d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
     def drive_stream(_args):
@@ -508,6 +528,47 @@ def test_cmd_selftest_pass_does_not_raise():
     d.protocol.commands.selftest.send = drive_stream
 
     gcmd = MockGCmd()
-    d.selftest.selftest(gcmd)  # must not raise
+    with caplog.at_level(logging.INFO, logger="klipper_foci.selftest"):
+        d.selftest.selftest(gcmd)  # must not raise
 
-    assert "PASS" in gcmd.last_info
+    assert gcmd.last_info == (
+        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 1 stages passed."
+    )
+
+
+def test_cmd_selftest_pass_prints_succeeded_summary():
+    d = make_driver()
+    d.protocol.commands.selftest = MockCommand()
+
+    def drive_stream(_args):
+        d.selftest.handle_selftest_result({"stage": 4, "status": 0, "value": 0})
+        d.selftest.handle_selftest_done({"status": 0})
+
+    d.protocol.commands.selftest.send = drive_stream
+    gcmd = MockGCmd()
+
+    d.selftest.selftest(gcmd)
+
+    assert (
+        gcmd._responses[0]
+        == "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 1 stages passed."
+    )
+
+
+def test_cmd_selftest_failure_prints_failed_summary_and_still_raises():
+    d = make_driver()
+    d.protocol.commands.selftest = MockCommand()
+
+    def drive_stream(_args):
+        d.selftest.handle_selftest_result({"stage": 1, "status": 1, "value": 0})
+        d.selftest.handle_selftest_done({"status": 4})  # "ADC calibration fault"
+
+    d.protocol.commands.selftest.send = drive_stream
+    gcmd = MockGCmd()
+
+    with pytest.raises(CommandError):
+        d.selftest.selftest(gcmd)
+
+    assert gcmd._responses[0] == (
+        "FOCI_SELFTEST manual_stepper stepper_x: FAILED — ADC calibration fault."
+    )

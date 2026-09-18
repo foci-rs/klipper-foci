@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
-from .commissioning import COMMISSION_REASON_NAMES, format_commission_detail
+import logging
+
+from .commissioning import (
+    COMMISSION_REASON_NAMES,
+    _encoder_direction_sweep_failed,
+    format_commission_detail,
+    format_encoder_direction_failure,
+    operator_failure_phrase,
+)
 from .constants import ELECTRICAL_ID_WAIT_TIMEOUT_S
+from .report import report_detail, report_summary
+
+log = logging.getLogger(__name__)
 
 SELFTEST_STAGES: dict[int, str] = {
     1: "ADC calibration",
@@ -117,13 +128,22 @@ class SelftestWorkflow:
                 lines.append(f"  {format_commission_detail(detail)}")
 
         if self.status == 0:
-            overall = "PASS"
+            report_summary(
+                gcmd,
+                f"FOCI_SELFTEST {self.driver.stepper_name}: SUCCEEDED — all "
+                f"{int(total)} stages passed.",
+            )
         else:
-            err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")
+            last_phase_detail_reason = None
+            if _encoder_direction_sweep_failed(self.driver.commissioning.details):
+                last_phase_detail_reason = format_encoder_direction_failure(
+                    self.driver.commissioning.details
+                )
+            err = last_phase_detail_reason or operator_failure_phrase(self.status)
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
-            overall = f"FAIL ({err})"
-        lines.append(f"Result: {overall} ({int(passed)}/{int(total)} stages)")
-        gcmd.respond_info("\n".join(lines))
+            report_summary(gcmd, f"FOCI_SELFTEST {self.driver.stepper_name}: FAILED — {err}.")
+
+        report_detail(log, self.driver.global_config.debug, "\n".join(lines))
 
         if self.status != 0:
             err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")

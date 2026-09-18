@@ -194,6 +194,7 @@ ELECTRICAL_ID_DETAIL_NAMES: dict[int, str] = {
     31: "legacy inductance fit correction",
     32: "inductance frequency out of range",
     33: "inductance AC capture rejected",
+    41: "inductance status rejected",
     47: "invalid_schedule",
     48: "resistance_timing",
     49: "resistance_timeout",
@@ -417,6 +418,11 @@ def format_commission_detail(detail: dict) -> str:
                 f"x_average={int(x_average)}, {bound_name}_bound={int(bound)})"
             )
         return f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, aux={int(value2)})"
+    if code == 41:
+        return (
+            f"{phase_name}: {name} (status_flags_or=0x{int(value0):08x}, "
+            f"entry_mask=0x{int(value1):02x})"
+        )
     if code in (23, 24):
         return f"{phase_name}: {name} (r_count_milli={int(value0)}, limit={int(value1)})"
     if code == 22:

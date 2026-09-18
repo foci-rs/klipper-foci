@@ -60,6 +60,24 @@ def test_inductance_current_envelope_code_has_a_name():
     assert COMMISSION_REASON_NAMES.get(76) == "inductance current envelope exceeded"
 
 
+def test_electrical_id_status_reject_is_decoded_not_raw():
+    from klipper_foci.commissioning import format_commission_detail
+
+    detail = {
+        "phase": 5,
+        "code": 41,
+        "status": 1,
+        "value0": 0x0000_0021,
+        "value1": 0x03,
+        "value2": 0,
+    }
+    formatted = format_commission_detail(detail)
+    assert "value0=" not in formatted
+    assert "value1=" not in formatted
+    assert "status_flags_or=0x00000021" in formatted
+    assert "entry_mask=0x03" in formatted
+
+
 def test_pid_gain_invalid_reason_present():
     assert COMMISSION_REASON_NAMES.get(79) == "pid gain invalid"
 
