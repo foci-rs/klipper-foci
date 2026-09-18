@@ -720,6 +720,15 @@ class TestAutotuneGates(unittest.TestCase):
         with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
             d.autotune.autotune(gcmd)
 
+        summary = next((msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg), None)
+        self.assertIsNotNone(summary)
+        self.assertIn(
+            "position_p=640",
+            summary,
+            "the console summary must name the accepted P so the operator "
+            "does not have to open klippy.log to see what was tuned",
+        )
+
         diagnostic = next((msg for msg in log_ctx.output if "position tune:" in msg), None)
         self.assertIsNotNone(diagnostic)
         self.assertIn("nominal_bw=262Hz", diagnostic)
