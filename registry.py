@@ -19,6 +19,7 @@ class FociGlobalConfig:
 
     def __init__(self, config) -> None:
         self.mode: str = config.getchoice("mode", MODE_CHOICES, default="default")
+        self.debug: bool = config.getboolean("debug", default=False)
 
 
 @dataclass(frozen=True)

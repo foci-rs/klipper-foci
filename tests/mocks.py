@@ -640,6 +640,7 @@ def make_driver(
     driver.oid = 0
     driver.stepper_oid = None
     driver.channel = 0
+    driver.global_config = SimpleNamespace(mode="default", debug=False)
 
     # Printer and objects
     toolhead = MockToolhead(kinematics)
