@@ -16,6 +16,7 @@ PHASE_NAMES: dict[int, str] = {
     16: "Encoder alignment",
     17: "Closed-loop entry",
     26: "Gain floor measurement",
+    27: "Position tune",
 }
 
 BREAKAWAY_PHASE_NAMES: dict[int, str] = {
@@ -30,6 +31,7 @@ ACTION_CODES: dict[str, int] = {
     "breakaway_seeded": 7,
     "integral_resume": 8,
     "robustness_reversal": 9,
+    "position_tune": 10,
 }
 
 SHAPE_RESUME = 0
@@ -37,6 +39,7 @@ SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING = 1
 SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING = 2
 SHAPE_BREAKAWAY_SEEDED = 3
 SHAPE_ROBUSTNESS_REVERSAL = 4
+SHAPE_POSITION_TUNE = 5
 
 WORKFLOW_SHAPE_TO_AMPLITUDE_ORDER: dict[int, int] = {
     SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING: 1,
