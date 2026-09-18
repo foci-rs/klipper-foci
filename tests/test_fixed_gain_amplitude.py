@@ -175,7 +175,7 @@ def test_unknown_action_rejects_before_any_mcu_command():
 
 
 def test_action_codes_admit_only_live_actions():
-    assert set(ACTION_CODES.values()) == {1, 2, 7, 8, 9}
+    assert set(ACTION_CODES.values()) == {1, 2, 7, 8, 9, 10}
     assert set(ACTION_CODES.values()).isdisjoint({0, 3, 4, 5, 6})
 
 
