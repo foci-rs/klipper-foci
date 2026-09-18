@@ -1207,7 +1207,9 @@ class AutotuneWorkflow:
             )
             nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
             if nominal_bandwidth_hz:
-                gcmd.respond_info(
+                report_detail(
+                    log,
+                    self.driver.global_config.debug,
                     f"FOCI {self.driver.name} position tune: p={int(result['position_p'])} "
                     f"nominal_bw={nominal_bandwidth_hz}Hz "
                     f"inner_bw={int(result['inner_bandwidth_rad_s'])}rad/s "
@@ -1215,7 +1217,7 @@ class AutotuneWorkflow:
                     f"settle={int(result['settling_time_us'])}us "
                     f"overshoot={int(result['overshoot_counts'])}counts "
                     f"final_err={int(result['final_position_error_counts'])}counts "
-                    f"oscillation={bool(result['oscillation_detected'])}"
+                    f"oscillation={bool(result['oscillation_detected'])}",
                 )
             if inner_warning_flags:
                 report_detail(

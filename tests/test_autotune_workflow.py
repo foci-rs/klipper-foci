@@ -700,11 +700,13 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
 
     def test_position_tune_result_surfaces_diagnostic_fields(self):
-        """A PositionTune success terminal reports its diagnostic
-        surface (nominal/inner bandwidth, dither margin, ramped-stroke
-        response) via a dedicated respond_info line, alongside the
-        existing tuned (...) message."""
+        """A PositionTune success terminal reports its diagnostic surface
+        (nominal/inner bandwidth, dither margin, ramped-stroke response) as
+        developer-facing detail (report_detail, gated behind [foci] debug),
+        matching every sibling action's SUCCEEDED-summary-plus-log-detail
+        pattern -- not a raw always-on console respond_info line."""
         d = self._commissioned_driver()
+        d.global_config.debug = True
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
         drive_two_dispatch_scenario(
@@ -715,9 +717,10 @@ class TestAutotuneGates(unittest.TestCase):
         )
 
         gcmd = MockGCmd({})
-        d.autotune.autotune(gcmd)
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
 
-        diagnostic = next((msg for msg in gcmd._responses if "position tune:" in msg), None)
+        diagnostic = next((msg for msg in log_ctx.output if "position tune:" in msg), None)
         self.assertIsNotNone(diagnostic)
         self.assertIn("nominal_bw=262Hz", diagnostic)
         self.assertIn("inner_bw=266rad/s", diagnostic)
@@ -726,6 +729,10 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("overshoot=12counts", diagnostic)
         self.assertIn("final_err=-3counts", diagnostic)
         self.assertIn("oscillation=False", diagnostic)
+        self.assertFalse(
+            any("position tune:" in msg for msg in gcmd._responses),
+            "diagnostic detail must not reach the console, only the terse summary",
+        )
 
     def test_position_tune_failure_reports_specific_outcome(self):
         """A `CommissionError::PositionTuneFailed` status alone is one
