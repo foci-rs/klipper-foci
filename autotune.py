@@ -83,6 +83,19 @@ OUTER_SAFETY_REASON_NAMES = {
     11: "position_local",
 }
 
+# Mirrors firmware's `PositionTuneOutcome::to_wire_code()`. Kept in
+# sync with that Rust enum by hand, same pattern as COMMISSION_REASON_NAMES.
+# Wire code 0 is reserved to mean "not applicable" and never appears here.
+POSITION_TUNE_OUTCOME_NAMES: dict[int, str] = {
+    1: "acceleration_fit_rejected",
+    2: "floor_unrepresentable_zero",
+    3: "floor_unrepresentable_too_large",
+    4: "invalid_ceiling_configuration",
+    5: "floor_ceiling_conflict",
+    6: "sweep_exhausted",
+    7: "capture_empty",
+}
+
 
 def _integral_cause_namespace_text(cause_namespace: int) -> str:
     """Render a velocity-integral terminal's cause namespace as its wire-carried name."""
@@ -1133,6 +1146,16 @@ class AutotuneWorkflow:
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE safety fault: {error_name}"
                         f"{detail_suffix} (motor disabled by firmware)"
                     )
+                position_tune_outcome_code = int(result.get("position_tune_outcome_code", 0))
+                if position_tune_outcome_code:
+                    outcome_name = POSITION_TUNE_OUTCOME_NAMES.get(
+                        position_tune_outcome_code,
+                        f"unknown_{position_tune_outcome_code}",
+                    )
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
+                        f"{outcome_name} (motor holding with entry gains)"
+                    )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name} (motor "
                     f"holding with entry gains)"
@@ -1168,6 +1191,18 @@ class AutotuneWorkflow:
                 f"FOCI {self.driver.name} tuned ({tune_status}): vel_p="
                 f"{int(result['velocity_p'])} pos_p={int(result['position_p'])}",
             )
+            nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
+            if nominal_bandwidth_hz:
+                gcmd.respond_info(
+                    f"FOCI {self.driver.name} position tune: p={int(result['position_p'])} "
+                    f"nominal_bw={nominal_bandwidth_hz}Hz "
+                    f"inner_bw={int(result['inner_bandwidth_rad_s'])}rad/s "
+                    f"dither_margin={int(result['dither_margin_milli']) / 1000.0:.2f}x "
+                    f"settle={int(result['settling_time_us'])}us "
+                    f"overshoot={int(result['overshoot_counts'])}counts "
+                    f"final_err={int(result['final_position_error_counts'])}counts "
+                    f"oscillation={bool(result['oscillation_detected'])}"
+                )
             if inner_warning_flags:
                 report_detail(
                     log,

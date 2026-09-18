@@ -120,6 +120,37 @@ SAMPLE_TUNE_RESULT = {
     "band_position_q": 3000,
 }
 
+# PositionTune success terminal: `TuneResult` populated by the
+# PositionTune phase instead of a velocity/robustness tune.
+SAMPLE_POSITION_TUNE_RESULT = {
+    "status": 0,
+    "warning_code": 0,
+    "velocity_p": 1152,
+    "velocity_i": 0,
+    "position_p": 640,
+    "position_i": 0,
+    "velocity_limit": 500000,
+    "velocity_filter_hz": 0,
+    "torque_filter_hz": 0,
+    "position_filter_hz": 0,
+    "flux_filter_hz": 0,
+    "nominal_bandwidth_hz": 262,
+    "inner_bandwidth_rad_s": 266,
+    "dither_margin_milli": 1450,
+    "settling_time_us": 48000,
+    "overshoot_counts": 12,
+    "final_position_error_counts": -3,
+    "oscillation_detected": False,
+    "position_tune_outcome_code": 0,
+}
+
+# PositionTune failure terminal: `CommissionError::PositionTuneFailed`
+# (status 12) with `PositionTuneOutcome::CaptureEmpty` (wire code 7).
+SAMPLE_POSITION_TUNE_FAILURE_RESULT = {
+    "status": 12,
+    "position_tune_outcome_code": 7,
+}
+
 
 def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
     """Inject the terminal named by ``terminal`` into one dispatch's assemblers.
@@ -667,6 +698,52 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "identified_j_eff"), cfg.values)
         self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
+
+    def test_position_tune_result_surfaces_diagnostic_fields(self):
+        """A PositionTune success terminal reports its diagnostic
+        surface (nominal/inner bandwidth, dither margin, ramped-stroke
+        response) via a dedicated respond_info line, alongside the
+        existing tuned (...) message."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_RESULT,
+        )
+
+        gcmd = MockGCmd({})
+        d.autotune.autotune(gcmd)
+
+        diagnostic = next((msg for msg in gcmd._responses if "position tune:" in msg), None)
+        self.assertIsNotNone(diagnostic)
+        self.assertIn("nominal_bw=262Hz", diagnostic)
+        self.assertIn("inner_bw=266rad/s", diagnostic)
+        self.assertIn("dither_margin=1.45x", diagnostic)
+        self.assertIn("settle=48000us", diagnostic)
+        self.assertIn("overshoot=12counts", diagnostic)
+        self.assertIn("final_err=-3counts", diagnostic)
+        self.assertIn("oscillation=False", diagnostic)
+
+    def test_position_tune_failure_reports_specific_outcome(self):
+        """A `CommissionError::PositionTuneFailed` status alone is one
+        generic code shared by every `PositionTuneOutcome`; the operator
+        must learn which outcome occurred, not just that one did."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_FAILURE_RESULT,
+        )
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+        self.assertIn("capture_empty", str(ctx.exception))
 
     def test_reproduced_resume_dispatches_robustness_then_tune_result(self):
         """A reproduced resume ("repeatability_confirmed") is no longer the end of the road:
