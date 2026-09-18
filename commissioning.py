@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 from ._vocabulary_generated import PHASE_NAMES
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S, ELECTRICAL_ID_WAIT_TIMEOUT_S
-from .report import report_summary
+from .report import report_detail, report_summary
 
 log = logging.getLogger(__name__)
 
@@ -738,6 +738,11 @@ class CommissioningWorkflow:
                     self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
                     self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
                     self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
+                    report_summary(
+                        gcmd,
+                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED — timed out waiting "
+                        "for the commissioning firmware.",
+                    )
                     raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP timed out")
                 if self.error_code != 0:
                     error_name = self.format_commission_failure(self.error_code)
@@ -756,7 +761,15 @@ class CommissioningWorkflow:
                         detail_lines.extend(
                             f"  {format_commission_detail(detail)}" for detail in self.details
                         )
-                        gcmd.respond_info("\n".join(detail_lines))
+                        report_detail(log, self.driver.global_config.debug, "\n".join(detail_lines))
+                    if self.last_phase_id == 4 and _encoder_direction_sweep_failed(self.details):
+                        phrase = format_encoder_direction_failure(self.details)
+                    else:
+                        phrase = operator_failure_phrase(self.error_code)
+                    report_summary(
+                        gcmd,
+                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED — {phrase}.",
+                    )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_SETUP failed at {phase_name}: {error_name}"
                     )
@@ -786,6 +799,11 @@ class CommissioningWorkflow:
                 )
             except ValueError as error:
                 self.on_commission_failure(str(error))
+                report_summary(
+                    gcmd,
+                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED — timing evidence "
+                    "was rejected.",
+                )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_SETUP timing evidence rejected: {error}"
                 ) from error
@@ -796,6 +814,11 @@ class CommissioningWorkflow:
                     self.handle_chip_reset_detected()
                 else:
                     self.on_commission_failure(error_name)
+                report_summary(
+                    gcmd,
+                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED — "
+                    f"{operator_failure_phrase(status)}.",
+                )
                 raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP failed: {error_name}")
 
             self.driver.state.is_calibrated = True
@@ -829,20 +852,34 @@ class CommissioningWorkflow:
 
             self.persist_commission_results(result, profile_name)
 
+            report_summary(
+                gcmd,
+                f"FOCI_SETUP {self.driver.stepper_name}: SUCCEEDED — resistance/inductance "
+                "identified, current gains applied.",
+            )
             status_str = "accepted" if status == 0 else "accepted with warnings"
-            gcmd.respond_info(
+            report_detail(
+                log,
+                self.driver.global_config.debug,
                 f"FOCI {self.driver.name} commissioned ({status_str}): r_count_milli="
                 f"{int(result['r_count_milli'])} l_count_micro={int(result['l_count_micro'])} "
                 f"bandwidth_hz={int(result.get('bandwidth_hz', 0))} current_candidate_attempt="
-                f"{int(result.get('current_candidate_attempt', 0))}"
+                f"{int(result.get('current_candidate_attempt', 0))}",
             )
             flags = result.get("inner_warning_flags", 0)
             if flags:
-                gcmd.respond_info(
-                    f"FOCI {self.driver.name} inner confidence: {format_inner_warning_flags(flags)}"
+                report_detail(
+                    log,
+                    self.driver.global_config.debug,
+                    f"FOCI {self.driver.name} inner confidence: "
+                    f"{format_inner_warning_flags(flags)}",
                 )
             for method, evidence in result["commission_timing"].items():
-                gcmd.respond_info(format_timing_evidence(TIMING_METHOD_NAMES[method], evidence))
+                report_detail(
+                    log,
+                    self.driver.global_config.debug,
+                    format_timing_evidence(TIMING_METHOD_NAMES[method], evidence),
+                )
         finally:
             self.clear_timing_evidence()
             self.driver.state.release()

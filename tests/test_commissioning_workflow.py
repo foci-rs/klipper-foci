@@ -395,6 +395,97 @@ class TestCommissionGates(unittest.TestCase):
         self.assertNotIn("legacy inductance fit rejected", gcmd.last_info)
         self.assertNotIn("usable_points=0", gcmd.last_info)
         self.assertNotIn("selected_mask=0x0000", gcmd.last_info)
+        self.assertTrue(gcmd.last_info.startswith("FOCI_SETUP manual_stepper stepper_x: FAILED"))
+        self.assertIn("electrical identification failed", gcmd.last_info)
+
+
+def test_commission_timeout_prints_failed_summary():
+    d = make_driver()
+    d.printer._objects["reactor"] = MockReactor()
+    gcmd = MockGCmd({"PROFILE": "balanced"})
+
+    def never_finish(_args):
+        pass
+
+    d.protocol.commands.commission.send = never_finish
+    with pytest.raises(CommandError, match="timed out"):
+        d.commissioning.commission(gcmd)
+    assert gcmd.last_info.startswith("FOCI_SETUP manual_stepper stepper_x: FAILED")
+    assert "timed out" in gcmd.last_info
+
+
+def test_commission_success_prints_succeeded_summary():
+    d = make_driver()
+    d.printer._objects["configfile"] = MockConfigFile()
+
+    def drive_success(_args):
+        d.commissioning.result = complete_commission_result()
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_success
+    gcmd = MockGCmd({"PROFILE": "balanced"})
+    d.commissioning.commission(gcmd)
+
+    assert gcmd._responses[0].startswith("FOCI_SETUP manual_stepper stepper_x: SUCCEEDED")
+    assert "r_count_milli" not in gcmd._responses[0]
+    assert "bandwidth_hz" not in gcmd._responses[0]
+
+
+def test_commission_timing_evidence_rejected_prints_failed_summary():
+    d = make_driver()
+    result = complete_commission_result()
+    result["timing_summary"] = 2 << 4 | 1 << 6  # rejected, per the existing
+    # test_rejected_timing_is_fatal_even_with_plausible_model_values fixture
+
+    def drive_rejected_timing(_args):
+        d.commissioning.handle_commission_timing(
+            timing_reply(method=2, status=2, requested_period_us=160)
+        )
+        d.commissioning.result = result
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_rejected_timing
+    gcmd = MockGCmd({"PROFILE": "balanced"})
+
+    with pytest.raises(CommandError, match="timing evidence rejected"):
+        d.commissioning.commission(gcmd)
+
+    assert gcmd.last_info == (
+        "FOCI_SETUP manual_stepper stepper_x: FAILED — timing evidence was rejected."
+    )
+
+
+def test_commission_terminal_status_failure_prints_failed_summary():
+    d = make_driver()
+    result = complete_commission_result()
+    result["status"] = 7  # "encoder fault" in COMMISSION_REASON_NAMES
+
+    def drive_terminal_failure(_args):
+        d.commissioning.result = result
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_terminal_failure
+    gcmd = MockGCmd({"PROFILE": "balanced"})
+
+    with pytest.raises(CommandError, match="encoder fault"):
+        d.commissioning.commission(gcmd)
+
+    assert gcmd.last_info == ("FOCI_SETUP manual_stepper stepper_x: FAILED — encoder fault.")
+
+
+def test_every_commission_gcmd_error_message_is_unchanged_by_this_feature():
+    import inspect
+
+    import klipper_foci.commissioning as commissioning_module
+
+    source = inspect.getsource(commissioning_module)
+    for expected_substring in (
+        "FOCI_SETUP timed out",
+        "FOCI_SETUP failed at ",
+        "FOCI_SETUP timing evidence rejected: ",
+        "FOCI_SETUP failed: ",
+    ):
+        assert expected_substring in source, expected_substring
 
 
 class TestChipResetDetected(unittest.TestCase):
@@ -627,6 +718,7 @@ class CommissionModelSurfacingTests(unittest.TestCase):
 
     def test_commission_success_message_includes_count_space_model(self):
         driver = make_driver()
+        driver.global_config.debug = True
         result = complete_commission_result()
         result["bandwidth_hz"] = 800
         result["current_candidate_attempt"] = 1
@@ -640,14 +732,14 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         driver.protocol.commands.commission = CompleteCommissionCommand()
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
-        driver.commissioning.commission(gcmd)
+        with self.assertLogs("klipper_foci.commissioning", level="INFO") as log_ctx:
+            driver.commissioning.commission(gcmd)
 
-        self.assertIn(
-            "r_count_milli=1706 l_count_micro=1245",
-            gcmd.last_info,
+        self.assertTrue(
+            any("r_count_milli=1706 l_count_micro=1245" in message for message in log_ctx.output)
         )
-        self.assertIn("bandwidth_hz=800", gcmd.last_info)
-        self.assertIn("current_candidate_attempt=1", gcmd.last_info)
+        self.assertTrue(any("bandwidth_hz=800" in message for message in log_ctx.output))
+        self.assertTrue(any("current_candidate_attempt=1" in message for message in log_ctx.output))
 
     def test_commission_success_active_gains_use_applied_filter_evidence(
         self,
