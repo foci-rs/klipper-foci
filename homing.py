@@ -216,7 +216,7 @@ class HomingWorkflow:
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: no commissioned gains available. Run FOCI_SETUP first."
             )
-        if not self.driver.state.try_acquire():
+        if not self.driver.state.try_acquire("homing"):
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: another FOCI operation is in progress"
             )

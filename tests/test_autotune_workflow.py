@@ -236,6 +236,34 @@ def drive_orchestrated_robustness_scenario(d, *, outcome, cause):
     reactor.pause = pause
 
 
+def test_rehome_and_center_releases_then_reacquires_the_autotune_label():
+    d = make_driver()
+    d.state.try_acquire("autotune")
+    gcode = d.printer.lookup_object("gcode")
+    observed = []  # (command, active_label at call time)
+
+    def fake_run_script(command):
+        observed.append((command, d.state.active_label))
+
+    gcode.run_script_from_command = fake_run_script
+    d.homing.invalidate_homing = lambda: None
+    toolhead = d.printer.lookup_object("toolhead")
+    gcmd = MockGCmd({})
+
+    d.autotune._rehome_and_center(gcmd, toolhead, "G1 X0 Y0")
+
+    # _rehome_and_center issues two commands: "G28 X Y" while the lock is
+    # free (released so G28's calibrate-on-enable hook can take it), then
+    # the caller's safe_pose_move after the lock is reacquired under the
+    # same "autotune" label.
+    assert observed == [
+        ("G28 X Y", None),
+        ("G1 X0 Y0", "autotune"),
+    ]
+    assert d.state.active_label == "autotune"
+    assert d.state.operation_lock is True
+
+
 class TestAutotuneGates(unittest.TestCase):
     def _commissioned_driver(self, kinematics=None, homed_axes="xyz"):
         d = make_driver(

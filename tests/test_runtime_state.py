@@ -8,15 +8,15 @@ from tests.mocks import make_driver
 def test_runtime_state_lock_starts_available():
     state = FociRuntimeState()
 
-    assert state.try_acquire() is True
+    assert state.try_acquire("setup") is True
     assert state.operation_lock is True
 
 
 def test_runtime_state_lock_rejects_second_acquire():
     state = FociRuntimeState()
-    assert state.try_acquire() is True
+    assert state.try_acquire("setup") is True
 
-    assert state.try_acquire() is False
+    assert state.try_acquire("setup") is False
 
 
 def test_runtime_state_release_makes_lock_available():
@@ -25,7 +25,7 @@ def test_runtime_state_release_makes_lock_available():
     state.release()
 
     assert state.operation_lock is False
-    assert state.try_acquire() is True
+    assert state.try_acquire("setup") is True
 
 
 def test_runtime_status_defaults_to_uncommissioned():
@@ -39,17 +39,17 @@ def test_runtime_status_defaults_to_uncommissioned():
 class TestOperationLock(unittest.TestCase):
     def test_acquire_when_free(self):
         d = make_driver()
-        self.assertTrue(d.state.try_acquire())
+        self.assertTrue(d.state.try_acquire("setup"))
         self.assertTrue(d.state.operation_lock)
 
     def test_acquire_when_held(self):
         d = make_driver()
         d.state.operation_lock = True
-        self.assertFalse(d.state.try_acquire())
+        self.assertFalse(d.state.try_acquire("setup"))
 
     def test_release_makes_available(self):
         d = make_driver()
         d.state.operation_lock = True
         d.state.release()
         self.assertFalse(d.state.operation_lock)
-        self.assertTrue(d.state.try_acquire())
+        self.assertTrue(d.state.try_acquire("setup"))

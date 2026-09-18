@@ -69,7 +69,7 @@ class SelftestWorkflow:
 
     def selftest(self, gcmd) -> None:
         """Run TMC4671 self-test and emit a per-stage report."""
-        if not self.driver.state.try_acquire():
+        if not self.driver.state.try_acquire("selftest"):
             raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         try:
             self.driver.homing.invalidate_homing()

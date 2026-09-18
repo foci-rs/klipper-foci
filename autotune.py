@@ -674,11 +674,11 @@ class AutotuneWorkflow:
             # lock (best effort) so autotune()'s finally can release it, then
             # surface the homing failure unmasked.
             if had_lock:
-                self.driver.state.try_acquire()
+                self.driver.state.try_acquire("autotune")
             raise gcmd.error(
                 f"FOCI {self.driver.name}: autotune aborted -- homing failed: {err}"
             ) from err
-        if had_lock and not self.driver.state.try_acquire():
+        if had_lock and not self.driver.state.try_acquire("autotune"):
             raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         gcode.run_script_from_command(safe_pose_move)
         toolhead.wait_moves()
@@ -897,7 +897,7 @@ class AutotuneWorkflow:
                 f"{', '.join(sorted(MODE_MAP))})"
             )
 
-        if not self.driver.state.try_acquire():
+        if not self.driver.state.try_acquire("autotune"):
             raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
 
         try:

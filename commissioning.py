@@ -623,7 +623,7 @@ class CommissioningWorkflow:
             )
         profile_code = PROFILE_MAP[profile_name]
 
-        if not self.driver.state.try_acquire():
+        if not self.driver.state.try_acquire("setup"):
             raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         try:
             toolhead = self.driver.printer.lookup_object("toolhead")
