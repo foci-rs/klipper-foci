@@ -206,27 +206,24 @@ class RegisterDumpWorkflow:
         active_gains = state.active_gains
         live_gains = self._live_gain_values()
 
-        lines = [
-            "",
-            "========== Tuning Analysis ==========",
-            "-- Runtime status --",
-            self._format_pair("autotune_status", config.autotune_status),
-            self._format_pair("runtime_status", state.runtime_status),
-            self._format_pair(
-                "active_gains_present",
-                "yes" if active_gains is not None else "no",
-            ),
-            self._format_pair("autotune_profile", config.autotune_profile),
-            self._format_pair("autotune_mode", config.autotune_mode),
-        ]
+        lines = ["", "========== Tuning Analysis =========="]
 
+        # -- Status --
+        lines.append(self._format_block_header("Status"))
+        lines.append("-- Runtime status --")
+        lines.append(self._format_pair("autotune_status", config.autotune_status))
+        lines.append(self._format_pair("runtime_status", state.runtime_status))
+        lines.append(
+            self._format_pair("active_gains_present", "yes" if active_gains is not None else "no")
+        )
+        lines.append(self._format_pair("autotune_profile", config.autotune_profile))
+        lines.append(self._format_pair("autotune_mode", config.autotune_mode))
         persisted_status = config.autotune_status or "uncommissioned"
         if persisted_status != state.runtime_status:
             lines.append(
                 f"  WARNING: autotune_status/runtime_status divergence persisted="
                 f"{persisted_status} validated={state.runtime_status}"
             )
-
         readiness = resolve_autotune_readiness(
             self.driver,
             live_current_gains={
@@ -238,27 +235,13 @@ class RegisterDumpWorkflow:
         )
         lines.extend(format_readiness_report(readiness, self.driver.name))
 
-        lines.append("-- Live TMC gains --")
-        lines.extend(
-            self._format_pair(f"live.{field_name}", value)
-            for field_name, value in live_gains.items()
-        )
-
-        lines.append("-- Host active gains --")
-        if active_gains is None:
-            lines.append("  active_gains unavailable")
-        else:
-            lines.extend(
-                self._format_pair(f"active.{field_name}", active_gains.get(field_name))
-                for field_name in ACTIVE_GAIN_FIELDS
-            )
-
+        # -- Persisted --
+        lines.append(self._format_block_header("Persisted"))
         lines.append("-- Persisted config gains --")
         lines.extend(
             self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in CONFIG_GAIN_FIELDS
         )
-
         lines.append("-- Identified count-space model --")
         lines.extend(
             self._format_pair(f"config.{field_name}", getattr(config, field_name))
@@ -269,7 +252,6 @@ class RegisterDumpWorkflow:
             " fields derived during commissioning; AC reactance evidence is"
             " reported separately below."
         )
-
         lines.append("-- Persisted inductance evidence --")
         lines.extend(self._format_persisted_inductance_evidence())
         lines.append(
@@ -277,7 +259,6 @@ class RegisterDumpWorkflow:
             " firmware-reported count-space reactance evidence; the host"
             " performs no fitting or quality-gate evaluation."
         )
-
         lines.append("-- Current-loop commissioning evidence --")
         lines.extend(self._format_current_loop_summary())
         lines.extend(
@@ -290,7 +271,27 @@ class RegisterDumpWorkflow:
             " budget, failure reason); the host performs no gain"
             " selection or quality-gate evaluation."
         )
+        lines.append("-- Resistance identification evidence --")
+        lines.extend(
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
+            for field_name in RESISTANCE_IDENTIFICATION_FIELDS
+        )
 
+        # -- Volatile --
+        lines.append(self._format_block_header("Volatile"))
+        lines.append("-- Live TMC gains --")
+        lines.extend(
+            self._format_pair(f"live.{field_name}", value)
+            for field_name, value in live_gains.items()
+        )
+        lines.append("-- Host active gains --")
+        if active_gains is None:
+            lines.append("  active_gains unavailable")
+        else:
+            lines.extend(
+                self._format_pair(f"active.{field_name}", active_gains.get(field_name))
+                for field_name in ACTIVE_GAIN_FIELDS
+            )
         last_current_loop = self.driver.diagnostics.active.last_current_loop_evidence(
             self.driver.oid
         )
@@ -302,39 +303,31 @@ class RegisterDumpWorkflow:
                     self.driver.diagnostics.active.last_current_loop_samples(self.driver.oid)
                 )
             )
-
         last_current_loop_hold = self.driver.diagnostics.active.last_current_loop_hold_evidence(
             self.driver.oid
         )
         if last_current_loop_hold:
             lines.append("-- Last sustained-hold gate (not persisted) --")
             lines.extend(self._format_last_current_loop_hold(last_current_loop_hold))
-
         last_closed_loop_activation = (
             self.driver.diagnostics.active.last_closed_loop_activation_evidence(self.driver.oid)
         )
         if last_closed_loop_activation:
             lines.append("-- Last closed-loop entry (not persisted) --")
             lines.extend(self._format_last_closed_loop_activation(last_closed_loop_activation))
-
         last_encoder_alignment = self.driver.diagnostics.active.last_encoder_alignment_evidence(
             self.driver.oid
         )
         if last_encoder_alignment:
             lines.append("-- Last encoder alignment (not persisted) --")
             lines.extend(self._format_last_encoder_alignment(last_encoder_alignment))
-
         last_inductance = self.driver.diagnostics.active.last_inductance_evidence(self.driver.oid)
         if last_inductance:
             lines.append("-- Last inductance evidence (not persisted) --")
             lines.extend(self._format_last_inductance_evidence(last_inductance))
 
-        lines.append("-- Resistance identification evidence --")
-        lines.extend(
-            self._format_pair(f"config.{field_name}", getattr(config, field_name))
-            for field_name in RESISTANCE_IDENTIFICATION_FIELDS
-        )
-        lines.append("-- Comparison --")
+        # -- Comparison --
+        lines.append(self._format_block_header("Comparison"))
         lines.extend(self._format_gain_comparison(live_gains, active_gains))
         return lines
 
@@ -686,6 +679,9 @@ class RegisterDumpWorkflow:
 
     def _format_pair(self, name: str, value: object | None) -> str:
         return f"  {name:34} = {self._display_value(value)}"
+
+    def _format_block_header(self, title: str) -> str:
+        return f"== {title} =="
 
     def _format_hold_pair(self, name: str, value: object | None) -> str:
         return f"  {name:32} = {self._display_value(value)}"

@@ -235,6 +235,36 @@ def test_tuning_flag_appends_context_and_count_space_note():
     assert "control-model count-space fields" in output
 
 
+def test_tuning_analysis_has_four_top_level_blocks_in_order():
+    d = make_driver()
+    d.state.active_gains = SAMPLE_ACTIVE_GAINS
+    lines = d.dump._format_tuning_analysis()
+    text = "\n".join(lines)
+    status_index = text.index("== Status ==")
+    persisted_index = text.index("== Persisted ==")
+    volatile_index = text.index("== Volatile ==")
+    comparison_index = text.index("== Comparison ==")
+    assert status_index < persisted_index < volatile_index < comparison_index
+
+
+def test_tuning_analysis_still_contains_every_existing_subsection():
+    d = make_driver()
+    d.state.active_gains = SAMPLE_ACTIVE_GAINS
+    text = "\n".join(d.dump._format_tuning_analysis())
+    for subsection in (
+        "Runtime status",
+        "Live TMC gains",
+        "Host active gains",
+        "Persisted config gains",
+        "Identified count-space model",
+        "Persisted inductance evidence",
+        "Current-loop commissioning evidence",
+        "Resistance identification evidence",
+        "Comparison",
+    ):
+        assert subsection in text, subsection
+
+
 def test_tuning_flag_appends_autotune_readiness_report():
     driver = make_driver()
     _seed_tuning_state(driver)
