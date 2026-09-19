@@ -4,7 +4,7 @@ import struct
 import unittest
 from unittest.mock import patch
 
-from klipper_foci.autotune import OUTER_SAFETY_REASON_NAMES
+from klipper_foci.autotune import OUTER_SAFETY_REASON_NAMES, POSITION_TUNE_OUTCOME_NAMES
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.fixed_gain_amplitude import ACTION_CODES
 from klipper_foci.registers import REGISTERS
@@ -127,28 +127,43 @@ SAMPLE_POSITION_TUNE_RESULT = {
     "warning_code": 0,
     "velocity_p": 1152,
     "velocity_i": 0,
-    "position_p": 640,
+    "position_p": 282,
     "position_i": 0,
     "velocity_limit": 500000,
     "velocity_filter_hz": 0,
     "torque_filter_hz": 0,
     "position_filter_hz": 0,
     "flux_filter_hz": 0,
-    "nominal_bandwidth_hz": 262,
-    "inner_bandwidth_rad_s": 266,
-    "dither_margin_milli": 1450,
-    "settling_time_us": 48000,
-    "overshoot_counts": 12,
-    "final_position_error_counts": -3,
-    "oscillation_detected": False,
+    "predicted_start_p": 282,
+    "last_rung_p": 282,
+    "min_overshoot_p": 0,
+    "min_overshoot_units": 0,
+    "bound_units": 409,
+    "homing_speed_mrev_s": 4375,
+    "motion_speed_mrev_s": 10000,
+    "homing_peak_abs_units": 300,
+    "motion_cruise_mean_abs_units": 210,
+    "motion_overshoot_units": 40,
+    "motion_cruise_rms_units": 12,
+    "nominal_bandwidth_hz": 192,
+    "dither_margin_milli": 0,
+    "rungs_measured": 1,
+    "stimulus_feedforward_paths": 1,
     "position_tune_outcome_code": 0,
 }
 
 # PositionTune failure terminal: `CommissionError::PositionTuneFailed`
-# (status 12) with `PositionTuneOutcome::CaptureEmpty` (wire code 7).
+# (status 12) with `PositionTuneOutcome::Conflict` (wire code 8).
 SAMPLE_POSITION_TUNE_FAILURE_RESULT = {
     "status": 12,
-    "position_tune_outcome_code": 7,
+    "position_tune_outcome_code": 8,
+    "rungs_measured": 2,
+    "last_rung_p": 388,
+    "homing_peak_abs_units": 320,
+    "motion_cruise_mean_abs_units": 220,
+    "motion_overshoot_units": 500,
+    "min_overshoot_p": 195,
+    "min_overshoot_units": 40,
 }
 
 
@@ -723,7 +738,7 @@ class TestAutotuneGates(unittest.TestCase):
         summary = next((msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg), None)
         self.assertIsNotNone(summary)
         self.assertIn(
-            "position_p=640",
+            "position_p=282",
             summary,
             "the console summary must name the accepted P so the operator "
             "does not have to open klippy.log to see what was tuned",
@@ -731,13 +746,14 @@ class TestAutotuneGates(unittest.TestCase):
 
         diagnostic = next((msg for msg in log_ctx.output if "position tune:" in msg), None)
         self.assertIsNotNone(diagnostic)
-        self.assertIn("nominal_bw=262Hz", diagnostic)
-        self.assertIn("inner_bw=266rad/s", diagnostic)
-        self.assertIn("dither_margin=1.45x", diagnostic)
-        self.assertIn("settle=48000us", diagnostic)
-        self.assertIn("overshoot=12counts", diagnostic)
-        self.assertIn("final_err=-3counts", diagnostic)
-        self.assertIn("oscillation=False", diagnostic)
+        self.assertIn("bound=409u", diagnostic)
+        self.assertIn("start_p=282", diagnostic)
+        self.assertIn("last_p=282", diagnostic)
+        self.assertIn("homing_peak=300u", diagnostic)
+        self.assertIn("motion_cruise=210u", diagnostic)
+        self.assertIn("overshoot=40u", diagnostic)
+        self.assertIn("rungs=1", diagnostic)
+        self.assertIn("ff=velocity", diagnostic)
         self.assertFalse(
             any("position tune:" in msg for msg in gcmd._responses),
             "diagnostic detail must not reach the console, only the terse summary",
@@ -746,7 +762,9 @@ class TestAutotuneGates(unittest.TestCase):
     def test_position_tune_failure_reports_specific_outcome(self):
         """A `CommissionError::PositionTuneFailed` status alone is one
         generic code shared by every `PositionTuneOutcome`; the operator
-        must learn which outcome occurred, not just that one did."""
+        must learn which outcome occurred, not just that one did -- and,
+        since a rung was measured before the Conflict, the last rung's
+        evidence too."""
         d = self._commissioned_driver()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
@@ -759,7 +777,140 @@ class TestAutotuneGates(unittest.TestCase):
 
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(MockGCmd({}))
-        self.assertIn("capture_empty", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("conflict", message)
+        self.assertIn("last rung: p=388", message)
+        self.assertIn("homing_peak=320u", message)
+        self.assertIn("motion_cruise=220u", message)
+        self.assertIn("overshoot=500u", message)
+        self.assertIn("min overshoot 40u at p=195", message)
+
+    def test_position_tune_failure_without_measured_rungs_omits_evidence(self):
+        """A Conflict with no rung measured (e.g. rejected before any
+        stimulus ran) must not fabricate a "last rung" line."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result={**SAMPLE_POSITION_TUNE_FAILURE_RESULT, "rungs_measured": 0},
+        )
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+        message = str(ctx.exception)
+        self.assertIn("conflict", message)
+        self.assertNotIn("last rung:", message)
+
+    def test_position_tune_outcome_names_cover_every_firmware_code(self):
+        self.assertEqual(set(POSITION_TUNE_OUTCOME_NAMES.keys()), {4, 6, 7, 8, 9, 10})
+
+    def test_production_tune_result_persists_the_position_bound_and_metrics(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(cfg.values[(d.name, "autotune_position_bound_units")], "409")
+        self.assertEqual(cfg.values[(d.name, "autotune_position_homing_peak_units")], "300")
+        self.assertEqual(cfg.values[(d.name, "autotune_position_motion_cruise_units")], "210")
+
+    def test_failed_position_tune_does_not_persist_the_position_bound_and_metrics(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_FAILURE_RESULT,
+        )
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+
+    def test_velocity_only_tune_result_does_not_persist_position_tune_keys(self):
+        """A plain velocity/robustness tune result carries no position-tune
+        fields at all; persistence must not KeyError reading them, and must
+        not write the position-tune-only keys."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({}))
+
+        self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+
+    def test_position_tune_evidence_is_shown_on_code_zero_failures(self):
+        """Evidence must appear at every terminal-status raise site the
+        status>1 branch has -- the generic failure raise, the hard-fault
+        (safety fault) raise, and the chip-reset raise -- not just the
+        PositionTuneOutcome branch `Conflict` already covers."""
+        evidence_fields = {
+            "rungs_measured": 1,
+            "last_rung_p": 282,
+            "homing_peak_abs_units": 300,
+            "motion_cruise_mean_abs_units": 210,
+            "motion_overshoot_units": 40,
+            "min_overshoot_p": 0,
+            "min_overshoot_units": 0,
+        }
+        no_evidence_fields = {**evidence_fields, "rungs_measured": 0}
+
+        def _raise_with(status: int, fields: dict) -> str:
+            d = self._commissioned_driver()
+            gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+            reactor = d.printer.get_reactor()
+
+            def pause(deadline):
+                reactor._time = deadline
+                d.autotune.handle_tune_result({"status": status, **fields})
+                return reactor._time
+
+            reactor.pause = pause
+            with self.assertRaises(CommandError) as ctx:
+                d.autotune.autotune(gcmd)
+            return str(ctx.exception)
+
+        message = _raise_with(2, {"position_tune_outcome_code": 0, **evidence_fields})
+        self.assertIn("last rung: p=282", message)
+        message = _raise_with(2, {"position_tune_outcome_code": 0, **no_evidence_fields})
+        self.assertNotIn("last rung:", message)
+
+        message = _raise_with(17, evidence_fields)
+        self.assertIn("safety fault", message)
+        self.assertIn("last rung: p=282", message)
+        message = _raise_with(17, no_evidence_fields)
+        self.assertIn("safety fault", message)
+        self.assertNotIn("last rung:", message)
+
+        message = _raise_with(18, evidence_fields)
+        self.assertIn("chip reset", message)
+        self.assertIn("last rung: p=282", message)
+        message = _raise_with(18, no_evidence_fields)
+        self.assertIn("chip reset", message)
+        self.assertNotIn("last rung:", message)
 
     def test_reproduced_resume_dispatches_robustness_then_tune_result(self):
         """A reproduced resume ("repeatability_confirmed") is no longer the end of the road:

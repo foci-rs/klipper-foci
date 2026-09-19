@@ -87,15 +87,55 @@ OUTER_SAFETY_REASON_NAMES = {
 # Mirrors firmware's `PositionTuneOutcome::to_wire_code()`. Kept in
 # sync with that Rust enum by hand, same pattern as COMMISSION_REASON_NAMES.
 # Wire code 0 is reserved to mean "not applicable" and never appears here.
+# 1 (AccelerationFitRejected), 2, 3, and 5 (FloorCeilingConflict) are retired
+# from the P-only torque-step floor design and are reserved, not reused.
 POSITION_TUNE_OUTCOME_NAMES: dict[int, str] = {
-    1: "acceleration_fit_rejected",
-    2: "floor_unrepresentable_zero",
-    3: "floor_unrepresentable_too_large",
-    4: "invalid_ceiling_configuration",
-    5: "floor_ceiling_conflict",
+    4: "configuration_invalid",
     6: "sweep_exhausted",
     7: "capture_empty",
+    8: "conflict",
+    9: "stimulus_rejected",
+    10: "restoration_timeout",
 }
+
+# Bit order of PositionTuneProvenance.stimulus_feedforward_paths.
+FEEDFORWARD_PATH_NAMES: tuple[str, ...] = (
+    "velocity",
+    "transient",
+    "accel",
+    "decoupling",
+    "phase_advance",
+)
+
+
+def _format_feedforward_paths(mask: int) -> str:
+    return ",".join(name for bit, name in enumerate(FEEDFORWARD_PATH_NAMES) if mask & (1 << bit))
+
+
+def _position_tune_evidence(result: dict) -> str:
+    """Render the last measured rung's evidence for a position-tune failure.
+
+    Every terminal a PositionTune walk can reach -- Conflict, SweepExhausted,
+    a generic Failed, a chip reset, or a safety fault mid-walk -- carries
+    whatever rungs were measured before the stop, per the design spec's
+    "every terminal outcome carries the last measured rung's evidence" rule.
+    Returns "" when no rung was measured yet.
+    """
+    if int(result.get("rungs_measured", 0)) == 0:
+        return ""
+    last_rung_p = int(result.get("last_rung_p", 0))
+    homing_peak = int(result.get("homing_peak_abs_units", 0))
+    motion_cruise = int(result.get("motion_cruise_mean_abs_units", 0))
+    overshoot = int(result.get("motion_overshoot_units", 0))
+    message = (
+        f" (last rung: p={last_rung_p} homing_peak={homing_peak}u "
+        f"motion_cruise={motion_cruise}u overshoot={overshoot}u"
+    )
+    min_overshoot_p = int(result.get("min_overshoot_p", 0))
+    if min_overshoot_p:
+        min_overshoot_units = int(result.get("min_overshoot_units", 0))
+        message += f"; min overshoot {min_overshoot_units}u at p={min_overshoot_p}"
+    return message + ")"
 
 
 def _integral_cause_namespace_text(cause_namespace: int) -> str:
@@ -1146,12 +1186,13 @@ class AutotuneWorkflow:
             status = result.get("status", 255)
             if status > 1:
                 error_name = COMMISSION_REASON_NAMES.get(status, f"UNKNOWN({int(status)})")
+                evidence = _position_tune_evidence(result)
                 if status == 18:
                     self.driver.commissioning.handle_chip_reset_detected()
                     self._disable_kinematic_motors(toolhead)
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE chip reset: {error_name} "
-                        f"(motor disabled by firmware)"
+                        f"(motor disabled by firmware){evidence}"
                     )
                 if status in HARD_FAULT_CODES:
                     self.driver.commissioning.on_commission_failure()
@@ -1160,7 +1201,7 @@ class AutotuneWorkflow:
                     detail_suffix = f"; {safety_detail}" if safety_detail else ""
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE safety fault: {error_name}"
-                        f"{detail_suffix} (motor disabled by firmware)"
+                        f"{detail_suffix} (motor disabled by firmware){evidence}"
                     )
                 position_tune_outcome_code = int(result.get("position_tune_outcome_code", 0))
                 if position_tune_outcome_code:
@@ -1170,11 +1211,11 @@ class AutotuneWorkflow:
                     )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
-                        f"{outcome_name} (motor holding with entry gains)"
+                        f"{outcome_name} (motor holding with entry gains){evidence}"
                     )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name} (motor "
-                    f"holding with entry gains)"
+                    f"holding with entry gains){evidence}"
                 )
 
             tune_status = "tuned"
@@ -1219,13 +1260,19 @@ class AutotuneWorkflow:
                     log,
                     self.driver.global_config.debug,
                     f"FOCI {self.driver.name} position tune: p={int(result['position_p'])} "
+                    f"bound={int(result['bound_units'])}u "
+                    f"start_p={int(result['predicted_start_p'])} "
+                    f"last_p={int(result['last_rung_p'])} "
+                    f"homing_peak={int(result['homing_peak_abs_units'])}u "
+                    f"motion_cruise={int(result['motion_cruise_mean_abs_units'])}u "
+                    f"overshoot={int(result['motion_overshoot_units'])}u "
+                    f"cruise_rms={int(result['motion_cruise_rms_units'])}u "
+                    f"homing_speed={int(result['homing_speed_mrev_s'])}mrev_s "
+                    f"motion_speed={int(result['motion_speed_mrev_s'])}mrev_s "
                     f"nominal_bw={nominal_bandwidth_hz}Hz "
-                    f"inner_bw={int(result['inner_bandwidth_rad_s'])}rad/s "
                     f"dither_margin={int(result['dither_margin_milli']) / 1000.0:.2f}x "
-                    f"settle={int(result['settling_time_us'])}us "
-                    f"overshoot={int(result['overshoot_counts'])}counts "
-                    f"final_err={int(result['final_position_error_counts'])}counts "
-                    f"oscillation={bool(result['oscillation_detected'])}",
+                    f"rungs={int(result['rungs_measured'])} "
+                    f"ff={_format_feedforward_paths(int(result['stimulus_feedforward_paths']))}",
                 )
             if inner_warning_flags:
                 report_detail(
@@ -1432,6 +1479,23 @@ class AutotuneWorkflow:
             )
             configfile.set(
                 self.driver.name, "autotune_band_position_q", f"{int(result['band_position_q'])}"
+            )
+        nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
+        if nominal_bandwidth_hz:
+            configfile.set(
+                self.driver.name,
+                "autotune_position_bound_units",
+                f"{int(result['bound_units'])}",
+            )
+            configfile.set(
+                self.driver.name,
+                "autotune_position_homing_peak_units",
+                f"{int(result['homing_peak_abs_units'])}",
+            )
+            configfile.set(
+                self.driver.name,
+                "autotune_position_motion_cruise_units",
+                f"{int(result['motion_cruise_mean_abs_units'])}",
             )
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)

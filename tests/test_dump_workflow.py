@@ -338,6 +338,43 @@ def test_tuning_flag_appends_resistance_identification_evidence():
     assert "1042" in output
 
 
+def test_tuning_flag_appends_velocity_tune_provenance():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.autotune_probed_velocity_mrev_s = 5366
+    driver.config.autotune_d_eq_q = 1234
+    driver.config.autotune_confidence_q = 5000
+    driver.config.autotune_band_lower_percent = 70
+    driver.config.autotune_band_upper_percent = 80
+    driver.config.autotune_band_position_q = 3000
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Velocity tune provenance --" in output
+    assert "config.autotune_probed_velocity_mrev_s" in output
+    assert "5366" in output
+    assert "config.autotune_band_position_q" in output
+    assert "3000" in output
+
+
+def test_tuning_flag_appends_position_tune_provenance():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.autotune_position_bound_units = 409
+    driver.config.autotune_position_homing_peak_units = 300
+    driver.config.autotune_position_motion_cruise_units = 210
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert "-- Position tune provenance --" in output
+    assert "bound" in output
+    assert "homing peak" in output
+    assert "motion cruise" in output
+    assert "409u (0.250mm)" in output
+    assert "300u (0.183mm)" in output
+    assert "210u (0.128mm)" in output
+
+
 def test_tuning_flag_separates_persisted_and_last_inductance_evidence():
     driver = make_driver()
     _seed_tuning_state(driver)

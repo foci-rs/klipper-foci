@@ -125,6 +125,9 @@ class FociDriverConfig:
     autotune_band_lower_percent: int | None
     autotune_band_upper_percent: int | None
     autotune_band_position_q: int | None
+    autotune_position_bound_units: int | None
+    autotune_position_homing_peak_units: int | None
+    autotune_position_motion_cruise_units: int | None
 
 
 @dataclass
@@ -356,6 +359,13 @@ def parse_driver_config(config) -> FociDriverConfig:
     autotune_band_position_q = config.getint(
         "autotune_band_position_q", None, minval=0, maxval=0xFFFF
     )
+    autotune_position_bound_units = config.getint("autotune_position_bound_units", None, minval=0)
+    autotune_position_homing_peak_units = config.getint(
+        "autotune_position_homing_peak_units", None, minval=0
+    )
+    autotune_position_motion_cruise_units = config.getint(
+        "autotune_position_motion_cruise_units", None, minval=0
+    )
 
     if not config.has_section(stepper_name):
         raise config.error(f"[{name}] cannot find stepper section for '{stepper_name}'")
@@ -471,6 +481,9 @@ def parse_driver_config(config) -> FociDriverConfig:
         autotune_band_lower_percent=autotune_band_lower_percent,
         autotune_band_upper_percent=autotune_band_upper_percent,
         autotune_band_position_q=autotune_band_position_q,
+        autotune_position_bound_units=autotune_position_bound_units,
+        autotune_position_homing_peak_units=autotune_position_homing_peak_units,
+        autotune_position_motion_cruise_units=autotune_position_motion_cruise_units,
     )
 
 

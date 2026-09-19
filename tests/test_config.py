@@ -764,6 +764,9 @@ def test_config_reads_optional_provenance():
             "autotune_band_lower_percent": "70",
             "autotune_band_upper_percent": "80",
             "autotune_band_position_q": "3000",
+            "autotune_position_bound_units": "409",
+            "autotune_position_homing_peak_units": "300",
+            "autotune_position_motion_cruise_units": "210",
         }
     )
 
@@ -775,6 +778,9 @@ def test_config_reads_optional_provenance():
     assert driver.config.autotune_band_lower_percent == 70
     assert driver.config.autotune_band_upper_percent == 80
     assert driver.config.autotune_band_position_q == 3000
+    assert driver.config.autotune_position_bound_units == 409
+    assert driver.config.autotune_position_homing_peak_units == 300
+    assert driver.config.autotune_position_motion_cruise_units == 210
 
 
 def test_config_provenance_defaults_to_none_when_absent():
@@ -796,6 +802,9 @@ def test_config_provenance_defaults_to_none_when_absent():
     assert driver.config.autotune_band_lower_percent is None
     assert driver.config.autotune_band_upper_percent is None
     assert driver.config.autotune_band_position_q is None
+    assert driver.config.autotune_position_bound_units is None
+    assert driver.config.autotune_position_homing_peak_units is None
+    assert driver.config.autotune_position_motion_cruise_units is None
 
 
 def test_saved_resistance_identification_fields_are_accepted_on_restart():

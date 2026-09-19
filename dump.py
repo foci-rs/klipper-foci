@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .commissioning import CURRENT_LOOP_FAILURE_REASON_NAMES
+from .config import POSITION_UNITS_PER_REV
 from .readiness import format_readiness_report, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
@@ -123,6 +124,23 @@ INDUCTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
     "identified_l_source",
     "identified_l_reactance_count_ratio_milli",
     "identified_l_saliency_status",
+)
+
+VELOCITY_TUNE_PROVENANCE_FIELDS: tuple[str, ...] = (
+    "autotune_probed_velocity_mrev_s",
+    "autotune_d_eq_q",
+    "autotune_confidence_q",
+    "autotune_band_lower_percent",
+    "autotune_band_upper_percent",
+    "autotune_band_position_q",
+)
+
+# The bound and the two tracking metrics persist_tune_results writes from
+# PositionTuneProvenance on an accepted tune.
+POSITION_TUNE_FIELDS: tuple[tuple[str, str], ...] = (
+    ("autotune_position_bound_units", "bound"),
+    ("autotune_position_homing_peak_units", "homing peak"),
+    ("autotune_position_motion_cruise_units", "motion cruise"),
 )
 
 COMPARE_GAIN_FIELDS: tuple[str, ...] = tuple(
@@ -277,6 +295,13 @@ class RegisterDumpWorkflow:
             self._format_pair(f"config.{field_name}", getattr(config, field_name))
             for field_name in RESISTANCE_IDENTIFICATION_FIELDS
         )
+        lines.append("-- Velocity tune provenance --")
+        lines.extend(
+            self._format_pair(f"config.{field_name}", getattr(config, field_name))
+            for field_name in VELOCITY_TUNE_PROVENANCE_FIELDS
+        )
+        lines.append("-- Position tune provenance --")
+        lines.extend(self._format_position_tune_provenance(config))
 
         # -- Volatile --
         lines.append(self._format_block_header("Volatile"))
@@ -680,6 +705,18 @@ class RegisterDumpWorkflow:
 
     def _format_pair(self, name: str, value: object | None) -> str:
         return f"  {name:34} = {self._display_value(value)}"
+
+    def _format_position_tune_provenance(self, config) -> list[str]:
+        rotation_distance = config.rotation_distance
+        lines = []
+        for field_name, label in POSITION_TUNE_FIELDS:
+            value = getattr(config, field_name)
+            if value is None:
+                lines.append(self._format_pair(label, None))
+                continue
+            mm = value / POSITION_UNITS_PER_REV * rotation_distance
+            lines.append(self._format_pair(label, f"{int(value)}u ({mm:.3f}mm)"))
+        return lines
 
     def _format_block_header(self, title: str) -> str:
         return f"== {title} =="
