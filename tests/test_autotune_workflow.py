@@ -835,8 +835,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn("_", cause_phrase, f"console summary leaks an enum symbol: {summary!r}")
 
     def test_orchestrated_reject_logs_evidence_for_every_cause(self):
-        """The evidence log must fire once for a safety fault, once for
-        IAE-exceeded, and once for every other reject cause."""
         for outcome, cause in [(3, 6), (1, 3), (1, 1)]:
             d = self._commissioned_driver()
             cfg = MockConfigFile()
@@ -859,8 +857,6 @@ class TestAutotuneGates(unittest.TestCase):
             self.assertIn("dac_rms_median_q=[21, -21]", evidence_lines[0])
 
     def test_orchestrated_reject_log_failure_does_not_block_the_raised_error(self):
-        """A broken logging handler on the evidence log must not replace or
-        suppress the real IAE-reject diagnostic the operator needs to see."""
         d = self._commissioned_driver()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
@@ -883,10 +879,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("robustness gate", str(ctx.exception).lower())
 
     def test_standalone_robustness_pass_does_not_log_gain_search(self):
-        """The reject-only gain-search evidence log must not fire on the
-        standalone diagnostic's genuine pass path, which falls through the
-        same `if self.robustness_reversal_terminal is not None:` branch as
-        the orchestrated reject outcomes but with `orchestrated=False`."""
         d = self._commissioned_driver()
         d.state.pre_tune_snapshot = self._tuned_snapshot()
 
@@ -1246,8 +1238,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("passed", logged)
 
     def test_successful_autotune_logs_landed_gain_with_per_direction_evidence(self):
-        """The passed-gain log must carry both directions' iae_median_qs and
-        dac_rms_median_q, not just p/i/verdict."""
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
         drive_two_dispatch_scenario(
