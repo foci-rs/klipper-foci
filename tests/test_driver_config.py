@@ -88,6 +88,7 @@ CONFIG_FIELD_NAMES = {
     "identified_r_count_milli",
     "identified_lambda_us",
     "identified_theta_e_us",
+    "identified_theta_source",
     "identified_ringing_count",
     "identified_bandwidth_hz",
     "identified_tau_e_us",
@@ -334,6 +335,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_r_count_milli": 1700,
             "identified_lambda_us": 12,
             "identified_theta_e_us": 160,
+            "identified_theta_source": 1,
             "identified_ringing_count": 7,
             "identified_bandwidth_hz": 25,
             "identified_tau_e_us": 730,
@@ -387,6 +389,7 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.commissioned_velocity_p == 1100
     assert parsed.commissioned_position_i == 64
     assert parsed.identified_r_count_milli == 1700
+    assert parsed.identified_theta_source == 1
     assert parsed.identified_tau_e_us == 730
     assert parsed.identified_inner_warning_flags == 2
     assert parsed.identified_l_source == 1

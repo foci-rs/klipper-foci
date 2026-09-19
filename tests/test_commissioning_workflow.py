@@ -714,6 +714,10 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             configfile.values[(driver.name, "identified_r_count_milli")],
             "1706",
         )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_theta_source")],
+            "1",
+        )
         self.assertNotIn((driver.name, "identified_r_mohm"), configfile.values)
         self.assertNotIn((driver.name, "identified_l_uh"), configfile.values)
         self.assertNotIn((driver.name, "identified_r_int"), configfile.values)

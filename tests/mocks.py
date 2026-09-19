@@ -49,6 +49,7 @@ SAMPLE_COMMISSION_RESULT = {
     "l_count_micro": 1245,
     "lambda_us": 0,
     "theta_e_us": 160,
+    "theta_source": 1,
     "ringing_count": 7,
     "bandwidth_hz": 0,
 }

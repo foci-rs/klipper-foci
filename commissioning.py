@@ -969,6 +969,11 @@ class CommissioningWorkflow:
         )
         configfile.set(
             self.driver.name,
+            "identified_theta_source",
+            f"{int(result.get('theta_source', 1))}",
+        )
+        configfile.set(
+            self.driver.name,
             "identified_ringing_count",
             f"{int(result['ringing_count'])}",
         )
