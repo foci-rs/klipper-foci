@@ -290,6 +290,9 @@ class AutotuneWorkflow:
             return
         self.robustness_cycle_evidence[evidence["direction"]] = evidence
 
+    def _evidence_by_direction(self, key: str) -> list[int]:
+        return [(self.robustness_cycle_evidence.get(index) or {}).get(key, 0) for index in (0, 1)]
+
     def handle_breakaway_probe_plan(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_probe_plan", params)
 
@@ -838,14 +841,8 @@ class AutotuneWorkflow:
             terminal = self.robustness_reversal_terminal
             if orchestrated:
                 with contextlib.suppress(Exception):
-                    iae_by_direction = [
-                        (self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0)
-                        for index in (0, 1)
-                    ]
-                    dac_rms_by_direction = [
-                        (self.robustness_cycle_evidence.get(index) or {}).get("dac_rms_median_q", 0)
-                        for index in (0, 1)
-                    ]
+                    iae_by_direction = self._evidence_by_direction("iae_median_qs")
+                    dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
                     logging.info(
                         "foci-gain-search %s: candidate p=%d i=%d verdict=rejected cause=%s "
                         "iae_median_qs=%s dac_rms_median_q=%s",
@@ -1179,14 +1176,8 @@ class AutotuneWorkflow:
                     f"{format_inner_warning_flags(inner_warning_flags)}",
                 )
             self._disable_kinematic_motors(toolhead)
-            iae_by_direction = [
-                (self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0)
-                for index in (0, 1)
-            ]
-            dac_rms_by_direction = [
-                (self.robustness_cycle_evidence.get(index) or {}).get("dac_rms_median_q", 0)
-                for index in (0, 1)
-            ]
+            iae_by_direction = self._evidence_by_direction("iae_median_qs")
+            dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
             logging.info(
                 "foci-gain-search %s: candidate p=%d i=%d verdict=passed "
                 "iae_median_qs=%s dac_rms_median_q=%s",
