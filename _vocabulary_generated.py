@@ -15,6 +15,7 @@ PHASE_NAMES: dict[int, str] = {
     21: "Reversal standstill robustness gate",
     16: "Encoder alignment",
     17: "Closed-loop entry",
+    26: "Gain floor measurement",
 }
 
 BREAKAWAY_PHASE_NAMES: dict[int, str] = {
