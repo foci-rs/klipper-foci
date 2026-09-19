@@ -836,8 +836,7 @@ class TestAutotuneGates(unittest.TestCase):
 
     def test_orchestrated_reject_logs_evidence_for_every_cause(self):
         """The evidence log must fire once for a safety fault, once for
-        IAE-exceeded, and once for every other reject cause -- not only
-        IAE-exceeded, which was the original (incomplete) scope."""
+        IAE-exceeded, and once for every other reject cause."""
         for outcome, cause in [(3, 6), (1, 3), (1, 1)]:
             d = self._commissioned_driver()
             cfg = MockConfigFile()
@@ -1247,8 +1246,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("passed", logged)
 
     def test_successful_autotune_logs_landed_gain_with_per_direction_evidence(self):
-        """Extends test_successful_autotune_logs_landed_gain: the passed-gain
-        log must also carry both directions' iae_median_qs and
+        """The passed-gain log must carry both directions' iae_median_qs and
         dac_rms_median_q, not just p/i/verdict."""
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
