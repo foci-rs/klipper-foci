@@ -883,6 +883,20 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertIn("robustness gate", str(ctx.exception).lower())
 
+    def test_standalone_robustness_pass_does_not_log_gain_search(self):
+        """The reject-only gain-search evidence log must not fire on the
+        standalone diagnostic's genuine pass path, which falls through the
+        same `if self.robustness_reversal_terminal is not None:` branch as
+        the orchestrated reject outcomes but with `orchestrated=False`."""
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+
+        with self.assertLogs(level="INFO") as captured:
+            self._run_robustness(d, outcome=0, cause=0)
+
+        evidence_lines = [line for line in captured.output if "foci-gain-search" in line]
+        self.assertEqual(evidence_lines, [])
+
     def test_pass_log_failure_does_not_skip_kinematic_motor_disable(self):
         d = self._commissioned_driver(
             kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
