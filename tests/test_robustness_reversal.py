@@ -6,11 +6,15 @@ import struct
 import pytest
 from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
+    _CYCLE_EVIDENCE,
+    _TERMINAL,
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
+    ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES,
     ROBUSTNESS_CYCLES_PER_DIRECTION,
     ROBUSTNESS_OUTCOME_NAMES,
     ROBUSTNESS_SCHEMA_REVISION,
+    ROBUSTNESS_TERMINAL_REPLY_BYTES,
     RobustnessReversalProtocolError,
     handle_cycle_evidence,
     handle_terminal,
@@ -69,7 +73,7 @@ def build_terminal_payload(
     reverse=None,
     **shared_direction_overrides,
 ) -> bytes:
-    """Build a 51-byte schema-3 robustness-terminal payload for tests.
+    """Build a 51-byte schema-4 robustness-terminal payload for tests.
 
     `forward`/`reverse` override one direction only; any keyword also present
     in `_DIRECTION_DEFAULTS` (e.g. `valid_cycles`) is applied to both
@@ -97,11 +101,12 @@ def build_cycle_evidence_payload(
     schema_revision=ROBUSTNESS_SCHEMA_REVISION,
     residual_median_q=125,
     iae_median_qs=45_000,
+    dac_rms_median_q=6_000,
     cycles=None,
     tail_count=0,
     displaced_tail=None,
 ) -> bytes:
-    """Build a 47-byte schema-2 cycle-evidence payload for tests.
+    """Build a 51-byte schema-4 cycle-evidence payload for tests.
 
     `cycles` fills slots in order (each a `(reconvergence_ms, overshoot_counts,
     forward_settle_ms)` triple); any of the 5 slots left uncovered pack as the
@@ -124,11 +129,12 @@ def build_cycle_evidence_payload(
         else (CYCLE_SENTINEL, CYCLE_SENTINEL, CYCLE_SENTINEL)
     )
     return struct.pack(
-        "<BBii" + "H" * (3 * ROBUSTNESS_CYCLES_PER_DIRECTION) + "B" + "H" * 3,
+        "<BBiii" + "H" * (3 * ROBUSTNESS_CYCLES_PER_DIRECTION) + "B" + "H" * 3,
         direction,
         schema_revision,
         residual_median_q,
         iae_median_qs,
+        dac_rms_median_q,
         *slots,
         tail_count,
         *displaced_tail_fields,
@@ -141,6 +147,11 @@ def handle_and_return(payload: bytes) -> dict:
 
 def test_wire_layout_is_fifty_one_bytes():
     assert len(build_terminal_payload()) == 51
+
+
+def test_reply_byte_constants_match_their_struct_sizes():
+    assert _TERMINAL.size == ROBUSTNESS_TERMINAL_REPLY_BYTES
+    assert _CYCLE_EVIDENCE.size == ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES
 
 
 def test_terminal_parse_decodes_header_and_namespace():
@@ -269,8 +280,23 @@ def test_terminal_rejects_unsupported_schema():
         handle_and_return(build_terminal_payload(schema_revision=1))
 
 
-def test_cycle_evidence_wire_layout_is_forty_seven_bytes():
-    assert len(build_cycle_evidence_payload()) == 47
+def test_cycle_evidence_wire_layout_is_fifty_one_bytes():
+    assert len(build_cycle_evidence_payload()) == 51
+
+
+def test_cycle_evidence_round_trip_decodes_dac_rms_median_q():
+    evidence = handle_cycle_evidence(
+        {
+            "oid": 1,
+            "payload": build_cycle_evidence_payload(
+                direction=1,
+                iae_median_qs=987_654,
+                dac_rms_median_q=-4_200,
+            ),
+        }
+    )
+
+    assert evidence["dac_rms_median_q"] == -4_200
 
 
 def test_cycle_evidence_round_trip_elides_sentinel_slots():
