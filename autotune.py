@@ -840,9 +840,9 @@ class AutotuneWorkflow:
             )
             terminal = self.robustness_reversal_terminal
             if orchestrated:
+                iae_by_direction = self._evidence_by_direction("iae_median_qs")
+                dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
                 with contextlib.suppress(Exception):
-                    iae_by_direction = self._evidence_by_direction("iae_median_qs")
-                    dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
                     logging.info(
                         "foci-gain-search %s: candidate p=%d i=%d verdict=rejected cause=%s "
                         "iae_median_qs=%s dac_rms_median_q=%s",
