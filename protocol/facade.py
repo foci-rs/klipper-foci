@@ -380,6 +380,8 @@ class FociProtocol:
         negative_position_headroom_mrev: int,
         positive_position_headroom_mrev: int,
         max_duration_ms: int,
+        homing_speed_mrev_s: int,
+        max_accel_mrev_s2: int,
     ) -> None:
         self.commands.tune.send(
             [
@@ -400,6 +402,8 @@ class FociProtocol:
                 negative_position_headroom_mrev,
                 positive_position_headroom_mrev,
                 max_duration_ms,
+                homing_speed_mrev_s,
+                max_accel_mrev_s2,
             ]
         )
 

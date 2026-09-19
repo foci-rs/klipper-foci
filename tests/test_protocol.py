@@ -960,6 +960,8 @@ def test_run_tune_sends_planning_payload():
         negative_position_headroom_mrev=1250,
         positive_position_headroom_mrev=1250,
         max_duration_ms=3000,
+        homing_speed_mrev_s=4375,
+        max_accel_mrev_s2=200000,
     )
 
     assert driver.protocol.commands.tune.last_args == [
@@ -980,6 +982,8 @@ def test_run_tune_sends_planning_payload():
         1250,
         1250,
         3000,
+        4375,
+        200000,
     ]
 
 
@@ -1003,10 +1007,12 @@ def test_run_tune_forwards_only_the_explicit_action_selector():
         negative_position_headroom_mrev=1250,
         positive_position_headroom_mrev=1250,
         max_duration_ms=3000,
+        homing_speed_mrev_s=4375,
+        max_accel_mrev_s2=200000,
     )
 
     assert driver.protocol.commands.tune.last_args[1] == 2
-    assert len(driver.protocol.commands.tune.last_args) == 17
+    assert len(driver.protocol.commands.tune.last_args) == 19
 
 
 def test_tune_command_matches_firmware_field_order_without_legacy_budget():
@@ -1021,7 +1027,7 @@ def test_tune_command_matches_firmware_field_order_without_legacy_budget():
         " machine_velocity_ceiling_mrev_s=%u requested_velocity_source=%c"
         " max_stroke_travel_mrev=%u settle_travel_reserve_mrev=%u"
         " negative_position_headroom_mrev=%u positive_position_headroom_mrev=%u"
-        " max_duration_ms=%hu"
+        " max_duration_ms=%hu homing_speed_mrev_s=%u max_accel_mrev_s2=%u"
     ]
 
 

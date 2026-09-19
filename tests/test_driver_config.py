@@ -37,6 +37,7 @@ CONFIG_FIELD_NAMES = {
     "stall_distance",
     "stall_persistence",
     "rotation_distance",
+    "homing_speed_mm_s",
     "microsteps",
     "full_steps",
     "planner_steps_per_rev",

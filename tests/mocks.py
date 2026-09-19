@@ -123,6 +123,7 @@ class MockToolhead:
         self._axis_maximum = [200.0, 200.0, 0.0, 0.0]
         self.last_move_time = 0.0
         self.max_velocity = 300.0
+        self.max_accel = 8000.0
 
     def get_kinematics(self):
         return self._kinematics
@@ -148,6 +149,7 @@ class MockToolhead:
             "axis_minimum": tuple(self._axis_minimum),
             "axis_maximum": tuple(self._axis_maximum),
             "max_velocity": self.max_velocity,
+            "max_accel": self.max_accel,
         }
 
     def wait_moves(self):
@@ -605,6 +607,7 @@ def make_config_printer(stepper_sections, chips=None, kinematics=None, foci_mode
             "microsteps": values.get("microsteps", 20),
             "full_steps_per_rotation": values.get("full_steps_per_rotation", 200),
             "rotation_distance": values.get("rotation_distance", 40.0),
+            "homing_speed": values.get("homing_speed", 5.0),
             "step_pin": values["step_pin"],
             "dir_pin": values.get("dir_pin", "foci:DIR0"),
         }
@@ -688,6 +691,7 @@ def make_driver(
             "microsteps": 20,
             "full_steps_per_rotation": 200,
             "rotation_distance": 40.0,
+            "homing_speed": 5.0,
             "step_pin": "foci:STEP0",
             "dir_pin": "foci:DIR0",
         },

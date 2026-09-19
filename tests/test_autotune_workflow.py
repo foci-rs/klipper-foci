@@ -1970,8 +1970,30 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
             ["G28 X Y", "G0 X60.000 Y60.000"],
         )
         self.assertEqual(
-            d.protocol.commands.tune.last_args[-8:],
-            [5000, 7500, 1, 1500, 250, 1250, 1250, 3000],
+            d.protocol.commands.tune.last_args[-10:],
+            [5000, 7500, 1, 1500, 250, 1250, 1250, 3000, 125, 200000],
+        )
+
+    def test_position_tune_sends_homing_speed_and_machine_accel(self):
+        d = self._ready_driver()
+        d.config.homing_speed_mm_s = 175.0
+        toolhead = d.printer.lookup_object("toolhead")
+        toolhead._kinematics = MockCartesianKinematics([["stepper_x"], ["stepper_y"]])
+        toolhead._kinematics.rails[0].get_steppers()[0]._step_dist = 0.01
+        toolhead._homed_axes = "xy"
+        toolhead.set_bounds(x_min=0.0, x_max=120.0, y_min=0.0, y_max=120.0)
+        toolhead.set_position(x=10.0, y=20.0)
+        d.printer._objects["configfile"] = MockConfigFile()
+        self._finish_tune_on_next_pause(d)
+
+        gcmd = MockGCmd({"ACTION": "position_tune"})
+        d.autotune.autotune(gcmd)
+
+        # 175 mm/s homing speed on a 40 mm/rev stepper -> 4375 mrev/s; the
+        # mocked toolhead's 8000 mm/s^2 max_accel -> 200000 mrev/s^2.
+        self.assertEqual(
+            d.protocol.commands.tune.last_args[-2:],
+            [4375, 200000],
         )
 
     def test_accepted_with_warnings_still_reports_tuned(self):

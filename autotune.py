@@ -1095,6 +1095,8 @@ class AutotuneWorkflow:
                         motion_budget.positive_position_headroom_mrev
                     ),
                     "max_duration_ms": motion_budget.max_duration_ms,
+                    "homing_speed_mrev_s": motion_budget.homing_speed_mrev_s,
+                    "max_accel_mrev_s2": motion_budget.max_accel_mrev_s2,
                 }
             )
 

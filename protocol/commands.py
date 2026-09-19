@@ -178,7 +178,7 @@ class FociMcuCommands:
             " machine_velocity_ceiling_mrev_s=%u requested_velocity_source=%c"
             " max_stroke_travel_mrev=%u settle_travel_reserve_mrev=%u"
             " negative_position_headroom_mrev=%u positive_position_headroom_mrev=%u"
-            " max_duration_ms=%hu"
+            " max_duration_ms=%hu homing_speed_mrev_s=%u max_accel_mrev_s2=%u"
         )
         register_commissioning_responses(mcu._serial, driver, oid)
         self.set_velocity_filter = mcu.lookup_command(

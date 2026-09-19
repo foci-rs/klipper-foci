@@ -51,6 +51,7 @@ class FociDriverConfig:
     stall_distance: float
     stall_persistence: int
     rotation_distance: float
+    homing_speed_mm_s: float
     microsteps: int
     full_steps: int
     planner_steps_per_rev: int
@@ -362,6 +363,7 @@ def parse_driver_config(config) -> FociDriverConfig:
     microsteps = stepper_config.getint("microsteps")
     full_steps = stepper_config.getint("full_steps_per_rotation", 200)
     rotation_distance = stepper_config.getfloat("rotation_distance", above=0.0)
+    homing_speed_mm_s = stepper_config.getfloat("homing_speed", 5.0)
     if stall_distance > rotation_distance / 4.0:
         raise config.error(
             f"stall_distance {stall_distance:.3f} in [{name}] must be at most a quarter of "
@@ -395,6 +397,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         stall_distance=stall_distance,
         stall_persistence=stall_persistence,
         rotation_distance=rotation_distance,
+        homing_speed_mm_s=homing_speed_mm_s,
         microsteps=microsteps,
         full_steps=full_steps,
         planner_steps_per_rev=planner_steps_per_rev,

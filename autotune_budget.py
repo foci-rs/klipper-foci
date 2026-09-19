@@ -43,6 +43,8 @@ class AutotuneMotionBudget:
     negative_position_headroom_mrev: int
     positive_position_headroom_mrev: int
     max_duration_ms: int
+    homing_speed_mrev_s: int
+    max_accel_mrev_s2: int
 
 
 def _status_axis_tuple(status: dict, key: str) -> tuple[float, float]:
@@ -268,6 +270,18 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     if machine_velocity_mm_s <= 0.0:
         raise AutotuneBudgetError("missing or invalid configured max_velocity")
     machine_velocity_ceiling_mrev_s = _mrev(machine_velocity_mm_s, rotation_distance)
+
+    try:
+        machine_accel_mm_s2 = float(status["max_accel"])
+    except (KeyError, TypeError, ValueError) as err:
+        raise AutotuneBudgetError("missing or invalid configured max_accel") from err
+    if machine_accel_mm_s2 <= 0.0:
+        raise AutotuneBudgetError("missing or invalid configured max_accel")
+    max_accel_mrev_s2 = _mrev(machine_accel_mm_s2, rotation_distance)
+
+    if driver.config.homing_speed_mm_s <= 0.0:
+        raise AutotuneBudgetError("invalid configured homing_speed")
+    homing_speed_mrev_s = _mrev(driver.config.homing_speed_mm_s, rotation_distance)
     numerator, denominator, margin_mrev_s = _firmware_envelope_constants(driver)
     if machine_velocity_ceiling_mrev_s <= margin_mrev_s:
         raise AutotuneBudgetError("configured max_velocity is below envelope margin")
@@ -304,6 +318,8 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
         negative_position_headroom_mrev=negative_position_headroom_mrev,
         positive_position_headroom_mrev=positive_position_headroom_mrev,
         max_duration_ms=DEFAULT_MAX_DURATION_MS,
+        homing_speed_mrev_s=homing_speed_mrev_s,
+        max_accel_mrev_s2=max_accel_mrev_s2,
     )
 
 
