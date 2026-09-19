@@ -188,10 +188,45 @@ class PassiveDiagnostics:
             "stepper_load_lateness_max_ticks",
             "stepper_load_lateness_last_ticks",
             "build_trace_enabled",
+            "total_irq_cycles_lo",
+            "total_irq_cycles_hi",
+            "total_dispatch_cycles_lo",
+            "total_dispatch_cycles_hi",
+            "elapsed_cycles_lo",
+            "elapsed_cycles_hi",
         ]
         parts = [f"FOCI_DISPATCH_STATS {self.driver.stepper_name}:"]
         for field in fields:
             parts.append(f"{field}={response.get(field, '?')}")
+
+        def combine_lo_hi(lo_field: str, hi_field: str) -> int:
+            lo = int(response.get(lo_field, 0))
+            hi = int(response.get(hi_field, 0))
+            return (hi << 32) | lo
+
+        total_irq_cycles = combine_lo_hi("total_irq_cycles_lo", "total_irq_cycles_hi")
+        total_dispatch_cycles = combine_lo_hi(
+            "total_dispatch_cycles_lo", "total_dispatch_cycles_hi"
+        )
+        elapsed_cycles = combine_lo_hi("elapsed_cycles_lo", "elapsed_cycles_hi")
+        tim5_event_count_total = int(response.get("tim5_event_count_total", 0))
+
+        parts.append(f"total_irq_cycles={total_irq_cycles}")
+        parts.append(f"total_dispatch_cycles={total_dispatch_cycles}")
+        parts.append(f"elapsed_cycles={elapsed_cycles}")
+        if elapsed_cycles > 0:
+            parts.append(f"tim5_irq_occupancy_pct={total_irq_cycles * 100 // elapsed_cycles}")
+            parts.append(
+                f"tim5_dispatch_occupancy_pct={total_dispatch_cycles * 100 // elapsed_cycles}"
+            )
+        else:
+            parts.append("tim5_irq_occupancy_pct=?")
+            parts.append("tim5_dispatch_occupancy_pct=?")
+        if tim5_event_count_total > 0:
+            dispatch_cycles_per_event_avg = total_dispatch_cycles // tim5_event_count_total
+            parts.append(f"tim5_dispatch_cycles_per_event_avg={dispatch_cycles_per_event_avg}")
+        else:
+            parts.append("tim5_dispatch_cycles_per_event_avg=?")
         parts.append(f"crit_max_us={cycles_to_us('crit_max_cycles')}")
         parts.append(f"queue_step_max_us={cycles_to_us('queue_step_max_cycles')}")
         parts.append(f"tim5_irq_max_us={cycles_to_us('tim5_irq_max_cycles')}")

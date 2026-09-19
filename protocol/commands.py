@@ -46,6 +46,9 @@ class FociMcuCommands:
         " shutdown_site_count=%u shutdown_site_max_cycles=%u"
         " reset_site_count=%u reset_site_max_cycles=%u"
         " trigger_stop_site_count=%u trigger_stop_site_max_cycles=%u"
+        " total_irq_cycles_lo=%u total_irq_cycles_hi=%u"
+        " total_dispatch_cycles_lo=%u total_dispatch_cycles_hi=%u"
+        " elapsed_cycles_lo=%u elapsed_cycles_hi=%u"
     )
 
     def __init__(self) -> None:
