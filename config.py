@@ -17,7 +17,7 @@ from .state import RuntimeStatus
 STEP_PINS: dict[str, int] = {"STEP0": 0, "STEP1": 1}
 FILTER_MIN_HZ = 10
 MOTION_FILTER_MAX_HZ = 1000
-CURRENT_FILTER_MAX_HZ = 6000
+CURRENT_FILTER_MAX_HZ = 10000
 MAX_ENCODER_PPR = 0x3FFF_FFFF
 # Firmware quantizes both currents to TMC4671 register units before comparing
 # them; a real board's per-LSB step is on the order of 1-2 mA

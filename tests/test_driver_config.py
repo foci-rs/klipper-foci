@@ -475,15 +475,31 @@ def test_parse_driver_config_rejects_low_filter_hz():
         parse_driver_config(config)
 
 
-def test_parse_driver_config_allows_current_filters_up_to_six_khz():
+def test_parse_driver_config_allows_current_filters_up_to_ten_khz():
     _printer, _chips, _sections, config = make_foci_config(
-        foci_values={"torque_filter_hz": 6000, "flux_filter_hz": 6000}
+        foci_values={"torque_filter_hz": 10000, "flux_filter_hz": 10000}
     )
 
     parsed = parse_driver_config(config)
 
-    assert parsed.torque_filter_hz == 6000
-    assert parsed.flux_filter_hz == 6000
+    assert parsed.torque_filter_hz == 10000
+    assert parsed.flux_filter_hz == 10000
+
+
+def test_parse_driver_config_rejects_current_filters_above_ten_khz():
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"torque_filter_hz": 10001})
+
+    with pytest.raises(CommandError, match="above maximum"):
+        parse_driver_config(config)
+
+
+def test_parse_driver_config_rejects_velocity_filter_above_motion_ceiling():
+    # 2000 Hz is a valid torque/flux cutoff but must stay rejected for
+    # velocity, which keeps the 1000 Hz motion-filter ceiling.
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"velocity_filter_hz": 2000})
+
+    with pytest.raises(CommandError, match="above maximum"):
+        parse_driver_config(config)
 
 
 def test_parse_driver_config_leaves_omitted_filters_unset_for_firmware_auto():
