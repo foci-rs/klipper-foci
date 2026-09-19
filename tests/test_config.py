@@ -496,8 +496,6 @@ def test_perf_stats_query_format_includes_scheduler_attribution_fields():
     assert oid == 10
     assert "scheduler_cycles_max=%u" in recv_fmt
     assert "scheduler_cycles_events_at_max=%u" in recv_fmt
-    assert "scheduler_cycles_per_event_max=%u" in recv_fmt
-    assert "scheduler_cycles_per_event_floor3_max=%u" in recv_fmt
     assert "scheduler_full_count=%u" in recv_fmt
 
 

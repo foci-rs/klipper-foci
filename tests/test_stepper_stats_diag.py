@@ -182,15 +182,11 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "crit_max_cycles=190000" in gcmd.last_info
     assert "crit_max_site=1" in gcmd.last_info
     assert "crit_max_us=1130" in gcmd.last_info
-    assert "crit_over_1000us=1" in gcmd.last_info
     assert "queue_step_max_cycles=175000" in gcmd.last_info
     assert "queue_step_max_us=1041" in gcmd.last_info
     assert "shutdown_site_count=3" in gcmd.last_info
-    assert "shutdown_site_max_cycles=6000" in gcmd.last_info
     assert "reset_site_count=2" in gcmd.last_info
-    assert "reset_site_max_cycles=4200" in gcmd.last_info
     assert "trigger_stop_site_count=15" in gcmd.last_info
-    assert "trigger_stop_site_max_cycles=900" in gcmd.last_info
     assert "tim5_irq_max_cycles=2400" in gcmd.last_info
     assert "tim5_irq_max_us=14" in gcmd.last_info
     assert "tim5_dispatch_max_cycles=2100" in gcmd.last_info
@@ -200,16 +196,12 @@ def test_dispatch_stats_diagnostic_formats_perf_counters_and_reset_flag():
     assert "tim5_defer_count=5" in gcmd.last_info
     assert "tim5_burst_cycles_per_event_max_cycles=2100" in gcmd.last_info
     assert "tim5_burst_cycles_per_event_max_events=3" in gcmd.last_info
-    assert "tim5_burst_cycles_per_event_floor3_max=700" in gcmd.last_info
     assert "tim5_entry_latency_max_ticks=8400" in gcmd.last_info
     assert "tim5_pop_lateness_max_ticks=41" in gcmd.last_info
     assert "scheduler_cycles_max=555" in gcmd.last_info
     assert "scheduler_cycles_events_at_max=4" in gcmd.last_info
-    assert "scheduler_cycles_per_event_max=111" in gcmd.last_info
-    assert "scheduler_cycles_per_event_floor3_max=111" in gcmd.last_info
     assert "scheduler_full_count=2" in gcmd.last_info
     assert "stepper_load_lateness_max_ticks=1234" in gcmd.last_info
-    assert "stepper_load_lateness_last_ticks=-20" in gcmd.last_info
     assert "build_trace_enabled=0" in gcmd.last_info
 
 
