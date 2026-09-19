@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from ._vocabulary_generated import (
@@ -835,6 +836,25 @@ class AutotuneWorkflow:
                 f"{self._format_robustness_reversal_result()}{detail_suffix}",
             )
             terminal = self.robustness_reversal_terminal
+            with contextlib.suppress(Exception):
+                iae_by_direction = [
+                    (self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0)
+                    for index in (0, 1)
+                ]
+                dac_rms_by_direction = [
+                    (self.robustness_cycle_evidence.get(index) or {}).get("dac_rms_median_q", 0)
+                    for index in (0, 1)
+                ]
+                logging.info(
+                    "foci-gain-search %s: candidate p=%d i=%d verdict=rejected cause=%s "
+                    "iae_median_qs=%s dac_rms_median_q=%s",
+                    self.driver.name,
+                    int(terminal.get("selected_p", 0)),
+                    int(terminal.get("selected_i", 0)),
+                    _robustness_reversal_cause_text(int(terminal.get("cause", 0))),
+                    iae_by_direction,
+                    dac_rms_by_direction,
+                )
             if orchestrated:
                 # The orchestrated dispatch deployed nothing: there is no
                 # pre_tune_snapshot to revert (fresh) or one may be stale
@@ -1159,11 +1179,22 @@ class AutotuneWorkflow:
                     f"{format_inner_warning_flags(inner_warning_flags)}",
                 )
             self._disable_kinematic_motors(toolhead)
+            iae_by_direction = [
+                (self.robustness_cycle_evidence.get(index) or {}).get("iae_median_qs", 0)
+                for index in (0, 1)
+            ]
+            dac_rms_by_direction = [
+                (self.robustness_cycle_evidence.get(index) or {}).get("dac_rms_median_q", 0)
+                for index in (0, 1)
+            ]
             logging.info(
-                "foci-gain-search %s: candidate p=%d i=%d verdict=passed",
+                "foci-gain-search %s: candidate p=%d i=%d verdict=passed "
+                "iae_median_qs=%s dac_rms_median_q=%s",
                 self.driver.name,
                 int(result["velocity_p"]),
                 int(result["velocity_i"]),
+                iae_by_direction,
+                dac_rms_by_direction,
             )
         finally:
             self.driver.state.release()

@@ -236,6 +236,38 @@ def drive_orchestrated_robustness_scenario(d, *, outcome, cause):
     reactor.pause = pause
 
 
+def feed_cycle_evidence_after_each_pause(d, *, iae_by_direction, dac_rms_by_direction):
+    """Wrap the already-installed reactor.pause so cycle evidence is
+    (re-)delivered after every dispatch round. _reset_dispatch_state() clears
+    self.robustness_cycle_evidence before each round, so injecting it once
+    up front does not survive.
+
+    Call this *after* the scenario helper that installs reactor.pause
+    (drive_orchestrated_robustness_scenario or drive_two_dispatch_scenario),
+    never before -- it wraps whatever pause is currently installed.
+    """
+    from tests.test_robustness_reversal import build_cycle_evidence_payload
+
+    reactor = d.printer.get_reactor()
+    original_pause = reactor.pause
+
+    def pause_with_evidence(deadline):
+        result = original_pause(deadline)
+        for direction in (0, 1):
+            d.autotune.handle_robustness_cycle_evidence(
+                {
+                    "payload": build_cycle_evidence_payload(
+                        direction=direction,
+                        iae_median_qs=iae_by_direction[direction],
+                        dac_rms_median_q=dac_rms_by_direction[direction],
+                    )
+                }
+            )
+        return result
+
+    reactor.pause = pause_with_evidence
+
+
 def test_rehome_and_center_releases_then_reacquires_the_autotune_label():
     d = make_driver()
     d.state.try_acquire("autotune")
@@ -802,6 +834,55 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotRegex(cause_phrase, r"\d", f"console summary leaks a raw digit: {summary!r}")
         self.assertNotIn("_", cause_phrase, f"console summary leaks an enum symbol: {summary!r}")
 
+    def test_orchestrated_reject_logs_evidence_for_every_cause(self):
+        """The evidence log must fire once for a safety fault, once for
+        IAE-exceeded, and once for every other reject cause -- not only
+        IAE-exceeded, which was the original (incomplete) scope."""
+        for outcome, cause in [(3, 6), (1, 3), (1, 1)]:
+            d = self._commissioned_driver()
+            cfg = MockConfigFile()
+            d.printer._objects["configfile"] = cfg
+            d.state.pre_tune_snapshot = None
+            d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: None
+            drive_orchestrated_robustness_scenario(d, outcome=outcome, cause=cause)
+            feed_cycle_evidence_after_each_pause(
+                d, iae_by_direction=[9, -9], dac_rms_by_direction=[21, -21]
+            )
+
+            with self.assertLogs(level="INFO") as captured, self.assertRaises(CommandError):
+                d.autotune.autotune(MockGCmd({}))
+
+            evidence_lines = [line for line in captured.output if "foci-gain-search" in line]
+            self.assertEqual(
+                len(evidence_lines), 1, f"expected exactly one evidence log for cause={cause}"
+            )
+            self.assertIn("iae_median_qs=[9, -9]", evidence_lines[0])
+            self.assertIn("dac_rms_median_q=[21, -21]", evidence_lines[0])
+
+    def test_orchestrated_reject_log_failure_does_not_block_the_raised_error(self):
+        """A broken logging handler on the evidence log must not replace or
+        suppress the real IAE-reject diagnostic the operator needs to see."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = None
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=3)
+        feed_cycle_evidence_after_each_pause(
+            d, iae_by_direction=[9, -9], dac_rms_by_direction=[21, -21]
+        )
+
+        def fail_gain_search_log(message, *_args):
+            if message.startswith("foci-gain-search"):
+                raise OSError("log down")
+
+        with (
+            patch("klipper_foci.autotune.logging.info", side_effect=fail_gain_search_log),
+            self.assertRaises(CommandError) as ctx,
+        ):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertIn("robustness gate", str(ctx.exception).lower())
+
     def test_pass_log_failure_does_not_skip_kinematic_motor_disable(self):
         d = self._commissioned_driver(
             kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
@@ -1150,6 +1231,31 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("863", logged)
         self.assertIn("12", logged)
         self.assertIn("passed", logged)
+
+    def test_successful_autotune_logs_landed_gain_with_per_direction_evidence(self):
+        """Extends test_successful_autotune_logs_landed_gain: the passed-gain
+        log must also carry both directions' iae_median_qs and
+        dac_rms_median_q, not just p/i/verdict."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+        feed_cycle_evidence_after_each_pause(
+            d, iae_by_direction=[9, -9], dac_rms_by_direction=[21, -21]
+        )
+
+        with self.assertLogs(level="INFO") as captured:
+            d.autotune.autotune(MockGCmd({}))
+
+        evidence_lines = [line for line in captured.output if "foci-gain-search" in line]
+        self.assertEqual(len(evidence_lines), 1)
+        self.assertIn("passed", evidence_lines[0])
+        self.assertIn("iae_median_qs=[9, -9]", evidence_lines[0])
+        self.assertIn("dac_rms_median_q=[21, -21]", evidence_lines[0])
 
     def test_persist_failure_does_not_log_passed_gain(self):
         d = self._commissioned_driver()
