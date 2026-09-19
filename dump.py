@@ -135,8 +135,6 @@ VELOCITY_TUNE_PROVENANCE_FIELDS: tuple[str, ...] = (
     "autotune_band_position_q",
 )
 
-# The bound and the two tracking metrics persist_tune_results writes from
-# PositionTuneProvenance on an accepted tune.
 POSITION_TUNE_FIELDS: tuple[tuple[str, str], ...] = (
     ("autotune_position_bound_units", "bound"),
     ("autotune_position_homing_peak_units", "homing peak"),
