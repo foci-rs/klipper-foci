@@ -127,6 +127,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     115: "gain floor motion envelope exceeded",
     116: "gain floor velocity gain unrepresentable",
     117: "gain floor position gain unrepresentable",
+    118: "gain floor step overshoot",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
@@ -146,6 +147,8 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
     115: "the motor moved further than allowed during the gain-floor measurement",
     116: "the computed gain-floor velocity gain is outside the range the firmware can represent",
     117: "the computed gain-floor position gain is outside the range the firmware can represent",
+    118: "the current loop overshot the gain-floor torque step; "
+    "the selected profile's current-loop bandwidth is too high for this motor",
 }
 
 

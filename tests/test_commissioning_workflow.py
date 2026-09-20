@@ -1628,3 +1628,14 @@ class CommissionEncoderAlignmentEvidenceTests(unittest.TestCase):
             driver.diagnostics.active.last_encoder_alignment_evidence(driver.oid),
             {},
         )
+
+
+def test_gain_floor_step_overshoot_is_a_named_failure():
+    from klipper_foci.commissioning import (
+        format_commission_error_name,
+        operator_failure_phrase,
+    )
+
+    assert "overshoot" in format_commission_error_name(118)
+    assert "unknown" not in operator_failure_phrase(118)
+    assert "bandwidth" in operator_failure_phrase(118)
