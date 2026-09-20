@@ -717,6 +717,7 @@ class CommissioningWorkflow:
             enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
             if enable_line.is_motor_enabled():
                 enable_line.motor_disable(toolhead.get_last_move_time())
+                toolhead.wait_moves()
 
             self.driver.state.is_calibrated = False
             self.driver.homing.invalidate_homing()

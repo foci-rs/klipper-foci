@@ -375,6 +375,50 @@ class TestCommissionGates(unittest.TestCase):
         # Verify no homing error was raised
         # (if we got here, the homing gate was not hit)
 
+    def test_waits_for_disable_to_flush_before_requesting_commission(self):
+        """A pending motor_disable must be flushed before run_commission is sent.
+
+        motor_disable() only schedules the MCU command at the toolhead's last
+        move time; nothing flushes it. Without a second wait_moves() after
+        disabling, run_commission can reach the firmware first, which still
+        sees the motor enabled and rejects the commission.
+        """
+        d = make_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+        enable_line._enabled = True
+        gcmd = MockGCmd({"PROFILE": "balanced"})
+
+        calls = []
+        toolhead = d.printer.lookup_object("toolhead")
+        original_wait_moves = toolhead.wait_moves
+        original_motor_disable = enable_line.motor_disable
+
+        def recording_wait_moves():
+            calls.append("wait_moves")
+            original_wait_moves()
+
+        def recording_motor_disable(print_time):
+            calls.append("motor_disable")
+            original_motor_disable(print_time)
+
+        def recording_run_commission(_args):
+            calls.append("run_commission")
+            d.commissioning.result = complete_commission_result()
+            d.commissioning.done = True
+
+        toolhead.wait_moves = recording_wait_moves
+        enable_line.motor_disable = recording_motor_disable
+        d.protocol.commands.commission.send = recording_run_commission
+
+        d.commissioning.commission(gcmd)
+
+        disable_index = calls.index("motor_disable")
+        commission_index = calls.index("run_commission")
+        assert any(call == "wait_moves" for call in calls[disable_index + 1 : commission_index]), (
+            f"expected a wait_moves() flush between motor_disable and run_commission, got {calls}"
+        )
+
     def test_does_not_require_prior_commissioning(self):
         """Commission works on virgin hardware (no prior gains)."""
         d = make_driver()
