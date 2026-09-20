@@ -516,6 +516,25 @@ def test_commission_success_prints_succeeded_summary():
     assert "bandwidth_hz" not in gcmd._responses[0]
 
 
+def test_commission_skipped_gain_floor_warns_the_operator_without_debug():
+    d = make_driver()
+    d.printer._objects["configfile"] = MockConfigFile()
+    d.global_config.debug = False
+
+    def drive_success(_args):
+        result = complete_commission_result()
+        result["inner_warning_flags"] = 1 << 7
+        d.commissioning.result = result
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_success
+    gcmd = MockGCmd({"PROFILE": "balanced"})
+    d.commissioning.commission(gcmd)
+
+    assert gcmd._responses[0].startswith("FOCI_SETUP manual_stepper stepper_x: SUCCEEDED")
+    assert any("gain floor skipped" in r for r in gcmd._responses[1:])
+
+
 def test_commission_timing_evidence_rejected_prints_failed_summary():
     d = make_driver()
     result = complete_commission_result()

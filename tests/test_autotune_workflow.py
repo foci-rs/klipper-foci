@@ -1676,6 +1676,9 @@ class InnerWarningFlagFormattingTests(unittest.TestCase):
     def test_format_inner_warning_flags_ignores_deprecated_bit4(self):
         self.assertEqual(format_inner_warning_flags(1 << 4), "none")
 
+    def test_format_inner_warning_flags_names_skipped_gain_floor(self):
+        self.assertIn("gain floor skipped", format_inner_warning_flags(1 << 7))
+
 
 class TestAutotuneReadinessAdmission(unittest.TestCase):
     def _ready_driver(self):

@@ -178,6 +178,8 @@ RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31
 # is_calibrated.
 HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17, 42})
 
+INNER_WARNING_GAIN_FLOOR_SKIPPED = 1 << 7
+
 # Bit-to-name mapping for the firmware-side `inner_warning_flags` bitfield.
 INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 0, "coil R mismatch"),
@@ -185,6 +187,7 @@ INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 3, "theta/tau ratio"),
     (1 << 5, "current gains fell back to defaults"),
     (1 << 6, "host-default confidence (no fresh measurement)"),
+    (INNER_WARNING_GAIN_FLOOR_SKIPPED, "gain floor skipped, outer gains are the built-in defaults"),
 ]
 
 PROFILE_MAP: dict[str, int] = {
@@ -899,6 +902,12 @@ class CommissioningWorkflow:
                 f"{int(result.get('current_candidate_attempt', 0))}",
             )
             flags = result.get("inner_warning_flags", 0)
+            if flags & INNER_WARNING_GAIN_FLOOR_SKIPPED:
+                report_summary(
+                    gcmd,
+                    f"FOCI {self.driver.name} warning: gain floor skipped, outer gains are "
+                    "the built-in defaults, not measured from this motor.",
+                )
             if flags:
                 report_detail(
                     log,
