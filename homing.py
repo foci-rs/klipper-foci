@@ -216,6 +216,21 @@ class HomingWorkflow:
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: no commissioned gains available. Run FOCI_SETUP first."
             )
+        reactor = self.driver.printer.get_reactor()
+        if getattr(reactor, "_prevent_pause_count", 0):
+            # Klipper's motion flush handler enables steppers lazily (e.g. after
+            # SET_KINEMATIC_POSITION marks an axis homed without enabling it) from
+            # inside reactor.assert_no_pause(). Blocking here would raise a raw
+            # ReactorError; report the real cause instead. Either way the flush
+            # handler's bare `except:` shuts Klipper down (see FOCI-438).
+            raise self.driver.printer.command_error(
+                f"FOCI {self.driver.name}: cannot auto-calibrate -- the axis was marked "
+                "homed without enabling the motor (e.g. via SET_KINEMATIC_POSITION), and a "
+                "queued move is now trying to enable it lazily, which cannot block for "
+                "calibration. Home the axis normally, or "
+                f"SET_STEPPER_ENABLE STEPPER={self.driver.stepper_name} VALUE=1 before "
+                "commanding motion."
+            )
         if not self.driver.state.try_acquire("homing"):
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: another FOCI operation is in progress"
@@ -224,7 +239,6 @@ class HomingWorkflow:
             self.apply_active_gains_to_firmware()
             self.driver.commissioning.clear_details()
 
-            reactor = self.driver.printer.get_reactor()
             self.driver.state.calibration_completion = reactor.completion()
             t_start = reactor.monotonic()
             self.set_auto_calibrate_on_enable_allowed(True)

@@ -371,6 +371,7 @@ class MockReactor:
     def __init__(self):
         self._time = 0.0
         self.completion_result = None
+        self._prevent_pause_count = 0
 
     def monotonic(self):
         return self._time

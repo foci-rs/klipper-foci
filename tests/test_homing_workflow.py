@@ -54,6 +54,17 @@ class TestEnsureCalibratedGates(unittest.TestCase):
             d.homing.ensure_calibrated()
         self.assertIn("another FOCI operation", str(ctx.exception))
 
+    def test_raises_clear_error_when_reactor_cannot_pause(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS
+        d.printer.get_reactor()._prevent_pause_count = 1
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+        self.assertIn("cannot auto-calibrate", str(ctx.exception))
+        # No blocking calibration attempt or lock acquisition was made.
+        self.assertIsNone(d.protocol.commands.calibrate.last_args)
+        self.assertFalse(d.state.operation_lock)
+
     def test_does_not_recalibrate_if_already_calibrated(self):
         d = make_driver()
         d.state.is_calibrated = True
