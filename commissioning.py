@@ -119,6 +119,14 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     107: "velocity wrong direction",
     108: "velocity invalid evidence",
     109: "velocity integral plan invalid",
+    110: "gain floor insufficient linear points",
+    111: "gain floor non-positive slope",
+    112: "gain floor current fit rejected",
+    113: "gain floor insufficient coverage",
+    114: "gain floor peak current exceeded",
+    115: "gain floor motion envelope exceeded",
+    116: "gain floor velocity gain unrepresentable",
+    117: "gain floor position gain unrepresentable",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
