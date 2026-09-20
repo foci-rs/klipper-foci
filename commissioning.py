@@ -138,6 +138,14 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
     51: "a measurement delay timing fault",
     73: "a resistance measurement with reversed current polarity or a sign error",
     97: "an internal capture-buffer synchronization fault",
+    110: "not enough clean position samples during the gain-floor measurement to fit a response",
+    111: "the gain-floor measurement showed zero, negative, or wrong-direction acceleration",
+    112: "no usable current-loop bandwidth from the earlier tuning step to base the gain floor on",
+    113: "the gain-floor measurement missed a sample deadline before it could finish",
+    114: "motor current exceeded its safety limit during the gain-floor measurement",
+    115: "the motor moved further than allowed during the gain-floor measurement",
+    116: "the computed gain-floor velocity gain is outside the range the firmware can represent",
+    117: "the computed gain-floor position gain is outside the range the firmware can represent",
 }
 
 
