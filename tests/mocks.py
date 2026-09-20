@@ -264,10 +264,18 @@ class MockClockMCU:
 
 
 class MockEnableLine:
-    """Mock stepper enable line."""
+    """Mock stepper enable line.
+
+    Mirrors real Klipper's EnableLine: motor_disable() is a no-op unless
+    is_enabled is already True, so a caller cannot force a real MCU disable
+    just by calling motor_disable() when the host's own bookkeeping already
+    (possibly incorrectly) believes the motor is off. real_disable_count only
+    increments when motor_disable() actually transitions enabled -> disabled.
+    """
 
     def __init__(self):
         self._enabled = False
+        self.real_disable_count = 0
 
     def is_motor_enabled(self):
         return self._enabled
@@ -276,7 +284,9 @@ class MockEnableLine:
         self._enabled = True
 
     def motor_disable(self, print_time):
-        self._enabled = False
+        if self._enabled:
+            self._enabled = False
+            self.real_disable_count += 1
 
     def register_state_callback(self, callback):
         pass

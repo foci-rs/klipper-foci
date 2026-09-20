@@ -232,6 +232,29 @@ def test_rejected_timing_is_fatal_even_with_plausible_model_values():
     assert driver.commissioning.timing_by_method == {}
 
 
+def test_rejected_timing_forces_a_real_disable_of_the_armed_motor():
+    driver = make_driver()
+    driver.printer._objects["configfile"] = MockConfigFile()
+    result = complete_commission_result()
+    result["timing_summary"] = 2 << 4 | 1 << 6
+    enable_line = driver.printer.lookup_object("stepper_enable").lookup_enable(driver.stepper_name)
+
+    def drive_rejected_timing(_args):
+        driver.commissioning.handle_commission_timing(
+            timing_reply(method=2, status=2, requested_period_us=160)
+        )
+        driver.commissioning.result = result
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_rejected_timing
+
+    with pytest.raises(CommandError, match="delay_timing"):
+        driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert not enable_line.is_motor_enabled()
+    assert enable_line.real_disable_count == 1
+
+
 def test_commission_start_clears_stale_timing_cache():
     driver = make_driver()
     driver.printer._objects["configfile"] = MockConfigFile()
