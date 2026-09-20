@@ -187,7 +187,10 @@ INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 3, "theta/tau ratio"),
     (1 << 5, "current gains fell back to defaults"),
     (1 << 6, "host-default confidence (no fresh measurement)"),
-    (INNER_WARNING_GAIN_FLOOR_SKIPPED, "gain floor skipped, outer gains are the built-in defaults"),
+    (
+        INNER_WARNING_GAIN_FLOOR_SKIPPED,
+        "gain floor skipped, outer gains are the built-in defaults (older firmware only)",
+    ),
 ]
 
 PROFILE_MAP: dict[str, int] = {
