@@ -899,13 +899,15 @@ class CommissioningWorkflow:
                 "identified, current gains applied.",
             )
             status_str = "accepted" if status == 0 else "accepted with warnings"
+            theta_src = "measured" if result.get("theta_source", 1) == 0 else "config"
             report_detail(
                 log,
                 self.driver.global_config.debug,
                 f"FOCI {self.driver.name} commissioned ({status_str}): r_count_milli="
                 f"{int(result['r_count_milli'])} l_count_micro={int(result['l_count_micro'])} "
                 f"bandwidth_hz={int(result.get('bandwidth_hz', 0))} current_candidate_attempt="
-                f"{int(result.get('current_candidate_attempt', 0))}",
+                f"{int(result.get('current_candidate_attempt', 0))} theta_e_us="
+                f"{int(result['theta_e_us'])} theta_src={theta_src}",
             )
             flags = result.get("inner_warning_flags", 0)
             if flags & INNER_WARNING_GAIN_FLOOR_SKIPPED:

@@ -834,6 +834,32 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         self.assertTrue(any("bandwidth_hz=800" in message for message in log_ctx.output))
         self.assertTrue(any("current_candidate_attempt=1" in message for message in log_ctx.output))
 
+    def test_commission_success_message_includes_theta_and_its_source(self):
+        for source, token in ((0, "measured"), (1, "config"), (None, "config")):
+            driver = make_driver()
+            driver.global_config.debug = True
+            result = complete_commission_result()
+            result["theta_e_us"] = 92
+            if source is None:
+                result.pop("theta_source", None)
+            else:
+                result["theta_source"] = source
+            driver.printer._objects["configfile"] = MockConfigFile()
+
+            class CompleteCommissionCommand:
+                def send(self, _args, driver=driver, result=result):
+                    driver.commissioning.result = result
+                    driver.commissioning.done = True
+
+            driver.protocol.commands.commission = CompleteCommissionCommand()
+            gcmd = MockGCmd({"PROFILE": "balanced"})
+            with self.assertLogs("klipper_foci.commissioning", level="INFO") as log_ctx:
+                driver.commissioning.commission(gcmd)
+            self.assertTrue(
+                any(f"theta_e_us=92 theta_src={token}" in message for message in log_ctx.output),
+                (source, log_ctx.output),
+            )
+
     def test_commission_success_active_gains_use_applied_filter_evidence(
         self,
     ):
