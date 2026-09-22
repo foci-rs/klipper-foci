@@ -449,6 +449,17 @@ class AutotuneWorkflow:
             enable_line = stepper_enable.lookup_enable(stepper_name)
             enable_line.motor_disable(print_time)
 
+    def _resync_step_clock_after_stimulus(self) -> None:
+        """Re-sync the tuned stepper after a firmware-driven step-queue stimulus.
+
+        The stimulus stops the channel the way a trigger stop does, so the
+        firmware discards host steps until it sees a reset_step_clock. Klipper
+        issues that only from note_homing_end(), which also re-reads the MCU
+        position. Only valid once a terminal has confirmed the stimulus
+        stopped: firmware shuts down on a reset while the step timer runs.
+        """
+        self.driver._find_linked_stepper().note_homing_end()
+
     def _cancel_inflight_dispatch(self, toolhead) -> None:
         """Cancel a tune dispatch that left firmware running without a terminal."""
         reactor = self.driver.printer.get_reactor()
@@ -870,7 +881,11 @@ class AutotuneWorkflow:
                     raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
         except Exception:
             self._cancel_inflight_dispatch(toolhead)
+            if action_code == ACTION_CODES["position_tune"] and self.done:
+                self._resync_step_clock_after_stimulus()
             raise
+        if action_code == ACTION_CODES["position_tune"]:
+            self._resync_step_clock_after_stimulus()
 
         if not self._workflow_finished():
             return "tune_result"

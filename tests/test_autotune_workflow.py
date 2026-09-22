@@ -804,6 +804,82 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("conflict", message)
         self.assertNotIn("last rung:", message)
 
+    def test_position_tune_success_resyncs_the_tuned_stepper_step_clock(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="tune_result",
+            second_terminal=None,
+            tune_result=SAMPLE_POSITION_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({"ACTION": "position_tune"}))
+
+        rails = d.printer.lookup_object("toolhead").get_kinematics().rails
+        stepper_x = rails[0].get_steppers()[0]
+        stepper_y = rails[1].get_steppers()[0]
+        self.assertEqual(stepper_x.note_homing_end_calls, 1)
+        self.assertEqual(stepper_y.note_homing_end_calls, 0)
+
+    def test_position_tune_failure_still_resyncs_the_tuned_stepper_step_clock(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="tune_result",
+            second_terminal=None,
+            tune_result=SAMPLE_POSITION_TUNE_FAILURE_RESULT,
+        )
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({"ACTION": "position_tune"}))
+
+        rails = d.printer.lookup_object("toolhead").get_kinematics().rails
+        self.assertEqual(rails[0].get_steppers()[0].note_homing_end_calls, 1)
+
+    def _position_tune_dispatch_that_times_out(self, d, cancel):
+        toolhead = d.printer.lookup_object("toolhead")
+        d.protocol.run_tune = lambda **kw: None
+        d.protocol.run_commission_cancel = cancel
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            return reactor._time
+
+        reactor.pause = pause
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune._run_one_dispatch(
+                MockGCmd({}),
+                ACTION_CODES["position_tune"],
+                {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+                toolhead,
+                "G0 X100.000 Y100.000",
+            )
+        self.assertIn("timed out", str(ctx.exception))
+        rails = toolhead.get_kinematics().rails
+        return rails[0].get_steppers()[0].note_homing_end_calls
+
+    def test_position_tune_timeout_without_terminal_does_not_resync(self):
+        """Firmware refuses reset_step_clock while a step timer is active, so
+        the reset must wait for a terminal that proves the stimulus stopped."""
+        d = self._commissioned_driver()
+
+        calls = self._position_tune_dispatch_that_times_out(d, cancel=lambda: None)
+
+        self.assertEqual(calls, 0)
+
+    def test_position_tune_cancel_ack_inside_grace_still_resyncs(self):
+        d = self._commissioned_driver()
+
+        def cancel():
+            d.autotune.handle_tune_result({"status": 74})
+
+        calls = self._position_tune_dispatch_that_times_out(d, cancel=cancel)
+
+        self.assertEqual(calls, 1)
+
     def test_position_tune_outcome_names_cover_every_firmware_code(self):
         self.assertEqual(set(POSITION_TUNE_OUTCOME_NAMES.keys()), {4, 6, 7, 8, 9, 10})
 

@@ -226,9 +226,13 @@ class MockStepper:
         self._step_dist = step_dist
         self._step_history = step_history or []
         self._mcu = MockClockMCU()
+        self.note_homing_end_calls = 0
 
     def get_name(self):
         return self._name
+
+    def note_homing_end(self):
+        self.note_homing_end_calls += 1
 
     def get_oid(self):
         return self._oid
