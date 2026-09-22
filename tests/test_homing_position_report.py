@@ -40,7 +40,8 @@ def test_homing_move_end_reports_matching_stepper_positions():
     )
     assert gcode._responses[1] == (
         "FOCI_HOME_STALL stepper_y latched=1 peak_error_units=1234 "
-        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0"
+        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0 trigger_path=margin "
+        "peak_margin_delta_units=45"
     )
 
 
@@ -104,7 +105,8 @@ def test_homing_move_end_reports_step_history_summary():
     )
     assert gcode._responses[3] == (
         "FOCI_HOME_STALL stepper_y latched=1 peak_error_units=1234 "
-        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0"
+        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0 trigger_path=margin "
+        "peak_margin_delta_units=45"
     )
 
 
@@ -186,7 +188,8 @@ def test_homing_move_end_reports_signed_step_history_details():
     )
     assert gcode._responses[3] == (
         "FOCI_HOME_STALL stepper_x latched=1 peak_error_units=1234 "
-        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0"
+        "peak_error_mm=0.753 trigger_tick=7 clamp_active=0 trigger_path=margin "
+        "peak_margin_delta_units=45"
     )
 
 

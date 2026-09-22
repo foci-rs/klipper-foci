@@ -46,6 +46,12 @@ class HomingWorkflow:
         "HybridCoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},
     }
 
+    _TRIGGER_PATH_NAMES: ClassVar[dict[int, str]] = {
+        0: "none",
+        1: "ceiling",
+        2: "margin",
+    }
+
     def __init__(self, driver) -> None:
         self.driver = driver
         self._homing_move_start_times: dict[int, float] = {}
@@ -393,10 +399,13 @@ class HomingWorkflow:
             / POSITION_UNITS_PER_REV
             * self.driver.config.rotation_distance
         )
+        trigger_path = self._TRIGGER_PATH_NAMES.get(result["trigger_path"], "unknown")
         gcode.respond_info(
             f"FOCI_HOME_STALL {self.driver.stepper_name} latched={result['latched']} "
             f"peak_error_units={result['peak_error_units']} peak_error_mm={peak_mm:.3f} "
-            f"trigger_tick={result['trigger_tick']} clamp_active={result['clamp_active']}"
+            f"trigger_tick={result['trigger_tick']} clamp_active={result['clamp_active']} "
+            f"trigger_path={trigger_path} "
+            f"peak_margin_delta_units={result['peak_margin_delta_units']}"
         )
 
     def _report_homing_step_history(self, gcode, homing_move, sp, start_time) -> None:
