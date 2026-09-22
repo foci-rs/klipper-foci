@@ -482,7 +482,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
         position_gains=(700, 0, 1100, 0),
         velocity_feedforward=(True, 8),
         velocity_limit=50000,
-        homing=(700, 819, 3),
+        homing=(700, 819, 100, 3),
     )
 
     assert calls == [
@@ -499,7 +499,7 @@ def test_configure_startup_sends_existing_connect_payload_order():
         ("set_position_gains", [driver.oid, 700, 0, 1100, 0]),
         ("set_velocity_feedforward", [driver.oid, 1, 8]),
         ("set_velocity_limit", [driver.oid, 50000]),
-        ("config_homing", [driver.oid, 700, 819, 3]),
+        ("config_homing", [driver.oid, 700, 819, 100, 3]),
     ]
     assert driver.state.adc_vm_offset_raw == 33662
 
@@ -543,7 +543,7 @@ def test_configure_startup_skips_unset_optional_payloads():
         position_gains=None,
         velocity_feedforward=(False, 1),
         velocity_limit=None,
-        homing=(700, 819, 3),
+        homing=(700, 819, 100, 3),
     )
 
     assert calls == [
@@ -552,7 +552,7 @@ def test_configure_startup_skips_unset_optional_payloads():
         ("query_adc_vm_offset", [driver.oid]),
         ("set_motion_scale", [driver.oid, 0, 1000, 3200]),
         ("set_encoder_dir", [driver.oid, 0, 0]),
-        ("config_homing", [driver.oid, 700, 819, 3]),
+        ("config_homing", [driver.oid, 700, 819, 100, 3]),
     ]
     assert driver.state.adc_vm_offset_raw == 33662
 
@@ -595,7 +595,7 @@ def test_configure_startup_sends_explicit_zero_filter_disables():
         position_gains=None,
         velocity_feedforward=(False, 1),
         velocity_limit=None,
-        homing=(700, 819, 3),
+        homing=(700, 819, 100, 3),
     )
 
     assert calls == [
@@ -608,7 +608,7 @@ def test_configure_startup_sends_explicit_zero_filter_disables():
         ("set_torque_filter", [driver.oid, 0]),
         ("set_position_filter", [driver.oid, 0]),
         ("set_flux_filter", [driver.oid, 0]),
-        ("config_homing", [driver.oid, 700, 819, 3]),
+        ("config_homing", [driver.oid, 700, 819, 100, 3]),
     ]
 
 
@@ -638,7 +638,7 @@ def test_configure_startup_requires_runtime_adc_vm_offset():
             position_gains=None,
             velocity_feedforward=(False, 1),
             velocity_limit=None,
-            homing=(700, 819, 3),
+            homing=(700, 819, 100, 3),
         )
 
     assert driver.state.adc_vm_offset_raw is None
@@ -1095,9 +1095,12 @@ def test_connect_sends_homing_config_after_existing_startup_commands():
     driver._handle_connect()
 
     formats = driver.mcu.command_formats
-    assert "foci_config_homing oid=%c homing_ma=%u stall_units=%u persistence=%c" in formats
+    assert (
+        "foci_config_homing oid=%c homing_ma=%u stall_units=%u margin_units=%u persistence=%c"
+        in formats
+    )
     cmd = driver.protocol.commands.config_homing
-    assert cmd.last_args == [driver.oid, 700, 1638, 3]
+    assert cmd.last_args == [driver.oid, 700, 1638, 246, 3]
 
 
 def test_query_stall_decodes_result():
@@ -1109,4 +1112,11 @@ def test_query_stall_decodes_result():
 
     result = driver.protocol.query_stall()
 
-    assert result == {"latched": 1, "peak_error_units": 1234, "trigger_tick": 7, "clamp_active": 0}
+    assert result == {
+        "latched": 1,
+        "peak_error_units": 1234,
+        "trigger_tick": 7,
+        "clamp_active": 0,
+        "trigger_path": 2,
+        "peak_margin_delta_units": 45,
+    }

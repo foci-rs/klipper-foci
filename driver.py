@@ -14,7 +14,8 @@ from .config import (
     check_autotune_staleness,
     gain_to_permille,
     parse_driver_config,
-    stall_threshold_units,
+    stall_ceiling_units,
+    stall_margin_units,
     validate_runtime_config,
 )
 from .controls import (
@@ -205,7 +206,8 @@ class FociDriver:
             velocity_limit=velocity_limit,
             homing=(
                 round(parsed.homing_current * 1000.0),
-                stall_threshold_units(parsed),
+                stall_ceiling_units(parsed),
+                stall_margin_units(parsed),
                 parsed.stall_persistence,
             ),
         )

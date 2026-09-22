@@ -256,12 +256,13 @@ class FociMcuCommands:
             oid=oid,
         )
         self.config_homing = mcu.lookup_command(
-            "foci_config_homing oid=%c homing_ma=%u stall_units=%u persistence=%c"
+            "foci_config_homing oid=%c homing_ma=%u stall_units=%u margin_units=%u persistence=%c"
         )
         self.query_stall = mcu.lookup_query_command(
             "foci_stall_query oid=%c",
             "foci_stall_result oid=%c latched=%c peak_error_units=%u"
-            " trigger_tick=%u clamp_active=%c",
+            " trigger_tick=%u clamp_active=%c trigger_path=%c"
+            " peak_margin_delta_units=%u",
             oid=oid,
         )
 

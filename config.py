@@ -264,8 +264,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         )
     if config.get("stall_distance", None) is not None:
         raise config.error(
-            f"[{name}] stall_distance is removed; use stall_ceiling_mm and "
-            "stall_margin_mm instead"
+            f"[{name}] stall_distance is removed; use stall_ceiling_mm and stall_margin_mm instead"
         )
     stall_persistence = config.getint(
         "stall_persistence",
@@ -508,23 +507,14 @@ def parse_driver_config(config) -> FociDriverConfig:
 
 def stall_ceiling_units(config: FociDriverConfig) -> int:
     """Convert stall_ceiling_mm (mm) to TMC position units (65536 per revolution)."""
-    return max(1, round(config.stall_ceiling_mm / config.rotation_distance * POSITION_UNITS_PER_REV))
+    return max(
+        1, round(config.stall_ceiling_mm / config.rotation_distance * POSITION_UNITS_PER_REV)
+    )
 
 
 def stall_margin_units(config: FociDriverConfig) -> int:
     """Convert stall_margin_mm (mm) to TMC position units (65536 per revolution)."""
     return max(1, round(config.stall_margin_mm / config.rotation_distance * POSITION_UNITS_PER_REV))
-
-
-def stall_threshold_units(config: FociDriverConfig) -> int:
-    """Backward-compatible alias for stall_ceiling_units.
-
-    stall_distance was replaced with stall_ceiling_mm and stall_margin_mm.
-    This function exists only to keep driver.py importable until Task 5
-    updates the call site to use stall_ceiling_units directly. Do not use
-    in new code.
-    """
-    return stall_ceiling_units(config)
 
 
 def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult:

@@ -485,7 +485,14 @@ class MockMCU:
             )
         if _send_fmt == "foci_stall_query oid=%c":
             return MockCommand(
-                {"latched": 1, "peak_error_units": 1234, "trigger_tick": 7, "clamp_active": 0}
+                {
+                    "latched": 1,
+                    "peak_error_units": 1234,
+                    "trigger_tick": 7,
+                    "clamp_active": 0,
+                    "trigger_path": 2,
+                    "peak_margin_delta_units": 45,
+                }
             )
         return MockCommand()
 
