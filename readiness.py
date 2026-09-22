@@ -300,11 +300,6 @@ def _classify_inductance(
     else:
         unavailable_inputs.append("average_inductance")
 
-    if evidence.get("saliency_status") == 1:
-        trusted_inputs.append("ld_lq_split")
-    else:
-        unavailable_inputs.append("ld_lq_split")
-
 
 def _classify_resistance(
     evidence: Mapping[str, int | None],

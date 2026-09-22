@@ -119,15 +119,16 @@ def test_inner_warning_bit4_alone_is_ignored():
     assert report.warnings == ()
 
 
-def test_saliency_not_determinable_marks_split_unavailable():
+def test_saliency_status_does_not_affect_readiness():
     driver = _driver_ready_for_autotune()
     driver.config.identified_l_saliency_status = 0
 
     report = resolve_autotune_readiness(driver)
 
-    assert report.result == RESULT_READY_WITH_WARNINGS
+    assert report.result == RESULT_READY
     assert report.stage2_policy == POLICY_NORMAL
-    assert "ld_lq_split" in report.unavailable_inputs
+    assert report.unavailable_inputs == ()
+    assert "ld_lq_split" not in report.trusted_inputs
     assert "average_inductance" in report.trusted_inputs
 
 
@@ -230,7 +231,7 @@ def test_fresh_commissioned_evidence_overrides_stale_config_for_readiness():
     assert report.warnings == ()
     assert report.unavailable_inputs == ()
     assert "average_inductance" in report.trusted_inputs
-    assert "ld_lq_split" in report.trusted_inputs
+    assert "ld_lq_split" not in report.trusted_inputs
     assert "count_space_resistance" in report.trusted_inputs
 
 
