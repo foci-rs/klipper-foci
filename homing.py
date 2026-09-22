@@ -200,6 +200,22 @@ class HomingWorkflow:
                 axis_names,
             )
 
+    def _sync_enable_line_armed(self) -> None:
+        """Mirror a firmware-armed motor into Klipper's EnableLine.
+
+        `run_calibration()` arms the motor directly through the FOCI
+        commissioning backend, bypassing EnableLine, the same gap
+        FOCI_SETUP's own success path guards against. Without this sync,
+        EnableLine's is_enabled bookkeeping stays False, so a later
+        motor_disable() call (e.g. mirroring a firmware-driven disarm into
+        Klipper state) is a silent no-op and this stepper's is_calibrated
+        never gets cleared.
+        """
+        stepper_enable = self.driver.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
+        toolhead = self.driver.printer.lookup_object("toolhead")
+        enable_line.motor_enable(toolhead.get_last_move_time())
+
     def ensure_calibrated(self) -> None:
         """Run calibration if not already calibrated. Blocks until complete."""
         if self.driver.state.inhibited:
@@ -265,6 +281,7 @@ class HomingWorkflow:
             status = params.get("status", 255)
             if status == 5:
                 self.driver.state.is_calibrated = True
+                self._sync_enable_line_armed()
                 logging.info(
                     "FOCI %s: already calibrated (firmware auto-cal)",
                     self.driver.name,
@@ -281,6 +298,7 @@ class HomingWorkflow:
                 )
             self._report_calibration_details()
             self.driver.state.is_calibrated = True
+            self._sync_enable_line_armed()
             logging.info(
                 "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
                 self.driver.name,

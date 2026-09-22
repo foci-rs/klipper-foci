@@ -204,6 +204,34 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         gcode = d.printer.lookup_object("gcode")
         self.assertEqual(gcode._responses, [])
 
+    def test_calibration_success_syncs_klipper_enable_state(self):
+        """`ensure_calibrated()` arms the motor directly through the FOCI
+        commissioning backend, bypassing Klipper's EnableLine -- the same gap
+        FOCI_SETUP's success path already guards against. If EnableLine's own
+        is_enabled bookkeeping is never synced to match, a later
+        motor_disable() call (e.g. from `_synchronize_disarmed_workflow_terminal`
+        mirroring a firmware-driven disarm into Klipper state) is a silent
+        no-op: `MockEnableLine.motor_disable()` only transitions -- and only
+        then would a real callback clear a CoreXY-coupled stepper's own
+        is_calibrated -- when is_enabled is already True.
+        """
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        reactor = d.printer.get_reactor()
+        reactor.completion_result = {
+            "oid": d.oid,
+            "status": 0,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 123,
+        }
+
+        d.homing.ensure_calibrated()
+
+        stepper_enable = d.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(d.stepper_name)
+        self.assertTrue(enable_line.is_motor_enabled())
+
 
 class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_delegates_initial_homing_state(self):
