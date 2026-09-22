@@ -52,7 +52,6 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     38: "inductance missing resistance evidence",
     39: "inductance reactance calculation invalid",
     40: "inductance drift calculation invalid",
-    41: "inductance saliency calculation invalid",
     42: "sustained hold validation failed",
     43: "closed-loop entry stability failed",
     44: "electrical model had no usable samples",
@@ -253,9 +252,6 @@ INDUCTANCE_CAPTURE_REJECT_REASON_NAMES: dict[int, str] = {
     5: "first-half accumulator",
     6: "second-half accumulator",
     7: "elapsed interpolation",
-    8: "saliency bracket invariant",
-    9: "saliency average below bracket",
-    10: "saliency average above bracket",
 }
 
 CURRENT_LOOP_FAILURE_REASON_NAMES: dict[int, str] = {
@@ -428,19 +424,6 @@ def format_commission_detail(detail: dict) -> str:
                 f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, "
                 f"previous_elapsed_us={int(previous_elapsed_us)}, current_elapsed_us="
                 f"{int(current_elapsed_us)})"
-            )
-        if value0 == 8:
-            x_d, x_q = _decode_u16_pair(value2)
-            return (
-                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, x_d={int(x_d)}, "
-                f"x_q={int(x_q)})"
-            )
-        if value0 in (9, 10):
-            x_average, bound = _decode_u16_pair(value2)
-            bound_name = "low" if value0 == 9 else "high"
-            return (
-                f"{phase_name}: {name} (reason={reason}, saliency_permille={int(value1)}, "
-                f"x_average={int(x_average)}, {bound_name}_bound={int(bound)})"
             )
         return f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, aux={int(value2)})"
     if code == 41:

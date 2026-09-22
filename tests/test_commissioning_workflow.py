@@ -114,6 +114,11 @@ def test_net_displacement_overflow_reason_present():
     assert COMMISSION_REASON_NAMES[87] == "net displacement overflow"
 
 
+def test_saliency_bracket_codes_are_unassigned():
+    assert 41 not in commissioning.COMMISSION_REASON_NAMES
+    assert not {8, 9, 10} & set(commissioning.INDUCTANCE_CAPTURE_REJECT_REASON_NAMES)
+
+
 def test_current_loop_failure_summary_decodes_gate_sample_status():
     run = {
         "failure_reason": 4,

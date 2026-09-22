@@ -135,26 +135,6 @@ def test_format_commission_detail_inductance_capture_rejected():
             "value2": (20 << 16) | 0xFFAC,
         }
     )
-    saliency_low = format_commission_detail(
-        {
-            "phase": 5,
-            "code": 33,
-            "status": 1,
-            "value0": 9,
-            "value1": 7,
-            "value2": (8500 << 16) | 8552,
-        }
-    )
-    saliency_high = format_commission_detail(
-        {
-            "phase": 5,
-            "code": 33,
-            "status": 1,
-            "value0": 10,
-            "value1": 7,
-            "value2": (8700 << 16) | 8616,
-        }
-    )
 
     assert "inductance AC capture rejected" in phi
     assert "reason=zero phi delta" in phi
@@ -164,12 +144,6 @@ def test_format_commission_detail_inductance_capture_rejected():
     assert "reason=saliency accumulator" in current
     assert "id=20" in current
     assert "iq=-84" in current
-    assert "reason=saliency average below bracket" in saliency_low
-    assert "saliency_permille=7" in saliency_low
-    assert "x_average=8500" in saliency_low
-    assert "low_bound=8552" in saliency_low
-    assert "reason=saliency average above bracket" in saliency_high
-    assert "high_bound=8616" in saliency_high
 
 
 def test_format_commission_detail_measurements():
