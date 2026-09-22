@@ -8,6 +8,9 @@ from typing import ClassVar
 from .commissioning import COMMISSION_REASON_NAMES, format_commission_detail
 from .config import POSITION_UNITS_PER_REV
 from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S
+from .report import report_detail
+
+log = logging.getLogger(__name__)
 
 # Status codes for foci_calibrate_response (CalibrationError::status_code).
 # This is a separate namespace from commissioning errors because calibration
@@ -355,6 +358,11 @@ class HomingWorkflow:
         if self.driver.stepper_name in dominated_steppers:
             self.ensure_calibrated()
 
+    def _report(self, message: str) -> None:
+        """Developer-facing homing diagnostic line: klippy.log only, gated behind
+        [foci] debug -- see report.report_detail."""
+        report_detail(log, self.driver.global_config.debug, message)
+
     def handle_homing_move_begin(self, homing_move) -> None:
         """Record the homing move print-time window for step history diagnostics."""
         toolhead = getattr(homing_move, "toolhead", None)
@@ -367,9 +375,6 @@ class HomingWorkflow:
 
     def handle_homing_move_end(self, homing_move) -> None:
         """Report FOCI stepper positions captured by Kalico homing."""
-        gcode = self.driver.printer.lookup_object("gcode", None)
-        if gcode is None:
-            return
         start_time = self._homing_move_start_times.pop(id(homing_move), None)
         for sp in getattr(homing_move, "stepper_positions", []):
             if getattr(sp, "stepper_name", None) != self.driver.stepper_name:
@@ -380,17 +385,17 @@ class HomingWorkflow:
             move_steps = halt_pos - start_pos
             over_steps = halt_pos - trig_pos
             step_dist = float(sp.stepper.get_step_dist())
-            gcode.respond_info(
+            self._report(
                 f"FOCI_HOME_POSITION {self.driver.stepper_name} endstop={sp.endstop_name} "
                 f"start={int(start_pos)} trig={int(trig_pos)} halt={int(halt_pos)} move_steps="
                 f"{int(move_steps)} over_steps={int(over_steps)} move_mm="
                 f"{move_steps * step_dist:.3f} over_mm={over_steps * step_dist:.3f}"
             )
-            self._report_homing_step_history(gcode, homing_move, sp, start_time)
-            self._report_stall_result(gcode)
+            self._report_homing_step_history(homing_move, sp, start_time)
+            self._report_stall_result()
             return
 
-    def _report_stall_result(self, gcode) -> None:
+    def _report_stall_result(self) -> None:
         if self.driver.config.homing_current <= 0.0:
             return
         result = self.driver.protocol.query_stall()
@@ -400,7 +405,7 @@ class HomingWorkflow:
             * self.driver.config.rotation_distance
         )
         trigger_path = self._TRIGGER_PATH_NAMES.get(result["trigger_path"], "unknown")
-        gcode.respond_info(
+        self._report(
             f"FOCI_HOME_STALL {self.driver.stepper_name} latched={result['latched']} "
             f"peak_error_units={result['peak_error_units']} peak_error_mm={peak_mm:.3f} "
             f"trigger_tick={result['trigger_tick']} clamp_active={result['clamp_active']} "
@@ -408,7 +413,7 @@ class HomingWorkflow:
             f"peak_margin_delta_units={result['peak_margin_delta_units']}"
         )
 
-    def _report_homing_step_history(self, gcode, homing_move, sp, start_time) -> None:
+    def _report_homing_step_history(self, homing_move, sp, start_time) -> None:
         """Report Kalico stepcompress history for one homing stepper."""
         if start_time is None:
             return
@@ -448,7 +453,7 @@ class HomingWorkflow:
         planned_start = int(first.start_position)
         planned_end = int(last.start_position) + int(last.step_count)
         step_dist = float(sp.stepper.get_step_dist())
-        gcode.respond_info(
+        self._report(
             f"FOCI_HOME_STEP_HISTORY {self.driver.stepper_name} start_clock={int(start_clock)} "
             f"end_clock={int(end_clock)} segments={len(history)} move_segments="
             f"{len(move_history)} marker_segments={len(marker_history)} signed_steps="
@@ -459,7 +464,7 @@ class HomingWorkflow:
             f"{int(last.last_clock)} signed_mm={signed_steps * step_dist:.3f} abs_mm="
             f"{abs_steps * step_dist:.3f}"
         )
-        gcode.respond_info(
+        self._report(
             f"FOCI_HOME_STEP_SEGMENTS {self.driver.stepper_name} first="
             f"{self._format_history_segment_edges(move_history[:4])} last="
             f"{self._format_history_segment_edges(move_history[-4:])} markers="

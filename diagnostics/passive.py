@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from ..report import report_detail
 from .formatting import (
     cpu_cycles_per_us,
     format_stepper_event,
@@ -26,12 +27,10 @@ class PassiveDiagnostics:
         self.driver = driver
 
     def handle_stepper_event(self, params: dict) -> None:
-        """Handle bounded firmware stepper diagnostics."""
+        """Handle bounded firmware stepper diagnostics: per-step noise, klippy.log
+        only, gated behind [foci] debug -- see report.report_detail."""
         message = format_stepper_event(self.driver.stepper_name, params)
-        log.info(message)
-        gcode = self.driver.printer.lookup_object("gcode", None)
-        if gcode is not None:
-            gcode.respond_info(message)
+        report_detail(log, self.driver.global_config.debug, message)
 
     def handle_stepper_perf_event(self, params: dict) -> None:
         """Handle fatal firmware step-dispatch performance snapshots."""
