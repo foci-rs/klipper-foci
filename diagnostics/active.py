@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from ..commissioning import (
     CURRENT_LOOP_FAILURE_REASON_NAMES,
     format_commission_error_detail_name,
 )
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
+from ..report import report_detail
+
+log = logging.getLogger(__name__)
 
 CURRENT_STEP_AXIS_CODES = {
     "torque": 0,
@@ -349,7 +354,7 @@ class ActiveDiagnostics:
             f"status_flags_warn_mask=0x{params['status_flags_warn_mask']:08x} "
             f"scale_metadata_validated={int(params['scale_metadata_validated'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_resistance_run(self, params: dict) -> None:
         """Handle foci_resistance_run from firmware.
@@ -384,8 +389,7 @@ class ActiveDiagnostics:
             f"dsadc_mdec_readback=0x{params['dsadc_mdec_readback']:08x} pwm_sv_chop_readback=0x"
             f"{params['pwm_sv_chop_readback']:08x}"
         )
-        gcode = self.driver.printer.lookup_object("gcode")
-        gcode.respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
         if params["power_stage_tripped"]:
             toolhead = self.driver.printer.lookup_object("toolhead")
             stepper_enable = self.driver.printer.lookup_object("stepper_enable")
@@ -393,6 +397,7 @@ class ActiveDiagnostics:
             enable_line.motor_disable(toolhead.get_last_move_time())
             self.driver.state.is_calibrated = False
             self.driver.homing.invalidate_homing()
+            gcode = self.driver.printer.lookup_object("gcode")
             gcode.respond_info(
                 f"FOCI {self.driver.name} resistance containment: firmware disabled the motor; "
                 f"calibration was cleared and rehoming is required"
@@ -432,7 +437,7 @@ class ActiveDiagnostics:
             f"{int(params.get('signed_asymmetry_permille', 0))} drift_permille="
             f"{int(params.get('drift_permille', 0))} warning_flags={int(params['warning_flags'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_current_loop_run(self, params: dict) -> None:
         """Handle foci_current_loop_run from firmware."""
@@ -463,7 +468,7 @@ class ActiveDiagnostics:
             f"{int(params['candidate_flux_i'])} candidate_torque="
             f"{int(params['candidate_torque_p'])}/{int(params['candidate_torque_i'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_current_loop_filters(self, params: dict) -> None:
         """Handle foci_current_loop_filters from firmware."""
@@ -476,7 +481,7 @@ class ActiveDiagnostics:
             f"{int(params['velocity_filter_hz'])} torque={int(params['torque_filter_hz'])} "
             f"position={int(params['position_filter_hz'])} flux={int(params['flux_filter_hz'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_current_loop_hold(self, params: dict) -> None:
         """Handle foci_current_loop_hold from firmware."""
@@ -494,7 +499,7 @@ class ActiveDiagnostics:
             f"{int(params['flux_crossing_count'])} status_or=0x{params['status_flags_or']:08x} "
             f"actionable_status_count={int(params['actionable_status_count'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_closed_loop_activation(self, params: dict) -> None:
         """Handle foci_closed_loop_activation from firmware."""
@@ -505,7 +510,7 @@ class ActiveDiagnostics:
             f"drift_count={int(params['drift_count'])} threshold_count="
             f"{int(params['threshold_count'])} runaway={int(params['runaway'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_inductance_run(self, params: dict) -> None:
         """Handle foci_inductance_run from firmware."""
@@ -513,7 +518,9 @@ class ActiveDiagnostics:
         cached = self._ensure_inductance_cache(oid)
         cached["run"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
-        self.driver.printer.lookup_object("gcode").respond_info(
+        report_detail(
+            log,
+            self.driver.global_config.debug,
             f"FOCI {self.driver.name} inductance run: source={int(params['source'])} status="
             f"{int(params['status'])} warning_flags={int(params['warning_flags'])} ud_count="
             f"{int(params['ud_count'])} realized_frequency_millihz="
@@ -522,7 +529,7 @@ class ActiveDiagnostics:
             f"{int(params['openloop_phi_delta_counts'])} sample_count="
             f"{int(params['sample_count'])} encoder_delta_counts="
             f"{int(params['encoder_delta_counts'])} status_flags_or=0x"
-            f"{params['status_flags_or']:08x}"
+            f"{params['status_flags_or']:08x}",
         )
 
     def handle_inductance_frame(self, params: dict) -> None:
@@ -531,7 +538,9 @@ class ActiveDiagnostics:
         cached = self._ensure_inductance_cache(oid)
         cached["frame"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
-        self.driver.printer.lookup_object("gcode").respond_info(
+        report_detail(
+            log,
+            self.driver.global_config.debug,
             f"FOCI {self.driver.name} inductance frame: id_mean_milli_count="
             f"{int(params['id_mean_milli_count'])} iq_mean_milli_count="
             f"{int(params['iq_mean_milli_count'])} id_rms_milli_count="
@@ -539,7 +548,7 @@ class ActiveDiagnostics:
             f"{int(params['iq_rms_milli_count'])} drift_permille="
             f"{int(params['drift_permille'])} zero_id_mean_milli_count="
             f"{int(params['zero_id_mean_milli_count'])} zero_iq_mean_milli_count="
-            f"{int(params['zero_iq_mean_milli_count'])}"
+            f"{int(params['zero_iq_mean_milli_count'])}",
         )
 
     def handle_inductance_estimate(self, params: dict) -> None:
@@ -548,7 +557,9 @@ class ActiveDiagnostics:
         cached = self._ensure_inductance_cache(oid)
         cached["estimate"] = dict(params)
         self._last_inductance_evidence[oid] = self._copy_inductance_cache(cached)
-        self.driver.printer.lookup_object("gcode").respond_info(
+        report_detail(
+            log,
+            self.driver.global_config.debug,
             f"FOCI {self.driver.name} inductance estimate: x_average_count_ratio_milli="
             f"{int(params['x_average_count_ratio_milli'])} x_d_count_ratio_milli="
             f"{int(params['x_d_count_ratio_milli'])} x_q_count_ratio_milli="
@@ -558,7 +569,7 @@ class ActiveDiagnostics:
             f"{int(params['x_mag_nominal_count_ratio_milli'])} x_mag_shift_minus_permille="
             f"{int(params['x_mag_shift_minus_permille'])} x_mag_shift_plus_permille="
             f"{int(params['x_mag_shift_plus_permille'])} x_mag_vs_quad_permille="
-            f"{int(params['x_mag_vs_quad_permille'])}"
+            f"{int(params['x_mag_vs_quad_permille'])}",
         )
 
     def handle_encoder_alignment(self, params: dict) -> None:
@@ -573,7 +584,7 @@ class ActiveDiagnostics:
             f"min_movement_counts={int(params['min_movement_counts'])} counts_per_electrical_rev="
             f"{int(params['counts_per_electrical_rev'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_adc_residual(self, params: dict) -> None:
         """Handle foci_adc_residual from firmware."""
@@ -589,7 +600,7 @@ class ActiveDiagnostics:
             f"{int(params['pid_flux_mean_count'])} pid_torque_mean_count="
             f"{int(params['pid_torque_mean_count'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_current_validation_axis(self, params: dict) -> None:
         """Handle foci_current_validation_axis from firmware."""
@@ -620,7 +631,7 @@ class ActiveDiagnostics:
             f"{int(params.get('negative_encoder_delta_counts', 0))} status_flags_or=0x"
             f"{params['status_flags_or']:08x}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_current_validation_settled_sample(self, params: dict) -> None:
         """Handle foci_current_validation_settled_sample from firmware."""
@@ -637,7 +648,7 @@ class ActiveDiagnostics:
             f" encoder_delta={int(params['encoder_delta_counts'])} status_flags=0x"
             f"{params['status_flags']:08x}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_current_validation_envelope(self, params: dict) -> None:
         """Handle foci_current_validation_envelope from firmware."""
@@ -651,7 +662,7 @@ class ActiveDiagnostics:
             f"current_limited={int(params['current_limited'])} voltage_limited="
             f"{int(params['voltage_limited'])} max_p={int(params['max_p'])}"
         )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
+        report_detail(log, self.driver.global_config.debug, msg)
 
     def _current_validation_gate_role(self, axis_key: str | None, sample_delay_ms: int) -> str:
         if axis_key == "flux" and sample_delay_ms == 100:

@@ -1,5 +1,6 @@
 """Tests for active FOCI diagnostic command behavior."""
 
+import logging
 import unittest
 
 from tests.mocks import (
@@ -9,9 +10,12 @@ from tests.mocks import (
     make_driver,
 )
 
+ACTIVE_LOGGER = "klipper_foci.diagnostics.active"
 
-def test_current_loop_hold_caches_last_evidence():
+
+def test_current_loop_hold_caches_last_evidence(caplog):
     d = make_driver()
+    d.global_config.debug = True
     params = {
         "oid": d.oid,
         "hold_status": 1,
@@ -33,11 +37,13 @@ def test_current_loop_hold_caches_last_evidence():
         "actionable_status_count": 0,
     }
 
-    d.diagnostics.active.handle_current_loop_hold(params)
+    with caplog.at_level(logging.INFO, logger=ACTIVE_LOGGER):
+        d.diagnostics.active.handle_current_loop_hold(params)
 
     assert d.diagnostics.active.last_current_loop_hold_evidence(d.oid) == params
     assert d.diagnostics.active.last_current_loop_hold_evidence(d.oid + 1) == {}
-    out = d.printer.lookup_object("gcode")._responses[-1]
+    assert d.printer.lookup_object("gcode")._responses == []
+    out = caplog.records[-1].message
     for field_name in (
         "hold_status",
         "warnings",
@@ -58,8 +64,9 @@ def test_current_loop_hold_caches_last_evidence():
         assert field_name in out
 
 
-def test_current_loop_run_prints_failure_reason_name():
+def test_current_loop_run_prints_failure_reason_name(caplog):
     d = make_driver()
+    d.global_config.debug = True
     params = {
         "oid": d.oid,
         "status": 1,
@@ -81,14 +88,17 @@ def test_current_loop_run_prints_failure_reason_name():
         "candidate_torque_i": 50,
     }
 
-    d.diagnostics.active.handle_current_loop_run(params)
+    with caplog.at_level(logging.INFO, logger=ACTIVE_LOGGER):
+        d.diagnostics.active.handle_current_loop_run(params)
 
-    out = d.printer.lookup_object("gcode")._responses[-1]
+    assert d.printer.lookup_object("gcode")._responses == []
+    out = caplog.records[-1].message
     assert "failure_reason=4/flux_validation" in out
 
 
-def test_closed_loop_activation_caches_last_evidence():
+def test_closed_loop_activation_caches_last_evidence(caplog):
     d = make_driver()
+    d.global_config.debug = True
     params = {
         "oid": d.oid,
         "entry_status": 3,
@@ -99,11 +109,13 @@ def test_closed_loop_activation_caches_last_evidence():
         "runaway": 0,
     }
 
-    d.diagnostics.active.handle_closed_loop_activation(params)
+    with caplog.at_level(logging.INFO, logger=ACTIVE_LOGGER):
+        d.diagnostics.active.handle_closed_loop_activation(params)
 
     assert d.diagnostics.active.last_closed_loop_activation_evidence(d.oid) == params
     assert d.diagnostics.active.last_closed_loop_activation_evidence(d.oid + 1) == {}
-    out = d.printer.lookup_object("gcode")._responses[-1]
+    assert d.printer.lookup_object("gcode")._responses == []
+    out = caplog.records[-1].message
     for field_name in (
         "entry_status",
         "position_1",
@@ -139,50 +151,53 @@ def test_current_loop_filters_fold_into_commission_result_cache():
 class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_inductance_evidence_replies_format_gcode_lines(self):
         d = make_driver()
+        d.global_config.debug = True
 
-        d.diagnostics.active.handle_inductance_run(
-            {
-                "oid": d.oid,
-                "source": 1,
-                "status": 0,
-                "warning_flags": 2,
-                "ud_count": 768,
-                "realized_frequency_millihz": 1_000_000,
-                "elapsed_us": 8000,
-                "openloop_phi_delta_counts": 524_288,
-                "sample_count": 104,
-                "encoder_delta_counts": 0,
-                "status_flags_or": 0,
-            }
-        )
-        d.diagnostics.active.handle_inductance_frame(
-            {
-                "oid": d.oid,
-                "id_mean_milli_count": 20_000,
-                "iq_mean_milli_count": -84_000,
-                "id_rms_milli_count": 5000,
-                "iq_rms_milli_count": 21_000,
-                "drift_permille": 40,
-                "zero_id_mean_milli_count": 100,
-                "zero_iq_mean_milli_count": -200,
-            }
-        )
-        d.diagnostics.active.handle_inductance_estimate(
-            {
-                "oid": d.oid,
-                "x_average_count_ratio_milli": 8600,
-                "x_d_count_ratio_milli": 9200,
-                "x_q_count_ratio_milli": 8000,
-                "saliency_status": 1,
-                "saliency_permille": 140,
-                "x_mag_nominal_count_ratio_milli": 8770,
-                "x_mag_shift_minus_permille": 4,
-                "x_mag_shift_plus_permille": 4,
-                "x_mag_vs_quad_permille": 20,
-            }
-        )
+        with self.assertLogs(ACTIVE_LOGGER, level="INFO") as log_ctx:
+            d.diagnostics.active.handle_inductance_run(
+                {
+                    "oid": d.oid,
+                    "source": 1,
+                    "status": 0,
+                    "warning_flags": 2,
+                    "ud_count": 768,
+                    "realized_frequency_millihz": 1_000_000,
+                    "elapsed_us": 8000,
+                    "openloop_phi_delta_counts": 524_288,
+                    "sample_count": 104,
+                    "encoder_delta_counts": 0,
+                    "status_flags_or": 0,
+                }
+            )
+            d.diagnostics.active.handle_inductance_frame(
+                {
+                    "oid": d.oid,
+                    "id_mean_milli_count": 20_000,
+                    "iq_mean_milli_count": -84_000,
+                    "id_rms_milli_count": 5000,
+                    "iq_rms_milli_count": 21_000,
+                    "drift_permille": 40,
+                    "zero_id_mean_milli_count": 100,
+                    "zero_iq_mean_milli_count": -200,
+                }
+            )
+            d.diagnostics.active.handle_inductance_estimate(
+                {
+                    "oid": d.oid,
+                    "x_average_count_ratio_milli": 8600,
+                    "x_d_count_ratio_milli": 9200,
+                    "x_q_count_ratio_milli": 8000,
+                    "saliency_status": 1,
+                    "saliency_permille": 140,
+                    "x_mag_nominal_count_ratio_milli": 8770,
+                    "x_mag_shift_minus_permille": 4,
+                    "x_mag_shift_plus_permille": 4,
+                    "x_mag_vs_quad_permille": 20,
+                }
+            )
 
-        responses = d.printer.lookup_object("gcode")._responses[-3:]
+        self.assertEqual(d.printer.lookup_object("gcode")._responses, [])
+        responses = [record.message for record in log_ctx.records]
         self.assertIn("inductance run:", responses[0])
         self.assertIn("realized_frequency_millihz=1000000", responses[0])
         self.assertIn("inductance frame:", responses[1])
@@ -496,23 +511,26 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
 
     def test_resistance_profile_reply_prints_firmware_metadata(self):
         d = make_driver()
+        d.global_config.debug = True
 
-        d.diagnostics.active.handle_resistance_profile(
-            {
-                "oid": d.oid,
-                "pwm_maxcnt": 3999,
-                "bbm_h": 9,
-                "bbm_l": 9,
-                "dsadc_mdec_a": 8,
-                "dsadc_mdec_b": 8,
-                "linear_current_threshold_count": 256,
-                "encoder_move_warn_counts": 4,
-                "status_flags_warn_mask": 0x00080000,
-                "scale_metadata_validated": 1,
-            }
-        )
+        with self.assertLogs(ACTIVE_LOGGER, level="INFO") as log_ctx:
+            d.diagnostics.active.handle_resistance_profile(
+                {
+                    "oid": d.oid,
+                    "pwm_maxcnt": 3999,
+                    "bbm_h": 9,
+                    "bbm_l": 9,
+                    "dsadc_mdec_a": 8,
+                    "dsadc_mdec_b": 8,
+                    "linear_current_threshold_count": 256,
+                    "encoder_move_warn_counts": 4,
+                    "status_flags_warn_mask": 0x00080000,
+                    "scale_metadata_validated": 1,
+                }
+            )
 
-        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertEqual(d.printer.lookup_object("gcode")._responses, [])
+        out = log_ctx.records[-1].message
         self.assertIn("pwm_maxcnt=3999", out)
         self.assertIn("bbm_h=9", out)
         self.assertIn("bbm_l=9", out)
@@ -521,29 +539,32 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
     def test_resistance_run_reply_prints_firmware_run_summary(self):
         kinematics = MockCoreXYKinematics([["manual_stepper stepper_x"], ["stepper_y"]])
         d = make_driver(kinematics=kinematics, homed_axes="xy")
+        d.global_config.debug = True
         d.state.is_calibrated = True
         enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
         enable_line.motor_enable(0.0)
 
-        d.diagnostics.active.handle_resistance_run(
-            {
-                "oid": d.oid,
-                "status": 0,
-                "selected_r_count_slope_milli": 1042,
-                "warning_flags": 0,
-                "status_flags_or": 0x00080000,
-                "peak_abs_current_count": 1200,
-                "max_abs_steady_mean_current_count": 900,
-                "current_ceiling_count": 1600,
-                "power_stage_tripped": 0,
-                "pwm_maxcnt_readback": 3999,
-                "bbm_readback": 0x00000909,
-                "dsadc_mdec_readback": 0x00080008,
-                "pwm_sv_chop_readback": 0x00000007,
-            }
-        )
+        with self.assertLogs(ACTIVE_LOGGER, level="INFO") as log_ctx:
+            d.diagnostics.active.handle_resistance_run(
+                {
+                    "oid": d.oid,
+                    "status": 0,
+                    "selected_r_count_slope_milli": 1042,
+                    "warning_flags": 0,
+                    "status_flags_or": 0x00080000,
+                    "peak_abs_current_count": 1200,
+                    "max_abs_steady_mean_current_count": 900,
+                    "current_ceiling_count": 1600,
+                    "power_stage_tripped": 0,
+                    "pwm_maxcnt_readback": 3999,
+                    "bbm_readback": 0x00000909,
+                    "dsadc_mdec_readback": 0x00080008,
+                    "pwm_sv_chop_readback": 0x00000007,
+                }
+            )
 
-        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertEqual(d.printer.lookup_object("gcode")._responses, [])
+        out = log_ctx.records[-1].message
         self.assertIn("status=0", out)
         self.assertIn("selected_r_count_slope_milli=1042", out)
         self.assertIn("warning_flags=0", out)
@@ -564,26 +585,29 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
 
     def test_resistance_run_reply_prints_specific_failure_name(self):
         d = make_driver()
+        d.global_config.debug = True
 
-        d.diagnostics.active.handle_resistance_run(
-            {
-                "oid": d.oid,
-                "status": 23,
-                "selected_r_count_slope_milli": 0,
-                "warning_flags": 0,
-                "status_flags_or": 0,
-                "peak_abs_current_count": 0,
-                "max_abs_steady_mean_current_count": 0,
-                "current_ceiling_count": 1600,
-                "power_stage_tripped": 0,
-                "pwm_maxcnt_readback": 3999,
-                "bbm_readback": 0x00000909,
-                "dsadc_mdec_readback": 0x00080008,
-                "pwm_sv_chop_readback": 0,
-            }
-        )
+        with self.assertLogs(ACTIVE_LOGGER, level="INFO") as log_ctx:
+            d.diagnostics.active.handle_resistance_run(
+                {
+                    "oid": d.oid,
+                    "status": 23,
+                    "selected_r_count_slope_milli": 0,
+                    "warning_flags": 0,
+                    "status_flags_or": 0,
+                    "peak_abs_current_count": 0,
+                    "max_abs_steady_mean_current_count": 0,
+                    "current_ceiling_count": 1600,
+                    "power_stage_tripped": 0,
+                    "pwm_maxcnt_readback": 3999,
+                    "bbm_readback": 0x00000909,
+                    "dsadc_mdec_readback": 0x00080008,
+                    "pwm_sv_chop_readback": 0,
+                }
+            )
 
-        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertEqual(d.printer.lookup_object("gcode")._responses, [])
+        out = log_ctx.records[-1].message
         self.assertIn("status=23", out)
         self.assertIn("status_name=resistance insufficient linear points", out)
 
@@ -623,26 +647,29 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
 
     def test_resistance_axis_reply_prints_firmware_fit_result(self):
         d = make_driver()
+        d.global_config.debug = True
 
-        d.diagnostics.active.handle_resistance_axis(
-            {
-                "oid": d.oid,
-                "electrical_axis": 0,
-                "phi_e_ext": 0,
-                "r_count_slope_milli": 1042,
-                "intercept_count": 24,
-                "rmse_permille": 8,
-                "selected_mask": 0b11111000,
-                "excluded_point_mask": 0b00000111,
-                "selected_count": 5,
-                "signed_count_slope_milli": 1041,
-                "signed_asymmetry_permille": 12,
-                "drift_permille": 5,
-                "warning_flags": 0,
-            }
-        )
+        with self.assertLogs(ACTIVE_LOGGER, level="INFO") as log_ctx:
+            d.diagnostics.active.handle_resistance_axis(
+                {
+                    "oid": d.oid,
+                    "electrical_axis": 0,
+                    "phi_e_ext": 0,
+                    "r_count_slope_milli": 1042,
+                    "intercept_count": 24,
+                    "rmse_permille": 8,
+                    "selected_mask": 0b11111000,
+                    "excluded_point_mask": 0b00000111,
+                    "selected_count": 5,
+                    "signed_count_slope_milli": 1041,
+                    "signed_asymmetry_permille": 12,
+                    "drift_permille": 5,
+                    "warning_flags": 0,
+                }
+            )
 
-        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertEqual(d.printer.lookup_object("gcode")._responses, [])
+        out = log_ctx.records[-1].message
         self.assertIn("electrical_axis=0", out)
         self.assertIn("count_slope=1042", out)
         self.assertIn("intercept_count=24", out)
@@ -652,18 +679,21 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
 
     def test_resistance_diagnostic_does_not_compute_fit_in_host(self):
         d = make_driver()
+        d.global_config.debug = True
 
-        d.diagnostics.active.handle_resistance_axis(
-            {
-                "oid": d.oid,
-                "electrical_axis": 0,
-                "phi_e_ext": 0,
-                "r_count_slope_milli": 1042,
-                "warning_flags": 0,
-            }
-        )
+        with self.assertLogs(ACTIVE_LOGGER, level="INFO") as log_ctx:
+            d.diagnostics.active.handle_resistance_axis(
+                {
+                    "oid": d.oid,
+                    "electrical_axis": 0,
+                    "phi_e_ext": 0,
+                    "r_count_slope_milli": 1042,
+                    "warning_flags": 0,
+                }
+            )
 
-        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertEqual(d.printer.lookup_object("gcode")._responses, [])
+        out = log_ctx.records[-1].message
         self.assertIn("count_slope=1042", out)
         self.assertFalse(hasattr(d.diagnostics.active, "fit_resistance_axis"))
 
