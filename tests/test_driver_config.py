@@ -12,7 +12,8 @@ from klipper_foci.config import (
     RuntimeValidationResult,
     gain_to_permille,
     parse_driver_config,
-    stall_threshold_units,
+    stall_ceiling_units,
+    stall_margin_units,
     validate_runtime_config,
 )
 
@@ -34,7 +35,8 @@ CONFIG_FIELD_NAMES = {
     "voltage_limit",
     "encoder_reversed",
     "homing_current",
-    "stall_distance",
+    "stall_ceiling_mm",
+    "stall_margin_mm",
     "stall_persistence",
     "rotation_distance",
     "homing_speed_mm_s",
@@ -1132,9 +1134,11 @@ def test_homing_defaults_and_threshold_units():
     driver = make_config_driver(printer, sections, "foci stepper_x")
     cfg = driver.config
     assert cfg.homing_current == 0.0
-    assert cfg.stall_distance == 0.5
+    assert cfg.stall_ceiling_mm == 1.0
+    assert cfg.stall_margin_mm == 0.15
     assert cfg.stall_persistence == 3
-    assert stall_threshold_units(cfg) == 819
+    assert stall_ceiling_units(cfg) == 1638
+    assert stall_margin_units(cfg) == 246
 
 
 @pytest.mark.parametrize(
@@ -1144,10 +1148,15 @@ def test_homing_defaults_and_threshold_units():
         {"homing_current": "2.26"},
         {"homing_current": "-0.1"},
         {"homing_current": "0"},
-        {"stall_distance": "0"},
-        {"stall_distance": "10.1"},
+        {"stall_ceiling_mm": "0"},
+        {"stall_ceiling_mm": "10.1"},
+        {"stall_margin_mm": "0"},
+        {"stall_margin_mm": "10.1"},
+        {"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.5"},  # margin == ceiling
+        {"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.6"},  # margin > ceiling
         {"stall_persistence": "0"},
         {"stall_persistence": "256"},
+        {"stall_distance": "0.5"},  # removed key, must be a config error
     ],
 )
 def test_homing_config_rejects_out_of_range(values):
@@ -1162,7 +1171,8 @@ def test_homing_config_rejects_out_of_range(values):
 @pytest.mark.parametrize(
     "values,field_name,expected",
     [
-        ({"stall_distance": "10.0"}, "stall_distance", 10.0),
+        ({"stall_ceiling_mm": "5.0"}, "stall_ceiling_mm", 5.0),
+        ({"stall_margin_mm": "0.3"}, "stall_margin_mm", 0.3),
         ({"stall_persistence": "1"}, "stall_persistence", 1),
         ({"stall_persistence": "255"}, "stall_persistence", 255),
         ({"homing_current": "2.0"}, "homing_current", 2.0),
@@ -1175,6 +1185,26 @@ def test_homing_config_accepts_boundary_values(values, field_name, expected):
     )
     driver = make_config_driver(printer, sections, "foci stepper_x")
     assert getattr(driver.config, field_name) == expected
+
+
+def test_stall_ceiling_and_margin_default_independently():
+    # Setting only stall_ceiling_mm still applies the stall_margin_mm
+    # default, and vice versa -- neither requires the other.
+    printer, _chips, sections, _config = make_foci_config(
+        stepper_values={"rotation_distance": 40.0},
+        foci_values={"run_current": 2.3, "stall_ceiling_mm": "2.0"},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    assert driver.config.stall_ceiling_mm == 2.0
+    assert driver.config.stall_margin_mm == 0.15
+
+    printer, _chips, sections, _config = make_foci_config(
+        stepper_values={"rotation_distance": 40.0},
+        foci_values={"run_current": 2.3, "stall_margin_mm": "0.3"},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    assert driver.config.stall_ceiling_mm == 1.0
+    assert driver.config.stall_margin_mm == 0.3
 
 
 def test_homing_current_zero_is_rejected():

@@ -1097,7 +1097,7 @@ def test_connect_sends_homing_config_after_existing_startup_commands():
     formats = driver.mcu.command_formats
     assert "foci_config_homing oid=%c homing_ma=%u stall_units=%u persistence=%c" in formats
     cmd = driver.protocol.commands.config_homing
-    assert cmd.last_args == [driver.oid, 700, 819, 3]
+    assert cmd.last_args == [driver.oid, 700, 1638, 3]
 
 
 def test_query_stall_decodes_result():

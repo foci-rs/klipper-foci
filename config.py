@@ -26,7 +26,8 @@ MAX_ENCODER_PPR = 0x3FFF_FFFF
 # run_current, tripping the firmware's own quantized >= check on the first
 # homing move.
 HOMING_CURRENT_MARGIN_AMPS = 0.05
-DEFAULT_STALL_DISTANCE_MM = 0.5
+DEFAULT_STALL_CEILING_MM = 1.0
+DEFAULT_STALL_MARGIN_MM = 0.15
 DEFAULT_STALL_PERSISTENCE_TICKS = 3
 MAX_STALL_PERSISTENCE_TICKS = 255
 POSITION_UNITS_PER_REV = 65536
@@ -48,7 +49,8 @@ class FociDriverConfig:
     voltage_limit: int
     encoder_reversed: bool
     homing_current: float
-    stall_distance: float
+    stall_ceiling_mm: float
+    stall_margin_mm: float
     stall_persistence: int
     rotation_distance: float
     homing_speed_mm_s: float
@@ -253,7 +255,18 @@ def parse_driver_config(config) -> FociDriverConfig:
             f"{HOMING_CURRENT_MARGIN_AMPS:.3f} below run_current {run_current:.3f} "
             "(omit homing_current to disable the homing clamp)"
         )
-    stall_distance = config.getfloat("stall_distance", DEFAULT_STALL_DISTANCE_MM, above=0.0)
+    stall_ceiling_mm = config.getfloat("stall_ceiling_mm", DEFAULT_STALL_CEILING_MM, above=0.0)
+    stall_margin_mm = config.getfloat("stall_margin_mm", DEFAULT_STALL_MARGIN_MM, above=0.0)
+    if stall_margin_mm >= stall_ceiling_mm:
+        raise config.error(
+            f"stall_margin_mm {stall_margin_mm:.3f} in [{name}] must be less than "
+            f"stall_ceiling_mm {stall_ceiling_mm:.3f}"
+        )
+    if config.get("stall_distance", None) is not None:
+        raise config.error(
+            f"[{name}] stall_distance is removed; use stall_ceiling_mm and "
+            "stall_margin_mm instead"
+        )
     stall_persistence = config.getint(
         "stall_persistence",
         DEFAULT_STALL_PERSISTENCE_TICKS,
@@ -374,9 +387,14 @@ def parse_driver_config(config) -> FociDriverConfig:
     full_steps = stepper_config.getint("full_steps_per_rotation", 200)
     rotation_distance = stepper_config.getfloat("rotation_distance", above=0.0)
     homing_speed_mm_s = stepper_config.getfloat("homing_speed", 5.0)
-    if stall_distance > rotation_distance / 4.0:
+    if stall_ceiling_mm > rotation_distance / 4.0:
         raise config.error(
-            f"stall_distance {stall_distance:.3f} in [{name}] must be at most a quarter of "
+            f"stall_ceiling_mm {stall_ceiling_mm:.3f} in [{name}] must be at most a quarter of "
+            f"rotation_distance ({rotation_distance / 4.0:.3f})"
+        )
+    if stall_margin_mm > rotation_distance / 4.0:
+        raise config.error(
+            f"stall_margin_mm {stall_margin_mm:.3f} in [{name}] must be at most a quarter of "
             f"rotation_distance ({rotation_distance / 4.0:.3f})"
         )
     planner_steps_per_rev = microsteps * full_steps
@@ -404,7 +422,8 @@ def parse_driver_config(config) -> FociDriverConfig:
         voltage_limit=voltage_limit,
         encoder_reversed=encoder_reversed,
         homing_current=homing_current,
-        stall_distance=stall_distance,
+        stall_ceiling_mm=stall_ceiling_mm,
+        stall_margin_mm=stall_margin_mm,
         stall_persistence=stall_persistence,
         rotation_distance=rotation_distance,
         homing_speed_mm_s=homing_speed_mm_s,
@@ -487,9 +506,25 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
 
 
+def stall_ceiling_units(config: FociDriverConfig) -> int:
+    """Convert stall_ceiling_mm (mm) to TMC position units (65536 per revolution)."""
+    return max(1, round(config.stall_ceiling_mm / config.rotation_distance * POSITION_UNITS_PER_REV))
+
+
+def stall_margin_units(config: FociDriverConfig) -> int:
+    """Convert stall_margin_mm (mm) to TMC position units (65536 per revolution)."""
+    return max(1, round(config.stall_margin_mm / config.rotation_distance * POSITION_UNITS_PER_REV))
+
+
 def stall_threshold_units(config: FociDriverConfig) -> int:
-    """Convert stall_distance (mm) to TMC position units (65536 per revolution)."""
-    return max(1, round(config.stall_distance / config.rotation_distance * POSITION_UNITS_PER_REV))
+    """Backward-compatible alias for stall_ceiling_units.
+
+    stall_distance was replaced with stall_ceiling_mm and stall_margin_mm.
+    This function exists only to keep driver.py importable until Task 5
+    updates the call site to use stall_ceiling_units directly. Do not use
+    in new code.
+    """
+    return stall_ceiling_units(config)
 
 
 def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult:
