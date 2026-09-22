@@ -413,7 +413,7 @@ def parse_driver_config(config) -> FociDriverConfig:
             f"{', '.join(sorted(STEP_PINS))})"
         )
 
-    return FociDriverConfig(
+    driver_config = FociDriverConfig(
         name=name,
         stepper_name=stepper_name,
         run_current=run_current,
@@ -503,6 +503,19 @@ def parse_driver_config(config) -> FociDriverConfig:
         autotune_position_homing_peak_units=autotune_position_homing_peak_units,
         autotune_position_motion_cruise_units=autotune_position_motion_cruise_units,
     )
+
+    ceiling_units = stall_ceiling_units(driver_config)
+    margin_units = stall_margin_units(driver_config)
+    if margin_units >= ceiling_units:
+        raise config.error(
+            f"stall_margin_mm {stall_margin_mm:.4f} in [{name}] rounds to {margin_units} "
+            f"position units, which is not less than stall_ceiling_mm {stall_ceiling_mm:.4f} "
+            f"rounding to {ceiling_units} position units (rotation_distance="
+            f"{rotation_distance:.3f}); the firmware compares the rounded unit values, so "
+            "increase the gap between stall_margin_mm and stall_ceiling_mm"
+        )
+
+    return driver_config
 
 
 def stall_ceiling_units(config: FociDriverConfig) -> int:

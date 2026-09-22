@@ -1141,6 +1141,24 @@ def test_homing_defaults_and_threshold_units():
     assert stall_margin_units(cfg) == 246
 
 
+def test_stall_margin_rejected_when_units_collapse_at_rounding_boundary():
+    # stall_margin_mm=0.15 and stall_ceiling_mm=0.1501 both pass the raw mm
+    # comparison (0.15 < 0.1501), but at rotation_distance=40 they both round
+    # to 246 position units (245.76 and 246.16 respectively), which the
+    # firmware's unit-level `margin < ceiling` check rejects. The host must
+    # catch this before ever talking to the MCU.
+    with pytest.raises(CommandError):
+        printer, _chips, sections, _config = make_foci_config(
+            stepper_values={"rotation_distance": 40.0},
+            foci_values={
+                "run_current": 2.3,
+                "stall_ceiling_mm": "0.1501",
+                "stall_margin_mm": "0.15",
+            },
+        )
+        make_config_driver(printer, sections, "foci stepper_x")
+
+
 @pytest.mark.parametrize(
     "values",
     [
