@@ -407,26 +407,31 @@ class TestAutotuneGates(unittest.TestCase):
     def test_first_run_retained_auto_issues_integral_resume(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded
+        gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded, chain-eligible
         issued = []
         d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
             second_terminal="tune_result",
+            third_terminal="tune_result",
         )
 
         d.autotune.autotune(gcmd)
 
         self.assertEqual(
             issued,
-            [ACTION_CODES["breakaway_seeded"], ACTION_CODES["integral_resume"]],
+            [
+                ACTION_CODES["breakaway_seeded"],
+                ACTION_CODES["integral_resume"],
+                ACTION_CODES["position_tune"],
+            ],
         )
 
     def test_integral_resume_dispatch_relabels_the_phase_message(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
@@ -465,9 +470,53 @@ class TestAutotuneGates(unittest.TestCase):
             d,
             first_terminal="tune_result",
             second_terminal="tune_result",
+            third_terminal="tune_result",
         )
 
         d.autotune.autotune(gcmd)
+
+        self.assertEqual(
+            issued,
+            [ACTION_CODES["breakaway_seeded"], ACTION_CODES["position_tune"]],
+        )
+
+    def test_explicit_action_does_not_chain_position_tune(self):
+        """An operator-specified ACTION must not trigger the default-path
+        position-tune chain -- only the unspecified-ACTION production path
+        does."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
+        issued = []
+        d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="tune_result",
+            second_terminal="tune_result",
+        )
+
+        d.autotune.autotune(gcmd)
+
+        self.assertEqual(issued, [ACTION_CODES["breakaway_seeded"]])
+
+    def test_failed_velocity_tune_result_does_not_chain_position_tune(self):
+        """A failed velocity/robustness result (status > 1) reached via the
+        default ACTION must not trigger the position-tune chain -- chaining
+        is only for a successful velocity tune."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})  # default ACTION, chain-eligible
+        issued = []
+        d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="tune_result",
+            second_terminal="tune_result",
+            tune_result={**SAMPLE_TUNE_RESULT, "status": 2},
+        )
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(gcmd)
 
         self.assertEqual(issued, [ACTION_CODES["breakaway_seeded"]])
 
@@ -678,7 +727,7 @@ class TestAutotuneGates(unittest.TestCase):
         resume otherwise runs against the encoder the first dispatch re-zeroed."""
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         gcode = d.printer.lookup_object("gcode")
         events = []
         gcode.run_script_from_command = lambda command: events.append(("script", command))
@@ -735,7 +784,7 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_TUNE_RESULT,
         )
 
-        d.autotune.autotune(MockGCmd({}))
+        d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         self.assertEqual(d.state.active_gains["velocity_p"], 863)
         self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "863")
@@ -762,7 +811,7 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_POSITION_TUNE_RESULT,
         )
 
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
             d.autotune.autotune(gcmd)
 
@@ -925,7 +974,7 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_POSITION_TUNE_RESULT,
         )
 
-        d.autotune.autotune(MockGCmd({}))
+        d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         self.assertEqual(cfg.values[(d.name, "autotune_position_bound_units")], "409")
         self.assertEqual(cfg.values[(d.name, "autotune_position_homing_peak_units")], "300")
@@ -963,11 +1012,77 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_TUNE_RESULT,
         )
 
-        d.autotune.autotune(MockGCmd({}))
+        d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+
+    def test_default_action_chain_persists_the_position_tune_result(self):
+        """The default (unspecified-ACTION) path must deploy and persist the
+        CHAINED position-tune dispatch's own fields, not the first
+        (velocity-only) dispatch's fields -- matching real firmware, where
+        the chained PositionTune terminal's `velocity_p`/`velocity_i` come
+        from its own entry snapshot (already the just-installed gains), not
+        from re-using the earlier dispatch's reply."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+
+        reactor = d.printer.get_reactor()
+        dispatch_count = {"n": 0}
+
+        def pause(deadline):
+            reactor._time = deadline
+            dispatch_count["n"] += 1
+            payload = (
+                SAMPLE_TUNE_RESULT if dispatch_count["n"] == 1 else SAMPLE_POSITION_TUNE_RESULT
+            )
+            _feed_dispatch_terminal(d.autotune, "tune_result", payload)
+            return reactor._time
+
+        reactor.pause = pause
+
+        d.autotune.autotune(MockGCmd({}))
+
+        # SAMPLE_TUNE_RESULT: velocity_p=863, position_p=480.
+        # SAMPLE_POSITION_TUNE_RESULT: velocity_p=1152, position_p=282.
+        # The persisted values must come from the SECOND (chained) payload.
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "1152")
+        self.assertEqual(cfg.values[(d.name, "pid_position_p")], "282")
+
+    def test_chained_position_tune_failure_raises_and_does_not_persist(self):
+        """A default-path chain where the velocity tune succeeds but the
+        chained position-tune dispatch fails must report the whole command
+        as failed and must not persist any gains -- all-or-nothing, matching
+        today's standalone ACTION=position_tune failure behavior. The chip
+        already carries the new velocity gains at this point (PositionTune's
+        entry snapshot proves it), but host config/state is not updated."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+
+        reactor = d.printer.get_reactor()
+        dispatch_count = {"n": 0}
+
+        def pause(deadline):
+            reactor._time = deadline
+            dispatch_count["n"] += 1
+            payload = (
+                SAMPLE_TUNE_RESULT
+                if dispatch_count["n"] == 1
+                else SAMPLE_POSITION_TUNE_FAILURE_RESULT
+            )
+            _feed_dispatch_terminal(d.autotune, "tune_result", payload)
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertNotIn((d.name, "pid_velocity_p"), cfg.values)
+        self.assertNotIn((d.name, "pid_position_p"), cfg.values)
 
     def test_position_tune_evidence_is_shown_on_code_zero_failures(self):
         """Evidence must appear at every terminal-status raise site the
@@ -1040,7 +1155,7 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_TUNE_RESULT,
         )
 
-        d.autotune.autotune(MockGCmd({}))
+        d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         dispatched_actions = [value for kind, value in events if kind == "run_tune"]
         self.assertEqual(
@@ -1342,7 +1457,7 @@ class TestAutotuneGates(unittest.TestCase):
                 RuntimeError, msg="logging failure should propagate after safety cleanup"
             ),
         ):
-            d.autotune.autotune(MockGCmd({}))
+            d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         self.assertFalse(x_enable.is_motor_enabled())
         self.assertFalse(y_enable.is_motor_enabled())
@@ -1367,7 +1482,7 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_TUNE_RESULT,
         )
 
-        d.autotune.autotune(MockGCmd({}))
+        d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         self.assertFalse(x_enable.is_motor_enabled())
         self.assertFalse(y_enable.is_motor_enabled())
@@ -1694,7 +1809,7 @@ class TestAutotuneGates(unittest.TestCase):
         )
 
         with patch("klipper_foci.autotune.logging.info") as info:
-            d.autotune.autotune(MockGCmd({}))
+            d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         logged = "\n".join(str(call.args) for call in info.call_args_list)
         self.assertIn("foci-gain-search", logged)
@@ -1716,7 +1831,7 @@ class TestAutotuneGates(unittest.TestCase):
         )
 
         with self.assertLogs(level="INFO") as captured:
-            d.autotune.autotune(MockGCmd({}))
+            d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
 
         evidence_lines = [line for line in captured.output if "foci-gain-search" in line]
         self.assertEqual(len(evidence_lines), 1)
@@ -2076,7 +2191,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_proportional_acceptance_names_the_accepted_gain(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
@@ -2103,7 +2218,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_first_run_retained_summary_explains_what_happens_next(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
@@ -2121,7 +2236,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_repeatability_confirmed_summary_names_the_integral_gain(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
@@ -2151,7 +2266,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_repeatability_confirmed_summary_omits_value_when_unavailable(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
@@ -2168,7 +2283,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_tuned_summary_shows_the_gains_not_the_dead_status_echo(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
@@ -2420,7 +2535,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         self._finish_tune_on_next_pause(d)
 
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal", "ACTION": "breakaway_seeded"})
         d.autotune.autotune(gcmd)
 
         gcode = d.printer.lookup_object("gcode")

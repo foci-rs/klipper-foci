@@ -1100,6 +1100,10 @@ class AutotuneWorkflow:
             action = parse_autotune_action(gcmd.get("ACTION", None))
         except FixedGainAmplitudeProtocolError as err:
             raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
+        # Only the production path -- ACTION left unspecified -- auto-chains
+        # into position_tune. Any explicit ACTION (diagnostic or otherwise,
+        # including ACTION=breakaway_seeded spelled out) opts out.
+        chain_position_tune = gcmd.get("ACTION", None) is None
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
         if profile_name not in PROFILE_MAP:
@@ -1255,6 +1259,28 @@ class AutotuneWorkflow:
                     )
             elif outcome != "tune_result":
                 return
+
+            if chain_position_tune and int((self.result or {}).get("status", 255)) <= 1:
+                # Velocity tune succeeded and the operator asked for the
+                # default (all-phases) behavior: chain straight into
+                # position_tune. Its own tune_result reply already carries
+                # the just-installed velocity fields (read from its own
+                # entry snapshot) alongside the newly measured position
+                # fields, so it fully replaces `self.result` below -- no
+                # merging needed.
+                self._reset_dispatch_state()
+                outcome = self._run_one_dispatch(
+                    gcmd,
+                    ACTION_CODES["position_tune"],
+                    request_fields,
+                    toolhead,
+                    safe_pose_move,
+                )
+                if outcome != "tune_result":
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune chain did not "
+                        f"produce a result (outcome={outcome})"
+                    )
 
             result = self.result
             status = result.get("status", 255)
