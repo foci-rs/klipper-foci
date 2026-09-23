@@ -1096,14 +1096,15 @@ class AutotuneWorkflow:
         driver that lost calibration/homing (e.g. after a klipper restart)
         self-homes through the dispatch.
         """
+        action_param = gcmd.get("ACTION", None)
         try:
-            action = parse_autotune_action(gcmd.get("ACTION", None))
+            action = parse_autotune_action(action_param)
         except FixedGainAmplitudeProtocolError as err:
             raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
         # Only the production path -- ACTION left unspecified -- auto-chains
         # into position_tune. Any explicit ACTION (diagnostic or otherwise,
         # including ACTION=breakaway_seeded spelled out) opts out.
-        chain_position_tune = gcmd.get("ACTION", None) is None
+        chain_position_tune = action_param is None
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
         if profile_name not in PROFILE_MAP:
@@ -1260,14 +1261,16 @@ class AutotuneWorkflow:
             elif outcome != "tune_result":
                 return
 
+            chained_velocity_evidence = None
             if chain_position_tune and int((self.result or {}).get("status", 255)) <= 1:
-                # Velocity tune succeeded and the operator asked for the
-                # default (all-phases) behavior: chain straight into
-                # position_tune. Its own tune_result reply already carries
-                # the just-installed velocity fields (read from its own
-                # entry snapshot) alongside the newly measured position
-                # fields, so it fully replaces `self.result` below -- no
-                # merging needed.
+                # Its own tune_result reply carries the just-installed
+                # velocity fields, so it fully replaces `self.result` below.
+                # Capture the velocity phase's cycle evidence before the
+                # reset below clears it -- position_tune never repopulates it.
+                chained_velocity_evidence = (
+                    self._evidence_by_direction("iae_median_qs"),
+                    self._evidence_by_direction("dac_rms_median_q"),
+                )
                 self._reset_dispatch_state()
                 outcome = self._run_one_dispatch(
                     gcmd,
@@ -1309,6 +1312,13 @@ class AutotuneWorkflow:
                         position_tune_outcome_code,
                         f"unknown_{position_tune_outcome_code}",
                     )
+                    if chained_velocity_evidence is not None:
+                        raise gcmd.error(
+                            f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
+                            f"{outcome_name} (velocity tune succeeded but was not persisted "
+                            f"because the chained position tune failed; motor holding with "
+                            f"the newly installed, unpersisted velocity gains){evidence}"
+                        )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
                         f"{outcome_name} (motor holding with entry gains){evidence}"
@@ -1379,8 +1389,11 @@ class AutotuneWorkflow:
                     f"{format_inner_warning_flags(inner_warning_flags)}",
                 )
             self._disable_kinematic_motors(toolhead)
-            iae_by_direction = self._evidence_by_direction("iae_median_qs")
-            dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
+            if chained_velocity_evidence is not None:
+                iae_by_direction, dac_rms_by_direction = chained_velocity_evidence
+            else:
+                iae_by_direction = self._evidence_by_direction("iae_median_qs")
+                dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
             logging.info(
                 "foci-gain-search %s: candidate p=%d i=%d verdict=passed "
                 "iae_median_qs=%s dac_rms_median_q=%s",

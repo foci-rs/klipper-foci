@@ -25,6 +25,7 @@ from tests.mocks import (
     MockPrintStats,
     make_driver,
 )
+from tests.test_robustness_reversal import build_cycle_evidence_payload
 
 
 class MockConfigFile:
@@ -1832,6 +1833,52 @@ class TestAutotuneGates(unittest.TestCase):
 
         with self.assertLogs(level="INFO") as captured:
             d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
+
+        evidence_lines = [line for line in captured.output if "foci-gain-search" in line]
+        self.assertEqual(len(evidence_lines), 1)
+        self.assertIn("passed", evidence_lines[0])
+        self.assertIn("iae_median_qs=[9, -9]", evidence_lines[0])
+        self.assertIn("dac_rms_median_q=[21, -21]", evidence_lines[0])
+
+    def test_default_action_chain_preserves_velocity_phase_evidence_in_final_log(self):
+        """The default (unspecified-ACTION) path chains a position_tune
+        dispatch after a successful velocity tune. That chain resets
+        per-dispatch state (including robustness_cycle_evidence) before
+        issuing the chained dispatch, and firmware's position_tune terminal
+        never emits cycle evidence -- so the velocity phase's real evidence
+        must be captured before the reset and still show up in the final
+        foci-gain-search pass log, not silently zeroed out."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+
+        reactor = d.printer.get_reactor()
+        dispatch_count = {"n": 0}
+
+        def pause(deadline):
+            reactor._time = deadline
+            dispatch_count["n"] += 1
+            if dispatch_count["n"] == 1:
+                _feed_dispatch_terminal(d.autotune, "tune_result", SAMPLE_TUNE_RESULT)
+                # Cycle evidence gathered during the velocity dispatch --
+                # never re-emitted by the chained position_tune dispatch.
+                for direction, iae, dac_rms in ((0, 9, 21), (1, -9, -21)):
+                    d.autotune.handle_robustness_cycle_evidence(
+                        {
+                            "payload": build_cycle_evidence_payload(
+                                direction=direction,
+                                iae_median_qs=iae,
+                                dac_rms_median_q=dac_rms,
+                            )
+                        }
+                    )
+            else:
+                _feed_dispatch_terminal(d.autotune, "tune_result", SAMPLE_POSITION_TUNE_RESULT)
+            return reactor._time
+
+        reactor.pause = pause
+
+        with self.assertLogs(level="INFO") as captured:
+            d.autotune.autotune(MockGCmd({}))
 
         evidence_lines = [line for line in captured.output if "foci-gain-search" in line]
         self.assertEqual(len(evidence_lines), 1)

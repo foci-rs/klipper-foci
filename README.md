@@ -86,11 +86,18 @@ profile to production use.
 
 Run `FOCI_AUTOTUNE STEPPER=stepper_x` and `FOCI_AUTOTUNE STEPPER=stepper_y`
 separately (no `ACTION=` needed for the production path), each after the
-normal commissioning and homing prerequisites. Each invocation drives both
-firmware dispatches internally -- `breakaway_seeded`, then an auto-issued
-`integral_resume` -- and, on a full pass, deploys the conservative gain and
-persists it. Stage-C reproduction is stochastic; an occasional `inconclusive`
-result is expected and not a regression, and the command is simply re-run.
+normal commissioning and homing prerequisites. Each invocation drives the
+firmware dispatches internally -- `breakaway_seeded`, an auto-issued
+`integral_resume`, then `robustness_reversal` -- and, on a full pass,
+auto-chains a `position_tune` dispatch before deploying and persisting the
+gains. Operators no longer issue a separate `ACTION=position_tune` call after
+a plain invocation; doing so would position-tune the axis twice. Because of
+the chained dispatch the command now takes correspondingly longer to
+complete, and it is all-or-nothing: a position-tune failure fails the whole
+command and persists nothing, even though the chip already carries the newly
+installed (but unpersisted) velocity gains at that point. Stage-C
+reproduction is stochastic; an occasional `inconclusive` result is expected
+and not a regression, and the command is simply re-run.
 
 Confirm for each axis:
 
