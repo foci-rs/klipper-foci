@@ -1053,10 +1053,10 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "pid_position_p")], "282")
 
     def test_chained_position_tune_rehome_starts_from_disarmed_motors(self):
-        """The velocity tune's terminal leaves the motor armed, and homing
-        from that state drives the axis wrong. The chained position tune's
-        G28 must start from disabled, uncalibrated kinematic motors so it
-        re-runs calibrate-on-enable, like every other re-home."""
+        """The velocity tune's terminal disarms the motor in firmware. The
+        chained position tune's G28 must start from disabled, uncalibrated
+        kinematic motors in Klipper too, so it re-enables through
+        calibrate-on-enable like every other re-home."""
         d = self._commissioned_driver(
             kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         )

@@ -1272,10 +1272,7 @@ class AutotuneWorkflow:
                     self._evidence_by_direction("dac_rms_median_q"),
                 )
                 self._reset_dispatch_state()
-                # The velocity terminal leaves the motor armed, and homing from
-                # that state does not track steps; disarm so the re-home below
-                # re-runs calibrate-on-enable like every other chained stage.
-                self._disable_kinematic_motors(toolhead)
+                self._synchronize_disarmed_workflow_terminal(toolhead)
                 outcome = self._run_one_dispatch(
                     gcmd,
                     ACTION_CODES["position_tune"],
