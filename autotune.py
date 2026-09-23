@@ -98,6 +98,16 @@ POSITION_TUNE_OUTCOME_NAMES: dict[int, str] = {
     10: "restoration_timeout",
 }
 
+# Plain-English phrasing for the two velocity-integral outcomes that reach
+# _finish_velocity_integral_terminal on a SUCCEEDED path. humanize() cannot
+# turn "first_run_retained" into a sentence that explains what happens next,
+# so these two get an explicit phrase instead of the generic underscore-to-
+# space pass every other outcome/cause name still uses.
+_VELOCITY_INTEGRAL_SUCCESS_PHRASES = {
+    "first_run_retained": "integral gain candidate found, confirming repeatability",
+    "repeatability_confirmed": "integral gain confirmed",
+}
+
 # Bit order of PositionTuneProvenance.stimulus_feedforward_paths.
 FEEDFORWARD_PATH_NAMES: tuple[str, ...] = (
     "velocity",
@@ -746,10 +756,10 @@ class AutotuneWorkflow:
                 f"{int(self.velocity_integral.terminal.get('cause', 0))})"
                 f"{detail_suffix}"
             )
-        report_summary(
-            gcmd,
-            f"{self._summary_prefix()}: SUCCEEDED — {humanize(self.velocity_integral.outcome)}.",
+        phrase = _VELOCITY_INTEGRAL_SUCCESS_PHRASES.get(
+            self.velocity_integral.outcome, humanize(self.velocity_integral.outcome)
         )
+        report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — {phrase}.")
         self._retain_request_from_terminal(request_fields)
         return self.velocity_integral.outcome
 

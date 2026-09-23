@@ -2012,6 +2012,28 @@ class TestAutotuneGates(unittest.TestCase):
         )
         assert not any("campaign accepted" in msg for msg in gcmd._responses)
 
+    def test_first_run_retained_summary_explains_what_happens_next(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(gcmd)
+
+        self.assertIn(
+            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain candidate found, "
+            "confirming repeatability.",
+            gcmd._responses
+        )
+        self.assertFalse(
+            any("first run retained" in msg for msg in gcmd._responses)
+        )
+
 
 def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     d = make_driver()
