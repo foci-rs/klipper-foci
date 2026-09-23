@@ -787,8 +787,7 @@ class AutotuneWorkflow:
             safety_detail = self._format_outer_safety_fault()
             detail_suffix = f"; {safety_detail}" if safety_detail else ""
             raise gcmd.error(
-                f"FOCI {self.driver.stepper_name}: velocity integral response fault"
-                f"{detail_suffix}"
+                f"FOCI {self.driver.stepper_name}: velocity integral response fault{detail_suffix}"
             )
         phrase = _VELOCITY_INTEGRAL_SUCCESS_PHRASES.get(
             self.velocity_integral.outcome, humanize(self.velocity_integral.outcome)
