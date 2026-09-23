@@ -602,7 +602,11 @@ class CommissioningWorkflow:
             phase_name = PHASE_NAMES.get(phase_id, f"Phase {int(phase_id)}")
             gcode = self.driver.printer.lookup_object("gcode")
             active_label = self.driver.state.active_label or "commissioning"
-            report_summary(gcode, f"FOCI {self.driver.stepper_name} {active_label}: {phase_name}")
+            message = f"FOCI {self.driver.stepper_name} {active_label}: {phase_name}"
+            if active_label == "homing":
+                report_detail(log, self.driver.global_config.debug, message)
+            else:
+                report_summary(gcode, message)
         elif phase_id == 0 and status != 0:
             self.error_code = status
 
