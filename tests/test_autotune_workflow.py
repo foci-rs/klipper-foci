@@ -1979,6 +1979,39 @@ class TestAutotuneGates(unittest.TestCase):
         # see as a failure.
         self.assertEqual(gcmd._responses, [])
 
+    def test_proportional_acceptance_names_the_accepted_gain(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        # Wrap the reactor.pause to populate confirmation_terminal after
+        # _feed_dispatch_terminal is called
+        reactor = d.printer.get_reactor()
+        _original_pause = reactor.pause
+
+        def pause_and_populate_confirmation(deadline):
+            result = _original_pause(deadline)
+            # After _feed_dispatch_terminal runs, populate confirmation_terminal
+            if d.autotune.breakaway_campaign.done and d.autotune.breakaway_campaign.accepted:
+                d.autotune.breakaway_campaign.confirmation_terminal = {"confirmed_p_raw": 724}
+            return result
+
+        reactor.pause = pause_and_populate_confirmation
+
+        d.autotune.autotune(gcmd)
+
+        assert (
+            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — proportional gain accepted (P=724)."
+            in gcmd._responses
+        )
+        assert not any("campaign accepted" in msg for msg in gcmd._responses)
+
 
 def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     d = make_driver()

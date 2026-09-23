@@ -643,6 +643,12 @@ class AutotuneWorkflow:
             message += f"; remediation: {remediation}"
         return message
 
+    def _format_proportional_gain_accepted(self) -> str:
+        confirmed_p = int(
+            (self.breakaway_campaign.confirmation_terminal or {}).get("confirmed_p_raw", 0)
+        )
+        return f"SUCCEEDED — proportional gain accepted (P={confirmed_p})."
+
     def _format_outer_safety_fault(self) -> str:
         fault = self.outer_safety_fault
         if not fault:
@@ -1026,11 +1032,15 @@ class AutotuneWorkflow:
                 # the non-breakaway path below does, so a first_run_retained
                 # outcome still drives the caller's integral_resume dispatch
                 # instead of being masked by the generic marker below.
-                report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — campaign accepted.")
+                report_summary(
+                    gcmd, f"{self._summary_prefix()}: {self._format_proportional_gain_accepted()}"
+                )
                 return self._finish_velocity_integral_terminal(gcmd, request_fields)
             # Accepted with no velocity-integral terminal in this dispatch
             # yet: a degenerate, rare shape with nothing further to report.
-            report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — campaign accepted.")
+            report_summary(
+                gcmd, f"{self._summary_prefix()}: {self._format_proportional_gain_accepted()}"
+            )
             return "breakaway_campaign"
         if self.velocity_integral.done:
             return self._finish_velocity_integral_terminal(gcmd, request_fields)
