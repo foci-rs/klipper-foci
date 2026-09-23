@@ -431,6 +431,28 @@ def format_commission_detail(detail: dict) -> str:
             f"{phase_name}: {name} (status_flags_or=0x{int(value0):08x}, "
             f"entry_mask=0x{int(value1):02x})"
         )
+    if code in (34, 36, 38):
+        method = (code - 34) // 2
+        method_name = TIMING_METHOD_NAMES.get(method, f"method {int(method)}")
+        valid_samples, requested_period_us = _decode_u16_pair(value0)
+        missed_samples = value1 & 0xFFFF
+        max_consecutive_misses = (value1 >> 16) & 0xFF
+        status_code = (value1 >> 24) & 0x7F
+        status_name = TIMING_STATUS_NAMES.get(status_code, f"unknown({int(status_code)})")
+        overflowed = ", overflowed" if (value1 >> 31) & 0x1 else ""
+        return (
+            f"{phase_name}: {method_name} capture timing: status={status_name} "
+            f"period_us={int(requested_period_us)} valid={int(valid_samples)} "
+            f"missed={int(missed_samples)} max_consecutive_misses={int(max_consecutive_misses)} "
+            f"max_lateness_us={int(value2)}{overflowed}"
+        )
+    if code in (35, 37, 39):
+        method = (code - 35) // 2
+        method_name = TIMING_METHOD_NAMES.get(method, f"method {int(method)}")
+        return (
+            f"{phase_name}: {method_name} capture timing (cont.): max_interval_us={int(value0)} "
+            f"max_poll_wall_us={int(value1)} max_spi_wall_us={int(value2)}"
+        )
     if code in (23, 24):
         return f"{phase_name}: {name} (r_count_milli={int(value0)}, limit={int(value1)})"
     if code == 22:
@@ -606,7 +628,7 @@ class CommissioningWorkflow:
             gcode = self.driver.printer.lookup_object("gcode")
             active_label = self.driver.state.active_label or "commissioning"
             message = f"FOCI {self.driver.stepper_name} {active_label}: {phase_name}"
-            if active_label == "homing":
+            if active_label in ("homing", "selftest"):
                 report_detail(log, self.driver.global_config.debug, message)
             else:
                 report_summary(gcode, message)

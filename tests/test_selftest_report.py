@@ -16,6 +16,14 @@ def test_selftest_result_handler_appends_to_results():
     assert d.selftest.results == [{"stage": 2, "status": 0, "value": 312}]
 
 
+def test_selftest_result_handler_does_not_print_live():
+    d = make_driver()
+    d.selftest.results = []
+    d.selftest.handle_selftest_result({"stage": 2, "status": 0, "value": 312})
+    gcode = d.printer.lookup_object("gcode")
+    assert gcode._responses == []
+
+
 def test_selftest_done_handler_marks_complete():
     d = make_driver()
     d.selftest.complete = False
@@ -173,6 +181,97 @@ def test_format_commission_detail_measurements():
     assert "avg_current=300 counts" in resistance
     assert "r_count_milli=1706" in resistance
     assert "mOhm" not in resistance
+
+
+def test_format_commission_detail_resistance_capture_timing_summary():
+    # Real values captured from a passing FOCI_SELFTEST run.
+    line = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 34,
+            "status": 0,
+            "value0": 136713096,
+            "value1": 16777216,
+            "value2": 291,
+        }
+    )
+
+    assert "resistance capture timing" in line
+    assert "status=accepted" in line
+    assert "period_us=5000" in line
+    assert "valid=2086" in line
+    assert "missed=0" in line
+    assert "max_consecutive_misses=0" in line
+    assert "max_lateness_us=291" in line
+    assert "diagnostic" not in line
+
+
+def test_format_commission_detail_resistance_capture_timing_continuation():
+    line = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 35,
+            "status": 0,
+            "value0": 5097,
+            "value1": 45,
+            "value2": 39,
+        }
+    )
+
+    assert "resistance capture timing" in line
+    assert "max_interval_us=5097" in line
+    assert "max_poll_wall_us=45" in line
+    assert "max_spi_wall_us=39" in line
+    assert "diagnostic" not in line
+
+
+def test_format_commission_detail_inductance_capture_timing_summary():
+    line = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 36,
+            "status": 0,
+            "value0": 6553800,
+            "value1": 16777216,
+            "value2": 11,
+        }
+    )
+
+    assert "inductance capture timing" in line
+    assert "status=accepted" in line
+    assert "period_us=200" in line
+    assert "valid=100" in line
+    assert "max_lateness_us=11" in line
+
+
+def test_format_commission_detail_capture_timing_rejected_status():
+    line = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 34,
+            "status": 1,
+            "value0": 0,
+            "value1": 2 << 24,
+            "value2": 0,
+        }
+    )
+
+    assert "status=rejected" in line
+
+
+def test_format_commission_detail_capture_timing_overflowed():
+    line = format_commission_detail(
+        {
+            "phase": 5,
+            "code": 34,
+            "status": 0,
+            "value0": 0,
+            "value1": 1 << 31,
+            "value2": 0,
+        }
+    )
+
+    assert "overflowed" in line
 
 
 def test_format_commission_detail_coil_check_sample():
@@ -398,7 +497,6 @@ def test_cmd_selftest_builds_multiline_report(caplog):
         d.selftest.selftest(gcmd)
 
     out = caplog.text
-    assert "Self-Test" in out
     assert "ADC calibration" in out
     assert "Motor coil A" in out
     assert "Motor coil B" in out
@@ -409,9 +507,6 @@ def test_cmd_selftest_builds_multiline_report(caplog):
     assert "L control-model evidence" in out
     assert "8/8 stages" not in out
     assert "PASS" in out
-    assert gcmd._responses[0] == (
-        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 8 stages passed."
-    )
 
 
 def test_cmd_selftest_duplicate_stage_updates_without_inflating_report(caplog):
@@ -443,7 +538,7 @@ def test_cmd_selftest_duplicate_stage_updates_without_inflating_report(caplog):
     assert "reversed" in out
     assert "7/7 stages" not in out
     assert "6/6 stages" not in out
-    assert gcmd._responses[0] == (
+    assert gcmd._responses[-1] == (
         "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 6 stages passed."
     )
 
@@ -479,7 +574,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
         d.selftest.selftest(gcmd)
 
     # report_summary was called before the raise — the console line is still available.
-    assert gcmd._responses[0] == (
+    assert gcmd._responses[-1] == (
         "FOCI_SELFTEST manual_stepper stepper_x: FAILED — ADC calibration fault."
     )
 
@@ -524,9 +619,84 @@ def test_cmd_selftest_pass_prints_succeeded_summary():
     d.selftest.selftest(gcmd)
 
     assert (
-        gcmd._responses[0]
+        gcmd._responses[-1]
         == "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 1 stages passed."
     )
+
+
+def test_cmd_selftest_diagnostics_add_no_console_lines():
+    def run(push_detail: bool):
+        d = make_driver()
+        d.protocol.commands.selftest = MockCommand()
+
+        def drive_stream(_args):
+            if push_detail:
+                d.commissioning.handle_commission_detail(
+                    {
+                        "phase": 5,
+                        "code": 999,
+                        "status": 0,
+                        "value0": 1,
+                        "value1": 2,
+                        "value2": 3,
+                    }
+                )
+            d.selftest.handle_selftest_result({"stage": 4, "status": 0, "value": 0})
+            d.selftest.handle_selftest_done({"status": 0})
+
+        d.protocol.commands.selftest.send = drive_stream
+        gcmd = MockGCmd()
+        d.selftest.selftest(gcmd)
+        return d, gcmd
+
+    d_without, gcmd_without = run(push_detail=False)
+    d_with, gcmd_with = run(push_detail=True)
+
+    assert d_without.commissioning.details == []
+    assert len(d_with.commissioning.details) == 1
+    assert len(gcmd_with._responses) == len(gcmd_without._responses)
+
+
+def test_cmd_selftest_per_stage_breakdown_reaches_the_console():
+    d = make_driver()
+    d.protocol.commands.selftest = MockCommand()
+
+    def drive_stream(_args):
+        for result in [
+            {"stage": 1, "status": 0, "value": 0},
+            {"stage": 2, "status": 0, "value": 0},
+            {"stage": 3, "status": 0, "value": 0},
+        ]:
+            d.selftest.handle_selftest_result(result)
+        d.selftest.handle_selftest_done({"status": 0})
+
+    d.protocol.commands.selftest.send = drive_stream
+    gcmd = MockGCmd()
+
+    d.selftest.selftest(gcmd)
+
+    # notice + 3 stage lines (no header) + verdict -- the breakdown's line
+    # count reaches the console, not just the debug log.
+    assert len(gcmd._responses) == 1 + len(d.selftest.results) + 1
+
+
+def test_cmd_selftest_prints_running_message_before_dispatching_command():
+    d = make_driver()
+    d.protocol.commands.selftest = MockCommand()
+    seen_before_dispatch = []
+
+    def drive_stream(_args):
+        seen_before_dispatch.extend(gcmd._responses)
+        d.selftest.handle_selftest_result({"stage": 4, "status": 0, "value": 0})
+        d.selftest.handle_selftest_done({"status": 0})
+
+    d.protocol.commands.selftest.send = drive_stream
+    gcmd = MockGCmd()
+
+    d.selftest.selftest(gcmd)
+
+    assert len(seen_before_dispatch) == 1
+    assert seen_before_dispatch[0] == gcmd._responses[0]
 
 
 def test_cmd_selftest_failure_prints_failed_summary_and_still_raises():
@@ -543,6 +713,6 @@ def test_cmd_selftest_failure_prints_failed_summary_and_still_raises():
     with pytest.raises(CommandError):
         d.selftest.selftest(gcmd)
 
-    assert gcmd._responses[0] == (
+    assert gcmd._responses[-1] == (
         "FOCI_SELFTEST manual_stepper stepper_x: FAILED — ADC calibration fault."
     )

@@ -277,10 +277,10 @@ def test_commission_start_clears_stale_timing_cache():
 
 def test_phase_progress_uses_the_active_label_not_hardcoded_autotune():
     d = make_driver()
-    d.state.active_label = "selftest"
+    d.state.active_label = "autotune"
     d.commissioning.handle_commission_phase({"phase": 2, "status": 0})
     gcode = d.printer.lookup_object("gcode")
-    assert gcode._responses[-1] == "FOCI manual_stepper stepper_x selftest: Coil check"
+    assert gcode._responses[-1] == "FOCI manual_stepper stepper_x autotune: Coil check"
 
 
 def test_phase_progress_says_setup_during_foci_setup():
@@ -302,15 +302,25 @@ def test_phase_progress_is_debug_only_during_homing(caplog):
     assert any("Coil check" in record.message for record in caplog.records)
 
 
-def test_phase_progress_stays_on_console_for_setup_and_selftest():
+def test_phase_progress_stays_on_console_for_setup():
     d = make_driver()
-    for label in ("setup", "selftest"):
-        d.state.active_label = label
-        d.commissioning.handle_commission_phase({"phase": 2, "status": 0})
+    d.state.active_label = "setup"
+    d.commissioning.handle_commission_phase({"phase": 2, "status": 0})
     gcode = d.printer.lookup_object("gcode")
-    assert len(gcode._responses) == 2
-    assert "setup" in gcode._responses[0] and "Coil check" in gcode._responses[0]
-    assert "selftest" in gcode._responses[1] and "Coil check" in gcode._responses[1]
+    assert gcode._responses == ["FOCI manual_stepper stepper_x setup: Coil check"]
+
+
+def test_phase_progress_is_debug_only_during_selftest(caplog):
+    d = make_driver()
+    d.global_config.debug = True
+    d.state.active_label = "selftest"
+    with caplog.at_level("INFO", logger="klipper_foci.commissioning"):
+        for phase_id in (1, 2, 3, 4, 5, 16):
+            d.commissioning.handle_commission_phase({"phase": phase_id, "status": 0})
+    gcode = d.printer.lookup_object("gcode")
+    assert gcode._responses == []
+    assert len(caplog.records) == 6
+    assert any("Encoder alignment" in record.message for record in caplog.records)
 
 
 def test_operator_failure_phrase_has_no_doc_links_raw_symbols_or_gaps():

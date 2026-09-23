@@ -91,6 +91,10 @@ class SelftestWorkflow:
             self.status = 0
             self.driver.commissioning.clear_details()
 
+            report_summary(
+                gcmd,
+                f"FOCI {self.driver.stepper_name} selftest: running, can take up to 30s...",
+            )
             self.driver.protocol.run_selftest()
 
             deadline = reactor.monotonic() + ELECTRICAL_ID_WAIT_TIMEOUT_S
@@ -107,7 +111,7 @@ class SelftestWorkflow:
             self.driver.state.release()
 
         status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
-        lines = [f"Self-Test: {self.driver.stepper_name}"]
+        stage_lines = []
         passed = 0
         total = len(self.results)
         for result in self.results:
@@ -118,14 +122,20 @@ class SelftestWorkflow:
             status_str = status_names.get(stage_status, "?")
             detail = format_selftest_value(stage_id, stage_status, stage_value)
             dots = "." * max(1, 35 - len(name))
-            lines.append(f"  {name} {dots} {status_str}{detail}")
+            stage_lines.append(f"  {name} {dots} {status_str}{detail}")
             if stage_status == 0:
                 passed += 1
 
+        for line in stage_lines:
+            report_summary(gcmd, line)
+
+        lines = list(stage_lines)
         if self.driver.commissioning.details:
             lines.append("Diagnostics:")
             for detail in self.driver.commissioning.details:
                 lines.append(f"  {format_commission_detail(detail)}")
+
+        report_detail(log, self.driver.global_config.debug, "\n".join(lines))
 
         if self.status == 0:
             report_summary(
@@ -142,8 +152,6 @@ class SelftestWorkflow:
             err = last_phase_detail_reason or operator_failure_phrase(self.status)
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
             report_summary(gcmd, f"FOCI_SELFTEST {self.driver.stepper_name}: FAILED — {err}.")
-
-        report_detail(log, self.driver.global_config.debug, "\n".join(lines))
 
         if self.status != 0:
             err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")
