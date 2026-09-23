@@ -564,7 +564,7 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
     25: "internal fault during held-out confirmation (not a safety event); safe to retry",
     26: (
         "the confirmed candidate could not be turned into a Stage-C plan; inspect "
-        "the campaign terminal's error_code"
+        "the campaign terminal's error code"
     ),
     27: (
         "found no proportional gain safe to tune further (every candidate "
