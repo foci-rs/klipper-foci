@@ -1411,8 +1411,8 @@ class AutotuneWorkflow:
             )
         if snapshot["runtime_status"] == "commissioned":
             raise gcmd.error(
-                f"FOCI {self.driver.name}: robustness reject, no robust gain "
-                f"deployed; retained commissioned gains"
+                f"FOCI {self.driver.stepper_name}: robustness check rejected the "
+                f"candidate gain; nothing deployed (commissioned gains retained)."
             )
         detail = "inconclusive - re-run" if outcome == 2 else "reject"
         report_summary(

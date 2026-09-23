@@ -1821,6 +1821,22 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "autotune_status")], "commissioned")
         self.assertFalse(d.state.inhibited)
 
+    def test_commissioned_state_rejection_reads_as_a_sentence(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = {
+            "active_gains": None,
+            "runtime_status": "commissioned",
+            "autotune_mode": "balanced",
+        }
+
+        with self.assertRaises(CommandError) as ctx:
+            self._run_robustness(d, outcome=1, cause=3)
+
+        message = str(ctx.exception)
+        self.assertIn("nothing deployed", message)
+        self.assertIn("commissioned gains retained", message)
+
     def test_inconclusive_reverts_and_advises_rerun(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
