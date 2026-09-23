@@ -1052,6 +1052,53 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "1152")
         self.assertEqual(cfg.values[(d.name, "pid_position_p")], "282")
 
+    def test_chained_position_tune_rehome_starts_from_disarmed_motors(self):
+        """The velocity tune's terminal leaves the motor armed, and homing
+        from that state drives the axis wrong. The chained position tune's
+        G28 must start from disabled, uncalibrated kinematic motors so it
+        re-runs calibrate-on-enable, like every other re-home."""
+        d = self._commissioned_driver(
+            kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        )
+        d.printer._objects["configfile"] = MockConfigFile()
+        toolhead = d.printer.lookup_object("toolhead")
+        stepper_enable = d.printer.lookup_object("stepper_enable")
+        enable_lines = [stepper_enable.lookup_enable(name) for name in ("stepper_x", "stepper_y")]
+        gcode = d.printer.lookup_object("gcode")
+        rehome_states = []
+
+        def run_script(command):
+            if command == "G28 X Y":
+                rehome_states.append(
+                    (d.state.is_calibrated, [line.is_motor_enabled() for line in enable_lines])
+                )
+
+        def run_tune(**_kw):
+            d.state.is_calibrated = True
+            for line in enable_lines:
+                line.motor_enable(toolhead.get_last_move_time())
+
+        gcode.run_script_from_command = run_script
+        d.protocol.run_tune = run_tune
+        reactor = d.printer.get_reactor()
+        dispatch_count = {"n": 0}
+
+        def pause(deadline):
+            reactor._time = deadline
+            dispatch_count["n"] += 1
+            payload = (
+                SAMPLE_TUNE_RESULT if dispatch_count["n"] == 1 else SAMPLE_POSITION_TUNE_RESULT
+            )
+            _feed_dispatch_terminal(d.autotune, "tune_result", payload)
+            return reactor._time
+
+        reactor.pause = pause
+
+        d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(len(rehome_states), 2)
+        self.assertEqual(rehome_states[1], (False, [False, False]))
+
     def test_chained_position_tune_failure_raises_and_does_not_persist(self):
         """A default-path chain where the velocity tune succeeds but the
         chained position-tune dispatch fails must report the whole command
