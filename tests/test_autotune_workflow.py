@@ -2162,10 +2162,8 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        self.assertTrue(
-            any("integral gain confirmed" in msg for msg in gcmd._responses), gcmd._responses
-        )
-        self.assertFalse(any("velocity_i=" in msg for msg in gcmd._responses))
+        confirmed_msg = next(msg for msg in gcmd._responses if "integral gain confirmed" in msg)
+        self.assertNotIn("velocity_i=", confirmed_msg)
 
     def test_tuned_summary_shows_the_gains_not_the_dead_status_echo(self):
         d = self._commissioned_driver()
@@ -2181,8 +2179,8 @@ class TestAutotuneGates(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         summary = next(msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg)
-        self.assertIn("vel_p=863", summary)
-        self.assertIn("vel_i=12", summary)
+        self.assertIn("velocity_p=863", summary)
+        self.assertIn("velocity_i=12", summary)
         self.assertNotIn("(tuned)", summary)
 
 
@@ -2376,8 +2374,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         self.assertTrue(gcmd._responses[-1].startswith("FOCI_AUTOTUNE stepper_x: SUCCEEDED"))
-        self.assertIn("vel_p=1152", gcmd._responses[-1])
-        self.assertIn("vel_i=0", gcmd._responses[-1])
+        self.assertIn("velocity_p=1152", gcmd._responses[-1])
+        self.assertIn("velocity_i=0", gcmd._responses[-1])
         self.assertNotIn("position_p=", gcmd._responses[-1])
 
     def test_readiness_warning_is_reported_before_dispatch(self):

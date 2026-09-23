@@ -1316,7 +1316,9 @@ class AutotuneWorkflow:
             self.persist_tune_results(result, mode_name, tune_status)
 
             nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
-            gain_text = f"vel_p={int(result['velocity_p'])}, vel_i={int(result['velocity_i'])}"
+            gain_text = (
+                f"velocity_p={int(result['velocity_p'])}, velocity_i={int(result['velocity_i'])}"
+            )
             summary_suffix = (
                 f", position_p={int(result['position_p'])})." if nominal_bandwidth_hz else ")."
             )
