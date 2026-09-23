@@ -1021,10 +1021,10 @@ class AutotuneWorkflow:
                         f"{int(terminal.get('iae_max_q_qs', 0))}. "
                         f"The plant cannot be robustly controlled within the response band."
                     )
-                cause_name_raw = int(terminal.get("cause", 0))
+                cause = int(terminal.get("cause", 0))
                 raise gcmd.error(
                     f"FOCI {self.driver.stepper_name}: FOCI_AUTOTUNE "
-                    f"{_format_robustness_reject_phrase(cause_name_raw)}."
+                    f"{_format_robustness_reject_phrase(cause)}."
                 )
             if int(terminal.get("outcome", -1)) == 0:
                 # The one non-error path: a genuine pass. Every non-pass
