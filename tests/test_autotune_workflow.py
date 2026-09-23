@@ -1160,13 +1160,13 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(blocked, [False])
         self.assertEqual(cfg.values, {})
 
-    def test_orchestrated_generic_reject_summary_has_no_raw_cause_code(self):
-        """The FAILED console summary for an orchestrated robustness reject
-        (outside the dedicated IAE-exceeded and safety-fault branches) must
-        read as a plain-language phrase, never as a raw numeric cause code
-        plus its enum-symbol-style name. The gcmd.error() message raised
-        right after it is a different, unrelated string and is intentionally
-        not asserted here -- it keeps its internal cause code, unchanged."""
+    def test_orchestrated_generic_reject_raises_without_a_raw_cause_code(self):
+        """The single message for an orchestrated robustness reject (outside
+        the dedicated IAE-exceeded and safety-fault branches) must read as a
+        plain-language phrase, never as a raw numeric cause code plus its
+        enum-symbol-style name -- and there must be exactly one message, not
+        a duplicate FAILED summary line followed by a differently-worded
+        raised error."""
         d = self._commissioned_driver()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
@@ -1174,17 +1174,47 @@ class TestAutotuneGates(unittest.TestCase):
         drive_orchestrated_robustness_scenario(d, outcome=1, cause=1)
         gcmd = MockGCmd({})
 
-        with self.assertRaises(CommandError):
+        with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
 
-        summary = gcmd._responses[-1]
-        self.assertIn("FAILED", summary)
-        # "FOCI_AUTOTUNE" (the command name) legitimately contains an
-        # underscore, so scope the leak check to the cause phrase itself --
-        # everything after "FAILED — ".
-        cause_phrase = summary.split("FAILED — ", 1)[1]
-        self.assertNotRegex(cause_phrase, r"\d", f"console summary leaks a raw digit: {summary!r}")
-        self.assertNotIn("_", cause_phrase, f"console summary leaks an enum symbol: {summary!r}")
+        message = str(ctx.exception)
+        self.assertNotRegex(message, r"cause=\d", f"leaks a raw cause code: {message!r}")
+        self.assertNotIn("production path", message)
+        # Earlier stages (proportional, integral) legitimately report their
+        # own SUCCEEDED summaries before the robustness terminal fires; only
+        # the duplicate FAILED summary for *this* reject is gone.
+        self.assertFalse(
+            any("FAILED" in response for response in gcmd._responses),
+            f"duplicate FAILED summary before the raise: {gcmd._responses!r}",
+        )
+
+    def test_reconvergence_inconclusive_uses_the_agreed_plain_wording(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = None
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=4)
+        gcmd = MockGCmd({})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("did not settle", message)
+        self.assertNotIn("reposition for the next reversal leg", message)
+
+    def test_origin_not_recovered_notes_gains_are_retained(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = None
+        drive_orchestrated_robustness_scenario(d, outcome=3, cause=11)
+        gcmd = MockGCmd({})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("existing gains retained", message)
+        self.assertNotIn("did not settle", message)
 
     def test_orchestrated_reject_logs_evidence_for_every_cause(self):
         for outcome, cause in [(3, 6), (1, 3), (1, 1)]:

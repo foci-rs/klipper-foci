@@ -108,6 +108,30 @@ _VELOCITY_INTEGRAL_SUCCESS_PHRASES = {
     "repeatability_confirmed": "integral gain confirmed",
 }
 
+# Cause-specific plain-English phrasing for an orchestrated robustness
+# reject. Every entry keeps its own accuracy about whether gains were
+# retained (cause 11 is a non-safety fault with no inhibit; the IAE-exceeded
+# and safety-fault causes have their own dedicated branches above this one
+# and never reach this table).
+_ROBUSTNESS_REJECT_PHRASES = {
+    4: (
+        "gain robustness check inconclusive — motor did not settle within "
+        "the measurement window"
+    ),
+    11: (
+        "robustness check failed — could not reposition for the next "
+        "reversal leg; existing gains retained"
+    ),
+}
+
+
+def _format_robustness_reject_phrase(cause: int) -> str:
+    if cause in _ROBUSTNESS_REJECT_PHRASES:
+        return _ROBUSTNESS_REJECT_PHRASES[cause]
+    cause_name = ROBUSTNESS_CAUSE_NAMES.get(cause, "unknown")
+    return f"robustness check rejected — {humanize(cause_name)}"
+
+
 # Bit order of PositionTuneProvenance.stimulus_feedforward_paths.
 FEEDFORWARD_PATH_NAMES: tuple[str, ...] = (
     "velocity",
@@ -987,18 +1011,10 @@ class AutotuneWorkflow:
                         f"{int(terminal.get('iae_max_q_qs', 0))}. "
                         f"The plant cannot be robustly controlled within the response band."
                     )
-                cause_name = ROBUSTNESS_CAUSE_NAMES.get(int(terminal.get("cause", 0)), "unknown")
-                report_summary(
-                    gcmd,
-                    f"{self._summary_prefix()}: FAILED — "
-                    f"{humanize(terminal.get('outcome_name', 'unknown'))} "
-                    f"({humanize(cause_name)}).",
-                )
+                cause_name_raw = int(terminal.get("cause", 0))
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE robustness reversal on "
-                    f"the production path: {terminal.get('outcome_name', 'unknown')} "
-                    f"(cause={_robustness_reversal_cause_text(int(terminal.get('cause', 0)))})"
-                    f"{detail_suffix}"
+                    f"FOCI {self.driver.stepper_name}: FOCI_AUTOTUNE "
+                    f"{_format_robustness_reject_phrase(cause_name_raw)}."
                 )
             if int(terminal.get("outcome", -1)) == 0:
                 # The one non-error path: a genuine pass. Every non-pass
