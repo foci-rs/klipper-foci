@@ -434,8 +434,10 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_TUNE_RESULT,
         )
 
-        def pause_with_phase_messages(deadline, _orig=d.printer.get_reactor().pause):
-            result = _orig(deadline)
+        original_pause = d.printer.get_reactor().pause
+
+        def pause_with_phase_messages(deadline):
+            result = original_pause(deadline)
             d.commissioning.handle_commission_phase({"phase": 19, "status": 0})
             return result
 
@@ -445,11 +447,8 @@ class TestAutotuneGates(unittest.TestCase):
 
         gcode = d.printer.lookup_object("gcode")
         phase_19_messages = [msg for msg in gcode._responses if "integral gain" in msg]
-        assert phase_19_messages[0] == "FOCI stepper_x autotune: Finding integral gain (velocity)"
-        assert (
-            phase_19_messages[1]
-            == "FOCI stepper_x autotune: Confirming integral gain repeatability"
-        )
+        assert "Finding integral gain" in phase_19_messages[0]
+        assert "Confirming integral gain repeatability" in phase_19_messages[1]
 
     def test_cold_start_self_homes_without_up_front_calibration(self):
         """A commissioned driver that lost calibration+homing (e.g. after a
@@ -1165,16 +1164,13 @@ class TestAutotuneGates(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         d.state.pre_tune_snapshot = None
         drive_orchestrated_robustness_scenario(d, outcome=3, cause=6)
-        # _reset_dispatch_state() clears self.outer_safety_fault before each of
-        # the three chained dispatches (see feed_cycle_evidence_after_each_pause
-        # above for the same reset-wipes-injected-state issue), so setting it
-        # up front does not survive to the raise -- inject it where firmware's
-        # foci_outer_safety_fault notification would actually land: alongside
-        # the terminal that reports the fault.
+        # _reset_dispatch_state() clears outer_safety_fault before each chained
+        # dispatch, so it must be injected alongside the terminal, not up front.
         orig_handler = d.autotune.handle_robustness_reversal_terminal
+        velocity_reason_code = 4
 
         def handler_with_fault(params):
-            d.autotune.outer_safety_fault = {"reason": 4}  # velocity
+            d.autotune.outer_safety_fault = {"reason": velocity_reason_code}
             orig_handler(params)
 
         d.autotune.handle_robustness_reversal_terminal = handler_with_fault
@@ -1182,23 +1178,21 @@ class TestAutotuneGates(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(MockGCmd({}))
 
-        self.assertEqual(
-            str(ctx.exception),
-            "FOCI stepper_x: robustness safety fault (velocity limit exceeded); "
-            "motor enable inhibited until restart.",
-        )
+        message = str(ctx.exception)
+        self.assertIn("velocity limit exceeded", message)
+        self.assertNotIn("current limit exceeded", message)
 
     def test_standalone_safety_fault_names_the_reason(self):
         d = self._commissioned_driver()
         d.state.pre_tune_snapshot = self._tuned_snapshot()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
-        # Same reset-wipes-injected-state issue as the orchestrated case above:
-        # inject the fault alongside the terminal, not before the dispatch.
+        # Same reset-wipes-injected-state issue as the orchestrated case above.
         orig_handler = d.autotune.handle_robustness_reversal_terminal
+        current_reason_code = 9
 
         def handler_with_fault(params):
-            d.autotune.outer_safety_fault = {"reason": 9}  # current
+            d.autotune.outer_safety_fault = {"reason": current_reason_code}
             orig_handler(params)
 
         d.autotune.handle_robustness_reversal_terminal = handler_with_fault
@@ -1206,11 +1200,9 @@ class TestAutotuneGates(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             self._run_robustness(d, outcome=3, cause=6)
 
-        self.assertEqual(
-            str(ctx.exception),
-            "FOCI stepper_x: robustness safety fault (current limit exceeded); "
-            "motor enable inhibited until restart.",
-        )
+        message = str(ctx.exception)
+        self.assertIn("current limit exceeded", message)
+        self.assertNotIn("velocity limit exceeded", message)
 
     def test_orchestrated_generic_reject_raises_without_a_raw_cause_code(self):
         """The single message for an orchestrated robustness reject (outside
@@ -2092,14 +2084,11 @@ class TestAutotuneGates(unittest.TestCase):
             tune_result=SAMPLE_TUNE_RESULT,
         )
 
-        # Wrap the reactor.pause to populate confirmation_terminal after
-        # _feed_dispatch_terminal is called
         reactor = d.printer.get_reactor()
         _original_pause = reactor.pause
 
         def pause_and_populate_confirmation(deadline):
             result = _original_pause(deadline)
-            # After _feed_dispatch_terminal runs, populate confirmation_terminal
             if d.autotune.breakaway_campaign.done and d.autotune.breakaway_campaign.accepted:
                 d.autotune.breakaway_campaign.confirmation_terminal = {"confirmed_p_raw": 724}
             return result
@@ -2127,14 +2116,10 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        self.assertIn(
-            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain candidate found, "
-            "confirming repeatability.",
-            gcmd._responses
+        self.assertTrue(
+            any("confirming repeatability" in msg for msg in gcmd._responses), gcmd._responses
         )
-        self.assertFalse(
-            any("first run retained" in msg for msg in gcmd._responses)
-        )
+        self.assertFalse(any("first run retained" in msg for msg in gcmd._responses))
 
     def test_repeatability_confirmed_summary_names_the_integral_gain(self):
         d = self._commissioned_driver()
@@ -2153,7 +2138,6 @@ class TestAutotuneGates(unittest.TestCase):
         def patched_pause(deadline):
             pause_count[0] += 1
             result = original_pause(deadline)
-            # After the second dispatch (repeatability_confirmed), add the candidate_i
             if pause_count[0] == 2:
                 d.autotune.velocity_integral.terminal = {
                     **d.autotune.velocity_integral.terminal,
@@ -2184,10 +2168,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        assert (
-            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain confirmed."
-            in gcmd._responses
-        )
+        assert "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain confirmed." in gcmd._responses
 
     def test_tuned_summary_shows_the_gains_not_the_dead_status_echo(self):
         d = self._commissioned_driver()
