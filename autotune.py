@@ -1059,8 +1059,10 @@ class AutotuneWorkflow:
                 cause = int(terminal.get("terminal_cause", 0))
                 remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
                 if remediation is None:
-                    cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{cause}")
-                    remediation = humanize(cause_name)
+                    cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause)
+                    remediation = (
+                        humanize(cause_name) if cause_name else "an unrecognized breakaway failure"
+                    )
                 cause_suffix = " Safe to retry." if cause == 23 else ""
                 raise gcmd.error(
                     f"FOCI {self.driver.stepper_name}: FOCI_AUTOTUNE {remediation}; "
