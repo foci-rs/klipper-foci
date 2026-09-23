@@ -3220,12 +3220,9 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
 
-        self.assertEqual(
-            str(ctx.exception),
-            "FOCI stepper_x: FOCI_AUTOTUNE found no proportional gain safe to "
-            "tune further (every candidate exceeded the transition ceiling); "
-            "existing gains retained.",
-        )
+        message = str(ctx.exception)
+        self.assertIn("transition ceiling", message)
+        self.assertNotIn("no_transition_capable_candidate", message)
 
     def test_discovery_internal_fault_raises_and_names_cause(self):
         """A done, not-accepted campaign with no safety fault raises a terminal

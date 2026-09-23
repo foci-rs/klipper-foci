@@ -567,8 +567,8 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
         "the campaign terminal's error code"
     ),
     27: (
-        "found no proportional gain safe to tune further (every candidate "
-        "exceeded the transition ceiling)"
+        "found no proportional gain safe to tune further (every band-admissible "
+        "candidate exceeded the transition ceiling)"
     ),
 }
 
