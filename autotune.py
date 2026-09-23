@@ -84,6 +84,24 @@ OUTER_SAFETY_REASON_NAMES = {
     11: "position_local",
 }
 
+# Plain-English override for the outer-safety-fault reasons that reach an
+# operator-facing message. humanize()'s underscore-to-space pass reads fine
+# for most of these; the ones here read awkwardly without it.
+_OUTER_SAFETY_REASON_PHRASES = {
+    "duration": "run duration exceeded",
+    "velocity": "velocity limit exceeded",
+    "position": "position limit exceeded",
+    "quarter_turn": "quarter-turn safety limit",
+    "current": "current limit exceeded",
+    "recovery_wrong_way": "recovery moved the wrong way",
+    "position_local": "local position limit exceeded",
+}
+
+
+def _outer_safety_reason_phrase(reason_name: str) -> str:
+    return _OUTER_SAFETY_REASON_PHRASES.get(reason_name, humanize(reason_name))
+
+
 # Mirrors firmware's `PositionTuneOutcome::to_wire_code()`. Kept in
 # sync with that Rust enum by hand, same pattern as COMMISSION_REASON_NAMES.
 # Wire code 0 is reserved to mean "not applicable" and never appears here.
@@ -1414,9 +1432,21 @@ class AutotuneWorkflow:
         if snapshot is not None:
             self._revert_config_only(snapshot)
         self._inhibit_enable_for_safety_fault()
+        self._raise_robustness_safety_fault(gcmd)
+
+    def _outer_safety_fault_reason_name(self) -> str | None:
+        fault = self.outer_safety_fault
+        if not fault:
+            return None
+        reason_code = int(fault.get("reason", 0))
+        return OUTER_SAFETY_REASON_NAMES.get(reason_code)
+
+    def _raise_robustness_safety_fault(self, gcmd) -> None:
+        reason_name = self._outer_safety_fault_reason_name()
+        reason_suffix = f" ({_outer_safety_reason_phrase(reason_name)})" if reason_name else ""
         raise gcmd.error(
-            f"FOCI {self.driver.name}: robustness safety fault; motor enable "
-            f"inhibited until restart"
+            f"FOCI {self.driver.stepper_name}: robustness safety fault{reason_suffix}; "
+            f"motor enable inhibited until restart."
         )
 
     def _inhibit_enable_for_safety_fault(self) -> None:
@@ -1444,10 +1474,7 @@ class AutotuneWorkflow:
         restores the physical registers on its own.
         """
         self._inhibit_enable_for_safety_fault()
-        raise gcmd.error(
-            f"FOCI {self.driver.name}: robustness safety fault; motor enable "
-            f"inhibited until restart"
-        )
+        self._raise_robustness_safety_fault(gcmd)
 
     def _revert_config_only(self, snapshot: dict) -> None:
         restage_keys = {

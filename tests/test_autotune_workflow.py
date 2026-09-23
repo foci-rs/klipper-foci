@@ -1160,6 +1160,58 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(blocked, [False])
         self.assertEqual(cfg.values, {})
 
+    def test_orchestrated_safety_fault_names_the_reason(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = None
+        drive_orchestrated_robustness_scenario(d, outcome=3, cause=6)
+        # _reset_dispatch_state() clears self.outer_safety_fault before each of
+        # the three chained dispatches (see feed_cycle_evidence_after_each_pause
+        # above for the same reset-wipes-injected-state issue), so setting it
+        # up front does not survive to the raise -- inject it where firmware's
+        # foci_outer_safety_fault notification would actually land: alongside
+        # the terminal that reports the fault.
+        orig_handler = d.autotune.handle_robustness_reversal_terminal
+
+        def handler_with_fault(params):
+            d.autotune.outer_safety_fault = {"reason": 4}  # velocity
+            orig_handler(params)
+
+        d.autotune.handle_robustness_reversal_terminal = handler_with_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(
+            str(ctx.exception),
+            "FOCI stepper_x: robustness safety fault (velocity limit exceeded); "
+            "motor enable inhibited until restart.",
+        )
+
+    def test_standalone_safety_fault_names_the_reason(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = self._tuned_snapshot()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        # Same reset-wipes-injected-state issue as the orchestrated case above:
+        # inject the fault alongside the terminal, not before the dispatch.
+        orig_handler = d.autotune.handle_robustness_reversal_terminal
+
+        def handler_with_fault(params):
+            d.autotune.outer_safety_fault = {"reason": 9}  # current
+            orig_handler(params)
+
+        d.autotune.handle_robustness_reversal_terminal = handler_with_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            self._run_robustness(d, outcome=3, cause=6)
+
+        self.assertEqual(
+            str(ctx.exception),
+            "FOCI stepper_x: robustness safety fault (current limit exceeded); "
+            "motor enable inhibited until restart.",
+        )
+
     def test_orchestrated_generic_reject_raises_without_a_raw_cause_code(self):
         """The single message for an orchestrated robustness reject (outside
         the dedicated IAE-exceeded and safety-fault branches) must read as a
