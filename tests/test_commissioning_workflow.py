@@ -1695,3 +1695,18 @@ def test_gain_floor_step_overshoot_is_a_named_failure():
     assert "overshoot" in format_commission_error_name(118)
     assert "unknown" not in operator_failure_phrase(118)
     assert "bandwidth" in operator_failure_phrase(118)
+
+
+def test_breakaway_and_integral_phase_labels_avoid_internal_jargon():
+    from klipper_foci._vocabulary_generated import PHASE_NAMES
+
+    for label in (PHASE_NAMES[18], PHASE_NAMES[19], PHASE_NAMES[21]):
+        assert "breakaway" not in label.lower()
+        assert "acquisition" not in label.lower()
+
+    assert "characterization" not in PHASE_NAMES[19].lower()
+    assert "integral" in PHASE_NAMES[19].lower()
+
+    assert "robustness gate" not in PHASE_NAMES[21].lower()
+    assert "reversal" in PHASE_NAMES[21].lower()
+    assert "standstill" in PHASE_NAMES[21].lower()
