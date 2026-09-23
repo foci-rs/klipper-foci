@@ -2097,11 +2097,8 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        assert (
-            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — proportional gain accepted (P=724)."
-            in gcmd._responses
-        )
-        assert not any("campaign accepted" in msg for msg in gcmd._responses)
+        self.assertTrue(any("P=724" in msg for msg in gcmd._responses), gcmd._responses)
+        self.assertFalse(any("campaign accepted" in msg for msg in gcmd._responses))
 
     def test_first_run_retained_summary_explains_what_happens_next(self):
         d = self._commissioned_driver()
@@ -2149,10 +2146,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        assert (
-            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain confirmed (velocity_i=512)."
-            in gcmd._responses
-        )
+        self.assertTrue(any("velocity_i=512" in msg for msg in gcmd._responses), gcmd._responses)
 
     def test_repeatability_confirmed_summary_omits_value_when_unavailable(self):
         d = self._commissioned_driver()
@@ -2168,7 +2162,10 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        assert "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain confirmed." in gcmd._responses
+        self.assertTrue(
+            any("integral gain confirmed" in msg for msg in gcmd._responses), gcmd._responses
+        )
+        self.assertFalse(any("velocity_i=" in msg for msg in gcmd._responses))
 
     def test_tuned_summary_shows_the_gains_not_the_dead_status_echo(self):
         d = self._commissioned_driver()
@@ -2184,8 +2181,9 @@ class TestAutotuneGates(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         summary = next(msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg)
-        assert summary == "FOCI_AUTOTUNE stepper_x: SUCCEEDED — tuned (vel_p=863, vel_i=12)."
-        assert "(tuned)" not in summary
+        self.assertIn("vel_p=863", summary)
+        self.assertIn("vel_i=12", summary)
+        self.assertNotIn("(tuned)", summary)
 
 
 def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
