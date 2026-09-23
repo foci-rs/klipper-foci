@@ -2038,6 +2038,59 @@ class TestAutotuneGates(unittest.TestCase):
             any("first run retained" in msg for msg in gcmd._responses)
         )
 
+    def test_repeatability_confirmed_summary_names_the_integral_gain(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="breakaway_accepted_repeatability_confirmed",
+            third_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+        original_pause = d.printer.get_reactor().pause
+        pause_count = [0]
+
+        def patched_pause(deadline):
+            pause_count[0] += 1
+            result = original_pause(deadline)
+            # After the second dispatch (repeatability_confirmed), add the candidate_i
+            if pause_count[0] == 2:
+                d.autotune.velocity_integral.terminal = {
+                    **d.autotune.velocity_integral.terminal,
+                    "candidate_i": 512,
+                }
+            return result
+
+        d.printer.get_reactor().pause = patched_pause
+
+        d.autotune.autotune(gcmd)
+
+        assert (
+            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain confirmed (velocity_i=512)."
+            in gcmd._responses
+        )
+
+    def test_repeatability_confirmed_summary_omits_value_when_unavailable(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="breakaway_accepted_repeatability_confirmed",
+            third_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(gcmd)
+
+        assert (
+            "FOCI_AUTOTUNE stepper_x: SUCCEEDED — integral gain confirmed."
+            in gcmd._responses
+        )
+
 
 def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     d = make_driver()

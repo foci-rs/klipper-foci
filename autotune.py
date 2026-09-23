@@ -759,7 +759,9 @@ class AutotuneWorkflow:
         phrase = _VELOCITY_INTEGRAL_SUCCESS_PHRASES.get(
             self.velocity_integral.outcome, humanize(self.velocity_integral.outcome)
         )
-        report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — {phrase}.")
+        candidate_i = (self.velocity_integral.terminal or {}).get("candidate_i")
+        suffix = f" (velocity_i={int(candidate_i)})" if candidate_i is not None else ""
+        report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — {phrase}{suffix}.")
         self._retain_request_from_terminal(request_fields)
         return self.velocity_integral.outcome
 
