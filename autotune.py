@@ -1286,18 +1286,13 @@ class AutotuneWorkflow:
             self.persist_tune_results(result, mode_name, tune_status)
 
             nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
+            gain_text = f"vel_p={int(result['velocity_p'])}, vel_i={int(result['velocity_i'])}"
             summary_suffix = (
-                f" position_p={int(result['position_p'])}." if nominal_bandwidth_hz else "."
+                f", position_p={int(result['position_p'])})." if nominal_bandwidth_hz else ")."
             )
             report_summary(
                 gcmd,
-                f"{self._summary_prefix()}: SUCCEEDED — tuned ({tune_status}){summary_suffix}",
-            )
-            report_detail(
-                log,
-                self.driver.global_config.debug,
-                f"FOCI {self.driver.name} tuned ({tune_status}): vel_p="
-                f"{int(result['velocity_p'])} pos_p={int(result['position_p'])}",
+                f"{self._summary_prefix()}: SUCCEEDED — tuned ({gain_text}{summary_suffix}",
             )
             if nominal_bandwidth_hz:
                 report_detail(

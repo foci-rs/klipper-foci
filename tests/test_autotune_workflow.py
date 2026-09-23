@@ -2091,6 +2091,23 @@ class TestAutotuneGates(unittest.TestCase):
             in gcmd._responses
         )
 
+    def test_tuned_summary_shows_the_gains_not_the_dead_status_echo(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(gcmd)
+
+        summary = next(msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg)
+        assert summary == "FOCI_AUTOTUNE stepper_x: SUCCEEDED — tuned (vel_p=863, vel_i=12)."
+        assert "(tuned)" not in summary
+
 
 def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     d = make_driver()
@@ -2282,8 +2299,9 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         self.assertTrue(gcmd._responses[-1].startswith("FOCI_AUTOTUNE stepper_x: SUCCEEDED"))
-        self.assertNotIn("vel_p=", gcmd._responses[-1])
-        self.assertNotIn("pos_p=", gcmd._responses[-1])
+        self.assertIn("vel_p=1152", gcmd._responses[-1])
+        self.assertIn("vel_i=0", gcmd._responses[-1])
+        self.assertNotIn("position_p=", gcmd._responses[-1])
 
     def test_readiness_warning_is_reported_before_dispatch(self):
         d = self._ready_driver()
