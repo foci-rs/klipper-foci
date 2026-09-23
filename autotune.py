@@ -786,13 +786,8 @@ class AutotuneWorkflow:
         if self.velocity_integral.outcome == "fault":
             safety_detail = self._format_outer_safety_fault()
             detail_suffix = f"; {safety_detail}" if safety_detail else ""
-            report_summary(
-                gcmd,
-                f"{self._summary_prefix()}: FAILED — {humanize(self.velocity_integral.outcome)}.",
-            )
             raise gcmd.error(
-                f"FOCI {self.driver.name}: velocity integral response fault (cause="
-                f"{int(self.velocity_integral.terminal.get('cause', 0))})"
+                f"FOCI {self.driver.stepper_name}: velocity integral response fault"
                 f"{detail_suffix}"
             )
         phrase = _VELOCITY_INTEGRAL_SUCCESS_PHRASES.get(
@@ -1055,9 +1050,9 @@ class AutotuneWorkflow:
                 cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(
                     int(terminal.get("terminal_cause", 0)), "unknown"
                 )
-                report_summary(gcmd, f"{self._summary_prefix()}: FAILED — {humanize(cause_name)}.")
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: breakaway campaign safety fault{detail_suffix}"
+                    f"FOCI {self.driver.stepper_name}: breakaway campaign safety fault "
+                    f"({humanize(cause_name)}){detail_suffix}"
                 )
             if not self.breakaway_campaign.accepted:
                 terminal = self.breakaway_campaign.campaign_terminal or {}
