@@ -419,6 +419,34 @@ class TestAutotuneGates(unittest.TestCase):
             [ACTION_CODES["breakaway_seeded"], ACTION_CODES["integral_resume"]],
         )
 
+    def test_integral_resume_dispatch_relabels_the_phase_message(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_TUNE_RESULT,
+        )
+
+        def pause_with_phase_messages(deadline, _orig=d.printer.get_reactor().pause):
+            result = _orig(deadline)
+            d.commissioning.handle_commission_phase({"phase": 19, "status": 0})
+            return result
+
+        d.printer.get_reactor().pause = pause_with_phase_messages
+
+        d.autotune.autotune(gcmd)
+
+        gcode = d.printer.lookup_object("gcode")
+        phase_19_messages = [msg for msg in gcode._responses if "integral gain" in msg]
+        assert phase_19_messages[0] == "FOCI stepper_x autotune: Finding integral gain (velocity)"
+        assert (
+            phase_19_messages[1]
+            == "FOCI stepper_x autotune: Confirming integral gain repeatability"
+        )
+
     def test_cold_start_self_homes_without_up_front_calibration(self):
         """A commissioned driver that lost calibration+homing (e.g. after a
         klipper restart) must self-home through the dispatch instead of

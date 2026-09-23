@@ -588,6 +588,7 @@ class CommissioningWorkflow:
         self.error_code = 0
         self.details: list[dict] = []
         self.timing_by_method: dict[int, dict] = {}
+        self.phase_label_override: str | None = None
 
     def clear_details(self) -> None:
         """Clear structured commissioning diagnostic details."""
@@ -599,7 +600,9 @@ class CommissioningWorkflow:
         status = params.get("status", 0)
         if phase_id > 0 and status == 0:
             self.last_phase_id = phase_id
-            phase_name = PHASE_NAMES.get(phase_id, f"Phase {int(phase_id)}")
+            phase_name = self.phase_label_override or PHASE_NAMES.get(
+                phase_id, f"Phase {int(phase_id)}"
+            )
             gcode = self.driver.printer.lookup_object("gcode")
             active_label = self.driver.state.active_label or "commissioning"
             message = f"FOCI {self.driver.stepper_name} {active_label}: {phase_name}"

@@ -710,6 +710,7 @@ class AutotuneWorkflow:
         self.robustness_workflow_plan = None
         self.position_tune_workflow_plan = None
         self.driver.commissioning.error_code = 0
+        self.driver.commissioning.phase_label_override = None
 
     def _finish_velocity_integral_terminal(self, gcmd, request_fields: dict) -> str:
         """Report a velocity-integral terminal, raise on fault, and retain
@@ -1161,13 +1162,19 @@ class AutotuneWorkflow:
                 # exact same request under integral_resume so firmware rebuilds
                 # the identical plan digest against its retained authority.
                 self._reset_dispatch_state()
-                outcome = self._run_one_dispatch(
-                    gcmd,
-                    ACTION_CODES["integral_resume"],
-                    request_fields,
-                    toolhead,
-                    safe_pose_move,
+                self.driver.commissioning.phase_label_override = (
+                    "Confirming integral gain repeatability"
                 )
+                try:
+                    outcome = self._run_one_dispatch(
+                        gcmd,
+                        ACTION_CODES["integral_resume"],
+                        request_fields,
+                        toolhead,
+                        safe_pose_move,
+                    )
+                finally:
+                    self.driver.commissioning.phase_label_override = None
                 if outcome == "repeatability_confirmed":
                     # Reproduced: the accepted candidate still needs a
                     # robustness verdict before it can deploy. Firmware emits
