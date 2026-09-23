@@ -62,8 +62,10 @@ def feed_no_transition_terminal(workflow, run_sequence):
     reproduction_available = 0
     forward_reproduced_mask = forward_divergent_mask = 0
     reverse_reproduced_mask = reverse_divergent_mask = 0
+    candidate_i_present = 0
+    candidate_i_raw = 0
     payload = struct.pack(
-        "<BIBBBBIIBBBIIII",
+        "<BIBBBBIIBBBIIIIBH",
         VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
         run_sequence,
         outcome,
@@ -79,6 +81,8 @@ def feed_no_transition_terminal(workflow, run_sequence):
         forward_divergent_mask,
         reverse_reproduced_mask,
         reverse_divergent_mask,
+        candidate_i_present,
+        candidate_i_raw,
     )
     workflow.handle_velocity_integral_terminal({"oid": 0, "payload": payload})
 

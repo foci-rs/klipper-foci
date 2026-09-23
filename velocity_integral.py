@@ -46,7 +46,7 @@ REST_REJECTION_OWNER_NAMES = {
     0b11: "integral_cleanup",
 }
 
-VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION = 1
+VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION = 2
 
 
 class VelocityIntegralProtocolError(Exception):
@@ -76,7 +76,7 @@ def _pack(values: tuple[tuple[str, int], ...]) -> bytes:
     return b"".join(struct.pack("<" + kind, int(value)) for kind, value in values)
 
 
-_TERMINAL = struct.Struct("<BIBBBBIIBBBIIII")
+_TERMINAL = struct.Struct("<BIBBBBIIBBBIIIIBH")
 
 
 def _terminal_payload(params: dict) -> bytes:
@@ -272,9 +272,15 @@ class VelocityIntegralAssembler:
             forward_divergent_mask,
             reverse_reproduced_mask,
             reverse_divergent_mask,
+            candidate_i_present,
+            candidate_i_raw,
         ) = _TERMINAL.unpack(_terminal_payload(params))
         if schema != VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION:
             raise VelocityIntegralProtocolError("unsupported velocity-integral terminal schema")
+        if candidate_i_present not in (0, 1):
+            raise VelocityIntegralProtocolError("invalid candidate_i presence flag")
+        if not candidate_i_present and candidate_i_raw != 0:
+            raise VelocityIntegralProtocolError("candidate_i value present without its flag")
         outcome_name = OUTCOME_NAMES.get(outcome)
         if outcome_name is None:
             raise VelocityIntegralProtocolError("invalid terminal outcome")
@@ -336,6 +342,7 @@ class VelocityIntegralAssembler:
             "reverse_eligible_mask": reverse_eligible_mask,
             "bookend_available_mask": bookend_available_mask,
             "current_terminus_plus_one": current_terminus_plus_one,
+            "candidate_i": candidate_i_raw if candidate_i_present else None,
         }
         self.reproduction = (
             {

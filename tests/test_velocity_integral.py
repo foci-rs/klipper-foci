@@ -414,9 +414,11 @@ def _terminal_params(
     forward_divergent_mask=0,
     reverse_reproduced_mask=0,
     reverse_divergent_mask=0,
+    candidate_i_present=0,
+    candidate_i_raw=0,
 ):
     payload = struct.pack(
-        "<BIBBBBIIBBBIIII",
+        "<BIBBBBIIBBBIIIIBH",
         schema,
         run_sequence,
         outcome,
@@ -432,6 +434,8 @@ def _terminal_params(
         forward_divergent_mask,
         reverse_reproduced_mask,
         reverse_divergent_mask,
+        candidate_i_present,
+        candidate_i_raw,
     )
     return {"oid": 0, "payload": payload}
 
@@ -639,6 +643,64 @@ def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_cont
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
 
     assert assembler.outcome == "repeatability_confirmed"
+
+
+def test_handle_terminal_decodes_candidate_i_when_present():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler, schema_revision=14, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+    )
+
+    assembler.handle_terminal(
+        _terminal_params(
+            outcome=1,
+            reproduction_available=0,
+            candidate_i_present=1,
+            candidate_i_raw=512,
+        )
+    )
+
+    assert assembler.terminal["candidate_i"] == 512
+
+
+def test_handle_terminal_candidate_i_is_none_when_absent():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
+    feed_plan(
+        assembler, schema_revision=14, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+    )
+
+    assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
+
+    assert assembler.terminal["candidate_i"] is None
+
+
+def test_handle_terminal_rejects_invalid_candidate_i_presence_flag():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="candidate_i"):
+        assembler.handle_terminal(
+            _terminal_params(outcome=2, reproduction_available=0, candidate_i_present=2)
+        )
+
+
+def test_handle_terminal_rejects_candidate_i_value_without_presence_flag():
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler)
+    feed_plan(assembler)
+
+    with pytest.raises(VelocityIntegralProtocolError, match="candidate_i"):
+        assembler.handle_terminal(
+            _terminal_params(
+                outcome=2,
+                reproduction_available=0,
+                candidate_i_present=0,
+                candidate_i_raw=512,
+            )
+        )
 
 
 # ============================================================================
