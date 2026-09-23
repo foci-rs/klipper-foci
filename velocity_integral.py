@@ -559,6 +559,17 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
     19: "confirmation evidence was excluded; retain the trace and inspect stationarity",
     20: "confirmation stopped on a safety fault; inspect retained safety evidence",
     22: "probe excursion evidence was invalid; inspect the retained trace checkpoint",
+    23: "internal fault during the breakaway probe (not a safety event)",
+    24: "internal fault during additive discovery (not a safety event); safe to retry",
+    25: "internal fault during held-out confirmation (not a safety event); safe to retry",
+    26: (
+        "the confirmed candidate could not be turned into a Stage-C plan; inspect "
+        "the campaign terminal's error_code"
+    ),
+    27: (
+        "found no proportional gain safe to tune further (every candidate "
+        "exceeded the transition ceiling)"
+    ),
 }
 
 FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}

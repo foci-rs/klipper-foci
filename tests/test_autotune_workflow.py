@@ -3127,8 +3127,8 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         ):
             d.autotune.autotune(gcmd)
 
-        self.assertIn("not accepted", str(ctx.exception))
-        self.assertIn("confirmation_response_location", str(ctx.exception))
+        self.assertNotRegex(str(ctx.exception), r"confirmation_response_location")
+        self.assertIn("70-80%", str(ctx.exception))
         self.assertFalse(d.autotune.breakaway_campaign.accepted)
         self.assertIsNone(d.autotune.velocity_integral.plan)
         self.assertFalse(d.autotune.velocity_integral.done)
@@ -3137,13 +3137,113 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertTrue(
             any("breakaway campaign not accepted" in message for message in log_ctx.output)
         )
-        # A console message still reaches the operator: the detail moved to
-        # the log, but the FAILED summary line is still printed to console.
-        self.assertTrue(
-            any(
-                message.startswith("FOCI_AUTOTUNE") and "FAILED" in message
-                for message in gcmd._responses
-            )
+
+    def test_probe_internal_fault_reads_as_plain_english(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_probe_internal_fault(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif not d.autotune.breakaway_campaign.done:
+                probe_low, probe_high = BREAKAWAY_PROBE_DIGEST
+                d.autotune.handle_breakaway_probe_plan(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 0,
+                        "plan_digest_low": probe_low,
+                        "plan_digest_high": probe_high,
+                        "max_observations": 128,
+                        "search_count": 10,
+                        "p_start_raw": 100,
+                        "p_top_raw": 2000,
+                        "motion_threshold_counts": 63,
+                        "max_capture_interval_us": 2000,
+                    }
+                )
+                d.autotune.handle_breakaway_campaign_terminal(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 1,
+                        "phase": 0,
+                        "terminal_cause": 23,
+                        "accepted": 0,
+                        "integral_plan_digest_low": 0,
+                        "integral_plan_digest_high": 0,
+                        "error_code": 0,
+                    }
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_probe_internal_fault
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("internal fault during the breakaway probe", message)
+        self.assertIn("Safe to retry", message)
+        self.assertNotIn("probe_internal_fault", message)
+
+    def test_no_transition_capable_candidate_reads_as_plain_english(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_no_transition_capable_candidate(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif not d.autotune.breakaway_campaign.done:
+                feed_breakaway_probe_and_discovery(d)
+                d.autotune.handle_breakaway_confirmation_plan(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 3,
+                        "plan_digest_low": BREAKAWAY_CONFIRMATION_DIGEST[0],
+                        "plan_digest_high": BREAKAWAY_CONFIRMATION_DIGEST[1],
+                        "prior_plan_digest_low": BREAKAWAY_DISCOVERY_DIGEST[0],
+                        "prior_plan_digest_high": BREAKAWAY_DISCOVERY_DIGEST[1],
+                        "family_size": 8,
+                        "observations_per_direction": 4,
+                        "nominated_p_raw": 400,
+                        "band_lower_percent": 70,
+                        "band_upper_percent": 80,
+                        "capture_profile": 0,
+                        "acceptance_rule": 0,
+                        "nominated_margin_percent_milli": 2_000,
+                    }
+                )
+                d.autotune.handle_breakaway_campaign_terminal(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 3,
+                        "phase": 1,
+                        "terminal_cause": 27,
+                        "accepted": 0,
+                        "integral_plan_digest_low": 0,
+                        "integral_plan_digest_high": 0,
+                        "error_code": 0,
+                    }
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_no_transition_capable_candidate
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertEqual(
+            str(ctx.exception),
+            "FOCI stepper_x: FOCI_AUTOTUNE found no proportional gain safe to "
+            "tune further (every candidate exceeded the transition ceiling); "
+            "existing gains retained.",
         )
 
     def test_discovery_internal_fault_raises_and_names_cause(self):
@@ -3174,8 +3274,8 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         ):
             d.autotune.autotune(gcmd)
 
-        self.assertIn("not accepted", str(ctx.exception))
-        self.assertIn("discovery_internal_fault", str(ctx.exception))
+        self.assertIn("internal fault during additive discovery", str(ctx.exception))
+        self.assertNotIn("discovery_internal_fault", str(ctx.exception))
         self.assertEqual(d.state.active_gains, SAMPLE_ACTIVE_GAINS)
         self.assertEqual(persisted, [])
         self.assertTrue(

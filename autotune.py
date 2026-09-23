@@ -1065,11 +1065,14 @@ class AutotuneWorkflow:
             if not self.breakaway_campaign.accepted:
                 terminal = self.breakaway_campaign.campaign_terminal or {}
                 cause = int(terminal.get("terminal_cause", 0))
-                cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{cause}")
-                report_summary(gcmd, f"{self._summary_prefix()}: FAILED — {humanize(cause_name)}.")
+                remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
+                if remediation is None:
+                    cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause, f"unknown_{cause}")
+                    remediation = humanize(cause_name)
+                cause_suffix = " Safe to retry." if cause == 23 else ""
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE breakaway campaign not "
-                    f"accepted ({cause_name}); existing gains retained"
+                    f"FOCI {self.driver.stepper_name}: FOCI_AUTOTUNE {remediation}; "
+                    f"existing gains retained.{cause_suffix}"
                 )
             if self.velocity_integral.done:
                 # An accepted breakaway campaign reaches its
