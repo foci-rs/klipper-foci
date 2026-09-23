@@ -132,10 +132,7 @@ _VELOCITY_INTEGRAL_SUCCESS_PHRASES = {
 # and safety-fault causes have their own dedicated branches above this one
 # and never reach this table).
 _ROBUSTNESS_REJECT_PHRASES = {
-    4: (
-        "gain robustness check inconclusive — motor did not settle within "
-        "the measurement window"
-    ),
+    4: ("gain robustness check inconclusive — motor did not settle within the measurement window"),
     11: (
         "robustness check failed — could not reposition for the next "
         "reversal leg; existing gains retained"
