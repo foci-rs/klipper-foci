@@ -563,7 +563,7 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
     24: "internal fault during additive discovery (not a safety event); safe to retry",
     25: "internal fault during held-out confirmation (not a safety event); safe to retry",
     26: (
-        "the confirmed candidate could not be turned into a Stage-C plan; inspect "
+        "the confirmed candidate could not be turned into an Integral plan; inspect "
         "the campaign terminal's error code"
     ),
     27: (
@@ -581,7 +581,7 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
 BREAKAWAY_INTEGRAL_SCHEMA_REVISION = 18
 # First revision of each breakaway stream. These are boundaries, not sets: every
-# revision at or above them is a breakaway plan. Stage-C 8-13 was the classic
+# revision at or above them is a breakaway plan. Integral 8-13 was the classic
 # combined schema range; firmware never emits it after Stage 2, and
 # handle_plan_core no longer admits it. The upper end stays bounded by the
 # current revision above, so a stream from firmware newer than this host is

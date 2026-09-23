@@ -95,7 +95,7 @@ a plain invocation; doing so would position-tune the axis twice. Because of
 the chained dispatch the command now takes correspondingly longer to
 complete, and it is all-or-nothing: a position-tune failure fails the whole
 command and persists nothing, even though the chip already carries the newly
-installed (but unpersisted) velocity gains at that point. Stage-C
+installed (but unpersisted) velocity gains at that point. Integral
 reproduction is stochastic; an occasional `inconclusive` result is expected
 and not a regression, and the command is simply re-run.
 

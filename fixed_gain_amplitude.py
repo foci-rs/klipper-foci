@@ -10,7 +10,7 @@ import struct
 # shared floor and would then function as a favourable re-roll of a spent
 # retention lifecycle, so firmware never decodes them via
 # `AutotuneAction::from_u8`, and the host cannot even name them since
-# they're absent from the generated `ACTION_CODES`. Stage C carries the
+# they're absent from the generated `ACTION_CODES`. Integral carries the
 # same slot-order confound and is not lifecycle-limited, so
 # breakaway_seeded is the production and measurement path.
 from ._vocabulary_generated import (

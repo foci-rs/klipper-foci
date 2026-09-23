@@ -2139,7 +2139,7 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertFalse(enable_line.is_motor_enabled())
 
     def test_workflow_finishes_for_a_refusal_that_declared_no_envelope(self):
-        """A Stage-C terminal is terminal whether or not an envelope preceded it.
+        """An Integral terminal is terminal whether or not an envelope preceded it.
 
         A request refused before planning declares no workflow, and without this
         the wait loop has nothing to complete on and times out waiting for a plan
@@ -3288,7 +3288,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
     def test_confirmation_inconclusive_preserves_prior_p_and_skips_persistence(self):
         """Brief step 4: a non-accept terminal raises a terminal error naming
         the rejection cause, and leaves the previously commissioned P untouched
-        -- neither Stage-C completion nor the persistence callback runs."""
+        -- neither Integral completion nor the persistence callback runs."""
         d = self._commissioned_driver()
         d.global_config.debug = True
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})

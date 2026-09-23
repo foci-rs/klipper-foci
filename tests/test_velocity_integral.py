@@ -234,7 +234,7 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
     host previously memorised the answers per schema, so any timing change broke
     it. Re-hosted on the breakaway continuation (shape 6, schema 14) now that the
     classic combined schema range (8-13) is no longer accepted -- the
-    firmware-authored-duration guarantee this pins is generic Stage-C behaviour,
+    firmware-authored-duration guarantee this pins is generic Integral behaviour,
     not combined-specific.
     """
     assembler = VelocityIntegralAssembler()
@@ -1190,9 +1190,9 @@ def test_breakaway_campaign_terminal_requires_agreement_with_confirmation():
 
 
 def test_breakaway_campaign_terminal_confirmed_refusal_is_not_a_protocol_error():
-    """A genuinely confirmed acceptance whose Stage-C plan build was refused
+    """A genuinely confirmed acceptance whose Integral plan build was refused
     is a legitimate outcome, not a protocol violation -- only the
-    reverse (a Stage-C plan without a confirmed acceptance) remains invalid."""
+    reverse (an Integral plan without a confirmed acceptance) remains invalid."""
     assembler = BreakawayCampaignAssembler()
     feed_probe_plan(assembler)
     feed_probe_result(assembler)
@@ -1257,7 +1257,7 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
 def test_breakaway_campaign_inconclusive_confirmation_preserves_no_candidate():
     """On an inconclusive confirmation the campaign never nominates a gain.
 
-    No Stage-C authority may be derived, so `integral_plan_digest` reads as the
+    No Integral authority may be derived, so `integral_plan_digest` reads as the
     empty identity and a second confirmation plan (a "retry") is refused --
     the assembler exposes no path to keep trying candidates.
     """
