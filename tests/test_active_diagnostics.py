@@ -261,7 +261,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "ud_limited": -20,
                 "encoder_before": 3900,
                 "encoder_after": 12,
-                "encoder_delta": 112,
                 "adc_vm_raw": 40099,
             }
         )
@@ -291,7 +290,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "ud_limited": -20,
                 "encoder_before": 3900,
                 "encoder_after": 12,
-                "encoder_delta": 112,
                 "adc_vm_raw": 40099,
             }
         )
@@ -314,7 +312,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "ud_limited": -20,
                 "encoder_before": 3900,
                 "encoder_after": 12,
-                "encoder_delta": 112,
                 "adc_vm_raw": 40099,
             }
         )
@@ -367,7 +364,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "ud_limited": 1500,
                 "encoder_before": 3900,
                 "encoder_after": 3912,
-                "encoder_delta": 12,
                 "adc_vm_raw": 40099,
             }
         )

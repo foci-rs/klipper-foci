@@ -10,6 +10,7 @@ from ..commissioning import (
 )
 from ..constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 from ..report import report_detail
+from .encoder import encoder_shortest_delta
 
 log = logging.getLogger(__name__)
 
@@ -80,24 +81,33 @@ class ActiveDiagnostics:
         self.last_encoder_alignment: dict[int, dict] = {}
         self.adc_residuals: dict[int, list[dict]] = {}
 
+    def _encoder_delta_str(self, encoder_before: int, encoder_after: int) -> str:
+        counts_per_rev = 4 * self.driver.config.encoder_ppr
+        delta = encoder_shortest_delta(encoder_before, encoder_after, counts_per_rev)
+        return "?" if delta is None else str(delta)
+
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
         axis_code = int(params["axis"])
         axis = CURRENT_STEP_AXIS_NAMES.get(axis_code, str(axis_code))
+        encoder_before = int(params["encoder_before"])
+        encoder_after = int(params["encoder_after"])
         msg = (
             f"FOCI {self.driver.name} current step: axis={axis} status={int(params['status'])} "
             f"target={int(params['target'])} actual={int(params['torque_during'])} before="
             f"{int(params['torque_before'])} after={int(params['torque_after'])} flux="
             f"{int(params['flux_during'])} iq={int(params['iq_during'])} id="
             f"{int(params['id_during'])} uq_limited={int(params['uq_limited'])} ud_limited="
-            f"{int(params['ud_limited'])} enc_before={int(params['encoder_before'])} enc_after="
-            f"{int(params['encoder_after'])} enc_delta={int(params['encoder_delta'])} adc_vm_raw="
-            f"{int(params['adc_vm_raw'])}"
+            f"{int(params['ud_limited'])} enc_before={encoder_before} enc_after="
+            f"{encoder_after} enc_delta={self._encoder_delta_str(encoder_before, encoder_after)} "
+            f"adc_vm_raw={int(params['adc_vm_raw'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
     def handle_current_vector_step_result(self, params: dict) -> None:
         """Handle foci_current_vector_step_result from firmware."""
+        encoder_before = int(params["encoder_before"])
+        encoder_after = int(params["encoder_after"])
         msg = (
             f"FOCI {self.driver.name} current vector step: status={int(params['status'])} "
             f"torque_target={int(params['torque_target'])} flux_target={int(params['flux_target'])}"
@@ -105,9 +115,9 @@ class ActiveDiagnostics:
             f"{int(params['flux_during'])} before={int(params['torque_before'])} after="
             f"{int(params['torque_after'])} iq={int(params['iq_during'])} id="
             f"{int(params['id_during'])} uq_limited={int(params['uq_limited'])} ud_limited="
-            f"{int(params['ud_limited'])} enc_before={int(params['encoder_before'])} enc_after="
-            f"{int(params['encoder_after'])} enc_delta={int(params['encoder_delta'])} adc_vm_raw="
-            f"{int(params['adc_vm_raw'])}"
+            f"{int(params['ud_limited'])} enc_before={encoder_before} enc_after="
+            f"{encoder_after} enc_delta={self._encoder_delta_str(encoder_before, encoder_after)} "
+            f"adc_vm_raw={int(params['adc_vm_raw'])}"
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
