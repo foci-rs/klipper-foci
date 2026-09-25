@@ -14,14 +14,6 @@ class DiagnosticsWorkflow:
         self.passive = PassiveDiagnostics(driver)
         self.active = ActiveDiagnostics(driver)
 
-    @property
-    def current_torque_sample_details(self) -> dict[tuple[int, int, int, int], dict]:
-        return self.active.current_torque_sample_details
-
-    @property
-    def current_torque_sample_labels(self) -> dict[tuple[int, int, int, int], str]:
-        return self.active.current_torque_sample_labels
-
     def handle_current_step_result(self, params: dict) -> None:
         return self.active.handle_current_step_result(params)
 
@@ -30,6 +22,9 @@ class DiagnosticsWorkflow:
 
     def handle_current_torque_sample_result(self, params: dict) -> None:
         return self.active.handle_current_torque_sample_result(params)
+
+    def handle_current_torque_sample_pid_result(self, params: dict) -> None:
+        return self.active.handle_current_torque_sample_pid_result(params)
 
     def handle_current_torque_sample_detail_result(self, params: dict) -> None:
         return self.active.handle_current_torque_sample_detail_result(params)

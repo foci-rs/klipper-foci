@@ -19,6 +19,14 @@ CURRENT_STEP_AXIS_CODES = {
 }
 CURRENT_STEP_AXIS_NAMES = {code: name for name, code in CURRENT_STEP_AXIS_CODES.items()}
 MAX_CURRENT_SAMPLE_DELAY_MS = 200
+TORQUE_SAMPLE_KIND_LABELS = {
+    0: "current torque sample",
+    1: "position torque offset sample",
+}
+
+
+def _torque_sample_label(kind: int) -> str:
+    return TORQUE_SAMPLE_KIND_LABELS.get(kind, f"torque sample kind={kind}")
 
 
 class ActiveDiagnostics:
@@ -26,8 +34,16 @@ class ActiveDiagnostics:
 
     def __init__(self, driver) -> None:
         self.driver = driver
-        self.current_torque_sample_details: dict[tuple[int, int, int, int], dict] = {}
-        self.current_torque_sample_labels: dict[tuple[int, int, int, int], str] = {}
+        # Per-oid stitch cache for the torque-sample fragment set
+        # (foci_current_torque_sample_pid_result, then
+        # foci_current_torque_sample_detail_result), keyed by the fragment
+        # name ("pid"/"detail"). Firmware emits both fragments iff the
+        # terminal foci_current_torque_sample_result has status == 0, so
+        # the terminal handler pops and uses this only on that status; a
+        # non-zero-status terminal discards whatever is cached without
+        # rendering it, so a fragment left behind by an interrupted run can
+        # never be attributed to a later report.
+        self.current_torque_sample_fragments: dict[int, dict[str, dict]] = {}
         # Transient per-driver cache of the commission-stream resistance
         # replies (foci_resistance_run + the two foci_resistance_axis
         # replies), keyed by oid. Populated by handle_resistance_run and
@@ -95,51 +111,51 @@ class ActiveDiagnostics:
         )
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_current_torque_sample_pid_result(self, params: dict) -> None:
+        """Cache current-torque-sample PID/error fields until the terminal reply arrives."""
+        self.current_torque_sample_fragments.setdefault(params["oid"], {})["pid"] = params
+
+    def handle_current_torque_sample_detail_result(self, params: dict) -> None:
+        """Cache current-torque-sample encoder/feedforward fields until the terminal arrives."""
+        self.current_torque_sample_fragments.setdefault(params["oid"], {})["detail"] = params
+
     def handle_current_torque_sample_result(self, params: dict) -> None:
         """Handle foci_current_torque_sample_result from firmware."""
-        detail_key = (
-            params["target"],
-            params.get("flux_target", 0),
-            params["sample_delay_ms"],
-            params["voltage_limit"],
-        )
-        detail = self.current_torque_sample_details.pop(detail_key, {})
-        label = self.current_torque_sample_labels.pop(detail_key, "current torque sample")
+        status = int(params["status"])
+        fragments = self.current_torque_sample_fragments.pop(params["oid"], {})
+        pid = fragments.get("pid", {}) if status == 0 else {}
+        detail = fragments.get("detail", {}) if status == 0 else {}
+        label = _torque_sample_label(int(params["kind"]))
         msg = (
-            f"FOCI {self.driver.name} {label}: status={int(params['status'])} target="
+            f"FOCI {self.driver.name} {label}: status={status} target="
             f"{int(params['target'])} flux_target={int(params.get('flux_target', 0))} "
             f"sample_delay_ms={int(params['sample_delay_ms'])} voltage_limit="
             f"{int(params['voltage_limit'])} actual={int(params['torque_sample'])} before="
             f"{int(params['torque_before'])} after={int(params['torque_after'])} flux="
             f"{int(params['flux_sample'])} iq={int(params['iq_sample'])} id="
             f"{int(params['id_sample'])} uq_limited={int(params['uq_limited'])} ud_limited="
-            f"{int(params['ud_limited'])} enc_before={int(params['encoder_before'])} enc_sample="
-            f"{int(params['encoder_sample'])} enc_after={int(params['encoder_after'])} "
-            f"enc_delta_sample={int(params['encoder_delta_sample'])} enc_delta_after="
-            f"{int(params['encoder_delta_after'])} adc_vm_raw={int(params['adc_vm_raw'])} "
-            f"pidin_target_torque={int(params.get('pidin_target_torque', 0))} pidin_target_flux="
-            f"{int(params.get('pidin_target_flux', 0))} pidout_target_torque="
-            f"{int(params.get('pidout_target_torque', 0))} pidout_target_flux="
-            f"{int(params.get('pidout_target_flux', 0))} pid_torque_target_monitor="
-            f"{int(params.get('pid_torque_target_monitor', 0))} torque_error="
-            f"{int(detail.get('torque_error', 0))} flux_error={int(detail.get('flux_error', 0))} "
-            f"torque_error_sum={int(detail.get('torque_error_sum', 0))} flux_error_sum="
-            f"{int(detail.get('flux_error_sum', 0))} uq_prelimit="
+            f"{int(params['ud_limited'])} enc_before={int(detail.get('encoder_before', 0))} "
+            f"enc_sample={int(detail.get('encoder_sample', 0))} enc_after="
+            f"{int(detail.get('encoder_after', 0))} enc_delta_sample="
+            f"{int(detail.get('encoder_delta_sample', 0))} enc_delta_after="
+            f"{int(detail.get('encoder_delta_after', 0))} adc_vm_raw={int(params['adc_vm_raw'])} "
+            f"pidin_target_torque={int(pid.get('pidin_target_torque', 0))} pidin_target_flux="
+            f"{int(pid.get('pidin_target_flux', 0))} pidout_target_torque="
+            f"{int(pid.get('pidout_target_torque', 0))} pidout_target_flux="
+            f"{int(pid.get('pidout_target_flux', 0))} pid_torque_target_monitor="
+            f"{int(pid.get('pid_torque_target_monitor', 0))} torque_error="
+            f"{int(pid.get('torque_error', 0))} flux_error={int(pid.get('flux_error', 0))} "
+            f"torque_error_sum={int(pid.get('torque_error_sum', 0))} flux_error_sum="
+            f"{int(pid.get('flux_error_sum', 0))} uq_prelimit="
             f"{int(detail.get('uq_prelimit', 0))} ud_prelimit={int(detail.get('ud_prelimit', 0))} "
             f"ff_velocity={int(detail.get('ff_velocity', 0))} ff_torque="
             f"{int(detail.get('ff_torque', 0))} status_flags=0x{params.get('status_flags', 0):08x}"
         )
+        if status == 0:
+            missing = [name for name in ("pid", "detail") if name not in fragments]
+            if missing:
+                msg += f" missing={','.join(missing)}"
         self.driver.printer.lookup_object("gcode").respond_info(msg)
-
-    def handle_current_torque_sample_detail_result(self, params: dict) -> None:
-        """Cache split current torque sample details until the base reply arrives."""
-        detail_key = (
-            params["target"],
-            params.get("flux_target", 0),
-            params["sample_delay_ms"],
-            params["voltage_limit"],
-        )
-        self.current_torque_sample_details[detail_key] = params
 
     def handle_voltage_step_result(self, params: dict) -> None:
         """Handle foci_voltage_step_result from firmware."""
@@ -228,15 +244,6 @@ class ActiveDiagnostics:
             minval=MIN_OPERATIONAL_VOLTAGE_LIMIT,
             maxval=29000,
         )
-        self.current_torque_sample_details.pop(
-            (target, flux_target, sample_delay_ms, voltage_limit),
-            None,
-        )
-        self.current_torque_sample_labels.pop(
-            (target, flux_target, sample_delay_ms, voltage_limit),
-            None,
-        )
-
         self.driver.protocol.run_current_torque_sample_test(
             target=target,
             flux_target=flux_target,
@@ -262,10 +269,6 @@ class ActiveDiagnostics:
             minval=MIN_OPERATIONAL_VOLTAGE_LIMIT,
             maxval=29000,
         )
-        detail_key = (target, 0, sample_delay_ms, voltage_limit)
-        self.current_torque_sample_details.pop(detail_key, None)
-        self.current_torque_sample_labels[detail_key] = "position torque offset sample"
-
         self.driver.protocol.run_position_torque_offset_sample_test(
             target=target,
             sample_delay_ms=sample_delay_ms,

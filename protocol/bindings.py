@@ -267,6 +267,11 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.handle_current_torque_sample_pid_result,
+        "foci_current_torque_sample_pid_result",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.handle_current_torque_sample_detail_result,
         "foci_current_torque_sample_detail_result",
         oid,

@@ -101,6 +101,10 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
         "foci_current_torque_sample_detail_result",
         driver.oid,
     ) in registrations
+    assert (
+        "foci_current_torque_sample_pid_result",
+        driver.oid,
+    ) in registrations
     assert ("foci_voltage_step_result", driver.oid) in registrations
     assert ("foci_resistance_profile", driver.oid) in registrations
     assert ("foci_resistance_run", driver.oid) in registrations

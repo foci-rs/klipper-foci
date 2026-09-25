@@ -382,7 +382,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
     def test_sends_torque_sample_step_with_long_diagnostic_delay(self):
         d = make_driver()
-        d.diagnostics.current_torque_sample_details[(500, -125, 100, 29000)] = {"torque_error": 1}
 
         d.diagnostics.current_torque_sample_test(
             MockGCmd(
@@ -399,7 +398,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
             d.protocol.commands.current_torque_sample_test.last_args,
             [d.oid, 500, -125, 100, 29000],
         )
-        self.assertEqual(d.diagnostics.current_torque_sample_details, {})
 
     def test_sends_position_torque_offset_sample(self):
         d = make_driver()
@@ -486,16 +484,28 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_current_torque_sample_result_formats_sample_fields(self):
         d = make_driver()
 
-        d.diagnostics.handle_current_torque_sample_detail_result(
+        d.diagnostics.handle_current_torque_sample_pid_result(
             {
-                "target": 500,
-                "flux_target": -125,
-                "sample_delay_ms": 5,
-                "voltage_limit": 29000,
+                "oid": d.oid,
+                "pidin_target_torque": 500,
+                "pidin_target_flux": -125,
+                "pidout_target_torque": 3199,
+                "pidout_target_flux": -25,
+                "pid_torque_target_monitor": 500,
                 "torque_error": 190,
                 "flux_error": -129,
                 "torque_error_sum": 12345,
                 "flux_error_sum": -2345,
+            }
+        )
+        d.diagnostics.handle_current_torque_sample_detail_result(
+            {
+                "oid": d.oid,
+                "encoder_before": 3900,
+                "encoder_sample": 3902,
+                "encoder_after": 3912,
+                "encoder_delta_sample": 2,
+                "encoder_delta_after": 12,
                 "uq_prelimit": 3210,
                 "ud_prelimit": -30,
                 "ff_velocity": 17,
@@ -504,6 +514,8 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         )
         d.diagnostics.handle_current_torque_sample_result(
             {
+                "oid": d.oid,
+                "kind": 0,
                 "status": 0,
                 "target": 500,
                 "flux_target": -125,
@@ -517,17 +529,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "id_sample": -5,
                 "uq_limited": 3200,
                 "ud_limited": -20,
-                "encoder_before": 3900,
-                "encoder_sample": 3902,
-                "encoder_after": 3912,
-                "encoder_delta_sample": 2,
-                "encoder_delta_after": 12,
                 "adc_vm_raw": 40099,
-                "pidin_target_torque": 500,
-                "pidin_target_flux": -125,
-                "pidout_target_torque": 3199,
-                "pidout_target_flux": -25,
-                "pid_torque_target_monitor": 500,
                 "status_flags": 0x8000,
             }
         )
@@ -555,7 +557,124 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("ff_velocity=17", out)
         self.assertIn("ff_torque=-42", out)
         self.assertIn("status_flags=0x00008000", out)
-        self.assertEqual(d.diagnostics.current_torque_sample_details, {})
+
+
+def _torque_terminal(oid, status=0, kind=0):
+    return {
+        "oid": oid,
+        "kind": kind,
+        "status": status,
+        "target": 500,
+        "flux_target": -125,
+        "sample_delay_ms": 5,
+        "voltage_limit": 29000,
+        "torque_before": -3,
+        "torque_sample": 310,
+        "torque_after": 18,
+        "flux_sample": 4,
+        "iq_sample": 309,
+        "id_sample": -5,
+        "uq_limited": 3200,
+        "ud_limited": -20,
+        "adc_vm_raw": 40099,
+        "status_flags": 0x8000,
+    }
+
+
+def _torque_pid(oid, error_sum):
+    return {
+        "oid": oid,
+        "pidin_target_torque": 500,
+        "pidin_target_flux": -125,
+        "pidout_target_torque": 3199,
+        "pidout_target_flux": -25,
+        "pid_torque_target_monitor": 500,
+        "torque_error": 190,
+        "flux_error": -129,
+        "torque_error_sum": error_sum,
+        "flux_error_sum": -2345,
+    }
+
+
+def _torque_detail(oid, encoder_sample):
+    return {
+        "oid": oid,
+        "encoder_before": 3900,
+        "encoder_sample": encoder_sample,
+        "encoder_after": 3912,
+        "encoder_delta_sample": 2,
+        "encoder_delta_after": 12,
+        "uq_prelimit": 3210,
+        "ud_prelimit": -30,
+        "ff_velocity": 17,
+        "ff_torque": -42,
+    }
+
+
+class TestTorqueSampleStitching(unittest.TestCase):
+    def _out(self, d):
+        return d.printer.lookup_object("gcode")._responses[-1]
+
+    def test_label_comes_from_kind(self):
+        d = make_driver()
+        for kind, label in (
+            (0, "current torque sample:"),
+            (1, "position torque offset sample:"),
+            (9, "torque sample kind=9:"),
+        ):
+            d.diagnostics.handle_current_torque_sample_result(_torque_terminal(d.oid, kind=kind))
+            self.assertIn(label, self._out(d))
+
+    def test_nonzero_status_terminal_discards_leftover_fragments(self):
+        d = make_driver()
+        d.diagnostics.handle_current_torque_sample_pid_result(_torque_pid(d.oid, 777777))
+        d.diagnostics.handle_current_torque_sample_detail_result(_torque_detail(d.oid, 55555))
+
+        d.diagnostics.handle_current_torque_sample_result(_torque_terminal(d.oid, status=1))
+        out = self._out(d)
+
+        self.assertIn("status=1", out)
+        self.assertNotIn("777777", out)
+        self.assertNotIn("55555", out)
+        d.diagnostics.handle_current_torque_sample_result(_torque_terminal(d.oid))
+        self.assertNotIn("777777", self._out(d))
+
+    def test_success_terminal_with_missing_fragment_reports_missing(self):
+        d = make_driver()
+        d.diagnostics.handle_current_torque_sample_pid_result(_torque_pid(d.oid, 12345))
+
+        d.diagnostics.handle_current_torque_sample_result(_torque_terminal(d.oid))
+        out = self._out(d)
+
+        self.assertIn("torque_error_sum=12345", out)
+        self.assertIn("missing=detail", out)
+
+    def test_fragments_stitch_per_oid(self):
+        d = make_driver()
+        other = d.oid + 1
+        d.diagnostics.handle_current_torque_sample_pid_result(_torque_pid(d.oid, 111))
+        d.diagnostics.handle_current_torque_sample_pid_result(_torque_pid(other, 222))
+        d.diagnostics.handle_current_torque_sample_detail_result(_torque_detail(d.oid, 3333))
+        d.diagnostics.handle_current_torque_sample_detail_result(_torque_detail(other, 4444))
+
+        d.diagnostics.handle_current_torque_sample_result(_torque_terminal(other))
+        out_other = self._out(d)
+        d.diagnostics.handle_current_torque_sample_result(_torque_terminal(d.oid))
+        out_own = self._out(d)
+
+        self.assertIn("torque_error_sum=222", out_other)
+        self.assertIn("enc_sample=4444", out_other)
+        self.assertIn("torque_error_sum=111", out_own)
+        self.assertIn("enc_sample=3333", out_own)
+
+    def test_torque_sample_triggers_leave_no_instance_state(self):
+        d = make_driver()
+        before = dict(vars(d.diagnostics.active))
+
+        d.diagnostics.current_torque_sample_test(MockGCmd({"TARGET": 500}))
+        d.diagnostics.position_torque_offset_test(MockGCmd({"TARGET": 500}))
+
+        self.assertEqual(vars(d.diagnostics.active), before)
 
 
 class TestResistanceTestDiagnosticCommand(unittest.TestCase):
