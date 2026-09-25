@@ -252,26 +252,6 @@ def register_selftest_responses(serial, driver, oid: int) -> None:
 
 def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
     serial.register_response(
-        driver.diagnostics.active.handle_velocity_limit_latch_flags,
-        "foci_velocity_limit_latch_flags",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_velocity_limit_latch_motion,
-        "foci_velocity_limit_latch_motion",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_velocity_limit_latch_restore,
-        "foci_velocity_limit_latch_restore",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_velocity_limit_latch_core,
-        "foci_velocity_limit_latch_core",
-        oid,
-    )
-    serial.register_response(
         driver.diagnostics.handle_current_step_result,
         "foci_current_step_result",
         oid,

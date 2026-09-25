@@ -52,7 +52,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.stack_watermark is not None
     assert commands.query_adc_vm_offset is not None
     assert commands.current_step_test is not None
-    assert commands.velocity_limit_latch_test is not None
 
     assert (
         "stepper_get_position oid=%c",
@@ -106,10 +105,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_resistance_profile", driver.oid) in registrations
     assert ("foci_resistance_run", driver.oid) in registrations
     assert ("foci_resistance_axis", driver.oid) in registrations
-    assert ("foci_velocity_limit_latch_flags", driver.oid) in registrations
-    assert ("foci_velocity_limit_latch_motion", driver.oid) in registrations
-    assert ("foci_velocity_limit_latch_restore", driver.oid) in registrations
-    assert ("foci_velocity_limit_latch_core", driver.oid) in registrations
     assert ("foci_encoder_alignment", driver.oid) in registrations
     assert ("foci_adc_residual", driver.oid) in registrations
     assert ("foci_closed_loop_activation", driver.oid) in registrations
@@ -873,7 +868,6 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
         ud_ext=-128,
         sample_delay_ms=3,
     )
-    driver.protocol.run_velocity_limit_latch_test(channel=driver.channel)
 
     commands = driver.protocol.commands
     assert commands.current_step_test.last_args == [
@@ -902,10 +896,6 @@ def test_active_diagnostic_protocol_methods_send_existing_payloads():
         500,
         2,
         15000,
-    ]
-    assert commands.velocity_limit_latch_test.last_args == [
-        driver.oid,
-        driver.channel,
     ]
     assert commands.voltage_step_test.last_args == [
         driver.oid,

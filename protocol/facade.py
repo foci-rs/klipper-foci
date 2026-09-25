@@ -268,15 +268,6 @@ class FociProtocol:
     def run_resistance_test(self, *, detail: int = 0) -> None:
         self.commands.resistance_test.send([self.driver.oid, detail])
 
-    def run_velocity_limit_latch_test(self, *, channel: int) -> None:
-        """Run the trace-only velocity-output-limit persistence diagnostic."""
-        command = self.commands.velocity_limit_latch_test
-        if command is None:
-            raise self.driver.printer.command_error(
-                "FOCI_VELOCITY_LIMIT_LATCH_TEST requires trace firmware"
-            )
-        command.send([self.driver.oid, channel])
-
     def configure_startup(
         self,
         *,

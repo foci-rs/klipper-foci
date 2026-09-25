@@ -63,67 +63,6 @@ class ActiveDiagnostics:
         self.last_encoder_alignment: dict[int, dict] = {}
         self.adc_residuals: dict[int, list[dict]] = {}
         self.current_step_pending_axis: str | None = None
-        self.velocity_limit_latch_cache: dict[int, dict[str, dict]] = {}
-
-    def handle_velocity_limit_latch_flags(self, params: dict) -> None:
-        """Retain full status snapshots until the terminal core arrives."""
-        oid = int(params["oid"])
-        self.velocity_limit_latch_cache.setdefault(oid, {})["flags"] = dict(params)
-
-    def handle_velocity_limit_latch_motion(self, params: dict) -> None:
-        """Retain focused diagnostic timing and displacement."""
-        oid = int(params["oid"])
-        self.velocity_limit_latch_cache.setdefault(oid, {})["motion"] = dict(params)
-
-    def handle_velocity_limit_latch_restore(self, params: dict) -> None:
-        """Retain focused diagnostic saved/restored register evidence."""
-        oid = int(params["oid"])
-        self.velocity_limit_latch_cache.setdefault(oid, {})["restore"] = dict(params)
-
-    def handle_velocity_limit_latch_core(self, params: dict) -> None:
-        """Assemble and report one firmware-authoritative focused diagnostic."""
-        oid = int(params["oid"])
-        fragments = self.velocity_limit_latch_cache.pop(oid, {})
-        flags = fragments.get("flags", {})
-        motion = fragments.get("motion", {})
-        restore = fragments.get("restore", {})
-        missing = ",".join(name for name in ("flags", "motion", "restore") if name not in fragments)
-        msg = (
-            f"FOCI {self.driver.name} velocity-limit-latch: status={int(params['status'])} limit="
-            f"{int(params['test_limit'])} p={int(params['p_raw'])} i={int(params['i_raw'])} "
-            f"target_rpm={int(params['target_velocity_rpm'])} limit_readback="
-            f"{int(params['limit_readback'])} gains_readback=0x{params['gains_readback']:08x} "
-            f"target_readback={int(params['target_readback'])} active_status=0x"
-            f"{flags.get('active_status_flags', 0):08x} post_pulse_status=0x"
-            f"{flags.get('post_pulse_status_flags', 0):08x} delayed_status=0x"
-            f"{flags.get('delayed_status_flags', 0):08x} post_clear_status=0x"
-            f"{flags.get('post_clear_status_flags', 0):08x} pulse_us="
-            f"{int(motion.get('pulse_elapsed_us', 0))} delayed_us="
-            f"{int(motion.get('delayed_read_elapsed_us', 0))} encoder_before="
-            f"{int(motion.get('encoder_before', 0))} encoder_after="
-            f"{int(motion.get('encoder_after', 0))} encoder_delta="
-            f"{int(motion.get('encoder_delta', 0))} saved_limit="
-            f"{int(restore.get('saved_limit', 0))} restored_limit="
-            f"{int(restore.get('restored_limit_readback', 0))} saved_gains=0x"
-            f"{restore.get('saved_gains', 0):08x} restored_gains=0x"
-            f"{restore.get('restored_gains_readback', 0):08x} saved_target="
-            f"{int(restore.get('saved_target', 0))} restored_target="
-            f"{int(restore.get('restored_target_readback', 0))} saved_mode=0x"
-            f"{restore.get('saved_mode', 0):08x} restored_mode=0x"
-            f"{restore.get('restored_mode_readback', 0):08x} restore_mask=0x"
-            f"{restore.get('restore_verified_mask', 0):02x} power_stage_tripped="
-            f"{int(params['power_stage_tripped'])} missing={missing or 'none'}"
-        )
-        self.driver.printer.lookup_object("gcode").respond_info(msg)
-
-    def velocity_limit_latch_test(self, gcmd) -> None:
-        """Run the trace-only focused velocity-output-limit diagnostic."""
-        self.velocity_limit_latch_cache.pop(self.driver.oid, None)
-        self.driver.protocol.run_velocity_limit_latch_test(channel=self.driver.channel)
-        gcmd.respond_info(
-            f"FOCI {self.driver.name} velocity-limit-latch requested: channel="
-            f"{int(self.driver.channel)}"
-        )
 
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
