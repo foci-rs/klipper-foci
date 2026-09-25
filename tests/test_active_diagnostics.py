@@ -324,10 +324,11 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
 
     def test_current_step_trigger_leaves_no_instance_state(self):
         d = make_driver()
+        before = dict(vars(d.diagnostics.active))
 
         d.diagnostics.current_step_test(MockGCmd({"AXIS": "flux", "TARGET": 250}))
 
-        self.assertFalse(hasattr(d.diagnostics.active, "current_step_pending_axis"))
+        self.assertEqual(vars(d.diagnostics.active), before)
 
     def test_sends_flux_axis_current_vector_step(self):
         d = make_driver()
