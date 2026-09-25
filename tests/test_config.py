@@ -33,7 +33,6 @@ DEFAULT_COMMANDS = {
 ADVANCED_COMMANDS = {
     "FOCI_STEP_POSITION",
     "FOCI_STEPPER_STATS",
-    "FOCI_DISPATCH_STATS",
     "FOCI_STACK_WATERMARK",
 }
 
@@ -344,7 +343,6 @@ def test_observation_diagnostics_register_diagnostics_workflow_handlers():
     command_names = {
         "FOCI_STEP_POSITION",
         "FOCI_STEPPER_STATS",
-        "FOCI_DISPATCH_STATS",
     }
 
     handlers = {
@@ -448,32 +446,6 @@ def test_same_mcu_dual_channel_response_handlers_use_distinct_oids():
     response_oids = {(name, oid) for _callback, name, oid in driver_x.mcu._serial.responses}
     assert ("foci_commission_result", 10) in response_oids
     assert ("foci_commission_result", 12) in response_oids
-
-
-def test_perf_stats_query_format_includes_scheduler_attribution_fields():
-    printer, chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        }
-    )
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-
-    driver._handle_mcu_identify()
-
-    send_fmt, recv_fmt, oid = next(
-        query
-        for query in chips["foci"].query_commands
-        if query[0] == "foci_stepper_perf_stats oid=%c clear=%c"
-    )
-    assert send_fmt == "foci_stepper_perf_stats oid=%c clear=%c"
-    assert oid == 10
-    assert "scheduler_cycles_max=%u" in recv_fmt
-    assert "scheduler_cycles_events_at_max=%u" in recv_fmt
-    assert "scheduler_full_count=%u" in recv_fmt
 
 
 def test_motion_scale_and_stats_dictionary_contract_is_mandatory():

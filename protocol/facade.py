@@ -178,9 +178,6 @@ class FociProtocol:
     def get_stepper_stats(self) -> tuple[dict, dict, dict, dict]:
         return queries.get_stepper_stats(self)
 
-    def get_stepper_perf_stats(self, *, clear: bool) -> dict:
-        return queries.get_stepper_perf_stats(self, clear=clear)
-
     def get_stack_watermark(self) -> dict:
         return queries.get_stack_watermark(self)
 

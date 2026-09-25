@@ -5,12 +5,7 @@ from __future__ import annotations
 import logging
 
 from ..report import report_detail
-from .formatting import (
-    cpu_cycles_per_us,
-    format_stepper_event,
-    format_stepper_perf_event,
-    stepper_dir_inverted,
-)
+from .formatting import format_stepper_event, stepper_dir_inverted
 
 log = logging.getLogger(__name__)
 
@@ -31,16 +26,6 @@ class PassiveDiagnostics:
         only, gated behind [foci] debug -- see report.report_detail."""
         message = format_stepper_event(self.driver.stepper_name, params)
         report_detail(log, self.driver.global_config.debug, message)
-
-    def handle_stepper_perf_event(self, params: dict) -> None:
-        """Handle fatal firmware step-dispatch performance snapshots."""
-        message = format_stepper_perf_event(
-            self.driver.stepper_name, params, cpu_cycles_per_us(self.driver.mcu)
-        )
-        log.info(message)
-        gcode = self.driver.printer.lookup_object("gcode", None)
-        if gcode is not None:
-            gcode.respond_info(message)
 
     def step_position(self, gcmd) -> None:
         """Query raw MCU step position without updating Klipper state."""
@@ -137,88 +122,6 @@ class PassiveDiagnostics:
         parts = [f"FOCI_STEPPER_STATS {self.driver.stepper_name}:"]
         for field in fields:
             parts.append(f"{field}={params.get(field, '?')}")
-        gcmd.respond_info(" ".join(parts))
-
-    def dispatch_stats(self, gcmd) -> None:
-        """Query MCU step-dispatch cycle counters."""
-        clear = gcmd.get_int("RESET", 0, minval=0, maxval=1)
-        response = self.driver.protocol.get_stepper_perf_stats(clear=clear != 0)
-        cycles_per_us = cpu_cycles_per_us(self.driver.mcu)
-
-        def cycles_to_us(field: str) -> int | str:
-            value = response.get(field)
-            if value is None:
-                return "?"
-            return int(value) // cycles_per_us
-
-        fields = [
-            "channel",
-            "crit_max_cycles",
-            "crit_max_site",
-            "queue_step_count",
-            "queue_step_max_cycles",
-            "shutdown_site_count",
-            "reset_site_count",
-            "trigger_stop_site_count",
-            "tim5_activation_count",
-            "tim5_irq_max_cycles",
-            "tim5_dispatch_max_cycles",
-            "tim5_dispatch_max_cycles_events",
-            "tim5_events_max_per_irq",
-            "tim5_event_count_total",
-            "tim5_defer_count",
-            "tim5_burst_cycles_per_event_max_cycles",
-            "tim5_burst_cycles_per_event_max_events",
-            "tim5_entry_latency_max_ticks",
-            "tim5_pop_lateness_max_ticks",
-            "scheduler_cycles_max",
-            "scheduler_cycles_events_at_max",
-            "scheduler_full_count",
-            "stepper_load_lateness_max_ticks",
-            "build_trace_enabled",
-            "total_irq_cycles_lo",
-            "total_irq_cycles_hi",
-            "total_dispatch_cycles_lo",
-            "total_dispatch_cycles_hi",
-            "elapsed_cycles_lo",
-            "elapsed_cycles_hi",
-        ]
-        parts = [f"FOCI_DISPATCH_STATS {self.driver.stepper_name}:"]
-        for field in fields:
-            parts.append(f"{field}={response.get(field, '?')}")
-
-        def combine_lo_hi(lo_field: str, hi_field: str) -> int:
-            lo = int(response.get(lo_field, 0))
-            hi = int(response.get(hi_field, 0))
-            return (hi << 32) | lo
-
-        total_irq_cycles = combine_lo_hi("total_irq_cycles_lo", "total_irq_cycles_hi")
-        total_dispatch_cycles = combine_lo_hi(
-            "total_dispatch_cycles_lo", "total_dispatch_cycles_hi"
-        )
-        elapsed_cycles = combine_lo_hi("elapsed_cycles_lo", "elapsed_cycles_hi")
-        tim5_event_count_total = int(response.get("tim5_event_count_total", 0))
-
-        parts.append(f"total_irq_cycles={total_irq_cycles}")
-        parts.append(f"total_dispatch_cycles={total_dispatch_cycles}")
-        parts.append(f"elapsed_cycles={elapsed_cycles}")
-        if elapsed_cycles > 0:
-            parts.append(f"tim5_irq_occupancy_pct={total_irq_cycles * 100 // elapsed_cycles}")
-            parts.append(
-                f"tim5_dispatch_occupancy_pct={total_dispatch_cycles * 100 // elapsed_cycles}"
-            )
-        else:
-            parts.append("tim5_irq_occupancy_pct=?")
-            parts.append("tim5_dispatch_occupancy_pct=?")
-        if tim5_event_count_total > 0:
-            dispatch_cycles_per_event_avg = total_dispatch_cycles // tim5_event_count_total
-            parts.append(f"tim5_dispatch_cycles_per_event_avg={dispatch_cycles_per_event_avg}")
-        else:
-            parts.append("tim5_dispatch_cycles_per_event_avg=?")
-        parts.append(f"crit_max_us={cycles_to_us('crit_max_cycles')}")
-        parts.append(f"queue_step_max_us={cycles_to_us('queue_step_max_cycles')}")
-        parts.append(f"tim5_irq_max_us={cycles_to_us('tim5_irq_max_cycles')}")
-        parts.append(f"tim5_dispatch_max_us={cycles_to_us('tim5_dispatch_max_cycles')}")
         gcmd.respond_info(" ".join(parts))
 
     def stack_watermark(self, gcmd) -> None:

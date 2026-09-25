@@ -119,13 +119,6 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Query FOCI MCU step queue/execution counters without motion",
     ),
     GcodeCommandSpec(
-        "FOCI_DISPATCH_STATS",
-        "advanced",
-        "diagnostics",
-        "dispatch_stats",
-        "Query FOCI MCU step-dispatch cycle counters without motion",
-    ),
-    GcodeCommandSpec(
         "FOCI_STACK_WATERMARK",
         "advanced",
         "diagnostics",

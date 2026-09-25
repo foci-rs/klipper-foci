@@ -340,7 +340,3 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         driver.diagnostics.handle_stepper_event,
         "foci_stepper_event",
     )
-    serial.register_response(
-        driver.diagnostics.handle_stepper_perf_event,
-        "foci_stepper_perf_event",
-    )

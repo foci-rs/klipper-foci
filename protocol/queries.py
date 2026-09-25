@@ -58,17 +58,6 @@ def get_stepper_stats(protocol) -> tuple[dict, dict, dict, dict]:
     return tuple(responses)
 
 
-def get_stepper_perf_stats(protocol, *, clear: bool) -> dict:
-    if protocol.driver.oid is None or protocol.commands.stepper_perf_stats is None:
-        raise protocol.driver.printer.command_error(
-            "FOCI_DISPATCH_STATS is not available before MCU identify"
-        )
-    response = protocol.commands.stepper_perf_stats.send([protocol.driver.oid, int(clear)])
-    if response is None:
-        raise protocol.driver.printer.command_error("FOCI_DISPATCH_STATS query returned no data")
-    return response
-
-
 def get_stack_watermark(protocol) -> dict:
     if protocol.driver.oid is None or protocol.commands.stack_watermark is None:
         raise protocol.driver.printer.command_error(

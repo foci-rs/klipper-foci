@@ -16,42 +16,12 @@ from .bindings import (
 class FociMcuCommands:
     """Bound Klipper MCU commands and protocol response handlers."""
 
-    # The perf stats wire schema is shared by OpenFFBoard and Ouroboros.
-    # OpenFFBoard reports one unified TIM5 software-scheduler population.
-    # Ouroboros reports split-topology TIM5 work units in the same fields:
-    # CC2 trsync/endstop scheduler slots plus CC1 due physical step events.
-    STEPPER_PERF_STATS_RESPONSE = (
-        "foci_stepper_perf_stats_result oid=%c channel=%c"
-        " crit_max_cycles=%u crit_max_site=%c"
-        " queue_step_count=%u queue_step_max_cycles=%u"
-        " tim5_activation_count=%u tim5_irq_max_cycles=%u"
-        " tim5_dispatch_max_cycles=%u"
-        " tim5_dispatch_max_cycles_events=%u"
-        " tim5_events_max_per_irq=%u"
-        " tim5_event_count_total=%u tim5_defer_count=%u"
-        " tim5_burst_cycles_per_event_max_cycles=%u"
-        " tim5_burst_cycles_per_event_max_events=%u"
-        " tim5_entry_latency_max_ticks=%u"
-        " tim5_pop_lateness_max_ticks=%u"
-        " scheduler_cycles_max=%u"
-        " scheduler_cycles_events_at_max=%u"
-        " scheduler_full_count=%u"
-        " stepper_load_lateness_max_ticks=%u build_trace_enabled=%c"
-        " shutdown_site_count=%u"
-        " reset_site_count=%u"
-        " trigger_stop_site_count=%u"
-        " total_irq_cycles_lo=%u total_irq_cycles_hi=%u"
-        " total_dispatch_cycles_lo=%u total_dispatch_cycles_hi=%u"
-        " elapsed_cycles_lo=%u elapsed_cycles_hi=%u"
-    )
-
     def __init__(self) -> None:
         self.stepper_get_position = None
         self.stepper_stats = None
         self.stepper_exec_stats = None
         self.stepper_timing_stats = None
         self.stepper_stop_stats = None
-        self.stepper_perf_stats = None
         self.stack_watermark = None
         self.query_adc_vm_offset = None
         self.set_current = None
@@ -136,11 +106,6 @@ class FociMcuCommands:
             " last_stop_reason=%c"
             " last_stop_remaining_events=%u last_stop_queue_len=%hu"
             " last_stop_drained_segments=%u last_stop_drained_steps=%u",
-            oid=oid,
-        )
-        self.stepper_perf_stats = mcu.lookup_query_command(
-            "foci_stepper_perf_stats oid=%c clear=%c",
-            self.STEPPER_PERF_STATS_RESPONSE,
             oid=oid,
         )
         self.query_adc_vm_offset = mcu.lookup_query_command(

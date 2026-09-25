@@ -48,7 +48,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.tune is not None
     assert commands.selftest is not None
     assert commands.dump_registers is not None
-    assert commands.stepper_perf_stats is not None
     assert commands.stack_watermark is not None
     assert commands.query_adc_vm_offset is not None
     assert commands.current_step_test is not None
@@ -56,11 +55,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert (
         "stepper_get_position oid=%c",
         "stepper_position oid=%c pos=%i",
-        driver.oid,
-    ) in mcu.query_commands
-    assert (
-        "foci_stepper_perf_stats oid=%c clear=%c",
-        commands.STEPPER_PERF_STATS_RESPONSE,
         driver.oid,
     ) in mcu.query_commands
     assert (
@@ -92,7 +86,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_selftest_result", driver.oid) in registrations
     assert ("foci_selftest_done", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations
-    assert ("foci_stepper_perf_event", None) in registrations
     assert ("foci_commission_detail", driver.oid) in registrations
     assert ("foci_current_step_result", driver.oid) in registrations
     assert ("foci_current_vector_step_result", driver.oid) in registrations
@@ -756,21 +749,9 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
     )
     driver.protocol.commands.stepper_timing_stats = MockCommand({"activation_count": 2})
     driver.protocol.commands.stepper_stop_stats = MockCommand({"stop_count": 1})
-    driver.protocol.commands.stepper_perf_stats = MockCommand(
-        {
-            "crit_max_cycles": 190000,
-            "shutdown_site_count": 3,
-            "shutdown_site_max_cycles": 6000,
-            "reset_site_count": 2,
-            "reset_site_max_cycles": 4200,
-            "trigger_stop_site_count": 15,
-            "trigger_stop_site_max_cycles": 900,
-        }
-    )
 
     assert driver.protocol.get_step_position() == {"pos": -19176}
     stats = driver.protocol.get_stepper_stats()
-    perf = driver.protocol.get_stepper_perf_stats(clear=True)
 
     assert stats == (
         {"position": -26360},
@@ -778,21 +759,11 @@ def test_passive_diagnostic_protocol_methods_send_existing_payloads():
         {"activation_count": 2},
         {"stop_count": 1},
     )
-    assert perf == {
-        "crit_max_cycles": 190000,
-        "shutdown_site_count": 3,
-        "shutdown_site_max_cycles": 6000,
-        "reset_site_count": 2,
-        "reset_site_max_cycles": 4200,
-        "trigger_stop_site_count": 15,
-        "trigger_stop_site_max_cycles": 900,
-    }
     assert driver.protocol.commands.stepper_get_position.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_stats.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_exec_stats.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_timing_stats.last_args == [driver.oid]
     assert driver.protocol.commands.stepper_stop_stats.last_args == [driver.oid]
-    assert driver.protocol.commands.stepper_perf_stats.last_args == [driver.oid, 1]
 
 
 def test_motion_scale_protocol_sends_only_truthful_scale_values():

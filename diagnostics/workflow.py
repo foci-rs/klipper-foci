@@ -50,17 +50,11 @@ class DiagnosticsWorkflow:
     def handle_stepper_event(self, params: dict) -> None:
         return self.passive.handle_stepper_event(params)
 
-    def handle_stepper_perf_event(self, params: dict) -> None:
-        return self.passive.handle_stepper_perf_event(params)
-
     def step_position(self, gcmd) -> None:
         return self.passive.step_position(gcmd)
 
     def stepper_stats(self, gcmd) -> None:
         return self.passive.stepper_stats(gcmd)
-
-    def dispatch_stats(self, gcmd) -> None:
-        return self.passive.dispatch_stats(gcmd)
 
     def stack_watermark(self, gcmd) -> None:
         return self.passive.stack_watermark(gcmd)
