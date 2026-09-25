@@ -249,6 +249,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.handle_current_step_result(
             {
                 "status": 0,
+                "axis": 0,
                 "target": 250,
                 "torque_during": 240,
                 "torque_before": -3,
@@ -266,10 +267,67 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         )
 
         out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("axis=torque", out)
         self.assertIn("enc_before=3900", out)
         self.assertIn("enc_after=12", out)
         self.assertIn("enc_delta=112", out)
         self.assertIn("adc_vm_raw=40099", out)
+
+    def test_current_step_result_reports_axis_from_reply(self):
+        d = make_driver()
+
+        d.diagnostics.handle_current_step_result(
+            {
+                "status": 0,
+                "axis": 1,
+                "target": 250,
+                "torque_during": 240,
+                "torque_before": -3,
+                "torque_after": 18,
+                "flux_during": 4,
+                "iq_during": 239,
+                "id_during": -5,
+                "uq_limited": 1500,
+                "ud_limited": -20,
+                "encoder_before": 3900,
+                "encoder_after": 12,
+                "encoder_delta": 112,
+                "adc_vm_raw": 40099,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("axis=flux", out)
+
+        d.diagnostics.handle_current_step_result(
+            {
+                "status": 0,
+                "axis": 7,
+                "target": 250,
+                "torque_during": 240,
+                "torque_before": -3,
+                "torque_after": 18,
+                "flux_during": 4,
+                "iq_during": 239,
+                "id_during": -5,
+                "uq_limited": 1500,
+                "ud_limited": -20,
+                "encoder_before": 3900,
+                "encoder_after": 12,
+                "encoder_delta": 112,
+                "adc_vm_raw": 40099,
+            }
+        )
+
+        out = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("axis=7", out)
+
+    def test_current_step_trigger_leaves_no_instance_state(self):
+        d = make_driver()
+
+        d.diagnostics.current_step_test(MockGCmd({"AXIS": "flux", "TARGET": 250}))
+
+        self.assertFalse(hasattr(d.diagnostics.active, "current_step_pending_axis"))
 
     def test_sends_flux_axis_current_vector_step(self):
         d = make_driver()

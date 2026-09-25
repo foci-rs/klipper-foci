@@ -17,6 +17,7 @@ CURRENT_STEP_AXIS_CODES = {
     "torque": 0,
     "flux": 1,
 }
+CURRENT_STEP_AXIS_NAMES = {code: name for name, code in CURRENT_STEP_AXIS_CODES.items()}
 MAX_CURRENT_SAMPLE_DELAY_MS = 200
 
 
@@ -62,12 +63,11 @@ class ActiveDiagnostics:
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
         self.last_encoder_alignment: dict[int, dict] = {}
         self.adc_residuals: dict[int, list[dict]] = {}
-        self.current_step_pending_axis: str | None = None
 
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
-        axis = self.current_step_pending_axis or "torque"
-        self.current_step_pending_axis = None
+        axis_code = int(params["axis"])
+        axis = CURRENT_STEP_AXIS_NAMES.get(axis_code, str(axis_code))
         msg = (
             f"FOCI {self.driver.name} current step: axis={axis} status={int(params['status'])} "
             f"target={int(params['target'])} actual={int(params['torque_during'])} before="
@@ -184,7 +184,6 @@ class ActiveDiagnostics:
             duration_ms=duration_ms,
             voltage_limit=voltage_limit,
         )
-        self.current_step_pending_axis = axis_name
 
         gcmd.respond_info(
             f"FOCI {self.driver.name} current-step requested: axis={axis_name} target="
