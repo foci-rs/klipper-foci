@@ -22,6 +22,16 @@ def _next_power_of_two(value: int) -> int:
     return 1 << (value - 1).bit_length()
 
 
+def tmc_grid(planner_steps_per_rev: int) -> int:
+    """Return the TMC pulse grid the firmware maps planner steps onto.
+
+    Zero means motion scale is not configured.
+    """
+    if planner_steps_per_rev == 0:
+        return 0
+    return min(_next_power_of_two(planner_steps_per_rev), POSITION_UNITS_PER_REV)
+
+
 def derived_exec_stats(planner_steps_per_rev: int, encoder_ppr: int, clock_freq: int) -> dict:
     """Return the fields `foci_stepper_exec_stats_result` no longer sends.
 
@@ -30,11 +40,8 @@ def derived_exec_stats(planner_steps_per_rev: int, encoder_ppr: int, clock_freq:
     """
     encoder_counts_per_rev = QUADRATURE_COUNTS_PER_PULSE * encoder_ppr
 
-    if planner_steps_per_rev == 0:
-        tmc_grid = 0
-    else:
-        tmc_grid = min(_next_power_of_two(planner_steps_per_rev), POSITION_UNITS_PER_REV)
-    physical_step_width = POSITION_UNITS_PER_REV // tmc_grid if tmc_grid else 0
+    grid = tmc_grid(planner_steps_per_rev)
+    physical_step_width = POSITION_UNITS_PER_REV // grid if grid else 0
     motion_scale_configured = int(planner_steps_per_rev != 0)
 
     half_period_denominator_hz = 2 * MAX_STEP_RISING_EDGE_HZ
@@ -45,7 +52,7 @@ def derived_exec_stats(planner_steps_per_rev: int, encoder_ppr: int, clock_freq:
 
     return {
         "encoder_counts_per_rev": encoder_counts_per_rev,
-        "tmc_grid": tmc_grid,
+        "tmc_grid": grid,
         "physical_step_width": physical_step_width,
         "motion_scale_configured": motion_scale_configured,
         "step_half_period_ticks": step_half_period_ticks,

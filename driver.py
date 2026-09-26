@@ -22,6 +22,7 @@ from .controls import (
     ControlsWorkflow,
 )
 from .diagnostics import DiagnosticsWorkflow
+from .diagnostics.stepper_scale import POSITION_UNITS_PER_REV, tmc_grid
 from .dump import RegisterDumpWorkflow
 from .homing import HomingWorkflow
 from .protocol import FociProtocol
@@ -275,16 +276,16 @@ class FociDriver:
         """Explain the deterministic startup mapping without overriding firmware."""
         parsed = self.config
         planner_steps = parsed.planner_steps_per_rev
-        tmc_grid = 1 << (planner_steps - 1).bit_length() if planner_steps < 65_536 else 65_536
-        step_width = 65_536 // tmc_grid
+        grid = tmc_grid(planner_steps)
+        step_width = POSITION_UNITS_PER_REV // grid
         error_bound = str(step_width // 2) if step_width % 2 == 0 else "0.5"
         gcode = self.printer.lookup_object("gcode")
         gcode.respond_info(
             f"[foci {self.stepper_name}] motion scale:\nplanner={int(parsed.full_steps)}*"
             f"{int(parsed.microsteps)}={int(planner_steps)} steps/rev encoder="
             f"{int(parsed.encoder_ppr)} ppr={int(parsed.encoder_ppr * 4)} quadrature "
-            f"counts/rev\ntmc_grid={int(tmc_grid)} pulses/rev step_width={int(step_width)} "
-            f"position_units/pulse pulse_ratio={int(tmc_grid)}/{int(planner_steps)}"
+            f"counts/rev\ntmc_grid={int(grid)} pulses/rev step_width={int(step_width)} "
+            f"position_units/pulse pulse_ratio={int(grid)}/{int(planner_steps)}"
             f"\naccumulated_scale_error=0 instantaneous_error_bound={error_bound} "
             f"position_units\nconfigured rotation_distance={parsed.rotation_distance:g}"
         )
