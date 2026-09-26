@@ -63,10 +63,6 @@ def _fmt_pid_type(val: int) -> str:
     return "advanced" if val else ""
 
 
-def _fmt_q4_12(val: int) -> str:
-    return f"{val * 2 ** (-12):.3f}"
-
-
 def _fmt_q8_8(val: int) -> str:
     return f"{val * 2 ** (-8):.3f}"
 
@@ -91,14 +87,6 @@ def _fmt_advanced_pi_current_i(val: int) -> str:
         return "0"
     q4_12 = format_i_gain(val).removesuffix(" Q4.12")
     return f"{int(val)}(q4.12={q4_12},zero={int(val)}/1048576)"
-
-
-VM_MODEL_CONSTANTS: tuple[str, ...] = (
-    "FOCI_VM_DIVIDER_HIGH_OHMS",
-    "FOCI_VM_DIVIDER_LOW_OHMS",
-    "FOCI_VM_ADC_REFERENCE_MILLIVOLTS",
-    "FOCI_VM_ADC_CENTER_COUNTS",
-)
 
 
 def adc_vm_raw_to_volts(

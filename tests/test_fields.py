@@ -19,7 +19,6 @@ from klipper_foci.registers import (
     _fmt_motion_mode,
     _fmt_motor_type,
     _fmt_phi_e,
-    _fmt_q4_12,
     _fmt_q8_8,
     _fmt_velocity_meter,
     format_i_gain,
@@ -89,12 +88,6 @@ class TestFieldExtraction(unittest.TestCase):
 
 
 class TestFormatters(unittest.TestCase):
-    def test_q4_12(self):
-        self.assertEqual(_fmt_q4_12(4096), "1.000")
-
-    def test_q4_12_fractional(self):
-        self.assertEqual(_fmt_q4_12(404), "0.099")
-
     def test_q8_8(self):
         self.assertEqual(_fmt_q8_8(256), "1.000")
 
