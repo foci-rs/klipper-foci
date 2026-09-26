@@ -410,7 +410,7 @@ class HomingWorkflow:
             return
 
     def _report_stall_result(self) -> None:
-        if self.driver.config.homing_current <= 0.0:
+        if self.driver.config.homing_current <= 0.0 or not self.driver.global_config.debug:
             return
         result = self.driver.protocol.query_stall()
         peak_mm = (

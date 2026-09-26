@@ -37,6 +37,27 @@ def test_homing_move_end_reports_nothing_without_debug(caplog):
     assert caplog.records == []
 
 
+def test_homing_move_end_skips_stall_query_without_debug():
+    driver = make_driver(stepper_name="stepper_y")
+    homing_move = SimpleNamespace(
+        stepper_positions=[
+            SimpleNamespace(
+                stepper=MockStepper("stepper_y", step_dist=0.01),
+                stepper_name="stepper_y",
+                endstop_name="x",
+                start_pos=-13904,
+                trig_pos=13692,
+                halt_pos=26934,
+            ),
+        ]
+    )
+
+    driver.homing.handle_homing_move_end(homing_move)
+
+    assert driver.config.homing_current > 0.0
+    assert driver.protocol.commands.query_stall.call_count == 0
+
+
 def test_homing_move_end_reports_matching_stepper_positions(caplog):
     """With [foci] debug on, homing diagnostics reach klippy.log but still
     never the console -- they stay developer detail, not an operator
