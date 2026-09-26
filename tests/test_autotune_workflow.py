@@ -814,7 +814,7 @@ class TestAutotuneGates(unittest.TestCase):
 
     def test_production_tune_result_deploys_and_persists(self):
         """The promoted resume dispatch emits no host-terminal velocity-integral
-        or robustness reply (Tasks 3-4); the wait loop must exit on
+        or robustness reply; the wait loop must exit on
         ``self.done`` (set by ``handle_tune_result``) and fall through to the
         same deploy + persist tail a standalone accepted run already uses."""
         d = self._commissioned_driver()
