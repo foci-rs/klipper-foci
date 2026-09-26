@@ -232,6 +232,26 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         enable_line = stepper_enable.lookup_enable(d.stepper_name)
         self.assertTrue(enable_line.is_motor_enabled())
 
+    def test_enable_triggered_calibration_takes_one_enable_reference(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        d.homing.install_enable_hooks()
+        reactor = d.printer.get_reactor()
+        reactor.completion_result = {
+            "oid": d.oid,
+            "status": 0,
+            "adc_i0": 0,
+            "adc_i1": 0,
+            "encoder_count": 123,
+        }
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+
+        enable_line.motor_enable(0.0)
+        enable_line.motor_disable(0.0)
+
+        self.assertEqual(enable_line.enable_count, 0)
+        self.assertFalse(d.state.is_calibrated)
+
 
 class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_delegates_initial_homing_state(self):

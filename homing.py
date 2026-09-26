@@ -225,8 +225,15 @@ class HomingWorkflow:
         toolhead = self.driver.printer.lookup_object("toolhead")
         enable_line.motor_enable(toolhead.get_last_move_time())
 
-    def ensure_calibrated(self) -> None:
-        """Run calibration if not already calibrated. Blocks until complete."""
+    def ensure_calibrated(self, sync_enable_line: bool = True) -> None:
+        """Run calibration if not already calibrated. Blocks until complete.
+
+        Args:
+            sync_enable_line: Mirror the firmware-armed motor into Klipper's
+                EnableLine after calibrating. Pass False when already inside
+                an EnableLine enable callback, which is about to take its own
+                enable reference.
+        """
         if self.driver.state.inhibited:
             detail = ""
             if self.driver.state.last_commission_failure:
@@ -290,7 +297,8 @@ class HomingWorkflow:
             status = params.get("status", 255)
             if status == 5:
                 self.driver.state.is_calibrated = True
-                self._sync_enable_line_armed()
+                if sync_enable_line:
+                    self._sync_enable_line_armed()
                 logging.info(
                     "FOCI %s: already calibrated (firmware auto-cal)",
                     self.driver.name,
@@ -307,7 +315,8 @@ class HomingWorkflow:
                 )
             self._report_calibration_details()
             self.driver.state.is_calibrated = True
-            self._sync_enable_line_armed()
+            if sync_enable_line:
+                self._sync_enable_line_armed()
             logging.info(
                 "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
                 self.driver.name,
@@ -535,6 +544,6 @@ class HomingWorkflow:
     def handle_stepper_enable(self, print_time, is_enable) -> None:
         """Synchronize FOCI calibration state with Klipper stepper enable."""
         if is_enable:
-            self.ensure_calibrated()
+            self.ensure_calibrated(sync_enable_line=False)
         else:
             self.driver.state.is_calibrated = False
