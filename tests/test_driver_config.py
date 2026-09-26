@@ -92,7 +92,6 @@ CONFIG_FIELD_NAMES = {
     "identified_lambda_us",
     "identified_theta_e_us",
     "identified_theta_source",
-    "identified_ringing_count",
     "identified_bandwidth_hz",
     "identified_tau_e_us",
     "identified_inner_warning_flags",
@@ -342,7 +341,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_lambda_us": 12,
             "identified_theta_e_us": 160,
             "identified_theta_source": 1,
-            "identified_ringing_count": 7,
             "identified_bandwidth_hz": 25,
             "identified_tau_e_us": 730,
             "identified_inner_warning_flags": 2,
@@ -641,6 +639,60 @@ def test_validate_runtime_config_returns_uncommissioned_for_absent_status():
     assert_uncommissioned(result)
 
 
+def test_persisted_band_fields_and_theta_e_us_keep_value_and_type_on_reload():
+    """Band fields and theta_e_us survive a persist/reload round trip.
+
+    ``persist_commission_results`` writes these as decimal strings (the
+    ``configfile.set`` convention); parsing them back must recover the same
+    int value and type the firmware originally reported, since a tune
+    request built later reads them straight off ``driver.config`` whenever
+    ``commissioned_result`` is unavailable (e.g. after a Klipper restart).
+    """
+    config = parsed_config_with(
+        {
+            "identified_theta_e_us": "930",
+            "identified_bandwidth_hz": "1700",
+        }
+    )
+
+    assert config.identified_theta_e_us == 930
+    assert isinstance(config.identified_theta_e_us, int)
+    assert config.identified_bandwidth_hz == 1700
+    assert isinstance(config.identified_bandwidth_hz, int)
+
+
+def test_newly_commissioned_config_without_ringing_validates():
+    """A config built from the trimmed post-change commission result validates.
+
+    Firmware no longer sends ``ringing_count``, so a config persisted from the
+    new flow carries no ``identified_ringing_count`` key at all; commissioned
+    status must still validate on the remaining required fields alone.
+    """
+    result = validate_runtime_config(
+        parsed_config_with(
+            {
+                "autotune_status": "commissioned",
+                "pid_flux_p": 256,
+                "pid_flux_i": 416,
+                "pid_torque_p": 257,
+                "pid_torque_i": 432,
+                "identified_lambda_us": 12,
+                "identified_theta_e_us": 160,
+                "identified_bandwidth_hz": 1600,
+                "identified_tau_e_us": 730,
+                "commissioned_velocity_p": 1100,
+                "commissioned_velocity_i": 48,
+                "commissioned_position_p": 600,
+                "commissioned_position_i": 0,
+                "commissioned_velocity_limit": 500000,
+            }
+        )
+    )
+
+    assert result.runtime_status == "commissioned"
+    assert result.active_gains is not None
+
+
 def test_validate_runtime_config_returns_commissioned_active_gains():
     result = validate_runtime_config(
         parsed_config_with(
@@ -652,7 +704,6 @@ def test_validate_runtime_config_returns_commissioned_active_gains():
                 "pid_torque_i": 432,
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
-                "identified_ringing_count": 7,
                 "identified_bandwidth_hz": 1600,
                 "commissioned_velocity_p": 1100,
                 "commissioned_velocity_i": 48,
@@ -698,7 +749,6 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
             "pid_torque_i": configured_i["torque_i"],
             "identified_lambda_us": 12,
             "identified_theta_e_us": 160,
-            "identified_ringing_count": 7,
             "identified_bandwidth_hz": 1600,
             "commissioned_velocity_p": 1100,
             "commissioned_velocity_i": configured_i["velocity_i"],
@@ -744,13 +794,14 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
         flux_i=configured_i["flux_i"],
         torque_i=configured_i["torque_i"],
         fallback_velocity_i=configured_i["velocity_i"],
-        fallback_position_i=configured_i["position_i"],
     )
     driver.commissioning.persist_commission_results(reply, "balanced")
     assert sink.values[(driver.name, "pid_flux_i")] == str(configured_i["flux_i"])
     assert sink.values[(driver.name, "pid_torque_i")] == str(configured_i["torque_i"])
     assert sink.values[(driver.name, "commissioned_velocity_i")] == str(configured_i["velocity_i"])
-    assert sink.values[(driver.name, "commissioned_position_i")] == str(configured_i["position_i"])
+    # fallback_position_i is no longer on the wire: firmware's inner position
+    # integrator is always reset to 0 at commission time.
+    assert sink.values[(driver.name, "commissioned_position_i")] == "0"
 
 
 def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable():
@@ -764,7 +815,6 @@ def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable(
                 "pid_torque_i": 432,
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
-                "identified_ringing_count": 7,
                 "identified_bandwidth_hz": 1600,
                 "commissioned_velocity_p": 1100,
                 "commissioned_velocity_i": 48,
@@ -793,7 +843,6 @@ def test_validate_runtime_config_returns_tuned_active_gains():
                 "pid_torque_i": 432,
                 "identified_lambda_us": 12,
                 "identified_theta_e_us": 160,
-                "identified_ringing_count": 7,
                 "identified_bandwidth_hz": 1600,
                 "pid_velocity_p": 1100,
                 "pid_velocity_i": 48,
@@ -859,7 +908,6 @@ def test_handle_connect_installs_validation_result():
             "pid_torque_i": 432,
             "identified_lambda_us": 12,
             "identified_theta_e_us": 160,
-            "identified_ringing_count": 7,
             "identified_bandwidth_hz": 25,
             "commissioned_velocity_p": 1100,
             "commissioned_velocity_i": 48,
@@ -891,7 +939,6 @@ _CONNECT_SAVED_GAINS_DIFFER_FROM_CFG = {
     "pid_torque_i": 432,
     "identified_lambda_us": 12,
     "identified_theta_e_us": 160,
-    "identified_ringing_count": 7,
     "identified_bandwidth_hz": 1600,
     "commissioned_velocity_p": 1100,
     "commissioned_velocity_i": 48,

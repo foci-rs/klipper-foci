@@ -669,7 +669,6 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
             "identified_r_count_milli": 1792,
             "identified_lambda_us": 0,
             "identified_theta_e_us": 160,
-            "identified_ringing_count": 7,
             "identified_bandwidth_hz": 0,
             "identified_tau_e_us": 1154,
             "identified_inner_warning_flags": 36,

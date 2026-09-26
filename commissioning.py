@@ -6,7 +6,11 @@ import logging
 from collections.abc import Sequence
 
 from ._vocabulary_generated import PHASE_NAMES
-from .constants import COMMISSION_CANCEL_GRACE_PERIOD_S, ELECTRICAL_ID_WAIT_TIMEOUT_S
+from .constants import (
+    COMMISSION_CANCEL_GRACE_PERIOD_S,
+    ELECTRICAL_ID_WAIT_TIMEOUT_S,
+    ELECTRICAL_MODEL_RESISTANCE_SCALE,
+)
 from .report import report_detail, report_summary
 
 log = logging.getLogger(__name__)
@@ -887,8 +891,8 @@ class CommissioningWorkflow:
                 "velocity_p": result["fallback_velocity_p"],
                 "velocity_i": result["fallback_velocity_i"],
                 "position_p": result["fallback_position_p"],
-                "position_i": result["fallback_position_i"],
-                "velocity_limit": result["fallback_velocity_limit"],
+                "position_i": 0,
+                "velocity_limit": self.driver.settings.pid_velocity_limit,
                 "velocity_filter_hz": result.get("velocity_filter_hz", 0),
                 "torque_filter_hz": result.get(
                     "current_torque_filter_hz",
@@ -979,6 +983,18 @@ class CommissioningWorkflow:
         if status == 18:
             self.handle_chip_reset_detected()
 
+    @staticmethod
+    def _derive_tau_e_us(result: dict) -> int | None:
+        """Derive the electrical time constant the firmware stopped sending.
+
+        ``r_count_milli`` is 0 only on failure results, which never persist
+        this value; guard against it rather than dividing by zero.
+        """
+        r_count_milli = result["r_count_milli"]
+        if r_count_milli == 0:
+            return None
+        return result["l_count_micro"] * ELECTRICAL_MODEL_RESISTANCE_SCALE // r_count_milli
+
     def persist_commission_results(self, result: dict, profile_name: str) -> None:
         """Persist commissioning results to printer.cfg pending SAVE_CONFIG."""
         configfile = self.driver.printer.lookup_object("configfile")
@@ -1001,15 +1017,11 @@ class CommissioningWorkflow:
             "commissioned_position_p",
             f"{int(result['fallback_position_p'])}",
         )
-        configfile.set(
-            self.driver.name,
-            "commissioned_position_i",
-            f"{int(result['fallback_position_i'])}",
-        )
+        configfile.set(self.driver.name, "commissioned_position_i", "0")
         configfile.set(
             self.driver.name,
             "commissioned_velocity_limit",
-            f"{int(result['fallback_velocity_limit'])}",
+            f"{int(self.driver.settings.pid_velocity_limit)}",
         )
         configfile.set(
             self.driver.name,
@@ -1029,19 +1041,12 @@ class CommissioningWorkflow:
         )
         configfile.set(
             self.driver.name,
-            "identified_ringing_count",
-            f"{int(result['ringing_count'])}",
-        )
-        configfile.set(
-            self.driver.name,
             "identified_bandwidth_hz",
             f"{int(result['bandwidth_hz'])}",
         )
-        configfile.set(
-            self.driver.name,
-            "identified_tau_e_us",
-            f"{int(result.get('tau_e_us', 0))}",
-        )
+        tau_e_us = self._derive_tau_e_us(result)
+        if tau_e_us is not None:
+            configfile.set(self.driver.name, "identified_tau_e_us", f"{int(tau_e_us)}")
         configfile.set(
             self.driver.name,
             "identified_inner_warning_flags",

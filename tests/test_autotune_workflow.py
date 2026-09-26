@@ -360,7 +360,6 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         d.state.commissioned_result.update(
             {
-                "tau_e_us": 730,
                 "inner_warning_flags": 0,
                 "bandwidth_hz": 1600,
                 "current_gains_source": 1,
@@ -404,6 +403,26 @@ class TestAutotuneGates(unittest.TestCase):
         dispatched = d.autotune._request_for_proportional_dispatch(changed)
 
         self.assertEqual(dispatched, changed)
+
+    def test_tune_request_has_no_current_ringing(self):
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        gcmd = MockGCmd({})  # default ACTION -> breakaway_seeded, chain-eligible
+        captured = []
+        d.protocol.run_tune = lambda **kw: captured.append(kw)
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            third_terminal="tune_result",
+        )
+
+        d.autotune.autotune(gcmd)
+
+        self.assertGreater(len(captured), 0)
+        for kwargs in captured:
+            self.assertNotIn("current_ringing", kwargs)
+            self.assertIn("current_bw", kwargs)
 
     def test_first_run_retained_auto_issues_integral_resume(self):
         d = self._commissioned_driver()
@@ -2493,7 +2512,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.config.identified_lambda_us = 700
         d.config.identified_tau_e_us = 730
         d.config.identified_theta_e_us = 160
-        d.config.identified_ringing_count = 7
         d.config.identified_bandwidth_hz = 1600
         d.config.identified_inner_warning_flags = 0
         d.config.identified_current_gains_source = 1
@@ -2571,7 +2589,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
-        self.assertEqual(args[8], 0x40)
+        self.assertEqual(args[7], 0x40)
         self.assertTrue(any("inner confidence" in m for m in log_ctx.output))
 
     def test_autotune_success_prints_succeeded_summary(self):
@@ -2762,7 +2780,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
 
         args = d.protocol.commands.tune.last_args
         self.assertIsNotNone(args)
-        self.assertEqual(args[8], 1 << 5)
+        self.assertEqual(args[7], 1 << 5)
 
 
 # ============================================================================
@@ -3024,7 +3042,6 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         d.state.commissioned_result.update(
             {
-                "tau_e_us": 730,
                 "inner_warning_flags": 0,
                 "bandwidth_hz": 1600,
                 "current_gains_source": 1,

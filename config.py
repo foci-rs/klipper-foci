@@ -106,7 +106,6 @@ class FociDriverConfig:
     identified_lambda_us: int | None
     identified_theta_e_us: int | None
     identified_theta_source: int | None
-    identified_ringing_count: int | None
     identified_bandwidth_hz: int | None
     identified_tau_e_us: int | None
     identified_inner_warning_flags: int | None
@@ -326,7 +325,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     identified_lambda_us = config.getint("identified_lambda_us", None, minval=0)
     identified_theta_e_us = config.getint("identified_theta_e_us", None, minval=0)
     identified_theta_source = config.getint("identified_theta_source", None, minval=0, maxval=255)
-    identified_ringing_count = config.getint("identified_ringing_count", None, minval=0, maxval=255)
     identified_bandwidth_hz = config.getint("identified_bandwidth_hz", None, minval=0)
     identified_tau_e_us = config.getint("identified_tau_e_us", None, minval=0)
     identified_inner_warning_flags = config.getint(
@@ -478,7 +476,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_lambda_us=identified_lambda_us,
         identified_theta_e_us=identified_theta_e_us,
         identified_theta_source=identified_theta_source,
-        identified_ringing_count=identified_ringing_count,
         identified_bandwidth_hz=identified_bandwidth_hz,
         identified_tau_e_us=identified_tau_e_us,
         identified_inner_warning_flags=identified_inner_warning_flags,
@@ -554,7 +551,6 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
         ("pid_torque_i", config.pid_torque_i),
         ("identified_lambda_us", config.identified_lambda_us),
         ("identified_theta_e_us", config.identified_theta_e_us),
-        ("identified_ringing_count", config.identified_ringing_count),
         ("identified_bandwidth_hz", config.identified_bandwidth_hz),
     ]
     missing = [name for name, value in required_base if value is None]

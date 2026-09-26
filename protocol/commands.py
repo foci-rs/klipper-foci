@@ -134,7 +134,7 @@ class FociMcuCommands:
         self.commission_cancel = mcu.lookup_command("foci_commission_cancel oid=%c")
         self.tune = mcu.lookup_command(
             "foci_tune oid=%c action=%c profile=%c mode=%c"
-            " inner_lambda=%u theta_e=%u current_ringing=%c current_bw=%u"
+            " inner_lambda=%u theta_e=%u current_bw=%u"
             " inner_warning_flags=%c requested_velocity_mrev_s=%u"
             " machine_velocity_ceiling_mrev_s=%u requested_velocity_source=%c"
             " max_stroke_travel_mrev=%u settle_travel_reserve_mrev=%u"

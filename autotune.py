@@ -1171,13 +1171,11 @@ class AutotuneWorkflow:
             if self.driver.state.commissioned_result is not None:
                 inner_lambda = self.driver.state.commissioned_result["lambda_us"]
                 theta_e = self.driver.state.commissioned_result["theta_e_us"]
-                ringing = self.driver.state.commissioned_result["ringing_count"]
                 bandwidth = self.driver.state.commissioned_result["bandwidth_hz"]
             else:
                 config = self.driver.config
                 inner_lambda = config.identified_lambda_us
                 theta_e = config.identified_theta_e_us
-                ringing = config.identified_ringing_count
                 bandwidth = config.identified_bandwidth_hz
 
             inner_warning_flags = readiness.inner_warning_flags
@@ -1191,7 +1189,6 @@ class AutotuneWorkflow:
                     "mode_code": MODE_MAP[mode_name],
                     "inner_lambda": inner_lambda,
                     "theta_e": theta_e,
-                    "current_ringing": ringing,
                     "current_bw": bandwidth,
                     "inner_warning_flags": inner_warning_flags,
                     "requested_velocity_mrev_s": (motion_budget.requested_velocity_mrev_s),

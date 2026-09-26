@@ -295,7 +295,6 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.config.pid_torque_i = 400
         d.config.identified_lambda_us = 1200
         d.config.identified_theta_e_us = 100
-        d.config.identified_ringing_count = 0
         d.config.identified_bandwidth_hz = 500
         d.config.commissioned_velocity_p = 1100
         d.config.commissioned_velocity_i = 0
@@ -321,7 +320,6 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.config.pid_torque_i = 400
         d.config.identified_lambda_us = 1200
         d.config.identified_theta_e_us = 100
-        d.config.identified_ringing_count = 0
         d.config.identified_bandwidth_hz = 500
         d.config.commissioned_velocity_p = 1100
         d.config.commissioned_velocity_i = 0

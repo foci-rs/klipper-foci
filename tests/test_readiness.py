@@ -25,7 +25,6 @@ def _driver_ready_for_autotune():
     driver.config.identified_lambda_us = 700
     driver.config.identified_tau_e_us = 730
     driver.config.identified_theta_e_us = 160
-    driver.config.identified_ringing_count = 7
     driver.config.identified_bandwidth_hz = 1600
     driver.config.identified_inner_warning_flags = 0
 

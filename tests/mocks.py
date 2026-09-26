@@ -50,7 +50,6 @@ SAMPLE_COMMISSION_RESULT = {
     "lambda_us": 0,
     "theta_e_us": 160,
     "theta_source": 1,
-    "ringing_count": 7,
     "bandwidth_hz": 0,
 }
 
@@ -62,9 +61,6 @@ def complete_commission_result():
             "fallback_velocity_p": 1152,
             "fallback_velocity_i": 0,
             "fallback_position_p": 640,
-            "fallback_position_i": 0,
-            "fallback_velocity_limit": 500000,
-            "tau_e_us": 730,
             "inner_warning_flags": 0,
         }
     )
@@ -714,8 +710,8 @@ def make_driver(
             "voltage_limit": 16000,
             "identified_lambda_us": 0,
             "identified_theta_e_us": 160,
-            "identified_ringing_count": 7,
             "identified_bandwidth_hz": 0,
+            "pid_velocity_limit": 500000,
         },
     }
     driver.config = parse_driver_config(MockConfig(printer, sections, driver.name))

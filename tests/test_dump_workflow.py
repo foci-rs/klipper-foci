@@ -89,7 +89,6 @@ def _seed_tuning_state(driver):
     driver.config.identified_tau_e_us = 1348
     driver.config.identified_theta_e_us = 160
     driver.config.identified_theta_source = 1
-    driver.config.identified_ringing_count = 7
     driver.config.identified_bandwidth_hz = 0
     driver.config.identified_inner_warning_flags = 36
 
@@ -233,7 +232,6 @@ def test_tuning_flag_appends_context_and_count_space_note():
     assert "active.flux_p" in output
     assert "config.identified_lambda_us" in output
     assert "config.identified_theta_source" in output
-    assert "config.identified_ringing_count" in output
     assert "control-model count-space fields" in output
 
 

@@ -921,6 +921,44 @@ class CommissionModelSurfacingTests(unittest.TestCase):
         self.assertEqual(driver.state.active_gains["position_filter_hz"], 0)
         self.assertEqual(driver.state.active_gains["flux_filter_hz"], 3000)
 
+    def test_commission_result_derives_tau_and_fallbacks(self):
+        """Fields the firmware no longer sends are derived, not read verbatim.
+
+        ``tau_e_us`` is derived from the electrical-model counts; the
+        fallback position integrator is always 0; the fallback velocity
+        limit comes from the configured PID velocity limit, not the wire
+        reply. ``theta_e_us``/``bandwidth_hz`` still pass straight through.
+        """
+        driver = make_driver()
+        configfile = MockConfigFile()
+        driver.printer._objects["configfile"] = configfile
+        result = complete_commission_result()
+        result["l_count_micro"] = 1234567
+        result["r_count_milli"] = 2500
+        result["theta_e_us"] = 160
+        result["bandwidth_hz"] = 1600
+
+        driver.commissioning.persist_commission_results(result, "balanced")
+
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_tau_e_us")],
+            str(1234567 * 1000 // 2500),
+        )
+        self.assertEqual(configfile.values[(driver.name, "commissioned_position_i")], "0")
+        self.assertEqual(
+            configfile.values[(driver.name, "commissioned_velocity_limit")],
+            str(int(driver.settings.pid_velocity_limit)),
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_theta_e_us")],
+            "160",
+        )
+        self.assertEqual(
+            configfile.values[(driver.name, "identified_bandwidth_hz")],
+            "1600",
+        )
+        self.assertNotIn((driver.name, "identified_ringing_count"), configfile.values)
+
     def test_commission_persists_resistance_count_space_fields(self):
         driver = make_driver()
         configfile = MockConfigFile()
