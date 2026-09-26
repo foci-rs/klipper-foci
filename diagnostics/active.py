@@ -35,16 +35,20 @@ class ActiveDiagnostics:
 
     def __init__(self, driver) -> None:
         self.driver = driver
-        # Per-oid stitch cache for the torque-sample fragment set
+        # Per-oid stitch caches for the torque-sample fragment set
         # (foci_current_torque_sample_pid_result, then
-        # foci_current_torque_sample_detail_result), keyed by the fragment
-        # name ("pid"/"detail"). Firmware emits both fragments iff the
-        # terminal foci_current_torque_sample_result has status == 0, so
-        # the terminal handler pops and uses this only on that status; a
-        # non-zero-status terminal discards whatever is cached without
-        # rendering it, so a fragment left behind by an interrupted run can
-        # never be attributed to a later report.
-        self.current_torque_sample_fragments: dict[int, dict[str, dict]] = {}
+        # foci_current_torque_sample_detail_result) and the voltage-step
+        # fragment set (foci_voltage_step_detail_result), each keyed by oid
+        # onto (report_seq, {fragment_name: params}). Firmware draws one
+        # report_seq per report and stamps every fragment and the terminal
+        # with it, so a fragment cached under a different report_seq than
+        # the terminal that pops it is discarded rather than attributed to
+        # the wrong report (e.g. an earlier run whose terminal was lost).
+        # Fragments only exist when the terminal's status == 0; a non-zero
+        # status terminal discards whatever is cached without rendering it.
+        # Task 7 (tune) reuses this exact shape.
+        self.current_torque_sample_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
+        self.voltage_step_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
         # Transient per-driver cache of the commission-stream resistance
         # replies (foci_resistance_run + the two foci_resistance_axis
         # replies), keyed by oid. Populated by handle_resistance_run and
@@ -86,6 +90,27 @@ class ActiveDiagnostics:
         delta = encoder_shortest_delta(encoder_before, encoder_after, counts_per_rev)
         return "?" if delta is None else str(delta)
 
+    @staticmethod
+    def _stash_fragment(
+        cache: dict[int, tuple[int, dict[str, dict]]], params: dict, name: str
+    ) -> None:
+        """Cache one report fragment, discarding a stale-seq cache entry first."""
+        oid = params["oid"]
+        report_seq = params["report_seq"]
+        cached_seq, fragments = cache.get(oid, (report_seq, {}))
+        if cached_seq != report_seq:
+            fragments = {}
+        fragments[name] = params
+        cache[oid] = (report_seq, fragments)
+
+    @staticmethod
+    def _pop_fragments(
+        cache: dict[int, tuple[int, dict[str, dict]]], oid: int, report_seq: int
+    ) -> dict[str, dict]:
+        """Pop the cached fragments for oid, discarding them on a report_seq mismatch."""
+        cached_seq, fragments = cache.pop(oid, (report_seq, {}))
+        return fragments if cached_seq == report_seq else {}
+
     def handle_current_step_result(self, params: dict) -> None:
         """Handle foci_current_step_result from firmware."""
         axis_code = int(params["axis"])
@@ -123,16 +148,18 @@ class ActiveDiagnostics:
 
     def handle_current_torque_sample_pid_result(self, params: dict) -> None:
         """Cache current-torque-sample PID/error fields until the terminal reply arrives."""
-        self.current_torque_sample_fragments.setdefault(params["oid"], {})["pid"] = params
+        self._stash_fragment(self.current_torque_sample_fragments, params, "pid")
 
     def handle_current_torque_sample_detail_result(self, params: dict) -> None:
         """Cache current-torque-sample encoder/feedforward fields until the terminal arrives."""
-        self.current_torque_sample_fragments.setdefault(params["oid"], {})["detail"] = params
+        self._stash_fragment(self.current_torque_sample_fragments, params, "detail")
 
     def handle_current_torque_sample_result(self, params: dict) -> None:
         """Handle foci_current_torque_sample_result from firmware."""
         status = int(params["status"])
-        fragments = self.current_torque_sample_fragments.pop(params["oid"], {})
+        fragments = self._pop_fragments(
+            self.current_torque_sample_fragments, params["oid"], params["report_seq"]
+        )
         pid = fragments.get("pid", {}) if status == 0 else {}
         detail = fragments.get("detail", {}) if status == 0 else {}
         label = _torque_sample_label(int(params["kind"]))
@@ -167,26 +194,35 @@ class ActiveDiagnostics:
                 msg += f" missing={','.join(missing)}"
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
+    def handle_voltage_step_detail_result(self, params: dict) -> None:
+        """Cache voltage-step encoder detail fields until the terminal reply arrives."""
+        self._stash_fragment(self.voltage_step_fragments, params, "detail")
+
     def handle_voltage_step_result(self, params: dict) -> None:
         """Handle foci_voltage_step_result from firmware."""
+        status = int(params["status"])
+        fragments = self._pop_fragments(
+            self.voltage_step_fragments, params["oid"], params["report_seq"]
+        )
+        detail = fragments.get("detail", {}) if status == 0 else {}
+        enc_before = int(detail.get("encoder_before", 0))
+        enc_sample = int(detail.get("encoder_sample", 0))
+        enc_after = int(detail.get("encoder_after", 0))
         msg = (
-            f"FOCI {self.driver.name} voltage step: status={int(params['status'])} uq_ext="
+            f"FOCI {self.driver.name} voltage step: status={status} uq_ext="
             f"{int(params['uq_ext'])} ud_ext={int(params['ud_ext'])} sample_delay_ms="
             f"{int(params['sample_delay_ms'])} actual={int(params['torque_sample'])} before="
             f"{int(params['torque_before'])} after={int(params['torque_after'])} flux="
             f"{int(params['flux_sample'])} iq={int(params['iq_sample'])} id="
             f"{int(params['id_sample'])} uq_limited={int(params['uq_limited'])} ud_limited="
-            f"{int(params['ud_limited'])} uux_sample={int(params['uux_sample'])} uwy_sample="
-            f"{int(params['uwy_sample'])} pwm_ux_sample={int(params['pwm_ux_sample'])} "
-            f"pwm_wy_sample={int(params['pwm_wy_sample'])} pwm_sv_chop=0x"
-            f"{params['pwm_sv_chop']:08x} pwm_bbm=0x{params['pwm_bbm']:08x} pwm_maxcnt="
-            f"{int(params['pwm_maxcnt'])} phi_e_sample={int(params['phi_e_sample'])} phi_m_sample="
-            f"{int(params['phi_m_sample'])} enc_before={int(params['encoder_before'])} enc_sample="
-            f"{int(params['encoder_sample'])} enc_after={int(params['encoder_after'])} "
-            f"enc_delta_sample={int(params['encoder_delta_sample'])} enc_delta_after="
-            f"{int(params['encoder_delta_after'])} adc_vm_raw={int(params['adc_vm_raw'])} "
-            f"status_flags=0x{params['status_flags']:08x}"
+            f"{int(params['ud_limited'])} enc_before={enc_before} enc_sample={enc_sample} "
+            f"enc_after={enc_after} enc_delta_sample="
+            f"{self._encoder_delta_str(enc_before, enc_sample)} enc_delta_after="
+            f"{self._encoder_delta_str(enc_before, enc_after)} adc_vm_raw="
+            f"{int(params['adc_vm_raw'])} status_flags=0x{params['status_flags']:08x}"
         )
+        if status == 0 and "detail" not in fragments:
+            msg += " missing=detail"
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
     def current_step_test(self, gcmd) -> None:

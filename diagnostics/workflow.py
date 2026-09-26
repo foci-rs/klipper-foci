@@ -29,6 +29,9 @@ class DiagnosticsWorkflow:
     def handle_current_torque_sample_detail_result(self, params: dict) -> None:
         return self.active.handle_current_torque_sample_detail_result(params)
 
+    def handle_voltage_step_detail_result(self, params: dict) -> None:
+        return self.active.handle_voltage_step_detail_result(params)
+
     def handle_voltage_step_result(self, params: dict) -> None:
         return self.active.handle_voltage_step_result(params)
 

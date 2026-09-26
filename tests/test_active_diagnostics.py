@@ -422,8 +422,19 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
     def test_voltage_step_result_formats_sample_fields(self):
         d = make_driver()
 
+        d.diagnostics.handle_voltage_step_detail_result(
+            {
+                "oid": d.oid,
+                "report_seq": 1,
+                "encoder_before": 3900,
+                "encoder_sample": 3901,
+                "encoder_after": 3900,
+            }
+        )
         d.diagnostics.handle_voltage_step_result(
             {
+                "oid": d.oid,
+                "report_seq": 1,
                 "status": 0,
                 "uq_ext": 512,
                 "ud_ext": -256,
@@ -436,20 +447,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
                 "id_sample": -19,
                 "uq_limited": 500,
                 "ud_limited": -251,
-                "uux_sample": 123,
-                "uwy_sample": -456,
-                "pwm_ux_sample": 120,
-                "pwm_wy_sample": -450,
-                "pwm_sv_chop": 0x00000007,
-                "pwm_bbm": 0x00002828,
-                "pwm_maxcnt": 3999,
-                "phi_e_sample": 3000,
-                "phi_m_sample": -1200,
-                "encoder_before": 3900,
-                "encoder_sample": 3901,
-                "encoder_after": 3900,
-                "encoder_delta_sample": 1,
-                "encoder_delta_after": 0,
                 "adc_vm_raw": 40099,
                 "status_flags": 0x70000000,
             }
@@ -464,18 +461,24 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("flux=-21", out)
         self.assertIn("iq=44", out)
         self.assertIn("id=-19", out)
-        self.assertIn("uux_sample=123", out)
-        self.assertIn("uwy_sample=-456", out)
-        self.assertIn("pwm_ux_sample=120", out)
-        self.assertIn("pwm_wy_sample=-450", out)
-        self.assertIn("pwm_sv_chop=0x00000007", out)
-        self.assertIn("pwm_bbm=0x00002828", out)
-        self.assertIn("pwm_maxcnt=3999", out)
-        self.assertIn("phi_e_sample=3000", out)
-        self.assertIn("phi_m_sample=-1200", out)
+        self.assertIn("enc_before=3900", out)
+        self.assertIn("enc_sample=3901", out)
+        self.assertIn("enc_after=3900", out)
         self.assertIn("enc_delta_sample=1", out)
         self.assertIn("enc_delta_after=0", out)
         self.assertIn("status_flags=0x70000000", out)
+        for field in (
+            "uux_sample",
+            "uwy_sample",
+            "pwm_ux_sample",
+            "pwm_wy_sample",
+            "pwm_sv_chop",
+            "pwm_bbm",
+            "pwm_maxcnt",
+            "phi_e_sample",
+            "phi_m_sample",
+        ):
+            self.assertNotIn(field, out)
 
     def test_current_torque_sample_result_formats_sample_fields(self):
         d = make_driver()
@@ -483,6 +486,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.handle_current_torque_sample_pid_result(
             {
                 "oid": d.oid,
+                "report_seq": 1,
                 "pidin_target_torque": 500,
                 "pidin_target_flux": -125,
                 "pidout_target_torque": 3199,
@@ -497,6 +501,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.handle_current_torque_sample_detail_result(
             {
                 "oid": d.oid,
+                "report_seq": 1,
                 "encoder_before": 3900,
                 "encoder_sample": 3902,
                 "encoder_after": 3912,
@@ -511,6 +516,7 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         d.diagnostics.handle_current_torque_sample_result(
             {
                 "oid": d.oid,
+                "report_seq": 1,
                 "kind": 0,
                 "status": 0,
                 "target": 500,
@@ -555,9 +561,10 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("status_flags=0x00008000", out)
 
 
-def _torque_terminal(oid, status=0, kind=0):
+def _torque_terminal(oid, status=0, kind=0, report_seq=1):
     return {
         "oid": oid,
+        "report_seq": report_seq,
         "kind": kind,
         "status": status,
         "target": 500,
@@ -577,9 +584,10 @@ def _torque_terminal(oid, status=0, kind=0):
     }
 
 
-def _torque_pid(oid, error_sum):
+def _torque_pid(oid, error_sum, report_seq=1):
     return {
         "oid": oid,
+        "report_seq": report_seq,
         "pidin_target_torque": 500,
         "pidin_target_flux": -125,
         "pidout_target_torque": 3199,
@@ -592,9 +600,10 @@ def _torque_pid(oid, error_sum):
     }
 
 
-def _torque_detail(oid, encoder_sample):
+def _torque_detail(oid, encoder_sample, report_seq=1):
     return {
         "oid": oid,
+        "report_seq": report_seq,
         "encoder_before": 3900,
         "encoder_sample": encoder_sample,
         "encoder_after": 3912,
@@ -604,6 +613,37 @@ def _torque_detail(oid, encoder_sample):
         "ud_prelimit": -30,
         "ff_velocity": 17,
         "ff_torque": -42,
+    }
+
+
+def _voltage_terminal(oid, status=0, report_seq=1):
+    return {
+        "oid": oid,
+        "report_seq": report_seq,
+        "status": status,
+        "uq_ext": 512,
+        "ud_ext": -256,
+        "sample_delay_ms": 2,
+        "torque_before": -3,
+        "torque_sample": 42,
+        "torque_after": 4,
+        "flux_sample": -21,
+        "iq_sample": 44,
+        "id_sample": -19,
+        "uq_limited": 500,
+        "ud_limited": -251,
+        "adc_vm_raw": 40099,
+        "status_flags": 0x70000000,
+    }
+
+
+def _voltage_detail(oid, encoder_sample, report_seq=1):
+    return {
+        "oid": oid,
+        "report_seq": report_seq,
+        "encoder_before": 3900,
+        "encoder_sample": encoder_sample,
+        "encoder_after": 3900,
     }
 
 
@@ -671,6 +711,83 @@ class TestTorqueSampleStitching(unittest.TestCase):
         d.diagnostics.position_torque_offset_test(MockGCmd({"TARGET": 500}))
 
         self.assertEqual(vars(d.diagnostics.active), before)
+
+
+class TestVoltageStepStitching(unittest.TestCase):
+    def _out(self, d):
+        return d.printer.lookup_object("gcode")._responses[-1]
+
+    def test_voltage_step_stitches_detail_by_seq(self):
+        d = make_driver()
+        d.diagnostics.handle_voltage_step_detail_result(
+            _voltage_detail(d.oid, encoder_sample=4001, report_seq=7)
+        )
+
+        d.diagnostics.handle_voltage_step_result(_voltage_terminal(d.oid, report_seq=7))
+        out = self._out(d)
+
+        self.assertIn("enc_before=3900", out)
+        self.assertIn("enc_sample=4001", out)
+        self.assertIn("enc_after=3900", out)
+
+    def test_fragment_with_other_report_seq_is_discarded(self):
+        d = make_driver()
+        d.diagnostics.handle_voltage_step_detail_result(
+            _voltage_detail(d.oid, encoder_sample=9999, report_seq=5)
+        )
+
+        d.diagnostics.handle_voltage_step_result(_voltage_terminal(d.oid, report_seq=6))
+        out = self._out(d)
+
+        self.assertNotIn("9999", out)
+        self.assertIn("missing=detail", out)
+
+    def test_voltage_step_failure_ignores_cached_detail(self):
+        d = make_driver()
+        d.diagnostics.handle_voltage_step_detail_result(
+            _voltage_detail(d.oid, encoder_sample=8888, report_seq=3)
+        )
+
+        d.diagnostics.handle_voltage_step_result(_voltage_terminal(d.oid, status=1, report_seq=3))
+        out = self._out(d)
+
+        self.assertIn("status=1", out)
+        self.assertNotIn("8888", out)
+        self.assertNotIn("missing=", out)
+
+    def test_voltage_step_fragments_stitch_per_oid(self):
+        d = make_driver()
+        other = d.oid + 1
+        d.diagnostics.handle_voltage_step_detail_result(_voltage_detail(d.oid, encoder_sample=111))
+        d.diagnostics.handle_voltage_step_detail_result(_voltage_detail(other, encoder_sample=222))
+
+        d.diagnostics.handle_voltage_step_result(_voltage_terminal(other))
+        out_other = self._out(d)
+        d.diagnostics.handle_voltage_step_result(_voltage_terminal(d.oid))
+        out_own = self._out(d)
+
+        self.assertIn("enc_sample=222", out_other)
+        self.assertIn("enc_sample=111", out_own)
+
+    def test_voltage_step_line_omits_removed_fields(self):
+        d = make_driver()
+        d.diagnostics.handle_voltage_step_detail_result(_voltage_detail(d.oid, encoder_sample=1))
+
+        d.diagnostics.handle_voltage_step_result(_voltage_terminal(d.oid))
+        out = self._out(d)
+
+        for field in (
+            "uux_sample",
+            "uwy_sample",
+            "pwm_ux_sample",
+            "pwm_wy_sample",
+            "pwm_sv_chop",
+            "pwm_bbm",
+            "pwm_maxcnt",
+            "phi_e_sample",
+            "phi_m_sample",
+        ):
+            self.assertNotIn(field, out)
 
 
 class TestResistanceTestDiagnosticCommand(unittest.TestCase):

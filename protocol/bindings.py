@@ -277,6 +277,11 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.diagnostics.handle_voltage_step_detail_result,
+        "foci_voltage_step_detail_result",
+        oid,
+    )
+    serial.register_response(
         driver.diagnostics.handle_voltage_step_result,
         "foci_voltage_step_result",
         oid,
