@@ -172,6 +172,21 @@ class HomingWorkflow:
             voltage_limit=self.driver.settings.voltage_limit,
         )
 
+    def _driver_axes(self, kin, rails) -> set[int]:
+        """Return the kinematic axes moved by the rails carrying this stepper."""
+        coupling = self.COUPLED_AXES.get(type(kin).__name__)
+        axes = set()
+        for rail_index, rail in enumerate(rails):
+            if not any(
+                stepper.get_name() == self.driver.stepper_name for stepper in rail.get_steppers()
+            ):
+                continue
+            if coupling and rail_index in coupling:
+                axes.update(coupling[rail_index])
+            elif rail_index < 3:
+                axes.add(rail_index)
+        return axes
+
     def invalidate_homing(self) -> None:
         """Mark all kinematic axes affected by this stepper as unhomed."""
         toolhead = self.driver.printer.lookup_object("toolhead", None)
@@ -183,20 +198,7 @@ class HomingWorkflow:
         rails = getattr(kin, "rails", None)
         if rails is None:
             return
-        matched_rails = set()
-        for i, rail in enumerate(rails):
-            for stepper in rail.get_steppers():
-                if stepper.get_name() == self.driver.stepper_name:
-                    matched_rails.add(i)
-        if not matched_rails:
-            return
-        coupling = self.COUPLED_AXES.get(type(kin).__name__)
-        axes_to_clear = set()
-        for rail_index in matched_rails:
-            if coupling and rail_index in coupling:
-                axes_to_clear.update(coupling[rail_index])
-            elif rail_index < 3:
-                axes_to_clear.add(rail_index)
+        axes_to_clear = self._driver_axes(kin, rails)
         if axes_to_clear:
             clear_arg = set()
             for i in axes_to_clear:
@@ -347,20 +349,7 @@ class HomingWorkflow:
                                 homed_axes.add(rail_index)
                             break
 
-                matched_rails = set()
-                for rail_index, rail in enumerate(all_rails):
-                    for stepper in rail.get_steppers():
-                        if stepper.get_name() == self.driver.stepper_name:
-                            matched_rails.add(rail_index)
-
-                coupling = self.COUPLED_AXES.get(type(kin).__name__)
-                driver_axes = set()
-                for rail_index in matched_rails:
-                    if coupling and rail_index in coupling:
-                        driver_axes.update(coupling[rail_index])
-                    elif rail_index < 3:
-                        driver_axes.add(rail_index)
-
+                driver_axes = self._driver_axes(kin, all_rails)
                 if homed_axes and driver_axes and homed_axes & driver_axes:
                     self.ensure_calibrated()
                     return
