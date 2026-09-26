@@ -31,6 +31,8 @@ AMPLITUDE_ORDER_ASCENDING = 1
 AMPLITUDE_ORDER_DESCENDING = 2
 SLOT_ORDER_FORWARD_FIRST = 0
 SLOT_ORDER_REVERSE_FIRST = 1
+AMPLITUDE_ORDER_MASK = 0x0F
+SLOT_ORDER_SHIFT = 4
 
 OUTCOME_NAMES = {
     0: "complete",
@@ -210,8 +212,8 @@ class FixedGainAmplitudeAssembler:
             AMPLITUDE_COUNT : AMPLITUDE_COUNT + 5
         ]
         recovery_lower_rate_q = tuple(tail[AMPLITUDE_COUNT + 5 :])
-        amplitude_order = order & 0x0F
-        slot_order = order >> 4
+        amplitude_order = order & AMPLITUDE_ORDER_MASK
+        slot_order = order >> SLOT_ORDER_SHIFT
         if amplitude_order not in (AMPLITUDE_ORDER_ASCENDING, AMPLITUDE_ORDER_DESCENDING):
             raise FixedGainAmplitudeProtocolError("invalid amplitude order")
         if slot_order not in (SLOT_ORDER_FORWARD_FIRST, SLOT_ORDER_REVERSE_FIRST):
