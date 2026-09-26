@@ -317,6 +317,8 @@ class AutotuneWorkflow:
             if evidence:
                 skip_keys = ("oid", "report_seq")
                 result.update({k: v for k, v in evidence.items() if k not in skip_keys})
+            if "last_rung_p" not in result:
+                result["missing"] = ["evidence"]
         self.result = result
         self.done = True
 
@@ -1409,6 +1411,7 @@ class AutotuneWorkflow:
             )
             self.persist_tune_results(result, mode_name, tune_status)
 
+            evidence_missing = "evidence" in (result.get("missing") or [])
             nominal_bandwidth_hz = _nominal_bandwidth_hz(int(result.get("last_rung_p", 0)))
             gain_text = (
                 f"velocity_p={int(result['velocity_p'])}, velocity_i={int(result['velocity_i'])}"
@@ -1416,10 +1419,12 @@ class AutotuneWorkflow:
             summary_suffix = (
                 f", position_p={int(result['position_p'])})." if nominal_bandwidth_hz else ")."
             )
-            report_summary(
-                gcmd,
-                f"{self._summary_prefix()}: SUCCEEDED — tuned ({gain_text}{summary_suffix}",
+            summary_line = (
+                f"{self._summary_prefix()}: SUCCEEDED — tuned ({gain_text}{summary_suffix}"
             )
+            if evidence_missing:
+                summary_line += " missing=evidence"
+            report_summary(gcmd, summary_line)
             if nominal_bandwidth_hz:
                 report_detail(
                     log,
@@ -1657,22 +1662,30 @@ class AutotuneWorkflow:
             configfile.set(
                 self.driver.name, "autotune_band_position_q", f"{int(result['band_position_q'])}"
             )
-        nominal_bandwidth_hz = _nominal_bandwidth_hz(int(result.get("last_rung_p", 0)))
-        if nominal_bandwidth_hz:
-            configfile.set(
-                self.driver.name,
-                "autotune_position_bound_units",
-                f"{int(result['bound_units'])}",
+        evidence_missing = "evidence" in (result.get("missing") or [])
+        if evidence_missing:
+            self.driver.printer.lookup_object("gcode").respond_info(
+                f"FOCI {self.driver.name}: position-tune evidence was lost "
+                "(frame drop); position bound/homing-peak/motion-cruise "
+                "config keys were not updated"
             )
-            configfile.set(
-                self.driver.name,
-                "autotune_position_homing_peak_units",
-                f"{int(result['homing_peak_abs_units'])}",
-            )
-            configfile.set(
-                self.driver.name,
-                "autotune_position_motion_cruise_units",
-                f"{int(result['motion_cruise_mean_abs_units'])}",
-            )
+        else:
+            nominal_bandwidth_hz = _nominal_bandwidth_hz(int(result.get("last_rung_p", 0)))
+            if nominal_bandwidth_hz:
+                configfile.set(
+                    self.driver.name,
+                    "autotune_position_bound_units",
+                    f"{int(result['bound_units'])}",
+                )
+                configfile.set(
+                    self.driver.name,
+                    "autotune_position_homing_peak_units",
+                    f"{int(result['homing_peak_abs_units'])}",
+                )
+                configfile.set(
+                    self.driver.name,
+                    "autotune_position_motion_cruise_units",
+                    f"{int(result['motion_cruise_mean_abs_units'])}",
+                )
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)

@@ -160,6 +160,26 @@ SAMPLE_POSITION_TUNE_RESULT = {
     "position_tune_outcome_code": 0,
 }
 
+# Same PositionTune success terminal, but with every evidence-fragment-only
+# field stripped -- simulates a `foci_tune_position_evidence` fragment lost
+# to a USB frame drop while the terminal itself still arrives intact.
+_POSITION_TUNE_EVIDENCE_KEYS = (
+    "last_rung_p",
+    "min_overshoot_p",
+    "min_overshoot_units",
+    "bound_units",
+    "homing_speed_mrev_s",
+    "motion_speed_mrev_s",
+    "homing_peak_abs_units",
+    "motion_cruise_mean_abs_units",
+    "motion_overshoot_units",
+    "motion_cruise_rms_units",
+    "dither_margin_milli",
+)
+SAMPLE_POSITION_TUNE_RESULT_MISSING_EVIDENCE = {
+    k: v for k, v in SAMPLE_POSITION_TUNE_RESULT.items() if k not in _POSITION_TUNE_EVIDENCE_KEYS
+}
+
 # PositionTune failure terminal: `CommissionError::PositionTuneFailed`
 # (status 12) with `PositionTuneOutcome::Conflict` (wire code 8).
 SAMPLE_POSITION_TUNE_FAILURE_RESULT = {
@@ -906,6 +926,44 @@ class TestAutotuneGates(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("conflict", message)
         self.assertNotIn("last rung:", message)
+
+    def test_position_tune_missing_evidence_flags_skips_persist_and_warns(self):
+        """A USB frame drop can lose the `foci_tune_position_evidence`
+        fragment while the terminal still arrives; the tune must not look
+        fully successful in that case -- the summary must say so, the
+        evidence-derived config keys must be left untouched (gains and every
+        terminal-sourced key persist as normal), and the operator must see a
+        warning explaining why."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_RESULT_MISSING_EVIDENCE,
+        )
+
+        gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
+        d.autotune.autotune(gcmd)
+
+        summary = next((msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg), None)
+        self.assertIsNotNone(summary)
+        self.assertIn("missing=evidence", summary)
+
+        self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "1152")
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_i")], "0")
+        self.assertEqual(cfg.values[(d.name, "pid_position_p")], "282")
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+        self.assertEqual(cfg.values[(d.name, "autotune_mode")], "nominal")
+
+        gcode = d.printer.lookup_object("gcode")
+        evidence_warnings = [msg for msg in gcode._responses if "evidence" in msg.lower()]
+        self.assertEqual(len(evidence_warnings), 1)
 
     def test_position_tune_success_resyncs_the_tuned_stepper_step_clock(self):
         d = self._commissioned_driver()
@@ -2561,6 +2619,19 @@ class TestTunePositionEvidenceStitching(unittest.TestCase):
 
         self.assertNotIn("bound_units", d.autotune.result)
         self.assertNotIn("last_rung_p", d.autotune.result)
+        self.assertEqual(d.autotune.result["missing"], ["evidence"])
+
+    def test_tune_result_flags_missing_evidence_when_never_stashed(self):
+        """rungs_measured > 0 with no `foci_tune_position_evidence` fragment
+        ever cached (the frame carrying it was dropped) must flag the
+        result as missing evidence, not merely omit the evidence fields."""
+        d = make_driver()
+
+        d.autotune.handle_tune_result({**NARROW_TUNE_TERMINAL, "oid": d.oid, "report_seq": 9})
+
+        self.assertNotIn("bound_units", d.autotune.result)
+        self.assertNotIn("last_rung_p", d.autotune.result)
+        self.assertEqual(d.autotune.result["missing"], ["evidence"])
 
     def test_tune_evidence_stitches_per_oid(self):
         """Evidence for two different oids, interleaved, must each merge only
