@@ -53,8 +53,8 @@ together because the host does not provide an old-firmware fallback.
 ## Commissioning Diagnostics
 
 `FOCI_SETUP` runs current-loop commissioning and persists inner electrical
-identification fields for later `FOCI_TUNE` (installed tuning) runs. The host
-reports and persists `identified_inner_warning_flags` as a bitfield:
+identification fields for later `FOCI_AUTOTUNE` (installed tuning) runs. The
+host reports and persists `identified_inner_warning_flags` as a bitfield:
 
 | Bit | Meaning |
 | --- | --- |
@@ -67,7 +67,7 @@ reports and persists `identified_inner_warning_flags` as a bitfield:
 | 6 | Confidence fields are host defaults, not a fresh measurement; forces conservative installed-tuning synthesis |
 | 7 | Reserved |
 
-Non-zero displayable flags are shown in `FOCI_SETUP` and `FOCI_TUNE`
+Non-zero displayable flags are shown in `FOCI_SETUP` and `FOCI_AUTOTUNE`
 console output. Bits 0, 1, and 3 derate installed tuning by widening lambda.
 Bits 5 and 6 force conservative installed-tuning synthesis when new gains are
 generated. Bit 4 is kept reserved/deprecated because successful
