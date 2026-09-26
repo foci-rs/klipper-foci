@@ -18,6 +18,8 @@ POLICY_UNAVAILABLE = "unavailable"
 
 CURRENT_GAIN_FIELDS: tuple[str, ...] = ("flux_p", "flux_i", "torque_p", "torque_i")
 CONSERVATIVE_INNER_FLAGS = (1 << 5) | (1 << 6)
+LEGACY_DEFAULT_GAINS_SOURCE = 2
+LEGACY_DEFAULT_GAINS_TIER = 3
 DERATING_INNER_FLAGS = (1 << 0) | (1 << 1) | (1 << 3)
 CURRENT_HOLD_BLOCKING_STATUSES = frozenset((2, 3, 4))
 CLOSED_LOOP_ACTIVATION_BLOCKING_STATUSES = frozenset((2, 3))
@@ -66,7 +68,10 @@ def resolve_autotune_readiness(
     resistance_evidence = _resolve_resistance_evidence(driver)
     tau_e_us, inner_warning_flags = _resolve_inner_confidence(driver)
     current_bandwidth_hz = _resolve_current_bandwidth(driver)
-    if current_loop_evidence["gains_source"] == 2 or current_loop_evidence["gains_tier"] == 3:
+    if (
+        current_loop_evidence["gains_source"] == LEGACY_DEFAULT_GAINS_SOURCE
+        or current_loop_evidence["gains_tier"] == LEGACY_DEFAULT_GAINS_TIER
+    ):
         inner_warning_flags |= 1 << 5
 
     _classify_current_gains(
