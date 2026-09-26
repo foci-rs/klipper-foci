@@ -247,7 +247,7 @@ class HomingWorkflow:
             # SET_KINEMATIC_POSITION marks an axis homed without enabling it) from
             # inside reactor.assert_no_pause(). Blocking here would raise a raw
             # ReactorError; report the real cause instead. Either way the flush
-            # handler's bare `except:` shuts Klipper down (see FOCI-438).
+            # handler's bare `except:` shuts Klipper down.
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: cannot auto-calibrate -- the axis was marked "
                 "homed without enabling the motor (e.g. via SET_KINEMATIC_POSITION), and a "
