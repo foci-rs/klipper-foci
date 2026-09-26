@@ -78,7 +78,7 @@ def workflow(assembler, shape=1):
 def plan_payload(
     order=1,
     targets=TARGETS,
-    schema=2,
+    schema=6,
     recovery_bounds=RECOVERY_BOUNDS,
     nominal_ms=60_541,
     maximum_ms=66_456,
@@ -116,7 +116,7 @@ def terminal_payload(
     unattempted=(0, 0),
     emitted_observations=40,
     emitted_amplitudes=5,
-    schema=2,
+    schema=6,
     evidence_sequence=41,
 ):
     return struct.pack(
@@ -216,16 +216,21 @@ def test_exact_plan_and_terminal_close_one_amplitude(shape, order):
     assert assembler.terminal["eligible_masks"] == (0x1F, 0x1F)
 
 
-def test_historical_schema_one_plan_and_terminal_remain_decodable():
+@pytest.mark.parametrize("schema", [1, 2, 5, 7])
+def test_amplitude_plan_rejects_schemas_firmware_no_longer_sends(schema):
     assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
 
-    assembler.handle_plan({"oid": 1, "payload": plan_payload(schema=1)})
-    assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=1)})
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="unsupported amplitude schema"):
+        assembler.handle_plan({"oid": 1, "payload": plan_payload(schema=schema)})
 
-    assert assembler.done
-    assert assembler.plan["schema_revision"] == 1
-    assert assembler.plan["recovery_lower_rate_q"] is None
+
+@pytest.mark.parametrize("schema", [2, 7])
+def test_amplitude_terminal_rejects_schemas_firmware_no_longer_sends(schema):
+    assembler = FixedGainAmplitudeAssembler()
+
+    with pytest.raises(FixedGainAmplitudeProtocolError, match="unsupported amplitude schema"):
+        assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=schema)})
 
 
 def test_schema_two_requires_exact_nonzero_recovery_bounds_and_matching_terminal():
@@ -249,7 +254,7 @@ def test_schema_two_requires_exact_nonzero_recovery_bounds_and_matching_terminal
         assembler.handle_terminal({"oid": 1, "payload": terminal_payload(schema=1)})
 
 
-def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
+def test_rest_terminal_is_named_inconclusive_rest():
     assembler = FixedGainAmplitudeAssembler()
     params = {
         "oid": 1,
@@ -260,34 +265,11 @@ def test_schema_three_accepts_only_the_recovery_wide_duration_pair():
     }
     params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
     assembler.handle_workflow_plan(params)
-    assembler.handle_plan(
-        {
-            "oid": 1,
-            "payload": plan_payload(schema=3, nominal_ms=63_041),
-        }
-    )
-
-    assert assembler.plan["schema_revision"] == 3
-    assert assembler.plan["nominal_workflow_ms"] == 63_041
-
-
-def test_schema_four_reuses_recovery_wide_duration_and_names_rest_terminal():
-    assembler = FixedGainAmplitudeAssembler()
-    params = {
-        "oid": 1,
-        "run_sequence": RUN_SEQUENCE,
-        "shape": 1,
-        "nominal_workflow_ms": 63_041,
-        "maximum_workflow_ms": 66_456,
-    }
-    params["digest_low"], params["digest_high"] = assembler.workflow_digest_halves(params)
-    assembler.handle_workflow_plan(params)
-    assembler.handle_plan({"oid": 1, "payload": plan_payload(schema=4, nominal_ms=63_041)})
+    assembler.handle_plan({"oid": 1, "payload": plan_payload(nominal_ms=63_041)})
     assembler.handle_terminal(
         {
             "oid": 1,
             "payload": terminal_payload(
-                schema=4,
                 outcome=1,
                 cause=53,
                 emitted_observations=39,
@@ -546,7 +528,7 @@ def test_plan_assembles_from_two_firmware_fragments():
     feed_plan_fragments(assembler, payload)
 
     assert assembler.plan is not None
-    assert assembler.plan["schema_revision"] == 2
+    assert assembler.plan["schema_revision"] == 6
     assert assembler.plan["targets_rpm"] == TARGETS
 
 
@@ -588,24 +570,20 @@ def test_breakaway_seeded_action_resolves_to_firmware_wire_code_seven():
     assert parse_autotune_action("breakaway_seeded") == 7
 
 
-def test_schema_five_plan_unpacks_the_packed_schedule_order_byte():
+def test_plan_unpacks_the_packed_schedule_order_byte():
     """Slot order rides in the high nibble of the amplitude-order byte."""
     assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
-    assembler.handle_plan(
-        {"oid": 1, "payload": plan_payload(0x11, TARGETS, schema=5, nominal_ms=63_041)}
-    )
+    assembler.handle_plan({"oid": 1, "payload": plan_payload(0x11, TARGETS, nominal_ms=63_041)})
 
     assert assembler.plan["order"] == AMPLITUDE_ORDER_ASCENDING
     assert assembler.plan["slot_order"] == 1
 
 
-def test_schema_five_plan_accepts_the_unmirrored_order():
+def test_plan_accepts_the_unmirrored_order():
     assembler = FixedGainAmplitudeAssembler()
     recovery_wide_workflow(assembler)
-    assembler.handle_plan(
-        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=5, nominal_ms=63_041)}
-    )
+    assembler.handle_plan({"oid": 1, "payload": plan_payload(0x01, TARGETS, nominal_ms=63_041)})
 
     assert assembler.plan["order"] == AMPLITUDE_ORDER_ASCENDING
     assert assembler.plan["slot_order"] == 0
@@ -624,31 +602,13 @@ def test_plan_rejects_an_unusable_packed_schedule_order_byte():
             )
 
 
-def test_amplitude_terminals_are_accepted_at_the_revision_firmware_emits():
-    """Terminal validation sat at 4 while firmware emitted 5, so a live
-    schema-5 terminal was rejected. Pin acceptance to the emitted revision
-    rather than to a literal, so the two cannot drift apart again."""
-    assembler = FixedGainAmplitudeAssembler()
-    recovery_wide_workflow(assembler)
-    assembler.handle_plan(
-        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=5, nominal_ms=63_041)}
-    )
-
-    assembler.handle_terminal(
-        {"oid": 1, "payload": terminal_payload(schema=5)},
-    )
-
-    assert assembler.plan["schema_revision"] == 5
-    assert assembler.terminal["schema_revision"] == 5
-
-
 def test_terminal_carries_the_evidence_sequence():
     assembler = FixedGainAmplitudeAssembler()
     workflow(assembler)
     assembler.handle_plan({"oid": 1, "payload": plan_payload()})
     payload = struct.pack(
         "<HIHBBQQ8sHBH",
-        2,
+        6,
         RUN_SEQUENCE,
         91,
         0,
@@ -682,18 +642,3 @@ def test_amplitude_schema_six_plan_and_terminal_are_accepted():
 
     assert assembler.plan["schema_revision"] == 6
     assert assembler.terminal["schema_revision"] == 6
-
-
-def test_amplitude_schema_seven_plan_and_terminal_are_accepted():
-    assembler = FixedGainAmplitudeAssembler()
-    recovery_wide_workflow(assembler)
-    assembler.handle_plan(
-        {"oid": 1, "payload": plan_payload(0x01, TARGETS, schema=7, nominal_ms=63_041)}
-    )
-
-    assembler.handle_terminal(
-        {"oid": 1, "payload": terminal_payload(schema=7)},
-    )
-
-    assert assembler.plan["schema_revision"] == 7
-    assert assembler.terminal["schema_revision"] == 7

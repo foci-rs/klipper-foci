@@ -22,8 +22,7 @@ from ._vocabulary_generated import (
 
 FNV1A64_OFFSET = 0xCBF29CE484222325
 FNV1A64_PRIME = 0x100000001B3
-AMPLITUDE_SCHEMA_REVISION = 7
-AMPLITUDE_SCHEMA_REVISIONS = (1, 2, 3, 4, 5, 6, AMPLITUDE_SCHEMA_REVISION)
+AMPLITUDE_SCHEMA_REVISION = 6
 PLAN_REPLY_FRAGMENTS = 2
 AMPLITUDE_COUNT = 5
 AMPLITUDE_EXPECTED_OBSERVATIONS = 40
@@ -57,8 +56,7 @@ CAUSE_NAMES = {
     53: "velocity_rest_not_confirmed",
 }
 
-_PLAN_V1 = struct.Struct("<HIBQQHH5hHHBII")
-_PLAN_V2 = struct.Struct("<HIBQQHH5hHHBIIQQ")
+_PLAN = struct.Struct("<HIBQQHH5hHHBIIQQ")
 _TERMINAL = struct.Struct("<HIHBBQQ8sHBH")
 
 
@@ -190,22 +188,13 @@ class FixedGainAmplitudeAssembler:
         if len(payload) < 2:
             raise FixedGainAmplitudeProtocolError("amplitude plan payload is truncated")
         schema = struct.unpack_from("<H", payload)[0]
-        plan_struct = {
-            1: _PLAN_V1,
-            2: _PLAN_V2,
-            3: _PLAN_V2,
-            4: _PLAN_V2,
-            5: _PLAN_V2,
-            6: _PLAN_V2,
-            7: _PLAN_V2,
-        }.get(schema)
-        if plan_struct is None:
+        if schema != AMPLITUDE_SCHEMA_REVISION:
             raise FixedGainAmplitudeProtocolError("unsupported amplitude schema")
-        if len(payload) != plan_struct.size:
+        if len(payload) != _PLAN.size:
             raise FixedGainAmplitudeProtocolError(
-                f"amplitude plan payload has {len(payload)} bytes, expected {int(plan_struct.size)}"
+                f"amplitude plan payload has {len(payload)} bytes, expected {int(_PLAN.size)}"
             )
-        unpacked = plan_struct.unpack(payload)
+        unpacked = _PLAN.unpack(payload)
         (
             _schema,
             run_sequence,
@@ -220,10 +209,8 @@ class FixedGainAmplitudeAssembler:
         family_size, observations, amplitude_count, nominal_ms, maximum_ms = tail[
             AMPLITUDE_COUNT : AMPLITUDE_COUNT + 5
         ]
-        recovery_lower_rate_q = None if schema == 1 else tuple(tail[AMPLITUDE_COUNT + 5 :])
-        # From schema 5 the amplitude order occupies the low nibble and the slot
-        # order the high one. Forward-first encodes as zero, so earlier schemas
-        # decode unchanged.
+        recovery_lower_rate_q = tuple(tail[AMPLITUDE_COUNT + 5 :])
+        # The amplitude order occupies the low nibble and the slot order the high one.
         amplitude_order = order & 0x0F
         slot_order = order >> 4
         if amplitude_order not in (AMPLITUDE_ORDER_ASCENDING, AMPLITUDE_ORDER_DESCENDING):
@@ -245,9 +232,7 @@ class FixedGainAmplitudeAssembler:
             raise FixedGainAmplitudeProtocolError("invalid amplitude target order")
         if plan_digest == 0 or acceptance_digest == 0 or selected_p == 0 or selected_i == 0:
             raise FixedGainAmplitudeProtocolError("amplitude authority is incomplete")
-        if schema >= 2 and (
-            recovery_lower_rate_q is None or any(value == 0 for value in recovery_lower_rate_q)
-        ):
+        if any(value == 0 for value in recovery_lower_rate_q):
             raise FixedGainAmplitudeProtocolError("amplitude recovery authority is incomplete")
         self.plan = {
             "schema_revision": schema,
@@ -284,7 +269,7 @@ class FixedGainAmplitudeAssembler:
             emitted_amplitudes,
             qualifier_bits,
         ) = unpacked
-        if schema not in AMPLITUDE_SCHEMA_REVISIONS:
+        if schema != AMPLITUDE_SCHEMA_REVISION:
             raise FixedGainAmplitudeProtocolError("unsupported amplitude schema")
         if self.plan is not None and schema != self.plan["schema_revision"]:
             raise FixedGainAmplitudeProtocolError("amplitude terminal schema disagrees with plan")

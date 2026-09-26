@@ -38,7 +38,7 @@ def feed_workflow(assembler, shape=0, maximum_ms=70_000, nominal_ms=None):
 
 def feed_plan(
     assembler,
-    schema_revision=2,
+    schema_revision=18,
     *,
     positive_i=POSITIVE_I,
     nominal_workflow_ms=49_920,
@@ -134,85 +134,26 @@ def feed_plan(
         )
 
 
-def test_schema_four_assembles_minimum_positive_ladder_and_timeout():
+def test_plan_assembles_firmware_recovery_flags():
     assembler = VelocityIntegralAssembler()
-    positive_i = (1, 2, 4, 8, 16, 32, 64)
-    feed_workflow(assembler, maximum_ms=116_856)
+    feed_workflow(assembler, shape=3, maximum_ms=182_512)
 
     feed_plan(
         assembler,
-        schema_revision=4,
-        positive_i=positive_i,
-        nominal_workflow_ms=106_209,
-        maximum_workflow_ms=116_856,
-    )
-
-    assert assembler.plan["schema_revision"] == 4
-    assert assembler.plan["positive_i"] == list(positive_i)
-    assert assembler.plan["family_size"] == 36
-    assert assembler.plan["total_rung_count"] == 9
-    assert assembler.plan["expected_observations"] == 72
-    assert assembler.plan["slot_count"] == 9
-    assert assembler.maximum_duration_s == 116.856
-
-
-def test_schema_five_assembles_exact_native_q4_12_plan():
-    assembler = VelocityIntegralAssembler()
-    positive_i = (1, 2, 3, 4, 8, 16, 32, 64, 128, 256, 512, 1024)
-    feed_workflow(assembler, maximum_ms=182_512)
-    feed_plan(
-        assembler,
-        schema_revision=5,
-        positive_i=positive_i,
-        nominal_workflow_ms=165_950,
-        maximum_workflow_ms=182_512,
-    )
-
-    assert assembler.plan["positive_i"] == list(positive_i)
-    assert assembler.plan["family_size"] == 56
-    assert assembler.plan["expected_observations"] == 112
-    assert assembler.plan["slot_count"] == 14
-    assert assembler.maximum_duration_s == 182.512
-
-
-def test_schema_six_assembles_firmware_recovery_flags():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-
-    feed_plan(
-        assembler,
-        schema_revision=6,
         positive_i=NATIVE_Q4_12_POSITIVE_I,
         nominal_workflow_ms=165_950,
         maximum_workflow_ms=182_512,
         recovery_flags=1,
     )
 
-    assert assembler.plan["schema_revision"] == 6
     assert assembler.plan["recovery_quantization_exposed"] is True
 
 
-def test_schema_six_rejects_reserved_plan_recovery_flags():
+def test_plan_exposes_firmware_selected_probe_constrained_test_point():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
-
-    with pytest.raises(VelocityIntegralProtocolError, match="plan recovery flags"):
-        feed_plan(
-            assembler,
-            schema_revision=6,
-            positive_i=NATIVE_Q4_12_POSITIVE_I,
-            nominal_workflow_ms=165_950,
-            maximum_workflow_ms=182_512,
-            recovery_flags=2,
-        )
-
-
-def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
-    assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
+    feed_workflow(assembler, shape=3, maximum_ms=182_512)
     feed_plan(
         assembler,
-        schema_revision=7,
         positive_i=NATIVE_Q4_12_POSITIVE_I,
         nominal_workflow_ms=165_950,
         maximum_workflow_ms=182_512,
@@ -221,7 +162,6 @@ def test_schema_seven_exposes_firmware_selected_probe_constrained_test_point():
         joint_membership=0x000E_0000,
     )
 
-    assert assembler.plan["schema_revision"] == 7
     assert assembler.plan["fixed_p"] == 724
     assert assembler.plan["authorities"][0]["joint_membership"] == 0x000E_0000
     assert assembler.plan["probe_constrained_test_point"] is True
@@ -232,16 +172,13 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
 
     Durations are derived by firmware from stroke, settle, and rung counts. The
     host previously memorised the answers per schema, so any timing change broke
-    it. Re-hosted on the breakaway continuation (shape 6, schema 14) now that the
-    classic combined schema range (8-13) is no longer accepted -- the
-    firmware-authored-duration guarantee this pins is generic Integral behaviour,
-    not combined-specific.
+    it.
     """
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
-        schema_revision=14,
+        schema_revision=18,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=999_999,
         maximum_workflow_ms=1_000_000,
@@ -304,9 +241,9 @@ def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=0, nominal_ms=49_920, maximum_ms=49_920)
 
-    feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
+    feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)
 
-    assert assembler.plan["schema_revision"] == 14
+    assert assembler.plan["schema_revision"] == 18
 
 
 # Every valid shape other than resume (0) and breakaway (3) reaches the
@@ -318,42 +255,33 @@ def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
     feed_workflow(assembler, shape=shape, nominal_ms=49_920, maximum_ms=49_920)
 
     with pytest.raises(VelocityIntegralProtocolError, match="requires breakaway"):
-        feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
+        feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)
 
 
-def test_mirrored_slot_order_flag_is_accepted_at_every_schema():
-    """Firmware records the mirrored slot order without moving the schema.
-
-    Bit 2 of the plan recovery flags marks a combined run whose forward and
-    reverse observation slots executed in mirrored order. Unlike the older flag
-    bits it is not schema-gated, because firmware sets it without a schema bump.
-    """
-    # Schema 6 predates the probe-constrained bit entirely, so accepting bit 2
-    # there proves it is not riding on a later gate.
-    for schema_revision in (6, 7):
-        assembler = VelocityIntegralAssembler()
-        feed_workflow(assembler, maximum_ms=182_512)
-        feed_plan(
-            assembler,
-            schema_revision=schema_revision,
-            positive_i=NATIVE_Q4_12_POSITIVE_I,
-            nominal_workflow_ms=165_950,
-            maximum_workflow_ms=182_512,
-            recovery_flags=0b100,
-        )
-        assert assembler.plan["mirrored_slot_order"] is True
-        assert assembler.plan["recovery_quantization_exposed"] is False
+def test_mirrored_slot_order_flag_is_accepted():
+    """Bit 2 of the plan recovery flags marks a run whose forward and reverse
+    observation slots executed in mirrored order."""
+    assembler = VelocityIntegralAssembler()
+    feed_workflow(assembler, shape=3, maximum_ms=182_512)
+    feed_plan(
+        assembler,
+        positive_i=NATIVE_Q4_12_POSITIVE_I,
+        nominal_workflow_ms=165_950,
+        maximum_workflow_ms=182_512,
+        recovery_flags=0b100,
+    )
+    assert assembler.plan["mirrored_slot_order"] is True
+    assert assembler.plan["recovery_quantization_exposed"] is False
 
 
 def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
     # Bits 2 and 3 are the slot-order field; bit 4 is the first still-reserved bit.
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, maximum_ms=182_512)
+    feed_workflow(assembler, shape=3, maximum_ms=182_512)
 
     with pytest.raises(VelocityIntegralProtocolError, match="plan recovery flags"):
         feed_plan(
             assembler,
-            schema_revision=6,
             positive_i=NATIVE_Q4_12_POSITIVE_I,
             nominal_workflow_ms=165_950,
             maximum_workflow_ms=182_512,
@@ -361,40 +289,45 @@ def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
         )
 
 
-def test_schema_fourteen_assembles_the_breakaway_integral_plan():
+def test_breakaway_integral_plan_assembles():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
         assembler,
-        schema_revision=14,
+        schema_revision=18,
         positive_i=POSITIVE_I,
         fixed_p=1024,
         joint_membership=0,
     )
 
-    assert assembler.plan["schema_revision"] == 14
+    assert assembler.plan["schema_revision"] == 18
     assert assembler.plan["fixed_p"] == 1024
 
 
-def test_schema_fourteen_requires_breakaway_workflow():
+def test_breakaway_integral_plan_requires_breakaway_workflow():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=1, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="breakaway workflow"):
-        feed_plan(assembler, schema_revision=14, positive_i=POSITIVE_I, joint_membership=0)
+        feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)
 
 
-def test_breakaway_shape_integral_plan_rejects_a_non_breakaway_schema():
-    """Schema 13 is below the breakaway floor and, since the classic combined
-    range (8-13) is no longer accepted at all, is now rejected at the plan-core
-    schema gate rather than at the later shape-pairing check."""
+@pytest.mark.parametrize("schema_revision", [2, 7, 13, 14, 17])
+def test_plan_core_rejects_schemas_firmware_no_longer_sends(schema_revision):
+    """Firmware sends only the breakaway-seeded Integral schema; every other
+    revision is refused at the plan-core gate."""
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(
         VelocityIntegralProtocolError, match="unsupported velocity-integral evidence schema"
     ):
-        feed_plan(assembler, schema_revision=13, positive_i=POSITIVE_I, joint_membership=0)
+        feed_plan(
+            assembler,
+            schema_revision=schema_revision,
+            positive_i=POSITIVE_I,
+            joint_membership=0,
+        )
 
 
 def _terminal_params(
@@ -538,7 +471,7 @@ def test_handle_terminal_rejects_failed_admission_shape_after_a_partial_plan():
             "proportional_digest_low": PROPORTIONAL_DIGEST & 0xFFFF_FFFF,
             "proportional_digest_high": PROPORTIONAL_DIGEST >> 32,
             "build_revision": 7,
-            "schema_revision": 2,
+            "schema_revision": 18,
             "channel": 0,
             "fixed_p": 1448,
         }
@@ -637,7 +570,7 @@ def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_cont
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=14, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+        assembler, schema_revision=18, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
@@ -649,7 +582,7 @@ def test_handle_terminal_decodes_candidate_i_when_present():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=14, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+        assembler, schema_revision=18, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(
@@ -668,7 +601,7 @@ def test_handle_terminal_candidate_i_is_none_when_absent():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=14, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+        assembler, schema_revision=18, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))

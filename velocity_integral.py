@@ -166,19 +166,7 @@ class VelocityIntegralAssembler:
         if self.plan is not None or self._plan_parts:
             raise VelocityIntegralProtocolError("duplicate plan core")
         self._require_integral_workflow(params)
-        if int(params.get("schema_revision", -1)) not in (
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            14,
-            15,
-            16,
-            17,
-            18,
-        ):
+        if int(params.get("schema_revision", -1)) != BREAKAWAY_INTEGRAL_SCHEMA_REVISION:
             raise VelocityIntegralProtocolError("unsupported velocity-integral evidence schema")
         self._require_fragment(params, 0)
         self._plan_parts.append(dict(params))
@@ -227,14 +215,14 @@ class VelocityIntegralAssembler:
     def handle_plan_recovery(self, params: dict) -> None:
         self._require_plan_step("plan travel", 4)
         self._require_plan_identity(params)
-        schema_revision = int(self._plan_parts[0]["schema_revision"])
-        if schema_revision >= 6:
-            flags = int(params.get("flags", -1))
-            known_flags = PLAN_RECOVERY_QUANTIZATION_EXPOSED | PLAN_SLOT_ORDER_MASK
-            if schema_revision >= 7:
-                known_flags |= PLAN_PROBE_CONSTRAINED_TEST_POINT
-            if flags < 0 or flags & ~known_flags:
-                raise VelocityIntegralProtocolError("invalid plan recovery flags")
+        flags = int(params.get("flags", -1))
+        known_flags = (
+            PLAN_RECOVERY_QUANTIZATION_EXPOSED
+            | PLAN_SLOT_ORDER_MASK
+            | PLAN_PROBE_CONSTRAINED_TEST_POINT
+        )
+        if flags < 0 or flags & ~known_flags:
+            raise VelocityIntegralProtocolError("invalid plan recovery flags")
         self._plan_parts.append(dict(params))
 
     def handle_plan_rung(self, params: dict) -> None:
@@ -300,7 +288,6 @@ class VelocityIntegralAssembler:
             raise VelocityIntegralProtocolError("run sequence changed")
         breakaway = (
             self.plan is not None
-            and int(self.plan["schema_revision"]) >= 8
             and self.workflow_plan is not None
             and int(self.workflow_plan["shape"]) == SHAPE_BREAKAWAY_SEEDED
         )
@@ -366,35 +353,24 @@ class VelocityIntegralAssembler:
         plan["authorities"] = list(self._authorities)
         plan["positive_i"] = [int(rung["i_raw"]) for rung in self._plan_rungs]
         plan["rungs"] = list(self._plan_rungs)
-        if int(plan["schema_revision"]) >= 6:
-            plan["recovery_quantization_exposed"] = bool(
-                int(plan["flags"]) & PLAN_RECOVERY_QUANTIZATION_EXPOSED
+        plan["recovery_quantization_exposed"] = bool(
+            int(plan["flags"]) & PLAN_RECOVERY_QUANTIZATION_EXPOSED
+        )
+        plan["slot_order"] = (int(plan["flags"]) & PLAN_SLOT_ORDER_MASK) >> PLAN_SLOT_ORDER_SHIFT
+        plan["mirrored_slot_order"] = plan["slot_order"] == SLOT_ORDER_REVERSE_FIRST
+        plan["probe_constrained_test_point"] = bool(
+            int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
+        )
+        # The breakaway campaign's velocity-integral continuation is authorized
+        # by the accepted confirmation digest (see BreakawayCampaignAssembler),
+        # not by a schema pairing, so only the workflow shape is checked here. A
+        # resume replays the same plan from retained authority under the resume
+        # shape.
+        workflow_shape = int(self.workflow_plan["shape"])
+        if workflow_shape not in (SHAPE_BREAKAWAY_SEEDED, SHAPE_RESUME):
+            raise VelocityIntegralProtocolError(
+                "breakaway velocity-integral plan requires breakaway workflow"
             )
-            plan["slot_order"] = (
-                int(plan["flags"]) & PLAN_SLOT_ORDER_MASK
-            ) >> PLAN_SLOT_ORDER_SHIFT
-            plan["mirrored_slot_order"] = plan["slot_order"] == SLOT_ORDER_REVERSE_FIRST
-        if int(plan["schema_revision"]) >= 7:
-            plan["probe_constrained_test_point"] = bool(
-                int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
-            )
-        if int(plan["schema_revision"]) >= 8:
-            # Every reachable schema here is >= BREAKAWAY_INTEGRAL_MIN_SCHEMA_REVISION
-            # (handle_plan_core no longer admits the classic combined range 8-13).
-            # The breakaway campaign's velocity-integral continuation has no
-            # reproduced breakaway sweep plan to pair against -- it is authorized
-            # by the accepted confirmation digest instead (see
-            # BreakawayCampaignAssembler), not by a breakaway/velocity-integral
-            # schema pairing. Only the workflow shape is exclusive here.
-            #
-            # A resume replays that same exact plan from retained authority, so it
-            # carries the breakaway schema under the resume shape. The campaign is
-            # no longer the only way to reach schema 14.
-            workflow_shape = int(self.workflow_plan["shape"])
-            if workflow_shape not in (SHAPE_BREAKAWAY_SEEDED, SHAPE_RESUME):
-                raise VelocityIntegralProtocolError(
-                    "breakaway velocity-integral plan requires breakaway workflow"
-                )
         self.plan = plan
 
     @staticmethod
@@ -444,7 +420,7 @@ class VelocityIntegralAssembler:
 # three-phase acquisition -- a physical-excursion upward probe, an additive
 # discovery ladder, and a held-out eight-stroke confirmation block -- that
 # firmware runs entirely on its own authority before, on acceptance, handing
-# off into the existing velocity-integral flow above (schema 14,
+# off into the existing velocity-integral flow above (the breakaway schema,
 # handled by VelocityIntegralAssembler already). BreakawayCampaignAssembler
 # below covers only the campaign's own evidence: it validates the firmware's
 # digest chain (each phase's plan names the prior phase's digest) and the
@@ -575,14 +551,12 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 # Current firmware revisions, used when this host authors a request.
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
 BREAKAWAY_INTEGRAL_SCHEMA_REVISION = 18
-# First revision of each breakaway stream. These are boundaries, not sets: every
-# revision at or above them is a breakaway plan. Integral 8-13 was the classic
-# combined schema range; firmware never emits it after Stage 2, and
-# handle_plan_core no longer admits it. The upper end stays bounded by the
-# current revision above, so a stream from firmware newer than this host is
-# refused rather than mis-parsed against rules that may no longer hold.
+# First revision of the breakaway discovery stream. This is a boundary, not a
+# set: every revision at or above it is a breakaway plan. The upper end stays
+# bounded by the current revision above, so a stream from firmware newer than
+# this host is refused rather than mis-parsed against rules that may no longer
+# hold.
 BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION = 15
-BREAKAWAY_INTEGRAL_MIN_SCHEMA_REVISION = 14
 
 BREAKAWAY_PROBE_MAX_OBSERVATIONS = 128
 BREAKAWAY_PROBE_MAX_CAPTURE_INTERVAL_US = 2_000
