@@ -10,6 +10,7 @@ from .constants import (
     COMMISSION_CANCEL_GRACE_PERIOD_S,
     ELECTRICAL_ID_WAIT_TIMEOUT_S,
     ELECTRICAL_MODEL_RESISTANCE_SCALE,
+    FIRMWARE_DEFAULT_VELOCITY_LIMIT,
 )
 from .report import report_detail, report_summary
 
@@ -891,7 +892,7 @@ class CommissioningWorkflow:
                 "velocity_i": result["fallback_velocity_i"],
                 "position_p": result["fallback_position_p"],
                 "position_i": 0,
-                "velocity_limit": self.driver.settings.pid_velocity_limit,
+                "velocity_limit": self._commissioned_velocity_limit(),
                 "velocity_filter_hz": result.get("velocity_filter_hz", 0),
                 "torque_filter_hz": result.get(
                     "current_torque_filter_hz",
@@ -982,6 +983,12 @@ class CommissioningWorkflow:
         if status == 18:
             self.handle_chip_reset_detected()
 
+    def _commissioned_velocity_limit(self) -> int:
+        """Return the velocity limit the firmware commissioned with."""
+        if self.driver.settings.pid_velocity_limit is None:
+            return FIRMWARE_DEFAULT_VELOCITY_LIMIT
+        return self.driver.settings.pid_velocity_limit
+
     @staticmethod
     def _derive_tau_e_us(result: dict) -> int | None:
         """Derive the electrical time constant the firmware stopped sending.
@@ -1020,7 +1027,7 @@ class CommissioningWorkflow:
         configfile.set(
             self.driver.name,
             "commissioned_velocity_limit",
-            f"{int(self.driver.settings.pid_velocity_limit)}",
+            f"{int(self._commissioned_velocity_limit())}",
         )
         configfile.set(
             self.driver.name,

@@ -13,6 +13,10 @@ ELECTRICAL_ID_WAIT_TIMEOUT_S = 30.0
 # r_count_milli recovers the electrical time constant in microseconds.
 ELECTRICAL_MODEL_RESISTANCE_SCALE = 1000
 
+# Matches firmware's velocity_limit_cfg reset value: the limit commissioning
+# runs with when the host never sent pid_velocity_limit.
+FIRMWARE_DEFAULT_VELOCITY_LIMIT = 500_000
+
 # How long the host waits, after sending foci_commission_cancel, for the
 # firmware's Cancelled terminal before giving up and raising the original
 # timeout error anyway. See docs/specs/2026-08-30-commission-cancel-quiescence-design.md.

@@ -285,6 +285,24 @@ def test_rejected_timing_disables_motor_with_enable_hooks_installed():
     assert driver.state.inhibited
 
 
+def test_commission_without_configured_velocity_limit_persists_firmware_default():
+    driver = make_driver()
+    configfile = MockConfigFile()
+    driver.printer._objects["configfile"] = configfile
+    driver.settings.pid_velocity_limit = None
+
+    def drive_success(_args):
+        driver.commissioning.result = complete_commission_result()
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_success
+    driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert driver.state.active_gains["velocity_limit"] == 500_000
+    assert configfile.values[(driver.name, "commissioned_velocity_limit")] == "500000"
+    assert configfile.values[(driver.name, "autotune_status")] == "commissioned"
+
+
 def test_commission_start_clears_stale_timing_cache():
     driver = make_driver()
     driver.printer._objects["configfile"] = MockConfigFile()
