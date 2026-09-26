@@ -19,9 +19,8 @@ from ._vocabulary_generated import (
     SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING,
     WORKFLOW_SHAPE_TO_AMPLITUDE_ORDER,
 )
+from .wire_digest import fnv1a64
 
-FNV1A64_OFFSET = 0xCBF29CE484222325
-FNV1A64_PRIME = 0x100000001B3
 AMPLITUDE_SCHEMA_REVISION = 6
 PLAN_REPLY_FRAGMENTS = 2
 AMPLITUDE_COUNT = 5
@@ -77,14 +76,6 @@ def parse_autotune_action(value: str | None) -> int:
         ) from err
 
 
-def _fnv1a(data: bytes) -> int:
-    digest = FNV1A64_OFFSET
-    for byte in data:
-        digest ^= byte
-        digest = (digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
-    return digest
-
-
 def _raw_payload(params: dict, kind: str) -> bytes:
     try:
         return bytes(params["payload"])
@@ -129,7 +120,7 @@ class FixedGainAmplitudeAssembler:
             int(params["nominal_workflow_ms"]),
             int(params["maximum_workflow_ms"]),
         )
-        digest = _fnv1a(encoded)
+        digest = fnv1a64(encoded)
         return digest & 0xFFFF_FFFF, digest >> 32
 
     def handle_workflow_plan(self, params: dict) -> None:

@@ -12,9 +12,7 @@ from ._vocabulary_generated import (
     SHAPE_RESUME,
     SHAPE_ROBUSTNESS_REVERSAL,
 )
-
-FNV1A64_OFFSET = 0xCBF29CE484222325
-FNV1A64_PRIME = 0x100000001B3
+from .wire_digest import fnv1a64
 
 OUTCOME_NAMES = {
     0: "first_run_retained",
@@ -63,13 +61,6 @@ def _metadata_free(params: dict) -> dict:
         for key, value in params.items()
         if key not in ("oid", "fragment") and not key.startswith("#")
     }
-
-
-def _fnv1a(data: bytes, digest: int = FNV1A64_OFFSET) -> int:
-    for byte in data:
-        digest ^= byte
-        digest = (digest * FNV1A64_PRIME) & 0xFFFF_FFFF_FFFF_FFFF
-    return digest
 
 
 def _pack(values: tuple[tuple[str, int], ...]) -> bytes:
@@ -140,7 +131,7 @@ class VelocityIntegralAssembler:
                 ("I", params["maximum_workflow_ms"]),
             )
         )
-        digest = _fnv1a(encoded)
+        digest = fnv1a64(encoded)
         return digest & 0xFFFF_FFFF, digest >> 32
 
     def handle_workflow_plan(self, params: dict) -> None:
