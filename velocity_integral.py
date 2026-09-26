@@ -94,6 +94,9 @@ def _terminal_payload(params: dict) -> bytes:
     return payload
 
 
+BREAKAWAY_INTEGRAL_WORKFLOW_SHAPES = (SHAPE_BREAKAWAY_SEEDED, SHAPE_RESUME)
+
+
 class VelocityIntegralAssembler:
     """Strictly assemble one firmware-authored integral-response report."""
 
@@ -362,7 +365,7 @@ class VelocityIntegralAssembler:
             int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
         )
         workflow_shape = int(self.workflow_plan["shape"])
-        if workflow_shape not in (SHAPE_BREAKAWAY_SEEDED, SHAPE_RESUME):
+        if workflow_shape not in BREAKAWAY_INTEGRAL_WORKFLOW_SHAPES:
             raise VelocityIntegralProtocolError(
                 "breakaway velocity-integral plan requires breakaway workflow"
             )
