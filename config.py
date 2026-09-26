@@ -382,7 +382,12 @@ def parse_driver_config(config) -> FociDriverConfig:
     stepper_config = config.getsection(stepper_name)
     microsteps = stepper_config.getint("microsteps")
     full_steps = stepper_config.getint("full_steps_per_rotation", 200)
-    rotation_distance = stepper_config.getfloat("rotation_distance", above=0.0)
+    gear_ratio = 1.0
+    for motor_teeth, output_teeth in stepper_config.getlists(
+        "gear_ratio", (), seps=(":", ","), count=2, parser=float
+    ):
+        gear_ratio *= motor_teeth / output_teeth
+    rotation_distance = stepper_config.getfloat("rotation_distance", above=0.0) / gear_ratio
     homing_speed_mm_s = stepper_config.getfloat("homing_speed", 5.0)
     if stall_ceiling_mm > rotation_distance / 4.0:
         raise config.error(

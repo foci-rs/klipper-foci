@@ -590,6 +590,22 @@ class MockConfig:
             raise self.error(f"{key} must be above {above}")
         return value
 
+    def getlists(self, key, default=None, seps=(",",), count=None, parser=str):
+        value = self.get(key, None)
+        if value is None:
+            return default
+
+        def split(text, depth):
+            parts = [part.strip() for part in text.split(seps[depth]) if part.strip()]
+            if depth == 0:
+                values = tuple(parser(part) for part in parts)
+                if count is not None and len(values) != count:
+                    raise self.error(f"{key} must have {count} values")
+                return values
+            return tuple(split(part, depth - 1) for part in parts)
+
+        return split(str(value), len(seps) - 1)
+
     def getboolean(self, key, default=False):
         value = self.get(key, default)
         if isinstance(value, bool):

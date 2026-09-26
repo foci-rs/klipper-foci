@@ -1174,6 +1174,16 @@ def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
     assert "compare rotation_distance with the actual transmission before enabling motion" in output
 
 
+def test_stall_units_use_distance_per_motor_revolution_with_gear_ratio():
+    printer, _chips, sections, _config = make_foci_config(
+        stepper_values={"rotation_distance": 40.0}
+    )
+    sections["stepper_x"]["gear_ratio"] = "3:1"
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    assert stall_ceiling_units(driver.config) == round(1.0 / (40.0 / 3.0) * 65536)
+
+
 def test_homing_defaults_and_threshold_units():
     printer, _chips, sections, _config = make_foci_config(
         stepper_values={"rotation_distance": 40.0}
