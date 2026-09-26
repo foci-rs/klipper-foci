@@ -193,6 +193,16 @@ class TestRuntimeFiltersCommand(unittest.TestCase):
         with self.assertRaisesRegex(CommandError, "POSITION_HZ"):
             d.controls.set_filters(MockGCmd({"POSITION_HZ": 1001}))
 
+    def test_invalid_filter_leaves_earlier_filters_unapplied(self):
+        d = make_driver()
+        previous_velocity_hz = d.settings.velocity_filter_hz
+
+        with self.assertRaisesRegex(CommandError, "TORQUE_HZ"):
+            d.controls.set_filters(MockGCmd({"VELOCITY_HZ": 200, "TORQUE_HZ": 5}))
+
+        self.assertIsNone(d.protocol.commands.set_velocity_filter.last_args)
+        self.assertEqual(d.settings.velocity_filter_hz, previous_velocity_hz)
+
     def test_rejects_missing_filter_parameter(self):
         d = make_driver()
 

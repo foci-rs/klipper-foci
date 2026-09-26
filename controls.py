@@ -110,12 +110,14 @@ class ControlsWorkflow:
                 self.driver.protocol.set_flux_filter,
             ),
         )
+        requested = [
+            (label, attr, setter, value)
+            for param, label, attr, max_hz, setter in filters
+            if (value := self._get_filter_hz(gcmd, param, max_hz)) is not None
+        ]
         applied = []
 
-        for param, label, attr, max_hz, setter in filters:
-            value = self._get_filter_hz(gcmd, param, max_hz)
-            if value is None:
-                continue
+        for label, attr, setter, value in requested:
             setter(value)
             setattr(self.driver.settings, attr, value)
             if self.driver.state.active_gains is not None:
