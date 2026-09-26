@@ -3,7 +3,16 @@
 from tests.mocks import MockCommand, MockGCmd, make_driver
 
 
-def test_stepper_stats_diagnostic_formats_firmware_counters():
+def test_stepper_stats_keeps_derived_keys():
+    """Red until the host derives the fields dropped from the wire.
+
+    The exec-stats reply keeps only the fields the firmware cannot derive
+    host-side; `stepper_stats()` must still print every key the
+    FOCI_STEPPER_STATS line printed before the trim, computed from
+    `planner_steps_per_rev`/`encoder_ppr` and the MCU's `CLOCK_FREQ`
+    (84 MHz here, from `tests/mocks.py::make_driver`'s default constants).
+    It must also print the new `oversize_frame_drops` counter.
+    """
     driver = make_driver(stepper_name="stepper_x")
     driver.oid = 10
     driver.protocol.commands.stepper_stats = MockCommand(
@@ -19,6 +28,7 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
             "discarded_steps": 500,
             "timer_active": 0,
             "queue_len": 0,
+            "oversize_frame_drops": 0,
         }
     )
     driver.protocol.commands.stepper_exec_stats = MockCommand(
@@ -29,14 +39,6 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
             "physical_neg_pulses": 3,
             "planner_steps_per_rev": 3200,
             "encoder_ppr": 1000,
-            "encoder_counts_per_rev": 4000,
-            "tmc_grid": 4096,
-            "physical_step_width": 16,
-            "motion_scale_configured": 1,
-            "step_half_period_ticks": 4,
-            "dir_setup_ticks": 8,
-            "waveform_worst_case_ticks": 24,
-            "fatal_lateness_ticks": 84000,
             "queue_empty_count": 0,
             "missed_deadline_count": 0,
         }
@@ -124,3 +126,4 @@ def test_stepper_stats_diagnostic_formats_firmware_counters():
     assert "last_stop_drained_steps=11128" in gcmd.last_info
     assert "timer_active=0" in gcmd.last_info
     assert "queue_len=0" in gcmd.last_info
+    assert "oversize_frame_drops=0" in gcmd.last_info

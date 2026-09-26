@@ -694,6 +694,7 @@ def make_driver(
             "ENVELOPE_PROPORTIONAL_NUM": 3,
             "ENVELOPE_PROPORTIONAL_DEN": 2,
             "ENVELOPE_ABSOLUTE_MARGIN_MREV_S": 2000,
+            "CLOCK_FREQ": 84_000_000,
         }
     )
     printer._objects["pins"] = MockPins({"foci": driver.mcu})

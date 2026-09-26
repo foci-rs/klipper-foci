@@ -7,14 +7,6 @@ MOTION_SCALE_STATS_FIELDS = (
     "physical_neg_pulses",
     "planner_steps_per_rev",
     "encoder_ppr",
-    "encoder_counts_per_rev",
-    "tmc_grid",
-    "physical_step_width",
-    "motion_scale_configured",
-    "step_half_period_ticks",
-    "dir_setup_ticks",
-    "waveform_worst_case_ticks",
-    "fatal_lateness_ticks",
 )
 
 

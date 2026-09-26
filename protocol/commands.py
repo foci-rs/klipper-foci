@@ -73,19 +73,16 @@ class FociMcuCommands:
             " queued_segments=%u queued_steps=%u"
             " loaded_segments=%u loaded_steps=%u"
             " discarded_segments=%u discarded_steps=%u"
-            " timer_active=%c queue_len=%hu",
+            " timer_active=%c queue_len=%hu"
+            " oversize_frame_drops=%u",
             oid=oid,
         )
         self.stepper_exec_stats = mcu.lookup_query_command(
             "foci_stepper_exec_stats oid=%c",
-            "foci_stepper_exec_stats_result oid=%c channel=%c"
+            "foci_stepper_exec_stats_result oid=%c"
             " executed_pos_steps=%u executed_neg_steps=%u"
             " physical_pos_pulses=%u physical_neg_pulses=%u"
             " planner_steps_per_rev=%u encoder_ppr=%u"
-            " encoder_counts_per_rev=%u tmc_grid=%u"
-            " physical_step_width=%u motion_scale_configured=%c"
-            " step_half_period_ticks=%u dir_setup_ticks=%u"
-            " waveform_worst_case_ticks=%u fatal_lateness_ticks=%u"
             " queue_empty_count=%u missed_deadline_count=%u",
             oid=oid,
         )

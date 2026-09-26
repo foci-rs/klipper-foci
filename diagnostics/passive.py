@@ -6,6 +6,7 @@ import logging
 
 from ..report import report_detail
 from .formatting import format_stepper_event, stepper_dir_inverted
+from .stepper_scale import derived_exec_stats
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,17 @@ class PassiveDiagnostics:
         for response in self.driver.protocol.get_stepper_stats():
             params.update(response)
 
+        get_constants = getattr(self.driver.mcu, "get_constants", None)
+        constants = get_constants() if get_constants is not None else {}
+        clock_freq = int(constants.get("CLOCK_FREQ", 0))
+        params.update(
+            derived_exec_stats(
+                planner_steps_per_rev=int(params.get("planner_steps_per_rev", 0)),
+                encoder_ppr=int(params.get("encoder_ppr", 0)),
+                clock_freq=clock_freq,
+            )
+        )
+
         fields = [
             "channel",
             "position",
@@ -118,6 +130,7 @@ class PassiveDiagnostics:
             "last_stop_drained_steps",
             "timer_active",
             "queue_len",
+            "oversize_frame_drops",
         ]
         parts = [f"FOCI_STEPPER_STATS {self.driver.stepper_name}:"]
         for field in fields:
