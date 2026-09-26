@@ -23,6 +23,7 @@ from .commissioning import (
     PROFILE_MAP,
     format_inner_warning_flags,
 )
+from .diagnostics.active import ActiveDiagnostics
 from .fixed_gain_amplitude import (
     ACTION_CODES,
     FixedGainAmplitudeAssembler,
@@ -161,6 +162,25 @@ def _format_feedforward_paths(mask: int) -> str:
     return ",".join(name for bit, name in enumerate(FEEDFORWARD_PATH_NAMES) if mask & (1 << bit))
 
 
+# Q16.16 tau constant, mirroring firmware's `position_tune/mod.rs` TAU_Q16.
+# `nominal_bandwidth_hz` no longer arrives on the wire (spec's frame-budget
+# split); the host recomputes it independently from `last_rung_p`, and a
+# firmware-side pinned test asserts the two formulas never drift apart.
+TAU_Q16 = 411_775
+
+
+def _nominal_bandwidth_hz(last_rung_p: int) -> int:
+    """Nominal position-loop bandwidth, mirroring firmware's pure function.
+
+    ``bandwidth_hz = (position_p/256) * 65536 / (60 * 2*pi)``, evaluated in
+    integer arithmetic with the /256 folded into the 16_777_216 literal, and
+    rounded to nearest rather than truncated.
+    """
+    numerator = last_rung_p * 16_777_216
+    denominator = 60 * TAU_Q16
+    return (numerator + denominator // 2) // denominator
+
+
 def _position_tune_evidence(result: dict) -> str:
     """Render the last measured rung's evidence for a position-tune failure.
 
@@ -273,11 +293,31 @@ class AutotuneWorkflow:
         self.robustness_workflow_plan: dict | None = None
         self.position_tune_workflow_plan: dict | None = None
         self._proportional_candidate_request: dict | None = None
+        # Per-oid stitch cache for foci_tune_position_evidence, keyed onto
+        # (report_seq, {"evidence": params}) like ActiveDiagnostics' own
+        # fragment caches (Task 4's stitch shape, reused here rather than
+        # reimplemented).
+        self.tune_position_evidence_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
         self.done = False
+
+    def handle_tune_position_evidence(self, params: dict) -> None:
+        """Cache foci_tune_position_evidence until the terminal arrives."""
+        ActiveDiagnostics._stash_fragment(self.tune_position_evidence_fragments, params, "evidence")
 
     def handle_tune_result(self, params: dict) -> None:
         """Handle foci_tune_result from firmware."""
-        self.result = params
+        result = dict(params)
+        fragments = ActiveDiagnostics._pop_fragments(
+            self.tune_position_evidence_fragments,
+            params.get("oid", 0),
+            params.get("report_seq", 0),
+        )
+        if int(params.get("rungs_measured", 0)) > 0:
+            evidence = fragments.get("evidence")
+            if evidence:
+                skip_keys = ("oid", "report_seq")
+                result.update({k: v for k, v in evidence.items() if k not in skip_keys})
+        self.result = result
         self.done = True
 
     def handle_outer_safety_fault(self, params: dict) -> None:
@@ -764,6 +804,7 @@ class AutotuneWorkflow:
         self.robustness_cycle_evidence = {}
         self.robustness_workflow_plan = None
         self.position_tune_workflow_plan = None
+        self.tune_position_evidence_fragments = {}
         self.driver.commissioning.error_code = 0
         self.driver.commissioning.phase_label_override = None
 
@@ -1330,6 +1371,9 @@ class AutotuneWorkflow:
 
             self.driver.state.pre_tune_snapshot = self._snapshot_pre_tune_state()
             active_gains = self.driver.state.active_gains
+            # velocity_limit, position_i and the filter values no longer
+            # arrive on the wire terminal (frame-budget split); this dispatch
+            # never tunes them, so carry the entry values forward unchanged.
             self.driver.state.active_gains = {
                 "flux_p": active_gains["flux_p"],
                 "flux_i": active_gains["flux_i"],
@@ -1338,18 +1382,34 @@ class AutotuneWorkflow:
                 "velocity_p": result["velocity_p"],
                 "velocity_i": result["velocity_i"],
                 "position_p": result["position_p"],
-                "position_i": result["position_i"],
-                "velocity_limit": result["velocity_limit"],
-                "velocity_filter_hz": result["velocity_filter_hz"],
-                "torque_filter_hz": result["torque_filter_hz"],
-                "position_filter_hz": result["position_filter_hz"],
-                "flux_filter_hz": result["flux_filter_hz"],
+                "position_i": active_gains["position_i"],
+                "velocity_limit": active_gains["velocity_limit"],
+                "velocity_filter_hz": active_gains["velocity_filter_hz"],
+                "torque_filter_hz": active_gains["torque_filter_hz"],
+                "position_filter_hz": active_gains["position_filter_hz"],
+                "flux_filter_hz": active_gains["flux_filter_hz"],
             }
             self.driver.state.runtime_status = tune_status
 
+            # persist_tune_results still reads these keys directly off
+            # `result`; fold in the active_gains-sourced values above so its
+            # persisted-key set and the summary text below stay unchanged.
+            result.update(
+                {
+                    key: self.driver.state.active_gains[key]
+                    for key in (
+                        "position_i",
+                        "velocity_limit",
+                        "velocity_filter_hz",
+                        "torque_filter_hz",
+                        "position_filter_hz",
+                        "flux_filter_hz",
+                    )
+                }
+            )
             self.persist_tune_results(result, mode_name, tune_status)
 
-            nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
+            nominal_bandwidth_hz = _nominal_bandwidth_hz(int(result.get("last_rung_p", 0)))
             gain_text = (
                 f"velocity_p={int(result['velocity_p'])}, velocity_i={int(result['velocity_i'])}"
             )
@@ -1597,7 +1657,7 @@ class AutotuneWorkflow:
             configfile.set(
                 self.driver.name, "autotune_band_position_q", f"{int(result['band_position_q'])}"
             )
-        nominal_bandwidth_hz = int(result.get("nominal_bandwidth_hz", 0))
+        nominal_bandwidth_hz = _nominal_bandwidth_hz(int(result.get("last_rung_p", 0)))
         if nominal_bandwidth_hz:
             configfile.set(
                 self.driver.name,

@@ -196,6 +196,11 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
+        driver.autotune.handle_tune_position_evidence,
+        "foci_tune_position_evidence",
+        oid,
+    )
+    serial.register_response(
         driver.autotune.handle_tune_result,
         "foci_tune_result",
         oid,

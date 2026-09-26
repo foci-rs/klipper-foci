@@ -4,7 +4,11 @@ import struct
 import unittest
 from unittest.mock import patch
 
-from klipper_foci.autotune import OUTER_SAFETY_REASON_NAMES, POSITION_TUNE_OUTCOME_NAMES
+from klipper_foci.autotune import (
+    OUTER_SAFETY_REASON_NAMES,
+    POSITION_TUNE_OUTCOME_NAMES,
+    _nominal_bandwidth_hz,
+)
 from klipper_foci.commissioning import format_inner_warning_flags
 from klipper_foci.fixed_gain_amplitude import ACTION_CODES
 from klipper_foci.registers import REGISTERS
@@ -1037,6 +1041,44 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+
+    def test_tune_persists_same_keys_as_before(self):
+        """Pin the exact persisted-config-key set for a production position
+        tune terminal: the frame-budget split (evidence stitched from a
+        separate reply, active_gains-sourced values folded back in) must not
+        change which keys `persist_tune_results` writes."""
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_RESULT,
+        )
+
+        d.autotune.autotune(MockGCmd({"ACTION": "breakaway_seeded"}))
+
+        persisted_keys = {key for _, key in cfg.values}
+        self.assertEqual(
+            persisted_keys,
+            {
+                "pid_velocity_p",
+                "pid_velocity_i",
+                "pid_velocity_limit",
+                "pid_position_p",
+                "pid_position_i",
+                "velocity_filter_hz",
+                "position_filter_hz",
+                "flux_filter_hz",
+                "torque_filter_hz",
+                "autotune_position_bound_units",
+                "autotune_position_homing_peak_units",
+                "autotune_position_motion_cruise_units",
+                "autotune_mode",
+                "autotune_status",
+            },
+        )
 
     def test_default_action_chain_persists_the_position_tune_result(self):
         """The default (unspecified-ACTION) path must deploy and persist the
@@ -2430,6 +2472,122 @@ def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     )
 
 
+def test_nominal_bandwidth_hz_matches_the_firmware_formula():
+    """Pin the host reimplementation against firmware's own pinned test
+    (`nominal_bandwidth_hz_matches_the_host_formula` in
+    `position_tune/mod.rs`) so the two formulas never drift apart."""
+    cases = (
+        (0, 0),
+        (1, 1),
+        (256, 174),
+        (640, 435),
+        (1_000, 679),
+        (32_768, 22_251),
+        (65535, 44_502),
+    )
+    for last_rung_p, expected in cases:
+        assert _nominal_bandwidth_hz(last_rung_p) == expected, last_rung_p
+
+
+# Narrow `FociTuneResult` terminal shape (spec-2 frame-budget split): only the
+# fields the terminal reply itself carries after the position-tune evidence
+# was pulled into its own fragment.
+NARROW_TUNE_TERMINAL = {
+    "status": 0,
+    "velocity_p": 1152,
+    "velocity_i": 0,
+    "position_p": 282,
+    "probed_velocity_mrev_s": 0,
+    "d_eq_q": 0,
+    "confidence_q": 0,
+    "band_lower_percent": 0,
+    "band_upper_percent": 0,
+    "band_position_q": 0,
+    "predicted_start_p": 282,
+    "rungs_measured": 1,
+    "stimulus_feedforward_paths": 1,
+    "position_tune_outcome_code": 0,
+}
+
+# `FociTunePositionEvidence` fragment shape, stitched onto the terminal above
+# by (oid, report_seq) before the terminal fires -- mirrors ActiveDiagnostics'
+# own fragment-cache stitch shape (Task 4), reused here rather than
+# reimplemented.
+TUNE_POSITION_EVIDENCE = {
+    "last_rung_p": 282,
+    "min_overshoot_p": 0,
+    "min_overshoot_units": 0,
+    "bound_units": 409,
+    "homing_speed_mrev_s": 4375,
+    "motion_speed_mrev_s": 10000,
+    "homing_peak_abs_units": 300,
+    "motion_cruise_mean_abs_units": 210,
+    "motion_overshoot_units": 40,
+    "motion_cruise_rms_units": 12,
+    "dither_margin_milli": 0,
+}
+
+
+class TestTunePositionEvidenceStitching(unittest.TestCase):
+    def test_tune_without_rungs_renders_terminal_only(self):
+        """rungs_measured == 0 must render/persist using only the terminal's
+        own fields, even if an unrelated evidence fragment happens to be
+        cached under the same (oid, report_seq)."""
+        d = make_driver()
+        d.autotune.handle_tune_position_evidence(
+            {"oid": d.oid, "report_seq": 3, **TUNE_POSITION_EVIDENCE}
+        )
+
+        d.autotune.handle_tune_result(
+            {
+                **NARROW_TUNE_TERMINAL,
+                "oid": d.oid,
+                "report_seq": 3,
+                "rungs_measured": 0,
+            }
+        )
+
+        self.assertNotIn("bound_units", d.autotune.result)
+        self.assertNotIn("last_rung_p", d.autotune.result)
+
+    def test_tune_evidence_with_other_seq_is_discarded(self):
+        """An evidence fragment stashed under one report_seq must not be
+        merged into a terminal that arrives with a different report_seq for
+        the same oid (mirrors ActiveDiagnostics' own discard-on-mismatch)."""
+        d = make_driver()
+        d.autotune.handle_tune_position_evidence(
+            {"oid": d.oid, "report_seq": 5, **TUNE_POSITION_EVIDENCE}
+        )
+
+        d.autotune.handle_tune_result({**NARROW_TUNE_TERMINAL, "oid": d.oid, "report_seq": 6})
+
+        self.assertNotIn("bound_units", d.autotune.result)
+        self.assertNotIn("last_rung_p", d.autotune.result)
+
+    def test_tune_evidence_stitches_per_oid(self):
+        """Evidence for two different oids, interleaved, must each merge only
+        into the terminal sharing its own oid -- never the other oid's."""
+        d = make_driver()
+        other_oid = d.oid + 1
+
+        d.autotune.handle_tune_position_evidence(
+            {"oid": d.oid, "report_seq": 1, **TUNE_POSITION_EVIDENCE}
+        )
+        d.autotune.handle_tune_position_evidence(
+            {
+                "oid": other_oid,
+                "report_seq": 1,
+                **{**TUNE_POSITION_EVIDENCE, "bound_units": 777},
+            }
+        )
+
+        d.autotune.handle_tune_result({**NARROW_TUNE_TERMINAL, "oid": other_oid, "report_seq": 1})
+        self.assertEqual(d.autotune.result["bound_units"], 777)
+
+        d.autotune.handle_tune_result({**NARROW_TUNE_TERMINAL, "oid": d.oid, "report_seq": 1})
+        self.assertEqual(d.autotune.result["bound_units"], 409)
+
+
 class TestOuterSafetyFaultNames(unittest.TestCase):
     # Mirrors the OUTER_SAFETY_FAULT_* constants in
     # foci-firmware/src/commissioning/types.rs:1776-1796. Firmware and host
@@ -2626,7 +2784,11 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         d.config.autotune_mode = None
         prior_gains = d.state.active_gains.copy()
-        self._finish_tune_on_next_pause(d)
+        # velocity_limit/position_i/filter_hz are carried forward from
+        # active_gains unchanged (they no longer arrive on the wire result),
+        # so only the tuned fields (velocity_p/velocity_i/position_p) need
+        # to differ from prior_gains for this assertion to be meaningful.
+        self._finish_tune_on_next_pause(d, {"velocity_p": 863, "velocity_i": 12})
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         d.autotune.autotune(gcmd)
         snap = d.state.pre_tune_snapshot
