@@ -1618,26 +1618,14 @@ class AutotuneWorkflow:
         )
         configfile.set(self.driver.name, "pid_position_p", f"{int(result['position_p'])}")
         configfile.set(self.driver.name, "pid_position_i", f"{int(result['position_i'])}")
-        configfile.set(
-            self.driver.name,
+        for key in (
             "velocity_filter_hz",
-            f"{int(result['velocity_filter_hz'])}",
-        )
-        configfile.set(
-            self.driver.name,
             "position_filter_hz",
-            f"{int(result['position_filter_hz'])}",
-        )
-        configfile.set(
-            self.driver.name,
             "flux_filter_hz",
-            f"{int(result['flux_filter_hz'])}",
-        )
-        configfile.set(
-            self.driver.name,
             "torque_filter_hz",
-            f"{int(result['torque_filter_hz'])}",
-        )
+        ):
+            if result[key] is not None:
+                configfile.set(self.driver.name, key, f"{int(result[key])}")
         probed_velocity_mrev_s = int(result.get("probed_velocity_mrev_s", 0))
         if probed_velocity_mrev_s:
             configfile.set(

@@ -1665,6 +1665,22 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "autotune_band_upper_percent")], "80")
         self.assertEqual(cfg.values[(d.name, "autotune_band_position_q")], "3000")
 
+    def test_persist_leaves_unconfigured_filters_unset(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        result = dict(SAMPLE_TUNE_RESULT)
+        for key in ("velocity_filter_hz", "torque_filter_hz", "position_filter_hz"):
+            result[key] = None
+
+        d.autotune.persist_tune_results(result, "nominal", "tuned")
+
+        self.assertNotIn((d.name, "velocity_filter_hz"), cfg.values)
+        self.assertNotIn((d.name, "torque_filter_hz"), cfg.values)
+        self.assertNotIn((d.name, "position_filter_hz"), cfg.values)
+        self.assertEqual(cfg.values[(d.name, "flux_filter_hz")], "200")
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+
     def test_persist_never_writes_removed_mechanical_id_fields(self):
         """identified_j_eff/identified_b_eff persistence is removed entirely --
         no tune result, real or synthetic, may re-introduce them into
