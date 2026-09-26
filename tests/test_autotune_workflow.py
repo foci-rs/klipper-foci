@@ -764,6 +764,40 @@ class TestAutotuneGates(unittest.TestCase):
         # full COMMISSION_CANCEL_GRACE_PERIOD_S.
         self.assertLessEqual(len(pause_calls), 2)
 
+    def test_dispatch_cancel_stops_waiting_on_a_workflow_terminal(self):
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        d.protocol.run_tune = lambda **kw: None
+        grace_period_started = []
+
+        def run_commission_cancel():
+            grace_period_started.append(True)
+            d.autotune.robustness_reversal_terminal = {"outcome": "cancelled"}
+
+        d.protocol.run_commission_cancel = run_commission_cancel
+        reactor = d.printer.get_reactor()
+        pause_calls = []
+
+        def pause(deadline):
+            reactor._time = deadline
+            if grace_period_started:
+                pause_calls.append(deadline)
+            return reactor._time
+
+        reactor.pause = pause
+        d.autotune.robustness_reversal_error = "malformed chunk"
+
+        with self.assertRaises(CommandError):
+            d.autotune._run_one_dispatch(
+                MockGCmd({}),
+                ACTION_CODES["breakaway_seeded"],
+                {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+                toolhead,
+                "G0 X100.000 Y100.000",
+            )
+
+        self.assertEqual(pause_calls, [])
+
     def test_each_stage_dispatch_is_preceded_by_a_rehome(self):
         """Both the breakaway_seeded dispatch and the auto-issued integral_resume
         dispatch must be preceded by their own G28 re-home -- the chained

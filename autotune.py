@@ -555,7 +555,7 @@ class AutotuneWorkflow:
         """Cancel a tune dispatch that left firmware running without a terminal."""
         reactor = self.driver.printer.get_reactor()
         self.driver.commissioning.cancel_and_await_quiescence(
-            reactor, lambda: self.done, reactor.monotonic()
+            reactor, lambda: self.done or self._workflow_finished(), reactor.monotonic()
         )
         self._disable_kinematic_motors(toolhead)
 
