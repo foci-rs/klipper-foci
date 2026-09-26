@@ -82,8 +82,6 @@ class ActiveDiagnostics:
         self.last_current_loop_hold: dict[int, dict] = {}
         self.last_closed_loop_activation: dict[int, dict] = {}
         self._last_current_loop_samples: dict[int, dict[str, list[dict]]] = {}
-        self.last_encoder_alignment: dict[int, dict] = {}
-        self.adc_residuals: dict[int, list[dict]] = {}
 
     def _encoder_delta_str(self, encoder_before: int, encoder_after: int) -> str:
         counts_per_rev = 4 * self.driver.config.encoder_ppr
@@ -559,36 +557,6 @@ class ActiveDiagnostics:
             f"{int(params['x_mag_vs_quad_permille'])}",
         )
 
-    def handle_encoder_alignment(self, params: dict) -> None:
-        """Handle foci_encoder_alignment from firmware."""
-        evidence = dict(params)
-        self.last_encoder_alignment[params["oid"]] = evidence
-        msg = (
-            f"FOCI {self.driver.name} encoder alignment: encoder_count="
-            f"{int(params['encoder_count'])} electrical_residual_counts="
-            f"{int(params['electrical_residual_counts'])} stability_counts="
-            f"{int(params['stability_counts'])} movement_counts={int(params['movement_counts'])} "
-            f"min_movement_counts={int(params['min_movement_counts'])} counts_per_electrical_rev="
-            f"{int(params['counts_per_electrical_rev'])}"
-        )
-        report_detail(log, self.driver.global_config.debug, msg)
-
-    def handle_adc_residual(self, params: dict) -> None:
-        """Handle foci_adc_residual from firmware."""
-        cached = self.adc_residuals.setdefault(params["oid"], [])
-        cached.append(dict(params))
-        msg = (
-            f"FOCI {self.driver.name} adc residual: stage={int(params['stage'])} sample_count="
-            f"{int(params['sample_count'])} pwm_sv_chop={int(params['pwm_sv_chop'])} pwm_bbm=0x"
-            f"{params['pwm_bbm']:08x} adc_i0_scale_offset=0x{params['adc_i0_scale_offset']:08x} "
-            f"adc_i1_scale_offset=0x{params['adc_i1_scale_offset']:08x} adc_iux_mean_count="
-            f"{int(params['adc_iux_mean_count'])} adc_iwy_mean_count="
-            f"{int(params['adc_iwy_mean_count'])} pid_flux_mean_count="
-            f"{int(params['pid_flux_mean_count'])} pid_torque_mean_count="
-            f"{int(params['pid_torque_mean_count'])}"
-        )
-        report_detail(log, self.driver.global_config.debug, msg)
-
     def handle_current_validation_axis(self, params: dict) -> None:
         """Handle foci_current_validation_axis from firmware."""
         axis_key = {0: "flux", 1: "torque"}.get(params["axis"])
@@ -617,37 +585,6 @@ class ActiveDiagnostics:
             f"{int(params.get('positive_encoder_delta_counts', 0))}/"
             f"{int(params.get('negative_encoder_delta_counts', 0))} status_flags_or=0x"
             f"{params['status_flags_or']:08x}"
-        )
-        report_detail(log, self.driver.global_config.debug, msg)
-
-    def handle_current_validation_settled_sample(self, params: dict) -> None:
-        """Handle foci_current_validation_settled_sample from firmware."""
-        cached = self.current_loop_cache.setdefault(params["oid"], {})
-        settled_samples = cached.setdefault("settled_samples", [])
-        settled_samples.append(dict(params))
-        msg = (
-            f"FOCI {self.driver.name} current validation settled: axis={int(params['axis'])} "
-            f"sample_index={int(params['sample_index'])} direction={int(params['direction'])} "
-            f"raw_index={int(params['raw_index'])} attempt={int(params['attempt'])} target="
-            f"{int(params['target'])} delay_ms={int(params['sample_delay_ms'])} same_count="
-            f"{int(params['same_axis_count'])} cross_count={int(params['cross_axis_count'])} cross="
-            f"{int(params['cross_axis_permille'])} voltage={int(params['voltage_output_permille'])}"
-            f" encoder_delta={int(params['encoder_delta_counts'])} status_flags=0x"
-            f"{params['status_flags']:08x}"
-        )
-        report_detail(log, self.driver.global_config.debug, msg)
-
-    def handle_current_validation_envelope(self, params: dict) -> None:
-        """Handle foci_current_validation_envelope from firmware."""
-        cached = self.current_loop_cache.setdefault(params["oid"], {})
-        cached["validation_envelope"] = dict(params)
-        msg = (
-            f"FOCI {self.driver.name} current validation envelope: step_amplitude="
-            f"{int(params['step_amplitude'])} flux_step_amplitude="
-            f"{int(params['flux_step_amplitude'])} torque_step_amplitude="
-            f"{int(params['torque_step_amplitude'])} pidout_limit={int(params['pidout_limit'])} "
-            f"current_limited={int(params['current_limited'])} voltage_limited="
-            f"{int(params['voltage_limited'])} max_p={int(params['max_p'])}"
         )
         report_detail(log, self.driver.global_config.debug, msg)
 
@@ -793,14 +730,6 @@ class ActiveDiagnostics:
     def last_current_loop_samples(self, oid: int) -> dict[str, list[dict]]:
         """Return current-validation sample replies from the most recent run."""
         return self._last_current_loop_samples.get(oid, {})
-
-    def last_encoder_alignment_evidence(self, oid: int) -> dict:
-        """Return the most recent transient encoder-alignment reply for `oid`."""
-        return self.last_encoder_alignment.get(oid, {})
-
-    def clear_last_encoder_alignment_evidence(self, oid: int) -> dict:
-        """Discard and return the last encoder-alignment reply for `oid`."""
-        return self.last_encoder_alignment.pop(oid, None) or {}
 
     def _copy_inductance_cache(self, cached: dict) -> dict:
         copied = {}

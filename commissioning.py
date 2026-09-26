@@ -771,7 +771,6 @@ class CommissioningWorkflow:
             self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
             self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
             self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
-            self.driver.diagnostics.active.clear_last_encoder_alignment_evidence(self.driver.oid)
 
             self.driver.protocol.run_commission(profile_code)
 

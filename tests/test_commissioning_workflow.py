@@ -1460,39 +1460,6 @@ class CommissionCurrentLoopReplyFoldingTests(unittest.TestCase):
             }
         )
 
-    def test_settled_current_validation_samples_are_cached(self):
-        driver = make_driver()
-        driver.global_config.debug = True
-
-        with self.assertLogs("klipper_foci.diagnostics.active", level="INFO") as log_ctx:
-            driver.diagnostics.active.handle_current_validation_settled_sample(
-                {
-                    "oid": driver.oid,
-                    "axis": 0,
-                    "sample_index": 3,
-                    "direction": 1,
-                    "raw_index": 2,
-                    "attempt": 0,
-                    "target": -128,
-                    "sample_delay_ms": 100,
-                    "same_axis_count": -121,
-                    "cross_axis_count": -37,
-                    "cross_axis_permille": 289,
-                    "voltage_output_permille": 410,
-                    "encoder_delta_counts": 0,
-                    "status_flags": 0x40,
-                }
-            )
-
-        cached = driver.diagnostics.active.current_loop_cache[driver.oid]
-        self.assertEqual(len(cached["settled_samples"]), 1)
-        self.assertEqual(cached["settled_samples"][0]["cross_axis_count"], -37)
-        self.assertEqual(driver.printer.lookup_object("gcode")._responses, [])
-        out = log_ctx.records[-1].message
-        self.assertIn("current validation settled: axis=0", out)
-        self.assertIn("direction=1 raw_index=2", out)
-        self.assertIn("cross_count=-37 cross=289", out)
-
     def _emit_current_loop_run(self, driver) -> None:
         driver.diagnostics.active.handle_current_loop_run(
             {"oid": driver.oid, **self.CURRENT_LOOP_RUN}
@@ -1699,39 +1666,6 @@ class CommissionInductanceReplyFoldingTests(unittest.TestCase):
                     driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
 
                 self.assertNotIn(driver.oid, driver.diagnostics.active.inductance_cache)
-
-
-class CommissionEncoderAlignmentEvidenceTests(unittest.TestCase):
-    """Verify transient encoder-alignment evidence follows commission runs."""
-
-    def test_commission_start_clears_stale_encoder_alignment_evidence(self):
-        driver = make_driver()
-        driver.printer._objects["configfile"] = MockConfigFile()
-        driver.diagnostics.active.handle_encoder_alignment(
-            {
-                "oid": driver.oid,
-                "encoder_count": 163,
-                "electrical_residual_counts": 3,
-                "stability_counts": 1,
-                "movement_counts": 37,
-                "min_movement_counts": 2,
-                "counts_per_electrical_rev": 80,
-            }
-        )
-        result = complete_commission_result()
-
-        def drive_success(_args):
-            driver.commissioning.result = result
-            driver.commissioning.done = True
-
-        driver.protocol.commands.commission.send = drive_success
-
-        driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
-
-        self.assertEqual(
-            driver.diagnostics.active.last_encoder_alignment_evidence(driver.oid),
-            {},
-        )
 
 
 def test_gain_floor_step_overshoot_is_a_named_failure():

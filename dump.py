@@ -338,12 +338,6 @@ class RegisterDumpWorkflow:
         if last_closed_loop_activation:
             lines.append("-- Last closed-loop entry (not persisted) --")
             lines.extend(self._format_last_closed_loop_activation(last_closed_loop_activation))
-        last_encoder_alignment = self.driver.diagnostics.active.last_encoder_alignment_evidence(
-            self.driver.oid
-        )
-        if last_encoder_alignment:
-            lines.append("-- Last encoder alignment (not persisted) --")
-            lines.extend(self._format_last_encoder_alignment(last_encoder_alignment))
         last_inductance = self.driver.diagnostics.active.last_inductance_evidence(self.driver.oid)
         if last_inductance:
             lines.append("-- Last inductance evidence (not persisted) --")
@@ -653,28 +647,6 @@ class RegisterDumpWorkflow:
                 )
                 lines.append(self._format_pair(label, value))
         return lines
-
-    def _format_last_encoder_alignment(self, evidence: dict) -> list[str]:
-        residual = (
-            f"{evidence.get('electrical_residual_counts')}/"
-            f"{evidence.get('counts_per_electrical_rev')} counts"
-        )
-        return [
-            self._format_pair("last.encoder_alignment_count", evidence.get("encoder_count")),
-            self._format_pair("last.encoder_alignment_residual", residual),
-            self._format_pair(
-                "last.encoder_alignment_stability",
-                f"{evidence.get('stability_counts')} counts",
-            ),
-            self._format_pair(
-                "last.encoder_alignment_movement",
-                f"{evidence.get('movement_counts')} counts",
-            ),
-            self._format_pair(
-                "last.encoder_alignment_min_movement",
-                f"{evidence.get('min_movement_counts')} counts",
-            ),
-        ]
 
     def _label_code(self, value: int | None, labels: dict[int, str]) -> str:
         if value is None:

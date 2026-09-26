@@ -594,28 +594,6 @@ def test_tuning_flag_names_bounded_closed_loop_activation_drift():
     assert "last.entry_drift                 = drift=17 threshold=2" in output
 
 
-def test_tuning_flag_appends_last_encoder_alignment_evidence():
-    driver = make_driver()
-    driver.diagnostics.active.handle_encoder_alignment(
-        {
-            "oid": driver.oid,
-            "encoder_count": 163,
-            "electrical_residual_counts": 3,
-            "stability_counts": 1,
-            "movement_counts": 37,
-            "min_movement_counts": 2,
-            "counts_per_electrical_rev": 80,
-        }
-    )
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    assert "-- Last encoder alignment (not persisted) --" in output
-    assert "last.encoder_alignment_count       = 163" in output
-    assert "last.encoder_alignment_residual    = 3/80 counts" in output
-    assert "last.encoder_alignment_stability   = 1 counts" in output
-
-
 def test_tuning_flag_labels_last_current_validation_gate_samples():
     driver = make_driver()
     for sample in (
