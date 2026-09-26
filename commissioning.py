@@ -845,16 +845,16 @@ class CommissioningWorkflow:
                     result.get("timing_summary", 0)
                 )
             except ValueError as error:
-                self.on_commission_failure(str(error))
                 # This branch only runs once the firmware itself reported success,
                 # meaning closed-loop entry already armed the motor directly
                 # through the commissioning backend, bypassing EnableLine. Sync
                 # EnableLine to that armed state before disabling, or its own
                 # is_enabled bookkeeping (still False) makes motor_disable() a
                 # no-op and no command ever reaches the MCU.
-                enable_line.motor_enable(toolhead.get_last_move_time())
+                self.driver.homing.sync_enable_line_armed()
                 enable_line.motor_disable(toolhead.get_last_move_time())
                 toolhead.wait_moves()
+                self.on_commission_failure(str(error))
                 report_summary(
                     gcmd,
                     f"FOCI_SETUP {self.driver.stepper_name}: FAILED — timing evidence "

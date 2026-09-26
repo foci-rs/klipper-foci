@@ -59,6 +59,7 @@ class HomingWorkflow:
         self.driver = driver
         self._homing_move_start_times: dict[int, float] = {}
         self._enable_patched = False
+        self._mirroring_firmware_arm = False
 
     def install_enable_hooks(self) -> None:
         """Install Klipper enable hooks that run FOCI calibration before enable."""
@@ -209,7 +210,7 @@ class HomingWorkflow:
                 axis_names,
             )
 
-    def _sync_enable_line_armed(self) -> None:
+    def sync_enable_line_armed(self) -> None:
         """Mirror a firmware-armed motor into Klipper's EnableLine.
 
         `run_calibration()` arms the motor directly through the FOCI
@@ -223,7 +224,11 @@ class HomingWorkflow:
         stepper_enable = self.driver.printer.lookup_object("stepper_enable")
         enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
         toolhead = self.driver.printer.lookup_object("toolhead")
-        enable_line.motor_enable(toolhead.get_last_move_time())
+        self._mirroring_firmware_arm = True
+        try:
+            enable_line.motor_enable(toolhead.get_last_move_time())
+        finally:
+            self._mirroring_firmware_arm = False
 
     def ensure_calibrated(self, sync_enable_line: bool = True) -> None:
         """Run calibration if not already calibrated. Blocks until complete.
@@ -298,7 +303,7 @@ class HomingWorkflow:
             if status == 5:
                 self.driver.state.is_calibrated = True
                 if sync_enable_line:
-                    self._sync_enable_line_armed()
+                    self.sync_enable_line_armed()
                 logging.info(
                     "FOCI %s: already calibrated (firmware auto-cal)",
                     self.driver.name,
@@ -316,7 +321,7 @@ class HomingWorkflow:
             self._report_calibration_details()
             self.driver.state.is_calibrated = True
             if sync_enable_line:
-                self._sync_enable_line_armed()
+                self.sync_enable_line_armed()
             logging.info(
                 "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
                 self.driver.name,
@@ -544,6 +549,7 @@ class HomingWorkflow:
     def handle_stepper_enable(self, print_time, is_enable) -> None:
         """Synchronize FOCI calibration state with Klipper stepper enable."""
         if is_enable:
-            self.ensure_calibrated(sync_enable_line=False)
+            if not self._mirroring_firmware_arm:
+                self.ensure_calibrated(sync_enable_line=False)
         else:
             self.driver.state.is_calibrated = False
