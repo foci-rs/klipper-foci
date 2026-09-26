@@ -984,7 +984,6 @@ class CommissioningWorkflow:
             self.handle_chip_reset_detected()
 
     def _commissioned_velocity_limit(self) -> int:
-        """Return the velocity limit the firmware commissioned with."""
         if self.driver.settings.pid_velocity_limit is None:
             return FIRMWARE_DEFAULT_VELOCITY_LIMIT
         return self.driver.settings.pid_velocity_limit

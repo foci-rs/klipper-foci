@@ -173,7 +173,6 @@ class HomingWorkflow:
         )
 
     def _driver_axes(self, kin, rails) -> set[int]:
-        """Return the kinematic axes moved by the rails carrying this stepper."""
         coupling = self.COUPLED_AXES.get(type(kin).__name__)
         axes = set()
         for rail_index, rail in enumerate(rails):
