@@ -259,8 +259,6 @@ def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
 
 
 def test_mirrored_slot_order_flag_is_accepted():
-    """Bit 2 of the plan recovery flags marks a run whose forward and reverse
-    observation slots executed in mirrored order."""
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, maximum_ms=182_512)
     feed_plan(
@@ -314,8 +312,6 @@ def test_breakaway_integral_plan_requires_breakaway_workflow():
 
 @pytest.mark.parametrize("schema_revision", [2, 7, 13, 14, 17])
 def test_plan_core_rejects_schemas_firmware_no_longer_sends(schema_revision):
-    """Firmware sends only the breakaway-seeded Integral schema; every other
-    revision is refused at the plan-core gate."""
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
 

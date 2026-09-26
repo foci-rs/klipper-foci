@@ -361,11 +361,6 @@ class VelocityIntegralAssembler:
         plan["probe_constrained_test_point"] = bool(
             int(plan["flags"]) & PLAN_PROBE_CONSTRAINED_TEST_POINT
         )
-        # The breakaway campaign's velocity-integral continuation is authorized
-        # by the accepted confirmation digest (see BreakawayCampaignAssembler),
-        # not by a schema pairing, so only the workflow shape is checked here. A
-        # resume replays the same plan from retained authority under the resume
-        # shape.
         workflow_shape = int(self.workflow_plan["shape"])
         if workflow_shape not in (SHAPE_BREAKAWAY_SEEDED, SHAPE_RESUME):
             raise VelocityIntegralProtocolError(
@@ -551,11 +546,6 @@ CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 # Current firmware revisions, used when this host authors a request.
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
 BREAKAWAY_INTEGRAL_SCHEMA_REVISION = 18
-# First revision of the breakaway discovery stream. This is a boundary, not a
-# set: every revision at or above it is a breakaway plan. The upper end stays
-# bounded by the current revision above, so a stream from firmware newer than
-# this host is refused rather than mis-parsed against rules that may no longer
-# hold.
 BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION = 15
 
 BREAKAWAY_PROBE_MAX_OBSERVATIONS = 128

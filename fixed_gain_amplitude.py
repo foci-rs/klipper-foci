@@ -210,7 +210,6 @@ class FixedGainAmplitudeAssembler:
             AMPLITUDE_COUNT : AMPLITUDE_COUNT + 5
         ]
         recovery_lower_rate_q = tuple(tail[AMPLITUDE_COUNT + 5 :])
-        # The amplitude order occupies the low nibble and the slot order the high one.
         amplitude_order = order & 0x0F
         slot_order = order >> 4
         if amplitude_order not in (AMPLITUDE_ORDER_ASCENDING, AMPLITUDE_ORDER_DESCENDING):
