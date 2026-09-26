@@ -154,7 +154,6 @@ SAMPLE_POSITION_TUNE_RESULT = {
     "motion_cruise_mean_abs_units": 210,
     "motion_overshoot_units": 40,
     "motion_cruise_rms_units": 12,
-    "nominal_bandwidth_hz": 192,
     "dither_margin_milli": 0,
     "rungs_measured": 1,
     "stimulus_feedforward_paths": 1,
