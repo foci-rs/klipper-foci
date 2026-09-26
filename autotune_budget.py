@@ -1,4 +1,4 @@
-"""Host-side safe-motion budget calculation for FOCI Stage 2 autotune."""
+"""Host-side safe-motion budget calculation for FOCI installed-tuning autotune."""
 
 from __future__ import annotations
 

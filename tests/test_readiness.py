@@ -47,7 +47,7 @@ def test_clean_substrate_is_ready_normal():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY
-    assert report.stage2_policy == POLICY_NORMAL
+    assert report.installed_tuning_policy == POLICY_NORMAL
     assert report.blockers == ()
     assert report.warnings == ()
     assert report.tau_e_us == 730
@@ -65,7 +65,7 @@ def test_missing_inner_confidence_sets_bit6_and_forces_conservative():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY_WITH_WARNINGS
-    assert report.stage2_policy == POLICY_CONSERVATIVE
+    assert report.installed_tuning_policy == POLICY_CONSERVATIVE
     assert report.inner_warning_flags == 0x40
     assert any("host-default confidence" in item for item in report.warnings)
 
@@ -78,7 +78,7 @@ def test_default_current_gains_force_conservative():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY_WITH_WARNINGS
-    assert report.stage2_policy == POLICY_CONSERVATIVE
+    assert report.installed_tuning_policy == POLICY_CONSERVATIVE
     assert any("current gains fell back" in item for item in report.warnings)
 
 
@@ -102,7 +102,7 @@ def test_model_quality_flags_derate_without_forcing_conservative():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY_WITH_WARNINGS
-    assert report.stage2_policy == POLICY_DERATED
+    assert report.installed_tuning_policy == POLICY_DERATED
     assert any("coil R mismatch" in item for item in report.warnings)
     assert any("theta/tau ratio" in item for item in report.warnings)
 
@@ -114,7 +114,7 @@ def test_inner_warning_bit4_alone_is_ignored():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY
-    assert report.stage2_policy == POLICY_NORMAL
+    assert report.installed_tuning_policy == POLICY_NORMAL
     assert report.warnings == ()
 
 
@@ -125,13 +125,13 @@ def test_saliency_status_does_not_affect_readiness():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY
-    assert report.stage2_policy == POLICY_NORMAL
+    assert report.installed_tuning_policy == POLICY_NORMAL
     assert report.unavailable_inputs == ()
     assert "ld_lq_split" not in report.trusted_inputs
     assert "average_inductance" in report.trusted_inputs
 
 
-def test_average_inductance_missing_marks_stage2_policy_unavailable():
+def test_average_inductance_missing_marks_installed_tuning_policy_unavailable():
     driver = _driver_ready_for_autotune()
     driver.config.identified_l_source = 0
     driver.config.identified_l_reactance_count_ratio_milli = None
@@ -139,7 +139,7 @@ def test_average_inductance_missing_marks_stage2_policy_unavailable():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY_WITH_WARNINGS
-    assert report.stage2_policy == POLICY_UNAVAILABLE
+    assert report.installed_tuning_policy == POLICY_UNAVAILABLE
     assert "average_inductance" in report.unavailable_inputs
 
 
@@ -150,7 +150,7 @@ def test_current_loop_failure_blocks_autotune():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_BLOCKED
-    assert report.stage2_policy == POLICY_UNAVAILABLE
+    assert report.installed_tuning_policy == POLICY_UNAVAILABLE
     assert any("current-loop failure" in item for item in report.blockers)
 
 
@@ -226,7 +226,7 @@ def test_fresh_commissioned_evidence_overrides_stale_config_for_readiness():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY
-    assert report.stage2_policy == POLICY_NORMAL
+    assert report.installed_tuning_policy == POLICY_NORMAL
     assert report.warnings == ()
     assert report.unavailable_inputs == ()
     assert "average_inductance" in report.trusted_inputs
@@ -254,7 +254,7 @@ def test_fresh_commissioned_current_loop_failure_blocks_despite_stale_config():
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_BLOCKED
-    assert report.stage2_policy == POLICY_UNAVAILABLE
+    assert report.installed_tuning_policy == POLICY_UNAVAILABLE
     assert any("current-loop failure reason=6" in item for item in report.blockers)
 
 
@@ -280,7 +280,7 @@ def test_closed_loop_activation_warning_is_ready_with_warnings_and_normal_policy
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY_WITH_WARNINGS
-    assert report.stage2_policy == POLICY_NORMAL
+    assert report.installed_tuning_policy == POLICY_NORMAL
     assert any("bounded closed-loop entry drift" in item for item in report.warnings)
 
 
@@ -294,7 +294,7 @@ def test_sustained_hold_warning_flags_are_ready_with_warnings_and_normal_policy(
     report = resolve_autotune_readiness(driver)
 
     assert report.result == RESULT_READY_WITH_WARNINGS
-    assert report.stage2_policy == POLICY_NORMAL
+    assert report.installed_tuning_policy == POLICY_NORMAL
     assert any("bounded sustained-hold warning flags=3" in item for item in report.warnings)
 
 

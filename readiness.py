@@ -22,7 +22,7 @@ DERATING_INNER_FLAGS = (1 << 0) | (1 << 1) | (1 << 3)
 CURRENT_HOLD_BLOCKING_STATUSES = frozenset((2, 3, 4))
 CLOSED_LOOP_ACTIVATION_BLOCKING_STATUSES = frozenset((2, 3))
 CLOSED_LOOP_ACTIVATION_WARN_DRIFT = 4
-REQUIRED_STAGE2_INPUTS = frozenset(("average_inductance",))
+REQUIRED_INSTALLED_TUNING_INPUTS = frozenset(("average_inductance",))
 
 
 @dataclass(frozen=True)
@@ -30,7 +30,7 @@ class AutotuneReadiness:
     """Computed readiness report for installed-tuning autotune admission."""
 
     result: str
-    stage2_policy: str
+    installed_tuning_policy: str
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
     trusted_inputs: tuple[str, ...]
@@ -82,7 +82,7 @@ def resolve_autotune_readiness(
     _classify_resistance(resistance_evidence, trusted_inputs)
     _classify_last_hold_and_entry(driver, blockers, warnings)
 
-    stage2_policy = _stage2_policy(
+    installed_tuning_policy = _installed_tuning_policy(
         blockers,
         warnings,
         unavailable_inputs,
@@ -98,7 +98,7 @@ def resolve_autotune_readiness(
 
     return AutotuneReadiness(
         result=result,
-        stage2_policy=stage2_policy,
+        installed_tuning_policy=installed_tuning_policy,
         blockers=tuple(blockers),
         warnings=tuple(warnings),
         trusted_inputs=tuple(_dedupe(trusted_inputs)),
@@ -115,7 +115,7 @@ def format_readiness_report(report: AutotuneReadiness, stepper_name: str) -> lis
         "-- Autotune readiness --",
         f"  FOCI {stepper_name} autotune readiness:",
         f"    result: {report.result}",
-        f"    installed_tuning_policy: {report.stage2_policy}",
+        f"    installed_tuning_policy: {report.installed_tuning_policy}",
         f"    blockers: {_format_list(report.blockers)}",
         f"    warnings: {_format_list(report.warnings)}",
         f"    trusted_inputs: {_format_list(report.trusted_inputs)}",
@@ -333,7 +333,7 @@ def _classify_last_hold_and_entry(
         warnings.append("bounded closed-loop entry drift")
 
 
-def _stage2_policy(
+def _installed_tuning_policy(
     blockers: list[str],
     warnings: list[str],
     unavailable_inputs: list[str],
@@ -342,7 +342,7 @@ def _stage2_policy(
 ) -> str:
     if blockers:
         return POLICY_UNAVAILABLE
-    if _required_stage2_inputs_missing(unavailable_inputs):
+    if _required_installed_tuning_inputs_missing(unavailable_inputs):
         return POLICY_UNAVAILABLE
     if inner_warning_flags & CONSERVATIVE_INNER_FLAGS or current_bandwidth_hz in (
         None,
@@ -354,8 +354,8 @@ def _stage2_policy(
     return POLICY_NORMAL
 
 
-def _required_stage2_inputs_missing(unavailable_inputs: list[str]) -> bool:
-    return any(value in REQUIRED_STAGE2_INPUTS for value in unavailable_inputs)
+def _required_installed_tuning_inputs_missing(unavailable_inputs: list[str]) -> bool:
+    return any(value in REQUIRED_INSTALLED_TUNING_INPUTS for value in unavailable_inputs)
 
 
 def _format_list(values: tuple[str, ...]) -> str:

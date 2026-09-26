@@ -2949,7 +2949,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertIn("unsupported kinematics", str(ctx.exception))
         self.assertIsNone(d.protocol.commands.tune.last_args)
 
-    def test_unavailable_stage2_inputs_refuse_before_homing_invalidation_and_tune(self):
+    def test_unavailable_installed_tuning_inputs_refuse_before_homing_invalidation_and_tune(self):
         d = self._ready_driver()
         d.config.identified_l_source = 0
         d.config.identified_l_reactance_count_ratio_milli = None

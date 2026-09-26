@@ -1190,7 +1190,7 @@ class AutotuneWorkflow:
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE blocked: "
                     f"{'; '.join(readiness.blockers)}"
                 )
-            if readiness.stage2_policy == POLICY_UNAVAILABLE:
+            if readiness.installed_tuning_policy == POLICY_UNAVAILABLE:
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_AUTOTUNE installed-tuning unavailable "
                     f"inputs: "

@@ -548,7 +548,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
-    # Stage 1 fails; firmware emits a foci_selftest_result then foci_selftest_done
+    # The ADC-calibration stage fails; firmware emits a foci_selftest_result then foci_selftest_done
     # with the ADC calibration fault code (4 = "ADC calibration fault").
     def drive_stream(_args):
         d.commissioning.handle_commission_detail(
@@ -581,7 +581,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     out = caplog.text
     assert "FAIL" in out
     assert "legacy inductance fit rejected" in out
-    assert "1/1 stages" not in out  # stage 1 failed, so passed count is 0
+    assert "1/1 stages" not in out  # the only stage failed, so passed count is 0
     assert "0/1 stages" not in out
 
 
