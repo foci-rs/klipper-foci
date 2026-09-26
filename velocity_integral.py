@@ -110,11 +110,6 @@ class VelocityIntegralAssembler:
         self._run_sequence: int | None = None
 
     @property
-    def plan_ready(self) -> bool:
-        """Whether the exact velocity-integral plan has arrived."""
-        return self.plan is not None
-
-    @property
     def maximum_duration_s(self) -> float | None:
         """Firmware-declared command-level maximum duration in seconds."""
         if self.workflow_plan is None:
