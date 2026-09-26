@@ -2488,9 +2488,9 @@ def test_nominal_bandwidth_hz_matches_the_firmware_formula():
         assert _nominal_bandwidth_hz(last_rung_p) == expected, last_rung_p
 
 
-# Narrow `FociTuneResult` terminal shape (spec-2 frame-budget split): only the
-# fields the terminal reply itself carries after the position-tune evidence
-# was pulled into its own fragment.
+# Narrow `FociTuneResult` terminal shape: only the fields the terminal reply
+# itself carries after the position-tune evidence was pulled into its own
+# fragment.
 NARROW_TUNE_TERMINAL = {
     "status": 0,
     "velocity_p": 1152,
@@ -2510,8 +2510,7 @@ NARROW_TUNE_TERMINAL = {
 
 # `FociTunePositionEvidence` fragment shape, stitched onto the terminal above
 # by (oid, report_seq) before the terminal fires -- mirrors ActiveDiagnostics'
-# own fragment-cache stitch shape (Task 4), reused here rather than
-# reimplemented.
+# own fragment-cache stitch shape, reused here rather than reimplemented.
 TUNE_POSITION_EVIDENCE = {
     "last_rung_p": 282,
     "min_overshoot_p": 0,

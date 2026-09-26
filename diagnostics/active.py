@@ -46,7 +46,7 @@ class ActiveDiagnostics:
         # the wrong report (e.g. an earlier run whose terminal was lost).
         # Fragments only exist when the terminal's status == 0; a non-zero
         # status terminal discards whatever is cached without rendering it.
-        # Task 7 (tune) reuses this exact shape.
+        # This shape generalizes to any fragment/terminal report pair.
         self.current_torque_sample_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
         self.voltage_step_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
         # Transient per-driver cache of the commission-stream resistance

@@ -294,9 +294,9 @@ class AutotuneWorkflow:
         self.position_tune_workflow_plan: dict | None = None
         self._proportional_candidate_request: dict | None = None
         # Per-oid stitch cache for foci_tune_position_evidence, keyed onto
-        # (report_seq, {"evidence": params}) like ActiveDiagnostics' own
-        # fragment caches (Task 4's stitch shape, reused here rather than
-        # reimplemented).
+        # (report_seq, {"evidence": params}) -- the same shape as
+        # ActiveDiagnostics' own fragment caches, reused here rather than
+        # reimplemented.
         self.tune_position_evidence_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
         self.done = False
 
