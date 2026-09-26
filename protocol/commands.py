@@ -10,6 +10,7 @@ from .bindings import (
     register_last_boot_diagnostic_response,
     register_motion_scale_responses,
     register_selftest_responses,
+    register_stepper_event_response,
 )
 
 
@@ -198,6 +199,7 @@ class FociMcuCommands:
         )
         self.resistance_test = mcu.lookup_command("tmc_resistance_test oid=%c detail=%c")
         register_active_diagnostic_responses(mcu._serial, driver, oid)
+        register_stepper_event_response(mcu, driver)
         self.set_auto_calibrate_on_enable = mcu.lookup_command(
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
         )

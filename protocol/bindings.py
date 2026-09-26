@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import logging
+import weakref
+
+from ..diagnostics.formatting import format_stepper_event
+from ..report import report_detail
+
+log = logging.getLogger(__name__)
+
+_STEPPER_EVENT_ROUTES: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 MOTION_SCALE_REJECTION_NAMES = {
     1: "encoder_ppr is zero",
@@ -346,7 +354,29 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
         "foci_current_validation_envelope",
         oid,
     )
-    serial.register_response(
-        driver.diagnostics.handle_stepper_event,
-        "foci_stepper_event",
-    )
+
+
+def register_stepper_event_response(mcu, driver) -> None:
+    """Route `foci_stepper_event` to the driver that owns the event's channel.
+
+    The reply carries a board channel but no oid, so it is registered once per
+    MCU; a per-driver registration would let whichever driver bound last
+    receive, and mislabel, every channel's events.
+    """
+    serial = mcu._serial
+    routes = _STEPPER_EVENT_ROUTES.get(serial)
+    if routes is None:
+        routes = {}
+        _STEPPER_EVENT_ROUTES[serial] = routes
+        mcu_name = mcu.get_name()
+
+        def handle_stepper_event(params: dict) -> None:
+            owner = routes.get(int(params.get("channel", 255)))
+            if owner is not None:
+                owner.diagnostics.handle_stepper_event(params)
+                return
+            debug = any(d.global_config.debug for d in routes.values())
+            report_detail(log, debug, format_stepper_event(f"mcu {mcu_name}", params))
+
+        serial.register_response(handle_stepper_event, "foci_stepper_event")
+    routes[int(driver.channel)] = driver
