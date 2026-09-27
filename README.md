@@ -23,9 +23,16 @@ consumers.
    ~/klippy-env/bin/pip install klipper-foci-diagnostics klipper-foci-tuning
    ```
 
-2. Copy `deploy/klippy-plugins/foci.py` to `<klipper>/klippy/plugins/foci.py`.
-   Klipper's extras loader scans `klippy/plugins/` on disk and will find
-   this file; all the actual logic stays in the pip-installed package.
+2. Copy the shim to the right directory for your distribution — all the
+   actual logic stays in the pip-installed package either way:
+
+   - **Mainline Klipper**: copy `deploy/klippy-extras/foci.py` to
+     `<klipper>/klippy/extras/foci.py`. Mainline Klipper's loader only
+     scans `klippy/extras/`.
+   - **Kalico**: copy `deploy/klippy-plugins/foci.py` to
+     `<klipper>/klippy/plugins/foci.py`. Kalico's loader scans both
+     `klippy/extras/` and `klippy/plugins/`, but `klippy/plugins/` keeps
+     the shim out of the directory Kalico's own extras modules live in.
 
 See the [FOCI project README](https://github.com/foci-rs/foci) for full setup instructions.
 

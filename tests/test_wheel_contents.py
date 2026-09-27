@@ -94,14 +94,17 @@ def test_core_alone_install_cannot_import_optional_packages(tmp_path):
 
 
 def test_core_alone_install_supports_deploy_shim(tmp_path):
-    """Confirm the deploy shim actually resolves against a real install.
+    """Confirm both deploy shims actually resolve against a real install.
 
-    The re-export module `klipper_foci.klipper` and the deploy artifact at
-    `deploy/klippy-plugins/foci.py` are both load-bearing: Klipper's extras
-    loader only finds the shim file on disk, never the installed package
-    directly, so a broken re-export would only surface once someone copied
-    the shim onto a real Klipper install. This exercises both, from outside
-    the source tree, against a core-only install.
+    The re-export module `klipper_foci.klipper` and the two deploy
+    artifacts -- `deploy/klippy-plugins/foci.py` (Kalico, whose loader
+    scans klippy/plugins/) and `deploy/klippy-extras/foci.py` (mainline
+    Klipper, whose loader never scans klippy/plugins/, only
+    klippy/extras/) -- are all load-bearing: Klipper's loader only finds
+    a shim file on disk, never the installed package directly, so a
+    broken re-export would only surface once someone copied a shim onto
+    a real Klipper/Kalico install. This exercises the re-export and both
+    shims, from outside the source tree, against a core-only install.
     """
     core_wheel = _build_wheel(_HOST_KLIPPER_FOCI / "klipper_foci", tmp_path / "core_for_shim")
     venv_dir = tmp_path / "venv"
@@ -125,17 +128,18 @@ def test_core_alone_install_supports_deploy_shim(tmp_path):
     )
     assert result.returncode == 0, result.stderr
 
-    deploy_shim = _HOST_KLIPPER_FOCI / "deploy" / "klippy-plugins" / "foci.py"
-    load_shim_script = (
-        "import importlib.util\n"
-        f"spec = importlib.util.spec_from_file_location('foci_deploy_shim', {str(deploy_shim)!r})\n"
-        "module = importlib.util.module_from_spec(spec)\n"
-        "spec.loader.exec_module(module)\n"
-        "assert callable(module.load_config)\n"
-        "assert callable(module.load_config_prefix)\n"
-    )
-    result = subprocess.run(
-        [str(venv_python), "-c", load_shim_script],
-        capture_output=True, text=True, cwd=tmp_path,
-    )
-    assert result.returncode == 0, result.stderr
+    for shim_dir in ("klippy-plugins", "klippy-extras"):
+        deploy_shim = _HOST_KLIPPER_FOCI / "deploy" / shim_dir / "foci.py"
+        load_shim_script = (
+            "import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('foci_deploy_shim', {str(deploy_shim)!r})\n"
+            "module = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(module)\n"
+            "assert callable(module.load_config)\n"
+            "assert callable(module.load_config_prefix)\n"
+        )
+        result = subprocess.run(
+            [str(venv_python), "-c", load_shim_script],
+            capture_output=True, text=True, cwd=tmp_path,
+        )
+        assert result.returncode == 0, f"{shim_dir}: {result.stderr}"
