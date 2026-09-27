@@ -88,10 +88,31 @@ teardown() { rm -rf "$TEST_ROOT"; }
   [ ! -f "$TEST_ROOT/restarts.log" ]
 }
 
+@test "foci_main aborts and skips shim/moonraker/restart when pip_install fails" {
+  pip_install() { echo "pip_install:$*" >> "$TEST_ROOT/pip.log"; return 1; }
+  export -f pip_install
+  run foci_main
+  [ "$status" -eq 1 ]
+  [ ! -f "$TEST_ROOT/klipper/klippy/extras/foci.py" ]
+  [ ! -f "$TEST_ROOT/restarts.log" ]
+}
+
 @test "foci_main --help prints usage and does nothing else" {
   run foci_main --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage:"* ]]
   [ ! -f "$TEST_ROOT/pip.log" ]
   [ ! -f "$TEST_ROOT/klipper/klippy/extras/foci.py" ]
+}
+
+@test "foci_main run twice with identical flags is fully idempotent end to end" {
+  run foci_main --diagnostics --tuning
+  [ "$status" -eq 0 ]
+  run foci_main --diagnostics --tuning
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'pip_install' "$TEST_ROOT/pip.log")" -eq 2 ]
+  grep -c 'pip_install:klipper-foci\[diagnostics,tuning\]==0.3.0' "$TEST_ROOT/pip.log" | grep -q '^2$'
+  [ "$(grep -c 'klippy/extras/foci.py' "$TEST_ROOT/klipper/.git/info/exclude")" -eq 1 ]
+  [ "$(grep -c '\[update_manager klipper-foci\]' "$TEST_ROOT/moonraker.conf")" -eq 1 ]
+  [ "$(grep -c 'project_name: klipper-foci\[diagnostics,tuning\]' "$TEST_ROOT/moonraker.conf")" -eq 1 ]
 }

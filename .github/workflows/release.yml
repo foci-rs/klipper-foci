@@ -41,9 +41,19 @@ jobs:
           files: dist/*
       - name: Publish to the PEP 503 index on gh-pages
         run: |
-          git fetch origin gh-pages || true
-          git worktree add /tmp/gh-pages gh-pages 2>/dev/null || \
-            (git worktree add -B gh-pages /tmp/gh-pages origin/main && rm -rf /tmp/gh-pages/*)
+          # actions/checkout configures a narrow fetch refspec covering only
+          # the tag that triggered this run, so a plain "git fetch origin
+          # gh-pages" would populate FETCH_HEAD without ever updating the
+          # origin/gh-pages remote-tracking ref this step depends on -- the
+          # explicit destination below forces that ref to exist regardless
+          # of the ambient fetch config.
+          git fetch origin +refs/heads/gh-pages:refs/remotes/origin/gh-pages || true
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git worktree add -B gh-pages /tmp/gh-pages origin/gh-pages
+          else
+            git worktree add -B gh-pages /tmp/gh-pages origin/main
+            rm -rf /tmp/gh-pages/*
+          fi
           for pkg in klipper-foci klipper-foci-diagnostics klipper-foci-tuning; do
             mkdir -p "/tmp/gh-pages/simple/$pkg"
             for asset_url in $(python -c "import json,sys; print('\n'.join(a['browser_download_url'] for a in json.loads('''${{ steps.gh_release.outputs.assets }}''') if a['name'].startswith('${pkg//-/_}')))"); do

@@ -223,7 +223,10 @@ foci_main() {
         pip_target="klipper-foci[$extras]"
         project_name="klipper-foci[$extras]"
     fi
-    pip_install "${pip_target}==${INSTALLER_VERSION}"
+    pip_install "${pip_target}==${INSTALLER_VERSION}" || {
+        log "pip install failed for ${pip_target}==${INSTALLER_VERSION}." >&2
+        return 1
+    }
 
     local variant shim_target shim_content
     variant="$(foci_select_shim_variant "$KLIPPER_PLUGINS_PATH")"
