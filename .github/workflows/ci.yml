@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -54,5 +55,15 @@ jobs:
         run: ruff check tests deploy
       - name: ruff format --check (repo-level tests and deploy shims)
         run: ruff format --check tests deploy
-      - name: pytest tests/test_wheel_contents.py
-        run: pytest -q tests/test_wheel_contents.py
+      - name: pytest tests/
+        run: pytest -q tests/
+
+  installer-shell-tests:
+    name: installer.sh bats suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install bats-core
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - name: Run installer_tests/
+        run: bats installer_tests/

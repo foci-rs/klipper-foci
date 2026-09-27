@@ -14,13 +14,37 @@ consumers.
 
 ## Deployment
 
+The recommended install is a single command, run on the printer:
+
+```sh
+curl -sL https://raw.githubusercontent.com/mjonuschat/foci/main/install.sh | bash
+```
+
+Add `-s -- --diagnostics` and/or `-s -- --tuning` before the pipe's final
+`bash` to also install the optional diagnostics/tuning packages — for
+example:
+
+```sh
+curl -sL https://raw.githubusercontent.com/mjonuschat/foci/main/install.sh | bash -s -- --diagnostics --tuning
+```
+
+(`bash -s -- <args>` is required, not `bash -- <args>`: a script fed on
+stdin has no filename argument of its own, so a bare `--` after `bash` is
+parsed as the script's positional filename rather than an argument
+separator.) This detects Kalico vs. mainline Klipper, installs from this
+project's self-hosted package index, places the loader shim in the right
+directory, and registers the package with Moonraker's `update_manager` so
+the printer can self-update going forward.
+
+### Manual install (development / troubleshooting)
+
 1. Install the packages you need into Klipper's virtual environment
    (`klippy-env`):
 
    ```sh
-   ~/klippy-env/bin/pip install klipper-foci
+   ~/klippy-env/bin/pip install --index-url https://mjonuschat.github.io/klipper-foci/simple/ klipper-foci
    # optionally:
-   ~/klippy-env/bin/pip install klipper-foci-diagnostics klipper-foci-tuning
+   ~/klippy-env/bin/pip install --index-url https://mjonuschat.github.io/klipper-foci/simple/ klipper-foci-diagnostics klipper-foci-tuning
    ```
 
 2. Copy the shim to the right directory for your distribution — all the

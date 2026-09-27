@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Install build tooling
+        run: pip install build hatch-vcs
+      - name: Pin optional-dependency extras to this release
+        run: python scripts/patch_optional_deps.py klipper_foci/pyproject.toml "${{ steps.version.outputs.version }}"
+      - name: Build wheels and sdists
+        run: |
+          for pkg in klipper_foci klipper_foci_diagnostics klipper_foci_tuning; do
+            python -m build "$pkg" --outdir dist
+          done
+      - name: Verify the extras pin took effect
+        run: python scripts/verify_extras_pin.py dist/klipper_foci-*.whl "${{ steps.version.outputs.version }}"
+      - name: Create GitHub Release and upload wheels/sdists
+        id: gh_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+      - name: Publish to the PEP 503 index on gh-pages
+        run: |
+          git fetch origin gh-pages || true
+          git worktree add /tmp/gh-pages gh-pages 2>/dev/null || \
+            (git worktree add -B gh-pages /tmp/gh-pages origin/main && rm -rf /tmp/gh-pages/*)
+          for pkg in klipper-foci klipper-foci-diagnostics klipper-foci-tuning; do
+            mkdir -p "/tmp/gh-pages/simple/$pkg"
+            for asset_url in $(python -c "import json,sys; print('\n'.join(a['browser_download_url'] for a in json.loads('''${{ steps.gh_release.outputs.assets }}''') if a['name'].startswith('${pkg//-/_}')))"); do
+              name=$(basename "$asset_url")
+              grep -qF "$asset_url" "/tmp/gh-pages/simple/$pkg/index.html" 2>/dev/null || \
+                echo "<a href=\"$asset_url\">$name</a><br>" >> "/tmp/gh-pages/simple/$pkg/index.html"
+            done
+          done
+          cat > /tmp/gh-pages/simple/index.html <<'INDEXEOF'
+          <a href="klipper-foci/">klipper-foci</a><br>
+          <a href="klipper-foci-diagnostics/">klipper-foci-diagnostics</a><br>
+          <a href="klipper-foci-tuning/">klipper-foci-tuning</a><br>
+          INDEXEOF
+          cd /tmp/gh-pages
+          git add -A
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Publish ${{ steps.version.outputs.version }} to the simple index"
+          git push origin gh-pages
+      - name: Build the installer asset
+        run: make installer VERSION="${{ steps.version.outputs.version }}" INDEX_URL="https://mjonuschat.github.io/klipper-foci/simple/"
+      - name: Smoke-test the generated installer
+        run: |
+          bash -n build/klipper-foci-installer.sh
+          bash build/klipper-foci-installer.sh --help | grep -q 'Usage:'
+      - name: Checksum the installer
+        # cd first: the bootstrap downloads this file as a bare
+        # "klipper-foci-installer.sh" and runs `shasum -c` against that
+        # filename, which only matches a checksum file recorded without a
+        # "build/" prefix.
+        run: cd build && shasum -a 256 klipper-foci-installer.sh > klipper-foci-installer.sh.sha256
+      - name: Upload installer asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/klipper-foci-installer.sh
+            build/klipper-foci-installer.sh.sha256
+      - name: Verify the new release's own assets are publicly reachable
+        run: |
+          # A bare version substring can false-positive: "1.2.3" is a
+          # substring of an older "1.2.30" release's filename. Require a
+          # non-digit boundary on both sides of the version so "1.2.3" only
+          # matches "1.2.3" exactly, not as a prefix of "1.2.30".
+          version="${{ steps.version.outputs.version }}"
+          pattern="(^|[^0-9])${version//./\\.}([^0-9]|$)"
+          for i in $(seq 1 30); do
+            ok=1
+            curl -fsS "https://mjonuschat.github.io/klipper-foci/simple/" \
+              | grep -q 'klipper-foci-diagnostics/' || ok=0
+            for pkg in klipper-foci klipper-foci-diagnostics klipper-foci-tuning; do
+              curl -fsS "https://mjonuschat.github.io/klipper-foci/simple/$pkg/" \
+                | grep -qE "$pattern" || ok=0
+            done
+            [ "$ok" = "1" ] && exit 0
+            sleep 10
+          done
+          echo "gh-pages did not reflect release $version within 5 minutes" >&2
+          exit 1
