@@ -212,19 +212,3 @@ class FociMcuCommands:
             " peak_margin_delta_units=%u",
             oid=oid,
         )
-
-    @staticmethod
-    def _optional_lookup_command(mcu, fmt: str):
-        """Return a command handle when a dev-gated MCU command exists."""
-        try:
-            return mcu.lookup_command(fmt)
-        except Exception:
-            return None
-
-    @staticmethod
-    def _optional_lookup_query_command(mcu, send_fmt: str, recv_fmt: str, *, oid: int):
-        """Return a query handle when a dev-gated MCU command exists."""
-        try:
-            return mcu.lookup_query_command(send_fmt, recv_fmt, oid=oid)
-        except Exception:
-            return None
