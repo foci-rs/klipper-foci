@@ -7,6 +7,7 @@ same numbers.
 """
 
 import pytest
+
 from klipper_foci.diagnostics.stepper_scale import derived_exec_stats
 
 WAVEFORM_TIMING_CASES = [

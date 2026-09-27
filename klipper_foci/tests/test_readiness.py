@@ -12,7 +12,6 @@ from klipper_foci.readiness import (
     RESULT_READY_WITH_WARNINGS,
     resolve_autotune_readiness,
 )
-
 from tests.mocks import SAMPLE_ACTIVE_GAINS, make_driver
 
 

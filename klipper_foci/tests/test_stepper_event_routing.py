@@ -3,7 +3,6 @@
 import logging
 
 from klipper_foci.protocol import FociProtocol
-
 from tests.mocks import MockMCU, make_driver
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from klipper_foci.protocol import FociProtocol
 from klipper_foci.protocol.bindings import (
     MOTION_SCALE_REJECTION_NAMES,
@@ -10,7 +11,6 @@ from klipper_foci.protocol.bindings import (
     register_commissioning_responses,
     register_last_boot_diagnostic_response,
 )
-
 from tests.mocks import (
     CommandError,
     MockCartesianKinematics,

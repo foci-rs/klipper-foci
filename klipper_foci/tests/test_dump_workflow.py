@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from klipper_foci.registers import REGISTERS
-
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
     MockGCmd,

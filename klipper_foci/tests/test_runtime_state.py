@@ -1,7 +1,6 @@
 import unittest
 
 from klipper_foci.state import FociRuntimeState
-
 from tests.mocks import make_driver
 
 

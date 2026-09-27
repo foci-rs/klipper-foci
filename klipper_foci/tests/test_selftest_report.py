@@ -3,9 +3,9 @@
 import logging
 
 import pytest
+
 from klipper_foci.commissioning import format_commission_detail
 from klipper_foci.selftest import SELFTEST_STAGES, format_selftest_value
-
 from tests.mocks import CommandError, MockCommand, MockGCmd, make_driver
 
 

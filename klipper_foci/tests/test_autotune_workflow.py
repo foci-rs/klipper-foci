@@ -17,7 +17,6 @@ from klipper_foci.velocity_integral import (
     VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
     VelocityIntegralAssembler,
 )
-
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
     SAMPLE_COMMISSION_RESULT,

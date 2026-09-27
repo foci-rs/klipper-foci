@@ -1,6 +1,7 @@
 """The workflow-plan digest must match the firmware's standard FNV-1a 64."""
 
 import pytest
+
 from klipper_foci.wire_digest import fnv1a64
 
 

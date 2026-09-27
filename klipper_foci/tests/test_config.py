@@ -1,8 +1,8 @@
 """Tests for FOCI MCU config-build command emission."""
 
 import pytest
-from klipper_foci.config import velocity_mm_s_to_mrev_s
 
+from klipper_foci.config import velocity_mm_s_to_mrev_s
 from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
 
 

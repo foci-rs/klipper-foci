@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import fields
 
 import pytest
+
 from klipper_foci.config import (
     CONTROL_SETTING_FIELDS,
     FociControlSettings,
@@ -16,7 +17,6 @@ from klipper_foci.config import (
     stall_margin_units,
     validate_runtime_config,
 )
-
 from tests.mocks import (
     CommandError,
     MockConfig,

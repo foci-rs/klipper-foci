@@ -4,6 +4,7 @@ import logging
 import struct
 
 import pytest
+
 from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
     _CYCLE_EVIDENCE,
@@ -19,7 +20,6 @@ from klipper_foci.robustness_reversal import (
     handle_cycle_evidence,
     handle_terminal,
 )
-
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
     CommandError,

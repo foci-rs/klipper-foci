@@ -5,6 +5,7 @@ import unittest
 from typing import ClassVar
 
 import pytest
+
 from klipper_foci import commissioning
 from klipper_foci.commissioning import (
     COMMISSION_REASON_NAMES,
@@ -16,7 +17,6 @@ from klipper_foci.commissioning import (
     format_current_loop_failure_summary,
 )
 from klipper_foci.homing import CALIBRATION_REASON_NAMES
-
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
     SAMPLE_COMMISSION_RESULT,

@@ -3,7 +3,6 @@
 import logging
 
 from klipper_foci.report import humanize, report_detail, report_summary
-
 from tests.mocks import MockGCode
 
 

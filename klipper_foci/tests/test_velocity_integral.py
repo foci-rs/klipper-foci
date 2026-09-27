@@ -3,6 +3,7 @@
 import struct
 
 import pytest
+
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
     TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY,

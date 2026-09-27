@@ -4,6 +4,7 @@ import logging
 import struct
 
 import pytest
+
 from klipper_foci._vocabulary_generated import ACTION_CODES
 from klipper_foci.fixed_gain_amplitude import (
     AMPLITUDE_ORDER_ASCENDING,
@@ -12,7 +13,6 @@ from klipper_foci.fixed_gain_amplitude import (
     parse_autotune_action,
 )
 from klipper_foci.registers import REGISTERS
-
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
     CommandError,

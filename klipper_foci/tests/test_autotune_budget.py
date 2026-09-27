@@ -1,13 +1,13 @@
 """Tests for host-side autotune motion budgeting."""
 
 import pytest
+
 from klipper_foci.autotune_budget import (
     AutotuneBudgetError,
     _motor_headroom_mm,
     compute_autotune_motion_budget,
     format_safe_pose_move,
 )
-
 from tests.mocks import (
     MockCartesianKinematics,
     MockCoreXYKinematics,

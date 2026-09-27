@@ -6,7 +6,6 @@ import unittest
 
 from klipper_foci.commissioning import COMMISSION_REASON_NAMES
 from klipper_foci.constants import COMMISSION_CANCEL_GRACE_PERIOD_S
-
 from tests.mocks import SAMPLE_ACTIVE_GAINS, MockGCmd, make_driver
 
 

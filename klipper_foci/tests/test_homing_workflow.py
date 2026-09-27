@@ -4,7 +4,6 @@ import contextlib
 import unittest
 
 from klipper_foci.registers import REGISTERS
-
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
     SAMPLE_COMMISSION_RESULT,
