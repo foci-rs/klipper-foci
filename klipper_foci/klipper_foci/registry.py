@@ -219,6 +219,11 @@ def register_gcode_commands(
                 "which no entry point actually attached to the driver"
             )
         component = getattr(driver, spec.component)
+        if not hasattr(component, spec.handler_name):
+            raise driver.printer.config_error(
+                f"FOCI: command {spec.name} names handler '{spec.handler_name}' "
+                f"on component '{spec.component}', which has no such attribute"
+            )
         gcode.register_mux_command(
             spec.name,
             "STEPPER",

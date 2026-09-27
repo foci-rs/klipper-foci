@@ -854,6 +854,28 @@ def test_register_returning_spec_for_unset_component_fails_loudly(monkeypatch):
         make_config_driver(printer, sections, "foci stepper_x")
 
 
+def test_register_returning_spec_for_unset_handler_fails_loudly(monkeypatch):
+    class FakeComponent:
+        def __init__(self, driver):
+            self.driver = driver
+
+        # deliberately has no `do_it` method
+
+    def broken_register(driver):
+        driver.fake_component = FakeComponent(driver)
+        return (GcodeCommandSpec("FOCI_BROKEN_HANDLER", "fake_component", "do_it", "broken"),)
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("broken", broken_register)],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    with pytest.raises(printer.config_error("").__class__, match="do_it"):
+        make_config_driver(printer, sections, "foci stepper_x")
+
+
 def test_successful_entry_point_command_registers_alongside_core(monkeypatch):
     class FakeComponent:
         def __init__(self, driver):
@@ -880,9 +902,8 @@ def test_successful_entry_point_command_registers_alongside_core(monkeypatch):
     bound_method = handlers_by_name["FOCI_FAKE_THING"]
     assert bound_method.__self__ is driver.fake_component
     assert bound_method.__func__.__name__ == "do_fake_thing"
-    # every core command must still be present alongside it -- this is
-    # deliberately not an exact-count assertion, since GCODE_COMMANDS
-    # still carries the not-yet-extracted tuning/diagnostics entries at
-    # this point in the plan sequence (see Global Constraints).
+    # Not an exact-count assertion: GCODE_COMMANDS may contain more entries
+    # than any one entry point's specs, and this only needs to confirm none
+    # of them were displaced by the entry-point registration pass.
     for spec in GCODE_COMMANDS:
         assert spec.name in handlers_by_name
