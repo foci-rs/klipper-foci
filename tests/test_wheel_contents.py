@@ -35,7 +35,8 @@ def test_core_wheel_contains_expected_files_and_no_optional_modules(tmp_path):
     assert any(name.endswith("klipper_foci/driver.py") for name in modules)
     assert any(name.endswith("klipper_foci/registry.py") for name in modules)
     assert any(name.endswith("klipper_foci/diagnostics/workflow.py") for name in modules)
-    assert len(modules) >= 20  # core has ~20 top-level modules plus diagnostics/protocol subpackages
+    # core has ~20 top-level modules plus diagnostics/protocol subpackages
+    assert len(modules) >= 20
     # Then the negative assertions this task exists for.
     assert not any("diagnostics_active" in name for name in modules)
     assert not any("diagnostics_passive" in name for name in modules)
@@ -81,13 +82,17 @@ def test_core_alone_install_cannot_import_optional_packages(tmp_path):
     # namespace packages, masking a real "not installed" result.
     result = subprocess.run(
         [str(venv_python), "-c", "import klipper_foci.driver"],
-        capture_output=True, text=True, cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
     )
     assert result.returncode == 0, result.stderr
     for missing_module in ("klipper_foci_diagnostics", "klipper_foci_tuning"):
         result = subprocess.run(
             [str(venv_python), "-c", f"import {missing_module}"],
-            capture_output=True, text=True, cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
         )
         assert result.returncode != 0
         assert "ModuleNotFoundError" in result.stderr
@@ -124,7 +129,9 @@ def test_core_alone_install_supports_deploy_shim(tmp_path):
             "assert callable(load_config)\n"
             "assert callable(load_config_prefix)\n",
         ],
-        capture_output=True, text=True, cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
     )
     assert result.returncode == 0, result.stderr
 
@@ -132,7 +139,8 @@ def test_core_alone_install_supports_deploy_shim(tmp_path):
         deploy_shim = _HOST_KLIPPER_FOCI / "deploy" / shim_dir / "foci.py"
         load_shim_script = (
             "import importlib.util\n"
-            f"spec = importlib.util.spec_from_file_location('foci_deploy_shim', {str(deploy_shim)!r})\n"
+            "spec = importlib.util.spec_from_file_location("
+            f"'foci_deploy_shim', {str(deploy_shim)!r})\n"
             "module = importlib.util.module_from_spec(spec)\n"
             "spec.loader.exec_module(module)\n"
             "assert callable(module.load_config)\n"
@@ -140,6 +148,8 @@ def test_core_alone_install_supports_deploy_shim(tmp_path):
         )
         result = subprocess.run(
             [str(venv_python), "-c", load_shim_script],
-            capture_output=True, text=True, cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
         )
         assert result.returncode == 0, f"{shim_dir}: {result.stderr}"
