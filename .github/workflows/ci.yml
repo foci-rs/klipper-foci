@@ -48,7 +48,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install build + pytest
-        run: pip install build pytest
+      - name: Install build + pytest + ruff
+        run: pip install build pytest ruff
+      - name: ruff check (repo-level tests and deploy shims)
+        run: ruff check tests deploy
+      - name: ruff format --check (repo-level tests and deploy shims)
+        run: ruff format --check tests deploy
       - name: pytest tests/test_wheel_contents.py
         run: pytest -q tests/test_wheel_contents.py
