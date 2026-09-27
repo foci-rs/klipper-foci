@@ -55,8 +55,6 @@ class FociMcuCommands:
         self.voltage_step_test = None
         self.resistance_test = None
         self.set_auto_calibrate_on_enable = None
-        self.dev_tmc_write_register = None
-        self.dev_tmc_read_register = None
         self.config_homing = None
         self.query_stall = None
 
@@ -204,16 +202,6 @@ class FociMcuCommands:
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
         )
         register_selftest_responses(mcu._serial, driver, oid)
-        self.dev_tmc_write_register = self._optional_lookup_command(
-            mcu,
-            "tmc_write_register oid=%c addr=%c value=%u",
-        )
-        self.dev_tmc_read_register = self._optional_lookup_query_command(
-            mcu,
-            "tmc_read_register oid=%c addr=%c",
-            "tmc_register_value oid=%c addr=%c value=%u",
-            oid=oid,
-        )
         self.config_homing = mcu.lookup_command(
             "foci_config_homing oid=%c homing_ma=%u stall_units=%u margin_units=%u persistence=%c"
         )

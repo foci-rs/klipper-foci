@@ -62,30 +62,6 @@ def test_absent_foci_section_registers_all_gcode_commands():
     assert registered_command_names(printer) == {spec.name for spec in GCODE_COMMANDS}
 
 
-def test_defers_raw_tmc_commands_until_mcu_identify():
-    from klipper_foci.registry import DEV_GCODE_COMMANDS, GCODE_COMMANDS
-
-    printer, _chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        },
-    )
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-
-    dev_command_names = {spec.name for spec in DEV_GCODE_COMMANDS}
-    assert dev_command_names.isdisjoint(registered_command_names(printer))
-
-    driver._handle_mcu_identify()
-
-    assert registered_command_names(printer) == (
-        {spec.name for spec in GCODE_COMMANDS} | dev_command_names
-    )
-
-
 def test_stale_mode_key_raises_config_error():
     printer, _chips, sections = make_config_printer(
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},

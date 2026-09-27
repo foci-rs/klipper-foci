@@ -175,13 +175,3 @@ class PassiveDiagnostics:
         message = " ".join(parts)
         log.info(message)
         gcmd.respond_info(message)
-
-    def tmc_read_register(self, gcmd) -> None:
-        """Read a raw TMC4671 register through dev firmware."""
-        addr = gcmd.get_int("ADDR", minval=0, maxval=0xFF)
-        response = self.driver.protocol.dev_tmc_read_register(addr=addr)
-        value = int(response["value"])
-        gcmd.respond_info(
-            f"FOCI_TMC_READ_REGISTER {self.driver.stepper_name}: addr=0x{addr:02x} value=0x"
-            f"{value:08x} value={int(value)}"
-        )

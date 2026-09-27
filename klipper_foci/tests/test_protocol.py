@@ -1079,3 +1079,11 @@ def test_query_stall_decodes_result():
         "trigger_path": 2,
         "peak_margin_delta_units": 45,
     }
+
+
+def test_protocol_has_no_raw_register_methods():
+    driver = make_driver()
+    assert not hasattr(driver.protocol, "dev_tmc_read_register")
+    assert not hasattr(driver.protocol, "dev_tmc_write_register")
+    assert not hasattr(driver.protocol.commands, "dev_tmc_read_register")
+    assert not hasattr(driver.protocol.commands, "dev_tmc_write_register")

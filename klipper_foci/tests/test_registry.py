@@ -1,6 +1,6 @@
 """Tests for FociGlobalConfig."""
 
-from klipper_foci.registry import FociGlobalConfig
+from klipper_foci.registry import GCODE_COMMANDS, FociGlobalConfig
 
 
 class FakeConfigfileGetters:
@@ -35,3 +35,15 @@ def test_debug_can_be_enabled():
 def test_no_mode_attribute_when_mode_key_absent():
     config = FociGlobalConfig(FakeConfigfileGetters({}))
     assert not hasattr(config, "mode")
+
+
+def test_no_raw_register_commands_in_gcode_commands():
+    names = {spec.name for spec in GCODE_COMMANDS}
+    assert "FOCI_TMC_READ_REGISTER" not in names
+    assert "FOCI_TMC_WRITE_REGISTER" not in names
+
+
+def test_dev_gcode_commands_tuple_is_gone():
+    import klipper_foci.registry as registry_module
+
+    assert not hasattr(registry_module, "DEV_GCODE_COMMANDS")

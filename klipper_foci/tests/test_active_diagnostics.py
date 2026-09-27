@@ -987,3 +987,9 @@ class TestResistanceTestDiagnosticCommand(unittest.TestCase):
         out = log_ctx.records[-1].message
         self.assertIn("count_slope=1042", out)
         self.assertFalse(hasattr(d.diagnostics.active, "fit_resistance_axis"))
+
+
+def test_diagnostics_has_no_raw_register_method():
+    driver = make_driver()
+    assert not hasattr(driver.diagnostics, "tmc_read_register")
+    assert not hasattr(driver.diagnostics.passive, "tmc_read_register")

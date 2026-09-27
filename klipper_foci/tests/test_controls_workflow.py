@@ -503,3 +503,8 @@ class TestVoltageLimitCommand(unittest.TestCase):
         d.homing.apply_active_gains_to_firmware()
 
         self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])
+
+
+def test_controls_workflow_has_no_raw_register_method():
+    driver = make_driver()
+    assert not hasattr(driver.controls, "tmc_write_register")

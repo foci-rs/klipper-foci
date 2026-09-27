@@ -62,9 +62,6 @@ class DiagnosticsWorkflow:
     def stack_watermark(self, gcmd) -> None:
         return self.passive.stack_watermark(gcmd)
 
-    def tmc_read_register(self, gcmd) -> None:
-        return self.passive.tmc_read_register(gcmd)
-
     def current_step_test(self, gcmd) -> None:
         return self.active.current_step_test(gcmd)
 

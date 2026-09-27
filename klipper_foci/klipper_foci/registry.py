@@ -181,21 +181,6 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
     ),
 )
 
-DEV_GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
-    GcodeCommandSpec(
-        "FOCI_TMC_READ_REGISTER",
-        "diagnostics",
-        "tmc_read_register",
-        "Read a raw TMC4671 register through dev firmware",
-    ),
-    GcodeCommandSpec(
-        "FOCI_TMC_WRITE_REGISTER",
-        "controls",
-        "tmc_write_register",
-        "Write a raw TMC4671 register through dev firmware",
-    ),
-)
-
 
 def register_gcode_commands(
     driver,

@@ -181,19 +181,6 @@ class FociProtocol:
     def get_stack_watermark(self) -> dict:
         return queries.get_stack_watermark(self)
 
-    def dev_tmc_write_register(self, *, addr: int, value: int) -> None:
-        if self.driver.oid is None or self.commands.dev_tmc_write_register is None:
-            raise self.driver.printer.command_error("FOCI_TMC_WRITE_REGISTER requires dev firmware")
-        self.commands.dev_tmc_write_register.send([self.driver.oid, addr, value])
-
-    def dev_tmc_read_register(self, *, addr: int) -> dict:
-        if self.driver.oid is None or self.commands.dev_tmc_read_register is None:
-            raise self.driver.printer.command_error("FOCI_TMC_READ_REGISTER requires dev firmware")
-        response = self.commands.dev_tmc_read_register.send([self.driver.oid, addr])
-        if response is None:
-            raise self.driver.printer.command_error("FOCI_TMC_READ_REGISTER query returned no data")
-        return response
-
     def run_current_step_test(
         self,
         *,
