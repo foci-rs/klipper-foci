@@ -162,3 +162,84 @@ foci_write_moonraker_block() {
         echo "$marker_end"
     } >> "$conf"
 }
+
+foci_usage() {
+    cat <<'EOF'
+Usage: install.sh [--diagnostics] [--tuning] [--force] [--help]
+
+  --diagnostics  Also install klipper-foci-diagnostics
+  --tuning       Also install klipper-foci-tuning
+  --force        Overwrite a foreign pip.conf index-url or shim file
+                 (never overrides an unowned moonraker.conf section)
+  --help         Show this message and exit
+EOF
+}
+
+pip_install() {
+    "$KLIPPY_PYTHON" -m pip install "$@"
+}
+
+foci_main() {
+    local want_diagnostics="" want_tuning="" force=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --diagnostics) want_diagnostics=1 ;;
+            --tuning) want_tuning=1 ;;
+            --force) force=1 ;;
+            -h|--help) foci_usage; return 0 ;;
+            *) log "Unknown flag: $1" >&2; return 1 ;;
+        esac
+        shift
+    done
+
+    discover_klipper_env
+
+    if [ ! -d "$KLIPPER_PATH/.git" ]; then
+        log "$KLIPPER_PATH is not a git checkout; cannot manage .git/info/exclude." >&2
+        return 1
+    fi
+
+    if ! check_no_active_print; then
+        log "A print is active; re-run when the printer is idle." >&2
+        return 1
+    fi
+
+    local venv_root
+    venv_root="$(foci_resolve_venv "$KLIPPY_PYTHON")"
+
+    local force_flag=()
+    [ -n "$force" ] && force_flag=(--force)
+    foci_write_pip_conf "$venv_root" "$FOCI_INDEX_URL" "${force_flag[@]}" || return 1
+
+    local extras=""
+    [ -n "$want_diagnostics" ] && extras="diagnostics"
+    if [ -n "$want_tuning" ]; then
+        [ -n "$extras" ] && extras="$extras,tuning" || extras="tuning"
+    fi
+
+    local pip_target="klipper-foci"
+    local project_name=""
+    if [ -n "$extras" ]; then
+        pip_target="klipper-foci[$extras]"
+        project_name="klipper-foci[$extras]"
+    fi
+    pip_install "${pip_target}==${INSTALLER_VERSION}"
+
+    local variant shim_target shim_content
+    variant="$(foci_select_shim_variant "$KLIPPER_PLUGINS_PATH")"
+    shim_target="$KLIPPER_PLUGINS_PATH/foci.py"
+    if [ "$variant" = "plugins" ]; then
+        shim_content="$FOCI_SHIM_PLUGINS"
+    else
+        shim_content="$FOCI_SHIM_EXTRAS"
+    fi
+    foci_write_shim "$shim_target" "$shim_content" "${force_flag[@]}" || return 1
+
+    grep -qxF "$shim_target" "$KLIPPER_PATH/.git/info/exclude" 2>/dev/null \
+        || echo "$shim_target" >> "$KLIPPER_PATH/.git/info/exclude"
+
+    foci_write_moonraker_block "$MOONRAKER_CONFIG" "$venv_root" "$project_name" || return 1
+
+    service_restart_if klipper
+    service_restart_if moonraker
+}
