@@ -94,6 +94,7 @@ teardown() { rm -rf "$TEST_ROOT"; }
   run foci_main
   [ "$status" -eq 1 ]
   [ ! -f "$TEST_ROOT/klipper/klippy/extras/foci.py" ]
+  ! grep -q '\[update_manager klipper-foci\]' "$TEST_ROOT/moonraker.conf" 2>/dev/null
   [ ! -f "$TEST_ROOT/restarts.log" ]
 }
 
