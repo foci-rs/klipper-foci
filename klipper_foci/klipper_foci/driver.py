@@ -26,7 +26,7 @@ from .diagnostics.stepper_scale import POSITION_UNITS_PER_REV, tmc_grid
 from .dump import RegisterDumpWorkflow
 from .homing import HomingWorkflow
 from .protocol import FociProtocol
-from .registry import register_gcode_commands
+from .registry import GCODE_COMMANDS, discover_optional_specs, register_gcode_commands
 from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
 from .virtual_endstop import FociVirtualEndstop
@@ -71,7 +71,9 @@ class FociDriver:
         # Commissioning phase tracking (used by commission/tune progress callbacks)
         # Register GCode commands
         gcode = self.printer.lookup_object("gcode")
-        register_gcode_commands(self, gcode)
+        register_gcode_commands(
+            self, gcode, command_specs=GCODE_COMMANDS + discover_optional_specs(self)
+        )
 
         # Lifecycle events
         self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)

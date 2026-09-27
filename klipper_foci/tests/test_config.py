@@ -3,7 +3,9 @@
 import pytest
 
 from klipper_foci.config import velocity_mm_s_to_mrev_s
+from klipper_foci.registry import GCODE_COMMANDS, GcodeCommandSpec
 from tests.mocks import CommandError, MockConfig, MockMCU, make_config_driver, make_config_printer
+from tests.test_registry import _FakeEntryPoint
 
 
 def test_package_entry_points_import_driver_and_global_config():
@@ -55,8 +57,6 @@ def build_driver_with_mode():
 
 
 def test_absent_foci_section_registers_all_gcode_commands():
-    from klipper_foci.registry import GCODE_COMMANDS
-
     printer = build_driver_with_mode()
 
     assert registered_command_names(printer) == {spec.name for spec in GCODE_COMMANDS}
@@ -799,3 +799,90 @@ def test_staleness_does_not_warn_when_probed_velocity_absent(caplog):
     driver._handle_connect()
 
     assert "tuned below operating range" not in caplog.text
+
+
+def test_component_collision_across_entry_points_is_detected(monkeypatch):
+    class FirstCommands:
+        def __init__(self, driver):
+            self.driver = driver
+
+        def do_first(self, gcmd):
+            pass
+
+    class SecondCommands:
+        def __init__(self, driver):
+            self.driver = driver
+
+        def do_second(self, gcmd):
+            pass
+
+    def register_first(driver):
+        driver.shared_component = FirstCommands(driver)
+        return (GcodeCommandSpec("FOCI_FIRST", "shared_component", "do_first", "first"),)
+
+    def register_second(driver):
+        driver.shared_component = SecondCommands(driver)
+        return (GcodeCommandSpec("FOCI_SECOND", "shared_component", "do_second", "second"),)
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [
+            _FakeEntryPoint("first", register_first),
+            _FakeEntryPoint("second", register_second),
+        ],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    with pytest.raises(printer.config_error("").__class__):
+        make_config_driver(printer, sections, "foci stepper_x")
+
+
+def test_register_returning_spec_for_unset_component_fails_loudly(monkeypatch):
+    def broken_register(driver):
+        # forgets to set driver.something before returning its spec
+        return (GcodeCommandSpec("FOCI_BROKEN", "something", "do_it", "broken"),)
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("broken", broken_register)],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    with pytest.raises(printer.config_error("").__class__, match="something"):
+        make_config_driver(printer, sections, "foci stepper_x")
+
+
+def test_successful_entry_point_command_registers_alongside_core(monkeypatch):
+    class FakeComponent:
+        def __init__(self, driver):
+            self.driver = driver
+
+        def do_fake_thing(self, gcmd):
+            pass
+
+    def fake_register(driver):
+        driver.fake_component = FakeComponent(driver)
+        return (GcodeCommandSpec("FOCI_FAKE_THING", "fake_component", "do_fake_thing", "test"),)
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("fake", fake_register)],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    gcode = printer.lookup_object("gcode")
+    handlers_by_name = {args[0]: args[3] for args, _kwargs in gcode._mux_commands}
+    assert "FOCI_FAKE_THING" in handlers_by_name
+    bound_method = handlers_by_name["FOCI_FAKE_THING"]
+    assert bound_method.__self__ is driver.fake_component
+    assert bound_method.__func__.__name__ == "do_fake_thing"
+    # every core command must still be present alongside it -- this is
+    # deliberately not an exact-count assertion, since GCODE_COMMANDS
+    # still carries the not-yet-extracted tuning/diagnostics entries at
+    # this point in the plan sequence (see Global Constraints).
+    for spec in GCODE_COMMANDS:
+        assert spec.name in handlers_by_name

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib.metadata import entry_points
+
+ENTRY_POINT_GROUP = "klipper_foci.commands"
 
 
 class FociGlobalConfig:
@@ -182,6 +185,27 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
 )
 
 
+def discover_optional_specs(driver) -> tuple[GcodeCommandSpec, ...]:
+    """Call every `klipper_foci.commands` entry point and concatenate its specs."""
+    specs: list[GcodeCommandSpec] = []
+    claimed_by: dict[str, str] = {}
+    for entry_point in entry_points(group=ENTRY_POINT_GROUP):
+        before_ids = {name: id(value) for name, value in vars(driver).items()}
+        register = entry_point.load()
+        new_specs = register(driver)
+        for name, value in vars(driver).items():
+            if before_ids.get(name) != id(value):
+                previous_owner = claimed_by.get(name)
+                if previous_owner is not None and previous_owner != entry_point.name:
+                    raise driver.printer.config_error(
+                        f"FOCI: entry points '{previous_owner}' and "
+                        f"'{entry_point.name}' both set driver.{name}"
+                    )
+                claimed_by[name] = entry_point.name
+        specs.extend(new_specs)
+    return tuple(specs)
+
+
 def register_gcode_commands(
     driver,
     gcode,
@@ -189,6 +213,11 @@ def register_gcode_commands(
 ) -> None:
     """Register all host-visible G-code commands in `command_specs`."""
     for spec in command_specs:
+        if not hasattr(driver, spec.component):
+            raise driver.printer.config_error(
+                f"FOCI: command {spec.name} names component '{spec.component}', "
+                "which no entry point actually attached to the driver"
+            )
         component = getattr(driver, spec.component)
         gcode.register_mux_command(
             spec.name,
