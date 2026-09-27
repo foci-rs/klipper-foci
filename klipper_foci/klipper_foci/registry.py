@@ -188,13 +188,13 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
 def discover_optional_specs(driver) -> tuple[GcodeCommandSpec, ...]:
     """Call every `klipper_foci.commands` entry point and concatenate its specs."""
     specs: list[GcodeCommandSpec] = []
-    claimed_by: dict[str, str] = {}
+    claimed_by: dict[str, str] = dict.fromkeys(vars(driver), "core")
     for entry_point in entry_points(group=ENTRY_POINT_GROUP):
-        before_ids = {name: id(value) for name, value in vars(driver).items()}
+        before = dict(vars(driver))
         register = entry_point.load()
         new_specs = register(driver)
         for name, value in vars(driver).items():
-            if before_ids.get(name) != id(value):
+            if name not in before or value is not before[name]:
                 previous_owner = claimed_by.get(name)
                 if previous_owner is not None and previous_owner != entry_point.name:
                     raise driver.printer.config_error(
