@@ -17,6 +17,8 @@ from tests.mocks import (
     MockCommand,
     MockMCU,
     MockSerial,
+    make_config_driver,
+    make_config_printer,
     make_driver,
 )
 
@@ -31,6 +33,21 @@ def response_callback(mcu, name):
     return next(
         callback for callback, response_name, _oid in serial.responses if response_name == name
     )
+
+
+def test_bind_mcu_succeeds_with_no_diagnostics_package(monkeypatch):
+    monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    # driver.oid stays None until _handle_mcu_identify() resolves it --
+    # calling bind_mcu() directly here would pass oid=None, not
+    # exercising the real startup path. _handle_mcu_identify() resolves
+    # the oid and calls bind_mcu() internally with the correct value.
+    driver._handle_mcu_identify()
+    assert hasattr(driver.diagnostics, "handle_current_step_result")
+    assert hasattr(driver.diagnostics.active, "handle_inductance_run")
 
 
 def test_bind_mcu_looks_up_commands_and_registers_responses():

@@ -130,6 +130,20 @@ def _registered_handler(driver, command_name):
     return next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == command_name)
 
 
+def test_dump_foci_works_with_no_diagnostics_package_installed(monkeypatch):
+    monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
+    driver = _configured_driver()
+    _seed_tuning_state(driver)
+    protocol = _install_dump_response(driver)
+    handler = _registered_handler(driver, "DUMP_FOCI")
+    gcmd = MockGCmd({})
+
+    handler(gcmd)  # must not raise AttributeError on driver.diagnostics.*
+
+    assert protocol.calls == ["dump_registers"]
+    assert gcmd.last_info is not None
+
+
 def test_default_dump_omits_tuning_section_and_sends_one_dump_request():
     driver = make_driver()
     _seed_tuning_state(driver)

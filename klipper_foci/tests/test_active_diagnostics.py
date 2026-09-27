@@ -4,9 +4,7 @@ import logging
 import unittest
 
 from tests.mocks import (
-    CommandError,
     MockCoreXYKinematics,
-    MockGCmd,
     make_driver,
 )
 
@@ -206,43 +204,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("inductance estimate:", responses[2])
         self.assertIn("x_average_count_ratio_milli=8600", responses[2])
 
-    def test_sends_bounded_current_step_defaults(self):
-        d = make_driver()
-
-        gcmd = MockGCmd({"TARGET": 250})
-        d.diagnostics.current_step_test(gcmd)
-
-        self.assertEqual(
-            d.protocol.commands.current_step_test.last_args, [d.oid, 0, 250, 80, 12000]
-        )
-        self.assertIn("axis=torque", gcmd.last_info)
-        self.assertIn("target=250", gcmd.last_info)
-
-    def test_sends_explicit_current_step_parameters(self):
-        d = make_driver()
-
-        d.diagnostics.current_step_test(
-            MockGCmd(
-                {
-                    "AXIS": "flux",
-                    "TARGET": -500,
-                    "DURATION_MS": 120,
-                    "VOLTAGE_LIMIT": 20000,
-                }
-            )
-        )
-
-        self.assertEqual(
-            d.protocol.commands.current_step_test.last_args,
-            [d.oid, 1, -500, 120, 20000],
-        )
-
-    def test_current_step_rejects_unknown_axis(self):
-        d = make_driver()
-
-        with self.assertRaises(CommandError):
-            d.diagnostics.current_step_test(MockGCmd({"AXIS": "position", "TARGET": 250}))
-
     def test_current_step_result_formats_motion_and_supply_fields(self):
         d = make_driver()
 
@@ -319,33 +280,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         out = d.printer.lookup_object("gcode")._responses[-1]
         self.assertIn("axis=7", out)
 
-    def test_current_step_trigger_leaves_no_instance_state(self):
-        d = make_driver()
-        before = dict(vars(d.diagnostics.active))
-
-        d.diagnostics.current_step_test(MockGCmd({"AXIS": "flux", "TARGET": 250}))
-
-        self.assertEqual(vars(d.diagnostics.active), before)
-
-    def test_sends_flux_axis_current_vector_step(self):
-        d = make_driver()
-
-        d.diagnostics.current_vector_step_test(
-            MockGCmd(
-                {
-                    "TORQUE_TARGET": 0,
-                    "FLUX_TARGET": 250,
-                    "DURATION_MS": 120,
-                    "VOLTAGE_LIMIT": 20000,
-                }
-            )
-        )
-
-        self.assertEqual(
-            d.protocol.commands.current_vector_step_test.last_args,
-            [d.oid, 0, 250, 120, 20000],
-        )
-
     def test_current_vector_step_result_formats_axis_targets(self):
         d = make_driver()
 
@@ -375,49 +309,6 @@ class TestCurrentStepDiagnosticCommand(unittest.TestCase):
         self.assertIn("actual_torque=8", out)
         self.assertIn("actual_flux=240", out)
         self.assertIn("enc_delta=12", out)
-
-    def test_sends_torque_sample_step_with_long_diagnostic_delay(self):
-        d = make_driver()
-
-        d.diagnostics.current_torque_sample_test(
-            MockGCmd(
-                {
-                    "TARGET": 500,
-                    "FLUX_TARGET": -125,
-                    "SAMPLE_DELAY_MS": 100,
-                    "VOLTAGE_LIMIT": 29000,
-                }
-            )
-        )
-
-        self.assertEqual(
-            d.protocol.commands.current_torque_sample_test.last_args,
-            [d.oid, 500, -125, 100, 29000],
-        )
-
-    def test_sends_position_torque_offset_sample(self):
-        d = make_driver()
-        gcmd = MockGCmd({"TARGET": 500, "SAMPLE_DELAY_MS": 2, "VOLTAGE_LIMIT": 29000})
-
-        d.diagnostics.position_torque_offset_test(gcmd)
-
-        self.assertEqual(
-            d.protocol.commands.position_torque_offset_sample_test.last_args,
-            [d.oid, 500, 2, 29000],
-        )
-        self.assertIn("position-torque-offset", gcmd.last_info)
-
-    def test_sends_voltage_step_sample(self):
-        d = make_driver()
-        gcmd = MockGCmd({"UQ": 512, "UD": -256, "SAMPLE_DELAY_MS": 2})
-
-        d.diagnostics.voltage_step_test(gcmd)
-
-        self.assertEqual(
-            d.protocol.commands.voltage_step_test.last_args,
-            [d.oid, 512, -256, 2],
-        )
-        self.assertIn("voltage-step", gcmd.last_info)
 
     def test_voltage_step_result_formats_sample_fields(self):
         d = make_driver()
@@ -703,15 +594,6 @@ class TestTorqueSampleStitching(unittest.TestCase):
         self.assertIn("torque_error_sum=111", out_own)
         self.assertIn("enc_sample=3333", out_own)
 
-    def test_torque_sample_triggers_leave_no_instance_state(self):
-        d = make_driver()
-        before = dict(vars(d.diagnostics.active))
-
-        d.diagnostics.current_torque_sample_test(MockGCmd({"TARGET": 500}))
-        d.diagnostics.position_torque_offset_test(MockGCmd({"TARGET": 500}))
-
-        self.assertEqual(vars(d.diagnostics.active), before)
-
 
 class TestVoltageStepStitching(unittest.TestCase):
     def _out(self, d):
@@ -791,15 +673,6 @@ class TestVoltageStepStitching(unittest.TestCase):
 
 
 class TestResistanceTestDiagnosticCommand(unittest.TestCase):
-    def test_sends_resistance_test_request(self):
-        d = make_driver()
-        gcmd = MockGCmd({})
-
-        d.diagnostics.resistance_test(gcmd)
-
-        self.assertEqual(d.protocol.commands.resistance_test.last_args, [d.oid, 0])
-        self.assertIn("resistance-test", gcmd.last_info)
-
     def test_resistance_profile_reply_prints_firmware_metadata(self):
         d = make_driver()
         d.global_config.debug = True
@@ -993,3 +866,16 @@ def test_diagnostics_has_no_raw_register_method():
     driver = make_driver()
     assert not hasattr(driver.diagnostics, "tmc_read_register")
     assert not hasattr(driver.diagnostics.passive, "tmc_read_register")
+
+
+def test_active_diagnostics_no_longer_has_trigger_methods():
+    driver = make_driver()
+    for name in (
+        "current_step_test",
+        "current_vector_step_test",
+        "current_torque_sample_test",
+        "position_torque_offset_test",
+        "voltage_step_test",
+        "resistance_test",
+    ):
+        assert not hasattr(driver.diagnostics.active, name)

@@ -52,30 +52,3 @@ class DiagnosticsWorkflow:
 
     def handle_stepper_event(self, params: dict) -> None:
         return self.passive.handle_stepper_event(params)
-
-    def step_position(self, gcmd) -> None:
-        return self.passive.step_position(gcmd)
-
-    def stepper_stats(self, gcmd) -> None:
-        return self.passive.stepper_stats(gcmd)
-
-    def stack_watermark(self, gcmd) -> None:
-        return self.passive.stack_watermark(gcmd)
-
-    def current_step_test(self, gcmd) -> None:
-        return self.active.current_step_test(gcmd)
-
-    def current_vector_step_test(self, gcmd) -> None:
-        return self.active.current_vector_step_test(gcmd)
-
-    def current_torque_sample_test(self, gcmd) -> None:
-        return self.active.current_torque_sample_test(gcmd)
-
-    def position_torque_offset_test(self, gcmd) -> None:
-        return self.active.position_torque_offset_test(gcmd)
-
-    def voltage_step_test(self, gcmd) -> None:
-        return self.active.voltage_step_test(gcmd)
-
-    def resistance_test(self, gcmd) -> None:
-        return self.active.resistance_test(gcmd)

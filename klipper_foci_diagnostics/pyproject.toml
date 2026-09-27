@@ -3,17 +3,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "klipper-foci"
+name = "klipper-foci-diagnostics"
 version = "0.1.0"
-description = "FOCI Klipper host extras: commissioning, autotune, core tuning"
+description = "FOCI bounded-actuation diagnostics and read-only stats commands"
 requires-python = ">=3.11"
+dependencies = ["klipper-foci"]
 
-[project.optional-dependencies]
-diagnostics = ["klipper-foci-diagnostics"]
-tuning = ["klipper-foci-tuning"]
+[project.entry-points."klipper_foci.commands"]
+diagnostics = "klipper_foci_diagnostics.registry:register"
 
 [tool.hatch.build.targets.wheel]
-packages = ["klipper_foci"]
+packages = ["klipper_foci_diagnostics"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -24,6 +24,8 @@ from tests.mocks import (
     MockGCmd,
     MockReactor,
     complete_commission_result,
+    make_config_driver,
+    make_config_printer,
     make_driver,
 )
 
@@ -594,6 +596,29 @@ def test_commission_success_prints_succeeded_summary():
     assert gcmd._responses[0].startswith("FOCI_SETUP manual_stepper stepper_x: SUCCEEDED")
     assert "r_count_milli" not in gcmd._responses[0]
     assert "bandwidth_hz" not in gcmd._responses[0]
+
+
+def test_commission_succeeds_with_no_diagnostics_package_installed(monkeypatch):
+    monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    # driver.oid stays None until _handle_mcu_identify() resolves it --
+    # calling bind_mcu() directly would pass oid=None.
+    driver._handle_mcu_identify()
+    printer._objects["configfile"] = MockConfigFile()
+
+    def drive_success(_args):
+        driver.commissioning.result = complete_commission_result()
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_success
+    gcmd = MockGCmd({"PROFILE": "balanced"})
+
+    driver.commissioning.commission(gcmd)  # must not raise AttributeError on driver.diagnostics.*
+
+    assert gcmd._responses[0].startswith("FOCI_SETUP stepper_x: SUCCEEDED")
 
 
 def test_commission_skipped_gain_floor_warns_the_operator_without_debug():

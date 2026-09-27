@@ -167,13 +167,101 @@ def test_tuning_entry_point_registers_all_six_commands(monkeypatch):
         bound_method = handlers_by_name[command_name]
         assert bound_method.__self__ is driver.tuning
         assert bound_method.__func__.__name__ == handler_name
-    # Computed, not a literal: at this point in the plan sequence
-    # GCODE_COMMANDS still carries the not-yet-extracted diagnostics
-    # entries (Task 6 removes them later), so a hardcoded count here
-    # would silently go stale the moment Task 6 lands. len(GCODE_COMMANDS)
-    # always reflects core's *current* static table at whatever point in
-    # the sequence this test actually runs.
+    # Computed, not a literal: len(GCODE_COMMANDS) always reflects core's
+    # current static table, so this stays correct if that table's size
+    # ever changes again.
     assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
+
+
+def test_diagnostics_active_and_passive_absent_with_core_only(monkeypatch):
+    monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    assert not hasattr(driver, "diagnostics_active")
+    assert not hasattr(driver, "diagnostics_passive")
+
+
+def test_diagnostics_entry_point_registers_all_nine_commands(monkeypatch):
+    from klipper_foci_diagnostics.registry import register as diagnostics_register
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("diagnostics", diagnostics_register)],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    gcode = printer.lookup_object("gcode")
+    handlers_by_name = {args[0]: args[3] for args, _kwargs in gcode._mux_commands}
+    expected = {
+        "FOCI_STEP_POSITION": ("diagnostics_passive", "step_position"),
+        "FOCI_STEPPER_STATS": ("diagnostics_passive", "stepper_stats"),
+        "FOCI_STACK_WATERMARK": ("diagnostics_passive", "stack_watermark"),
+        "FOCI_CURRENT_STEP_TEST": ("diagnostics_active", "current_step_test"),
+        "FOCI_CURRENT_VECTOR_STEP_TEST": ("diagnostics_active", "current_vector_step_test"),
+        "FOCI_CURRENT_TORQUE_SAMPLE_TEST": ("diagnostics_active", "current_torque_sample_test"),
+        "FOCI_POSITION_TORQUE_OFFSET_TEST": ("diagnostics_active", "position_torque_offset_test"),
+        "FOCI_VOLTAGE_STEP_TEST": ("diagnostics_active", "voltage_step_test"),
+        "FOCI_RESISTANCE_TEST": ("diagnostics_active", "resistance_test"),
+    }
+    for command_name, (component_attr, handler_name) in expected.items():
+        assert command_name in handlers_by_name
+        bound_method = handlers_by_name[command_name]
+        assert bound_method.__self__ is getattr(driver, component_attr)
+        assert bound_method.__func__.__name__ == handler_name
+    # Computed, not a literal: this task has already removed the 9
+    # diagnostics entries from GCODE_COMMANDS by this point in the
+    # sequence, so len(GCODE_COMMANDS) is core's final 10 here.
+    assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
+
+
+def test_core_alone_registers_exactly_ten_commands(monkeypatch):
+    monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    make_config_driver(printer, sections, "foci stepper_x")
+    gcode = printer.lookup_object("gcode")
+    registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
+    assert registered_names == {spec.name for spec in GCODE_COMMANDS}
+    assert len(registered_names) == 10
+
+
+def test_diagnostics_alone_without_tuning_works(monkeypatch):
+    from klipper_foci_diagnostics.registry import register as diagnostics_register
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("diagnostics", diagnostics_register)],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    make_config_driver(printer, sections, "foci stepper_x")  # must not raise
+    gcode = printer.lookup_object("gcode")
+    registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
+    assert "FOCI_CURRENT_STEP_TEST" in registered_names
+    assert "FOCI_SET_PHASE_ADVANCE" not in registered_names
+
+
+def test_tuning_alone_without_diagnostics_works(monkeypatch):
+    from klipper_foci_tuning.registry import register as tuning_register
+
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("tuning", tuning_register)],
+    )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    make_config_driver(printer, sections, "foci stepper_x")  # must not raise
+    gcode = printer.lookup_object("gcode")
+    registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
+    assert "FOCI_SET_PHASE_ADVANCE" in registered_names
+    assert "FOCI_CURRENT_STEP_TEST" not in registered_names
 
 
 def test_homing_events_register_homing_workflow_callbacks():
@@ -222,48 +310,6 @@ def test_autotune_registers_autotune_workflow_handler():
     handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_AUTOTUNE")
 
     assert handler.__self__.__class__.__name__ == "AutotuneWorkflow"
-
-
-def test_observation_diagnostics_register_diagnostics_workflow_handlers():
-    printer = build_driver_with_mode()
-    gcode = printer.lookup_object("gcode")
-    command_names = {
-        "FOCI_STEP_POSITION",
-        "FOCI_STEPPER_STATS",
-    }
-
-    handlers = {
-        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
-    }
-
-    assert set(handlers) == command_names
-    assert all(
-        handler.__self__.__class__.__name__ == "DiagnosticsWorkflow"
-        for handler in handlers.values()
-    )
-
-
-def test_active_diagnostics_register_diagnostics_workflow_handlers():
-    printer = build_driver_with_mode()
-    gcode = printer.lookup_object("gcode")
-    command_names = {
-        "FOCI_CURRENT_STEP_TEST",
-        "FOCI_CURRENT_VECTOR_STEP_TEST",
-        "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
-        "FOCI_POSITION_TORQUE_OFFSET_TEST",
-        "FOCI_VOLTAGE_STEP_TEST",
-        "FOCI_RESISTANCE_TEST",
-    }
-
-    handlers = {
-        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
-    }
-
-    assert set(handlers) == command_names
-    assert all(
-        handler.__self__.__class__.__name__ == "DiagnosticsWorkflow"
-        for handler in handlers.values()
-    )
 
 
 def test_foci_driver_no_longer_exposes_gcode_command_methods():
@@ -673,12 +719,6 @@ def test_resistance_identification_fields_default_to_none():
     driver = make_config_driver(printer, sections, "foci stepper_x")
 
     assert driver.config.identified_r_count_slope_milli is None
-
-
-def test_resistance_test_registers():
-    printer = build_driver_with_mode()
-
-    assert "FOCI_RESISTANCE_TEST" in registered_command_names(printer)
 
 
 def test_velocity_mm_s_to_mrev_s_converts_via_rotation_distance():
