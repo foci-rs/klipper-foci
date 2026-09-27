@@ -9,11 +9,17 @@ class FakeConfigfileGetters:
     def __init__(self, values=None):
         self._values = values or {}
 
+    def get(self, key, default=None):
+        return self._values.get(key, default)
+
     def getchoice(self, key, choices, default=None):
         return self._values.get(key, default)
 
     def getboolean(self, key, default=None):
         return self._values.get(key, default)
+
+    def error(self, msg):
+        return ValueError(msg)
 
 
 def test_debug_defaults_to_false():
@@ -26,6 +32,6 @@ def test_debug_can_be_enabled():
     assert config.debug is True
 
 
-def test_debug_is_independent_of_mode():
-    config = FociGlobalConfig(FakeConfigfileGetters({"mode": "developer"}))
-    assert config.debug is False
+def test_no_mode_attribute_when_mode_key_absent():
+    config = FociGlobalConfig(FakeConfigfileGetters({}))
+    assert not hasattr(config, "mode")

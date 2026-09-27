@@ -3,7 +3,7 @@
 import pytest
 
 from klipper_foci.config import velocity_mm_s_to_mrev_s
-from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
+from tests.mocks import CommandError, MockConfig, MockMCU, make_config_driver, make_config_printer
 
 
 def test_package_entry_points_import_driver_and_global_config():
@@ -15,60 +15,6 @@ def test_package_entry_points_import_driver_and_global_config():
     assert klipper_foci.FociGlobalConfig is FociGlobalConfig
     assert callable(klipper_foci.load_config)
     assert callable(klipper_foci.load_config_prefix)
-
-
-DEFAULT_COMMANDS = {
-    "FOCI_SELFTEST",
-    "FOCI_SETUP",
-    "FOCI_AUTOTUNE",
-    "DUMP_FOCI",
-    "DUMP_TMC",
-    "FOCI_SET_GAINS",
-    "FOCI_SET_INNER_GAINS",
-    "FOCI_SET_FILTERS",
-    "FOCI_SET_CURRENT",
-    "FOCI_SET_VELOCITY_FEEDFORWARD",
-}
-
-ADVANCED_COMMANDS = {
-    "FOCI_STEP_POSITION",
-    "FOCI_STEPPER_STATS",
-    "FOCI_STACK_WATERMARK",
-}
-
-EXPERT_COMMANDS = {
-    "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
-    "FOCI_SET_ACCEL_FEEDFORWARD",
-    "FOCI_SET_DECOUPLING_FEEDFORWARD",
-    "FOCI_SET_POSITION_LEAD",
-    "FOCI_SET_PHASE_ADVANCE",
-    "FOCI_SET_VOLTAGE_LIMIT",
-    "FOCI_CURRENT_STEP_TEST",
-    "FOCI_CURRENT_VECTOR_STEP_TEST",
-    "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
-    "FOCI_POSITION_TORQUE_OFFSET_TEST",
-    "FOCI_VOLTAGE_STEP_TEST",
-    "FOCI_RESISTANCE_TEST",
-}
-
-DEVELOPER_COMMANDS = {
-    "FOCI_TMC_READ_REGISTER",
-    "FOCI_TMC_WRITE_REGISTER",
-}
-
-
-class ProductionMcu(MockMCU):
-    """Mock MCU whose data dictionary does not expose dev TMC commands."""
-
-    def lookup_command(self, fmt, cq=None):
-        if fmt.startswith("tmc_write_register "):
-            raise CommandError("unknown command")
-        return super().lookup_command(fmt, cq=cq)
-
-    def lookup_query_command(self, send_fmt, recv_fmt, oid=None):
-        if send_fmt.startswith("tmc_read_register "):
-            raise CommandError("unknown query command")
-        return super().lookup_query_command(send_fmt, recv_fmt, oid=oid)
 
 
 class OldFirmwareMcu(MockMCU):
@@ -94,7 +40,7 @@ def registered_command_names(printer):
     return {args[0] for args, _kwargs in gcode._mux_commands}
 
 
-def build_driver_with_mode(mode=None):
+def build_driver_with_mode():
     printer, _chips, sections = make_config_printer(
         {
             "stepper_x": {
@@ -103,47 +49,22 @@ def build_driver_with_mode(mode=None):
                 "oid": 10,
             },
         },
-        foci_mode=mode,
     )
     make_config_driver(printer, sections, "foci stepper_x")
     return printer
 
 
-def test_absent_foci_section_registers_default_commands_only():
-    printer = build_driver_with_mode(None)
+def test_absent_foci_section_registers_all_gcode_commands():
+    from klipper_foci.registry import GCODE_COMMANDS
 
-    assert registered_command_names(printer) == DEFAULT_COMMANDS
+    printer = build_driver_with_mode()
 
-
-def test_explicit_default_mode_registers_default_commands_only():
-    printer = build_driver_with_mode("default")
-
-    assert registered_command_names(printer) == DEFAULT_COMMANDS
+    assert registered_command_names(printer) == {spec.name for spec in GCODE_COMMANDS}
 
 
-def test_advanced_mode_registers_default_and_advanced_commands_only():
-    printer = build_driver_with_mode("advanced")
+def test_defers_raw_tmc_commands_until_mcu_identify():
+    from klipper_foci.registry import DEV_GCODE_COMMANDS, GCODE_COMMANDS
 
-    assert registered_command_names(printer) == DEFAULT_COMMANDS | ADVANCED_COMMANDS
-
-
-def test_expert_mode_registers_default_advanced_and_expert_commands():
-    printer = build_driver_with_mode("expert")
-
-    assert registered_command_names(printer) == (
-        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS
-    )
-
-
-def test_developer_mode_defers_raw_tmc_commands_until_mcu_identify():
-    printer = build_driver_with_mode("developer")
-
-    assert registered_command_names(printer) == (
-        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS
-    )
-
-
-def test_developer_mode_registers_raw_tmc_commands_for_dev_firmware():
     printer, _chips, sections = make_config_printer(
         {
             "stepper_x": {
@@ -152,48 +73,26 @@ def test_developer_mode_registers_raw_tmc_commands_for_dev_firmware():
                 "oid": 10,
             },
         },
-        foci_mode="developer",
     )
     driver = make_config_driver(printer, sections, "foci stepper_x")
 
-    assert DEVELOPER_COMMANDS.isdisjoint(registered_command_names(printer))
+    dev_command_names = {spec.name for spec in DEV_GCODE_COMMANDS}
+    assert dev_command_names.isdisjoint(registered_command_names(printer))
 
     driver._handle_mcu_identify()
 
     assert registered_command_names(printer) == (
-        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS | DEVELOPER_COMMANDS
+        {spec.name for spec in GCODE_COMMANDS} | dev_command_names
     )
 
 
-def test_developer_mode_omits_raw_tmc_commands_for_production_firmware():
+def test_stale_mode_key_raises_config_error():
     printer, _chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        },
-        chips={"foci": ProductionMcu("foci")},
-        foci_mode="developer",
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+        foci_mode="expert",
     )
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-
-    driver._handle_mcu_identify()
-
-    assert registered_command_names(printer) == (
-        DEFAULT_COMMANDS | ADVANCED_COMMANDS | EXPERT_COMMANDS
-    )
-
-
-def test_invalid_global_foci_mode_reports_valid_modes():
-    with pytest.raises(CommandError) as excinfo:
-        build_driver_with_mode("unsafe")
-
-    message = str(excinfo.value)
-    assert "mode" in message
-    for mode in ("default", "advanced", "expert", "developer"):
-        assert mode in message
+    with pytest.raises(printer.config_error("").__class__):
+        printer.load_object(MockConfig(printer, sections, "foci"), "foci")
 
 
 def test_registry_resolves_component_handler_and_inline_help():
@@ -209,7 +108,7 @@ def test_registry_resolves_component_handler_and_inline_help():
         def __init__(self):
             self.component = Component()
 
-    printer = build_driver_with_mode("default")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
     gcode._mux_commands.clear()
 
@@ -217,14 +116,13 @@ def test_registry_resolves_component_handler_and_inline_help():
     specs = (
         GcodeCommandSpec(
             name="FOCI_TEST",
-            min_mode="default",
             component="component",
             handler_name="handle",
             help_text="test command",
         ),
     )
 
-    register_gcode_commands(driver, gcode, "default", command_specs=specs)
+    register_gcode_commands(driver, gcode, command_specs=specs)
 
     args, kwargs = gcode._mux_commands[0]
     assert args[:3] == ("FOCI_TEST", "STEPPER", "stepper_x")
@@ -234,7 +132,7 @@ def test_registry_resolves_component_handler_and_inline_help():
 
 
 def test_dump_commands_register_register_dump_workflow_handler():
-    printer = build_driver_with_mode("default")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
 
     dump_handlers = {
@@ -248,7 +146,7 @@ def test_dump_commands_register_register_dump_workflow_handler():
 
 
 def test_default_control_commands_register_controls_workflow_handlers():
-    printer = build_driver_with_mode("default")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
     command_names = {
         "FOCI_SET_GAINS",
@@ -268,7 +166,7 @@ def test_default_control_commands_register_controls_workflow_handlers():
 
 
 def test_expert_control_commands_register_controls_workflow_handlers():
-    printer = build_driver_with_mode("expert")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
     command_names = {
         "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
@@ -311,7 +209,7 @@ def test_homing_events_register_homing_workflow_callbacks():
 
 
 def test_setup_registers_commissioning_workflow_handler():
-    printer = build_driver_with_mode("default")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
 
     handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_SETUP")
@@ -320,7 +218,7 @@ def test_setup_registers_commissioning_workflow_handler():
 
 
 def test_selftest_registers_selftest_workflow_handler():
-    printer = build_driver_with_mode("default")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
 
     handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_SELFTEST")
@@ -329,7 +227,7 @@ def test_selftest_registers_selftest_workflow_handler():
 
 
 def test_autotune_registers_autotune_workflow_handler():
-    printer = build_driver_with_mode("default")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
 
     handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_AUTOTUNE")
@@ -338,7 +236,7 @@ def test_autotune_registers_autotune_workflow_handler():
 
 
 def test_observation_diagnostics_register_diagnostics_workflow_handlers():
-    printer = build_driver_with_mode("advanced")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
     command_names = {
         "FOCI_STEP_POSITION",
@@ -357,7 +255,7 @@ def test_observation_diagnostics_register_diagnostics_workflow_handlers():
 
 
 def test_active_diagnostics_register_diagnostics_workflow_handlers():
-    printer = build_driver_with_mode("expert")
+    printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
     command_names = {
         "FOCI_CURRENT_STEP_TEST",
@@ -788,8 +686,8 @@ def test_resistance_identification_fields_default_to_none():
     assert driver.config.identified_r_count_slope_milli is None
 
 
-def test_resistance_test_registers_in_expert_mode():
-    printer = build_driver_with_mode("expert")
+def test_resistance_test_registers():
+    printer = build_driver_with_mode()
 
     assert "FOCI_RESISTANCE_TEST" in registered_command_names(printer)
 
