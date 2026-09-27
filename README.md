@@ -12,13 +12,20 @@ Pre-1.0; APIs may change without notice. Used in production firmware
 on the OpenFFBoard test rig but not yet versioned for external
 consumers.
 
-## Use
+## Deployment
 
-Drop the package into your Klipper installation as a Klipper extras module:
+1. Install the packages you need into Klipper's virtual environment
+   (`klippy-env`):
 
-```bash
-scp -r foci/ pi@<host>:/home/pi/klipper/klippy/extras/foci/
-```
+   ```sh
+   ~/klippy-env/bin/pip install klipper-foci
+   # optionally:
+   ~/klippy-env/bin/pip install klipper-foci-diagnostics klipper-foci-tuning
+   ```
+
+2. Copy `deploy/klippy-plugins/foci.py` to `<klipper>/klippy/plugins/foci.py`.
+   Klipper's extras loader scans `klippy/plugins/` on disk and will find
+   this file; all the actual logic stays in the pip-installed package.
 
 See the [FOCI project README](https://github.com/foci-rs/foci) for full setup instructions.
 
