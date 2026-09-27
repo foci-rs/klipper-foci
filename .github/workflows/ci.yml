@@ -10,15 +10,16 @@ concurrency:
 
 jobs:
   python:
-    name: Python ${{ matrix.python }}
+    name: Python ${{ matrix.python }} (${{ matrix.package }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12", "3.13"]
+        package: [klipper_foci, klipper_foci_diagnostics, klipper_foci_tuning]
     defaults:
       run:
-        working-directory: klipper_foci
+        working-directory: ${{ matrix.package }}
     steps:
       - uses: actions/checkout@v6
       - name: Set up Python
@@ -33,3 +34,21 @@ jobs:
         run: ruff format --check .
       - name: pytest
         run: pytest -q
+
+  wheel-contents:
+    name: Wheel contents (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install build + pytest
+        run: pip install build pytest
+      - name: pytest tests/test_wheel_contents.py
+        run: pytest -q tests/test_wheel_contents.py
