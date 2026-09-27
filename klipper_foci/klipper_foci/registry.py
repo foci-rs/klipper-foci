@@ -111,42 +111,6 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Query unused FOCI MCU stack headroom since boot without motion",
     ),
     GcodeCommandSpec(
-        "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
-        "controls",
-        "set_velocity_transient_feedforward",
-        "Set FOCI diagnostic velocity transient feedforward for bringup debugging",
-    ),
-    GcodeCommandSpec(
-        "FOCI_SET_ACCEL_FEEDFORWARD",
-        "controls",
-        "set_accel_feedforward",
-        "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging",
-    ),
-    GcodeCommandSpec(
-        "FOCI_SET_DECOUPLING_FEEDFORWARD",
-        "controls",
-        "set_decoupling_feedforward",
-        "Set FOCI diagnostic q/d decoupling proxy feedforward for bringup debugging",
-    ),
-    GcodeCommandSpec(
-        "FOCI_SET_POSITION_LEAD",
-        "controls",
-        "set_position_lead",
-        "Set FOCI diagnostic position-target lead for bringup debugging",
-    ),
-    GcodeCommandSpec(
-        "FOCI_SET_PHASE_ADVANCE",
-        "controls",
-        "set_phase_advance",
-        "Set FOCI diagnostic commutation phase advance for bringup debugging",
-    ),
-    GcodeCommandSpec(
-        "FOCI_SET_VOLTAGE_LIMIT",
-        "controls",
-        "set_voltage_limit",
-        "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics",
-    ),
-    GcodeCommandSpec(
         "FOCI_CURRENT_STEP_TEST",
         "diagnostics",
         "current_step_test",

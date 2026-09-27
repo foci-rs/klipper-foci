@@ -28,3 +28,11 @@ if _PKG_NAME not in sys.modules:
     assert spec.loader is not None
     spec.loader.exec_module(module)
     sys.modules.setdefault("__init__", module)
+
+_SIBLING_PACKAGES = [
+    Path(__file__).parent.parent / "klipper_foci_tuning",
+    Path(__file__).parent.parent / "klipper_foci_diagnostics",
+]
+for _sibling in _SIBLING_PACKAGES:
+    if _sibling.is_dir() and str(_sibling) not in sys.path:
+        sys.path.insert(0, str(_sibling))

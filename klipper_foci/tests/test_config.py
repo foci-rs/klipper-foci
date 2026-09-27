@@ -141,26 +141,39 @@ def test_default_control_commands_register_controls_workflow_handlers():
     )
 
 
-def test_expert_control_commands_register_controls_workflow_handlers():
-    printer = build_driver_with_mode()
-    gcode = printer.lookup_object("gcode")
-    command_names = {
-        "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
-        "FOCI_SET_ACCEL_FEEDFORWARD",
-        "FOCI_SET_DECOUPLING_FEEDFORWARD",
-        "FOCI_SET_POSITION_LEAD",
-        "FOCI_SET_PHASE_ADVANCE",
-        "FOCI_SET_VOLTAGE_LIMIT",
-    }
+def test_tuning_entry_point_registers_all_six_commands(monkeypatch):
+    from klipper_foci_tuning.registry import register as tuning_register
 
-    handlers = {
-        args[0]: args[3] for args, _kwargs in gcode._mux_commands if args[0] in command_names
-    }
-
-    assert set(handlers) == command_names
-    assert all(
-        handler.__self__.__class__.__name__ == "ControlsWorkflow" for handler in handlers.values()
+    monkeypatch.setattr(
+        "klipper_foci.registry.entry_points",
+        lambda *, group: [_FakeEntryPoint("tuning", tuning_register)],
     )
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    gcode = printer.lookup_object("gcode")
+    handlers_by_name = {args[0]: args[3] for args, _kwargs in gcode._mux_commands}
+    expected = {
+        "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD": "set_velocity_transient_feedforward",
+        "FOCI_SET_ACCEL_FEEDFORWARD": "set_accel_feedforward",
+        "FOCI_SET_DECOUPLING_FEEDFORWARD": "set_decoupling_feedforward",
+        "FOCI_SET_POSITION_LEAD": "set_position_lead",
+        "FOCI_SET_PHASE_ADVANCE": "set_phase_advance",
+        "FOCI_SET_VOLTAGE_LIMIT": "set_voltage_limit",
+    }
+    for command_name, handler_name in expected.items():
+        assert command_name in handlers_by_name
+        bound_method = handlers_by_name[command_name]
+        assert bound_method.__self__ is driver.tuning
+        assert bound_method.__func__.__name__ == handler_name
+    # Computed, not a literal: at this point in the plan sequence
+    # GCODE_COMMANDS still carries the not-yet-extracted diagnostics
+    # entries (Task 6 removes them later), so a hardcoded count here
+    # would silently go stale the moment Task 6 lands. len(GCODE_COMMANDS)
+    # always reflects core's *current* static table at whatever point in
+    # the sequence this test actually runs.
+    assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
 def test_homing_events_register_homing_workflow_callbacks():
