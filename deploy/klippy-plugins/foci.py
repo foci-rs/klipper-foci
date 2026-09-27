@@ -1,3 +1,4 @@
+# foci-shim: klipper-foci (do not edit; managed by install.sh)
 """Kalico plugin shim for a pip-installed klipper-foci.
 
 Copy this file to <klipper>/klippy/plugins/foci.py -- Kalico-only.
