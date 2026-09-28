@@ -8,7 +8,12 @@ from .config import (
     MOTION_FILTER_MAX_HZ,
     gain_to_permille,
 )
-from .constants import MAX_RUN_CURRENT_AMPS, PID_GAIN_MAX_RAW
+from .constants import (
+    MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
+    MAX_RUN_CURRENT_AMPS,
+    MIN_RAW_VOLTAGE_LIMIT,
+    PID_GAIN_MAX_RAW,
+)
 from .registers import format_i_gain, format_p_gain
 
 
@@ -163,6 +168,25 @@ class ControlsWorkflow:
 
         gcmd.respond_info(
             f"FOCI {self.driver.name} velocity feedforward set: enable={int(enable)} gain={gain}"
+        )
+
+    def set_voltage_limit(self, gcmd) -> None:
+        """Set PIDOUT_UQ_UD_LIMITS for live authority diagnostics.
+
+        VOLTAGE_LIMIT is a raw TMC4671 PIDOUT count. This command is live-only:
+        it changes the current Klipper session and does not persist config.
+        """
+        voltage_limit = gcmd.get_int(
+            "VOLTAGE_LIMIT",
+            minval=MIN_RAW_VOLTAGE_LIMIT,
+            maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
+        )
+
+        self.driver.protocol.set_voltage_limit(voltage_limit)
+        self.driver.settings.voltage_limit = voltage_limit
+
+        gcmd.respond_info(
+            f"FOCI {self.driver.name} voltage limit set: pidout_uq_ud_limit={int(voltage_limit)}"
         )
 
     def _get_p_gain(self, gcmd, key: str) -> int:

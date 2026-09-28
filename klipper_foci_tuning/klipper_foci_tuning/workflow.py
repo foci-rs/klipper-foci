@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from klipper_foci.constants import MAX_DIAGNOSTIC_VOLTAGE_LIMIT, MIN_RAW_VOLTAGE_LIMIT
-
 
 class TuningWorkflow:
     """Rare, expert-only FOCI tuning setters."""
@@ -236,23 +234,4 @@ class TuningWorkflow:
         gcmd.respond_info(
             f"FOCI {self.driver.name} phase advance set: enable={int(enable)} gain_ppm="
             f"{int(gain_ppm)} max_counts={int(max_counts)} deadband={int(deadband)}"
-        )
-
-    def set_voltage_limit(self, gcmd) -> None:
-        """Set PIDOUT_UQ_UD_LIMITS for live authority diagnostics.
-
-        VOLTAGE_LIMIT is a raw TMC4671 PIDOUT count. This command is live-only:
-        it changes the current Klipper session and does not persist config.
-        """
-        voltage_limit = gcmd.get_int(
-            "VOLTAGE_LIMIT",
-            minval=MIN_RAW_VOLTAGE_LIMIT,
-            maxval=MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
-        )
-
-        self.driver.protocol.set_voltage_limit(voltage_limit)
-        self.driver.settings.voltage_limit = voltage_limit
-
-        gcmd.respond_info(
-            f"FOCI {self.driver.name} voltage limit set: pidout_uq_ud_limit={int(voltage_limit)}"
         )

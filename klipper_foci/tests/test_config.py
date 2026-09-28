@@ -129,6 +129,7 @@ def test_default_control_commands_register_controls_workflow_handlers():
         "FOCI_SET_INNER_GAINS",
         "FOCI_SET_CURRENT",
         "FOCI_SET_VELOCITY_FEEDFORWARD",
+        "FOCI_SET_VOLTAGE_LIMIT",
     }
 
     handlers = {
@@ -141,7 +142,7 @@ def test_default_control_commands_register_controls_workflow_handlers():
     )
 
 
-def test_tuning_entry_point_registers_all_six_commands(monkeypatch):
+def test_tuning_entry_point_registers_all_five_commands(monkeypatch):
     from klipper_foci_tuning.registry import register as tuning_register
 
     monkeypatch.setattr(
@@ -160,7 +161,6 @@ def test_tuning_entry_point_registers_all_six_commands(monkeypatch):
         "FOCI_SET_DECOUPLING_FEEDFORWARD": "set_decoupling_feedforward",
         "FOCI_SET_POSITION_LEAD": "set_position_lead",
         "FOCI_SET_PHASE_ADVANCE": "set_phase_advance",
-        "FOCI_SET_VOLTAGE_LIMIT": "set_voltage_limit",
     }
     for command_name, handler_name in expected.items():
         assert command_name in handlers_by_name
@@ -212,13 +212,12 @@ def test_diagnostics_entry_point_registers_all_nine_commands(monkeypatch):
         bound_method = handlers_by_name[command_name]
         assert bound_method.__self__ is getattr(driver, component_attr)
         assert bound_method.__func__.__name__ == handler_name
-    # Computed, not a literal: this task has already removed the 9
-    # diagnostics entries from GCODE_COMMANDS by this point in the
-    # sequence, so len(GCODE_COMMANDS) is core's final 10 here.
+    # Computed, not a literal: len(GCODE_COMMANDS) always reflects core's
+    # current static table.
     assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
-def test_core_alone_registers_exactly_ten_commands(monkeypatch):
+def test_core_alone_registers_exactly_eleven_commands(monkeypatch):
     monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
     printer, _chips, sections = make_config_printer(
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
@@ -227,7 +226,7 @@ def test_core_alone_registers_exactly_ten_commands(monkeypatch):
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert registered_names == {spec.name for spec in GCODE_COMMANDS}
-    assert len(registered_names) == 10
+    assert len(registered_names) == 11
 
 
 def test_diagnostics_alone_without_tuning_works(monkeypatch):

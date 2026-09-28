@@ -2,7 +2,7 @@
 
 import unittest
 
-from mocks import SAMPLE_ACTIVE_GAINS, MockGCmd, make_driver
+from mocks import MockGCmd, make_driver
 
 from klipper_foci_tuning.workflow import TuningWorkflow
 
@@ -239,45 +239,3 @@ class TestPhaseAdvanceCommand(unittest.TestCase):
         self.assertEqual(d.settings.phase_advance_gain_ppm, 0)
         self.assertEqual(d.settings.phase_advance_max_counts, 0)
         self.assertEqual(d.settings.phase_advance_deadband, 16)
-
-
-class TestVoltageLimitCommand(unittest.TestCase):
-    def test_sets_pidout_voltage_limit_without_persisting(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-
-        gcmd = MockGCmd({"VOLTAGE_LIMIT": 20000})
-        tuning.set_voltage_limit(gcmd)
-
-        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])
-        self.assertIn("pidout_uq_ud_limit=20000", gcmd.last_info)
-
-    def test_accepts_voltage_limit_at_chip_max(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-
-        gcmd = MockGCmd({"VOLTAGE_LIMIT": 32767})
-        tuning.set_voltage_limit(gcmd)
-
-        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 32767])
-        self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
-
-    def test_accepts_voltage_limit_at_chip_min(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-
-        gcmd = MockGCmd({"VOLTAGE_LIMIT": 0})
-        tuning.set_voltage_limit(gcmd)
-
-        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 0])
-        self.assertIn("pidout_uq_ud_limit=0", gcmd.last_info)
-
-    def test_voltage_limit_change_is_used_by_homing_preload(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
-
-        tuning.set_voltage_limit(MockGCmd({"VOLTAGE_LIMIT": 20000}))
-        d.homing.apply_active_gains_to_firmware()
-
-        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])

@@ -244,6 +244,44 @@ class TestVelocityFeedforwardCommand(unittest.TestCase):
         self.assertEqual(d.settings.velocity_feedforward_gain, 4.0)
 
 
+class TestVoltageLimitCommand(unittest.TestCase):
+    def test_sets_pidout_voltage_limit_without_persisting(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"VOLTAGE_LIMIT": 20000})
+        d.controls.set_voltage_limit(gcmd)
+
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])
+        self.assertIn("pidout_uq_ud_limit=20000", gcmd.last_info)
+
+    def test_accepts_voltage_limit_at_chip_max(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"VOLTAGE_LIMIT": 32767})
+        d.controls.set_voltage_limit(gcmd)
+
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 32767])
+        self.assertIn("pidout_uq_ud_limit=32767", gcmd.last_info)
+
+    def test_accepts_voltage_limit_at_chip_min(self):
+        d = make_driver()
+
+        gcmd = MockGCmd({"VOLTAGE_LIMIT": 0})
+        d.controls.set_voltage_limit(gcmd)
+
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 0])
+        self.assertIn("pidout_uq_ud_limit=0", gcmd.last_info)
+
+    def test_voltage_limit_change_is_used_by_homing_preload(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+
+        d.controls.set_voltage_limit(MockGCmd({"VOLTAGE_LIMIT": 20000}))
+        d.homing.apply_active_gains_to_firmware()
+
+        self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])
+
+
 def test_controls_workflow_has_no_raw_register_method():
     driver = make_driver()
     assert not hasattr(driver.controls, "tmc_write_register")
@@ -257,6 +295,5 @@ def test_controls_workflow_no_longer_has_rare_setters():
         "set_decoupling_feedforward",
         "set_position_lead",
         "set_phase_advance",
-        "set_voltage_limit",
     ):
         assert not hasattr(driver.controls, name)

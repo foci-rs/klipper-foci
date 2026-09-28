@@ -40,10 +40,4 @@ def register(driver) -> tuple[GcodeCommandSpec, ...]:
             "set_phase_advance",
             "Set FOCI diagnostic commutation phase advance for bringup debugging",
         ),
-        GcodeCommandSpec(
-            "FOCI_SET_VOLTAGE_LIMIT",
-            "tuning",
-            "set_voltage_limit",
-            "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics",
-        ),
     )
