@@ -779,7 +779,7 @@ def test_validate_runtime_config_returns_tuned_active_gains():
     result = validate_runtime_config(
         parsed_config_with(
             {
-                "autotune_status": "tuned_conservative",
+                "autotune_status": "tuned",
                 "pid_flux_p": 256,
                 "pid_flux_i": 416,
                 "pid_torque_p": 257,
@@ -797,7 +797,7 @@ def test_validate_runtime_config_returns_tuned_active_gains():
         )
     )
 
-    assert result.runtime_status == "tuned_conservative"
+    assert result.runtime_status == "tuned"
     assert result.active_gains == {
         "flux_p": 256,
         "flux_i": 416,

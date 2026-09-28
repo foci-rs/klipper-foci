@@ -1783,17 +1783,6 @@ class TestAutotuneGates(unittest.TestCase):
             d.autotune.autotune(gcmd)
         self.assertIn("unknown mode", str(ctx.exception))
 
-    def test_accepts_tuned_conservative_as_commissioned(self):
-        """A motor with tuned_conservative status can be re-tuned."""
-        d = self._commissioned_driver()
-        d.state.runtime_status = "tuned_conservative"
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        # Should get past the "not commissioned" gate
-        try:
-            d.autotune.autotune(gcmd)
-        except (CommandError, AttributeError, TypeError) as e:
-            self.assertNotIn("not commissioned", str(e))
-
     def test_admission_failure_reports_error_instead_of_timeout(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
@@ -2973,10 +2962,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
     def test_accepted_with_warnings_still_reports_tuned(self):
         """A firmware AcceptedWithWarnings/warning_code result is still 'tuned'.
 
-        tuned_conservative is no longer emitted by FOCI_AUTOTUNE: a successful
-        tune (status 0 or 1) always records "tuned", regardless of a nonzero
-        warning_code. tuned_conservative remains a valid persisted status only
-        for backward-compatible reads of existing configs.
+        A successful tune (status 0 or 1) always records "tuned", regardless of
+        a nonzero warning_code.
         """
         d = self._ready_driver()
         toolhead = d.printer.lookup_object("toolhead")

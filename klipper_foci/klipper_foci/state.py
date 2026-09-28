@@ -11,7 +11,6 @@ RuntimeStatus = Literal[
     "uncommissioned",
     "commissioned",
     "tuned",
-    "tuned_conservative",
 ]
 
 

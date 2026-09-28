@@ -61,9 +61,9 @@ def _install_dump_response(driver, values=None, stall_result=None):
 
 def _seed_tuning_state(driver):
     driver.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
-    driver.state.runtime_status = "tuned_conservative"
+    driver.state.runtime_status = "tuned"
 
-    driver.config.autotune_status = "tuned_conservative"
+    driver.config.autotune_status = "tuned"
     driver.config.autotune_profile = "conservative"
     driver.config.autotune_mode = "outer"
 
@@ -238,7 +238,7 @@ def test_tuning_flag_appends_context_and_count_space_note():
     assert calls == ["dump_registers"]
     assert "========== Tuning Analysis ==========" in output
     assert "autotune_status" in output
-    assert "tuned_conservative" in output
+    assert "tuned" in output
     assert "runtime_status" in output
     assert "active_gains_present" in output
     assert "live.flux_p" in output

@@ -481,7 +481,7 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
     if status is None:
         return RuntimeValidationResult("uncommissioned", None)
 
-    valid_statuses = ("commissioned", "tuned", "tuned_conservative")
+    valid_statuses = ("commissioned", "tuned")
     if status not in valid_statuses:
         logging.warning(
             "FOCI %s: unknown autotune_status='%s' (expected one of: %s). "
@@ -512,7 +512,7 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
             ("commissioned_velocity_limit", config.commissioned_velocity_limit),
         ]
         missing.extend(name for name, value in commissioned_fields if value is None)
-    elif status in ("tuned", "tuned_conservative"):
+    elif status == "tuned":
         tuned_fields = [
             ("pid_velocity_p", config.pid_velocity_p),
             ("pid_velocity_i", config.pid_velocity_i),
