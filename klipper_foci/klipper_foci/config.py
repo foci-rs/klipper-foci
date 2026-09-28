@@ -77,13 +77,6 @@ class FociDriverConfig:
     accel_feedforward: bool
     accel_feedforward_accel_gain: int
     accel_feedforward_decel_gain: int
-    position_lead: bool
-    position_lead_gain: int
-    position_lead_max_counts: int
-    phase_advance: bool
-    phase_advance_gain_ppm: int
-    phase_advance_max_counts: int
-    phase_advance_deadband: int
     pid_velocity_limit: int | None
     commissioned_velocity_p: int | None
     commissioned_velocity_i: int | None
@@ -142,13 +135,6 @@ class FociControlSettings:
     accel_feedforward: bool
     accel_feedforward_accel_gain: int
     accel_feedforward_decel_gain: int
-    position_lead: bool
-    position_lead_gain: int
-    position_lead_max_counts: int
-    phase_advance: bool
-    phase_advance_gain_ppm: int
-    phase_advance_max_counts: int
-    phase_advance_deadband: int
     pid_velocity_limit: int | None
 
     @classmethod
@@ -428,13 +414,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         accel_feedforward=False,
         accel_feedforward_accel_gain=1000,
         accel_feedforward_decel_gain=1000,
-        position_lead=False,
-        position_lead_gain=0,
-        position_lead_max_counts=0,
-        phase_advance=False,
-        phase_advance_gain_ppm=0,
-        phase_advance_max_counts=0,
-        phase_advance_deadband=16,
         pid_velocity_limit=pid_velocity_limit,
         commissioned_velocity_p=commissioned_velocity_p,
         commissioned_velocity_i=commissioned_velocity_i,

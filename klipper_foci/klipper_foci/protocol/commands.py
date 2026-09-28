@@ -42,8 +42,6 @@ class FociMcuCommands:
         self.set_position_gains = None
         self.set_velocity_feedforward = None
         self.set_accel_feedforward = None
-        self.set_position_lead = None
-        self.set_phase_advance = None
         self.set_velocity_limit = None
         self.set_voltage_limit = None
         self.current_step_test = None
@@ -157,12 +155,6 @@ class FociMcuCommands:
         self.set_accel_feedforward = mcu.lookup_command(
             "tmc_set_accel_feedforward oid=%c enable=%c"
             " accel_gain_permille=%hu decel_gain_permille=%hu"
-        )
-        self.set_position_lead = mcu.lookup_command(
-            "tmc_set_position_lead oid=%c enable=%c gain_permille=%hu max_counts=%hu"
-        )
-        self.set_phase_advance = mcu.lookup_command(
-            "tmc_set_phase_advance oid=%c enable=%c gain_ppm=%i max_counts=%hu deadband=%hu"
         )
         self.set_velocity_limit = mcu.lookup_command("tmc_set_velocity_limit oid=%c limit=%u")
         self.set_voltage_limit = mcu.lookup_command("tmc_set_voltage_limit oid=%c voltage_limit=%u")

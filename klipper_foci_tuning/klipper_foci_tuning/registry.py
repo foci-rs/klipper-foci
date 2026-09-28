@@ -16,16 +16,4 @@ def register(driver) -> tuple[GcodeCommandSpec, ...]:
             "set_accel_feedforward",
             "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging",
         ),
-        GcodeCommandSpec(
-            "FOCI_SET_POSITION_LEAD",
-            "tuning",
-            "set_position_lead",
-            "Set FOCI diagnostic position-target lead for bringup debugging",
-        ),
-        GcodeCommandSpec(
-            "FOCI_SET_PHASE_ADVANCE",
-            "tuning",
-            "set_phase_advance",
-            "Set FOCI diagnostic commutation phase advance for bringup debugging",
-        ),
     )

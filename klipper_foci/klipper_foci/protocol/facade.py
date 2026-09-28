@@ -107,27 +107,6 @@ class FociProtocol:
             [self.driver.oid, int(enable), accel_gain, decel_gain]
         )
 
-    def set_position_lead(
-        self,
-        *,
-        enable: bool,
-        gain: int,
-        max_counts: int,
-    ) -> None:
-        self.commands.set_position_lead.send([self.driver.oid, int(enable), gain, max_counts])
-
-    def set_phase_advance(
-        self,
-        *,
-        enable: bool,
-        gain_ppm: int,
-        max_counts: int,
-        deadband: int,
-    ) -> None:
-        self.commands.set_phase_advance.send(
-            [self.driver.oid, int(enable), gain_ppm, max_counts, deadband]
-        )
-
     def get_step_position(self) -> dict:
         return queries.get_step_position(self)
 

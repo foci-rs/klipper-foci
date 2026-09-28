@@ -142,7 +142,7 @@ def test_default_control_commands_register_controls_workflow_handlers():
     )
 
 
-def test_tuning_entry_point_registers_all_three_commands(monkeypatch):
+def test_tuning_entry_point_registers_only_accel_feedforward(monkeypatch):
     from klipper_foci_tuning.registry import register as tuning_register
 
     monkeypatch.setattr(
@@ -157,10 +157,8 @@ def test_tuning_entry_point_registers_all_three_commands(monkeypatch):
     handlers_by_name = {args[0]: args[3] for args, _kwargs in gcode._mux_commands}
     expected = {
         "FOCI_SET_ACCEL_FEEDFORWARD": "set_accel_feedforward",
-        "FOCI_SET_POSITION_LEAD": "set_position_lead",
-        "FOCI_SET_PHASE_ADVANCE": "set_phase_advance",
     }
-    assert len(expected) == 3
+    assert len(expected) == 1
     for command_name, handler_name in expected.items():
         assert command_name in handlers_by_name
         bound_method = handlers_by_name[command_name]
@@ -242,7 +240,7 @@ def test_diagnostics_alone_without_tuning_works(monkeypatch):
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert "FOCI_CURRENT_STEP_TEST" in registered_names
-    assert "FOCI_SET_PHASE_ADVANCE" not in registered_names
+    assert "FOCI_SET_ACCEL_FEEDFORWARD" not in registered_names
 
 
 def test_tuning_alone_without_diagnostics_works(monkeypatch):
@@ -258,7 +256,7 @@ def test_tuning_alone_without_diagnostics_works(monkeypatch):
     make_config_driver(printer, sections, "foci stepper_x")  # must not raise
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
-    assert "FOCI_SET_PHASE_ADVANCE" in registered_names
+    assert "FOCI_SET_ACCEL_FEEDFORWARD" in registered_names
     assert "FOCI_CURRENT_STEP_TEST" not in registered_names
 
 

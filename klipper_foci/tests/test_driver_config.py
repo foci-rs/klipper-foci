@@ -63,13 +63,6 @@ CONFIG_FIELD_NAMES = {
     "accel_feedforward",
     "accel_feedforward_accel_gain",
     "accel_feedforward_decel_gain",
-    "position_lead",
-    "position_lead_gain",
-    "position_lead_max_counts",
-    "phase_advance",
-    "phase_advance_gain_ppm",
-    "phase_advance_max_counts",
-    "phase_advance_deadband",
     "pid_velocity_limit",
     "commissioned_velocity_p",
     "commissioned_velocity_i",
@@ -137,13 +130,6 @@ EXPECTED_CONTROL_SETTING_FIELDS = (
     "accel_feedforward",
     "accel_feedforward_accel_gain",
     "accel_feedforward_decel_gain",
-    "position_lead",
-    "position_lead_gain",
-    "position_lead_max_counts",
-    "phase_advance",
-    "phase_advance_gain_ppm",
-    "phase_advance_max_counts",
-    "phase_advance_deadband",
     "pid_velocity_limit",
 )
 
@@ -346,13 +332,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.accel_feedforward is False
     assert parsed.accel_feedforward_accel_gain == 1000
     assert parsed.accel_feedforward_decel_gain == 1000
-    assert parsed.position_lead is False
-    assert parsed.position_lead_gain == 0
-    assert parsed.position_lead_max_counts == 0
-    assert parsed.phase_advance is False
-    assert parsed.phase_advance_gain_ppm == 0
-    assert parsed.phase_advance_max_counts == 0
-    assert parsed.phase_advance_deadband == 16
     assert parsed.pid_velocity_limit == 500000
     assert parsed.commissioned_velocity_p == 1100
     assert parsed.commissioned_position_i == 64

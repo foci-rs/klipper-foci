@@ -26,6 +26,8 @@ from tests.mocks import (
 REMOVED_COMMAND_PREFIXES = (
     "tmc_set_velocity_transient_feedforward ",
     "tmc_set_decoupling_feedforward ",
+    "tmc_set_position_lead ",
+    "tmc_set_phase_advance ",
 )
 
 
@@ -715,17 +717,6 @@ def test_expert_control_protocol_methods_send_existing_payloads():
         accel_gain=750,
         decel_gain=250,
     )
-    driver.protocol.set_position_lead(
-        enable=True,
-        gain=10,
-        max_counts=20,
-    )
-    driver.protocol.set_phase_advance(
-        enable=False,
-        gain_ppm=60000,
-        max_counts=64,
-        deadband=16,
-    )
 
     commands = driver.protocol.commands
     assert commands.set_accel_feedforward.last_args == [
@@ -733,14 +724,6 @@ def test_expert_control_protocol_methods_send_existing_payloads():
         0,
         750,
         250,
-    ]
-    assert commands.set_position_lead.last_args == [driver.oid, 1, 10, 20]
-    assert commands.set_phase_advance.last_args == [
-        driver.oid,
-        0,
-        60000,
-        64,
-        16,
     ]
 
 
