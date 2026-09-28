@@ -60,21 +60,9 @@ CONFIG_FIELD_NAMES = {
     "pid_velocity_i",
     "velocity_feedforward",
     "velocity_feedforward_gain",
-    "velocity_transient_feedforward",
-    "velocity_transient_lead_time_us",
-    "velocity_transient_gain",
-    "velocity_transient_max_offset",
-    "velocity_transient_rate_hz",
     "accel_feedforward",
     "accel_feedforward_accel_gain",
     "accel_feedforward_decel_gain",
-    "decoupling_feedforward",
-    "decoupling_r_int",
-    "decoupling_l_int",
-    "decoupling_pole_pairs",
-    "decoupling_position_units_per_rev",
-    "decoupling_f_pwm_hz",
-    "decoupling_max_offset",
     "position_lead",
     "position_lead_gain",
     "position_lead_max_counts",
@@ -146,21 +134,9 @@ EXPECTED_CONTROL_SETTING_FIELDS = (
     "pid_velocity_i",
     "velocity_feedforward",
     "velocity_feedforward_gain",
-    "velocity_transient_feedforward",
-    "velocity_transient_lead_time_us",
-    "velocity_transient_gain",
-    "velocity_transient_max_offset",
-    "velocity_transient_rate_hz",
     "accel_feedforward",
     "accel_feedforward_accel_gain",
     "accel_feedforward_decel_gain",
-    "decoupling_feedforward",
-    "decoupling_r_int",
-    "decoupling_l_int",
-    "decoupling_pole_pairs",
-    "decoupling_position_units_per_rev",
-    "decoupling_f_pwm_hz",
-    "decoupling_max_offset",
     "position_lead",
     "position_lead_gain",
     "position_lead_max_counts",
@@ -367,21 +343,9 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.pid_velocity_i == 32
     assert parsed.velocity_feedforward is True
     assert parsed.velocity_feedforward_gain == 7
-    assert parsed.velocity_transient_feedforward is False
-    assert parsed.velocity_transient_lead_time_us == 0
-    assert parsed.velocity_transient_gain == 0
-    assert parsed.velocity_transient_max_offset == 0
-    assert parsed.velocity_transient_rate_hz == 1000
     assert parsed.accel_feedforward is False
     assert parsed.accel_feedforward_accel_gain == 1000
     assert parsed.accel_feedforward_decel_gain == 1000
-    assert parsed.decoupling_feedforward is False
-    assert parsed.decoupling_r_int == 3000
-    assert parsed.decoupling_l_int == 4095
-    assert parsed.decoupling_pole_pairs == 50
-    assert parsed.decoupling_position_units_per_rev == 65536
-    assert parsed.decoupling_f_pwm_hz == 25000
-    assert parsed.decoupling_max_offset == 500
     assert parsed.position_lead is False
     assert parsed.position_lead_gain == 0
     assert parsed.position_lead_max_counts == 0

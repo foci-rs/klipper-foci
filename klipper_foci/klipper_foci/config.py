@@ -74,21 +74,9 @@ class FociDriverConfig:
     pid_velocity_i: int | None
     velocity_feedforward: bool
     velocity_feedforward_gain: float
-    velocity_transient_feedforward: bool
-    velocity_transient_lead_time_us: int
-    velocity_transient_gain: int
-    velocity_transient_max_offset: int
-    velocity_transient_rate_hz: int
     accel_feedforward: bool
     accel_feedforward_accel_gain: int
     accel_feedforward_decel_gain: int
-    decoupling_feedforward: bool
-    decoupling_r_int: int
-    decoupling_l_int: int
-    decoupling_pole_pairs: int
-    decoupling_position_units_per_rev: int
-    decoupling_f_pwm_hz: int
-    decoupling_max_offset: int
     position_lead: bool
     position_lead_gain: int
     position_lead_max_counts: int
@@ -151,21 +139,9 @@ class FociControlSettings:
     pid_velocity_i: int | None
     velocity_feedforward: bool
     velocity_feedforward_gain: float
-    velocity_transient_feedforward: bool
-    velocity_transient_lead_time_us: int
-    velocity_transient_gain: int
-    velocity_transient_max_offset: int
-    velocity_transient_rate_hz: int
     accel_feedforward: bool
     accel_feedforward_accel_gain: int
     accel_feedforward_decel_gain: int
-    decoupling_feedforward: bool
-    decoupling_r_int: int
-    decoupling_l_int: int
-    decoupling_pole_pairs: int
-    decoupling_position_units_per_rev: int
-    decoupling_f_pwm_hz: int
-    decoupling_max_offset: int
     position_lead: bool
     position_lead_gain: int
     position_lead_max_counts: int
@@ -449,21 +425,9 @@ def parse_driver_config(config) -> FociDriverConfig:
         pid_velocity_i=pid_velocity_i,
         velocity_feedforward=velocity_feedforward,
         velocity_feedforward_gain=velocity_feedforward_gain,
-        velocity_transient_feedforward=False,
-        velocity_transient_lead_time_us=0,
-        velocity_transient_gain=0,
-        velocity_transient_max_offset=0,
-        velocity_transient_rate_hz=1000,
         accel_feedforward=False,
         accel_feedforward_accel_gain=1000,
         accel_feedforward_decel_gain=1000,
-        decoupling_feedforward=False,
-        decoupling_r_int=3000,
-        decoupling_l_int=4095,
-        decoupling_pole_pairs=50,
-        decoupling_position_units_per_rev=65536,
-        decoupling_f_pwm_hz=25000,
-        decoupling_max_offset=500,
         position_lead=False,
         position_lead_gain=0,
         position_lead_max_counts=0,

@@ -142,7 +142,7 @@ def test_default_control_commands_register_controls_workflow_handlers():
     )
 
 
-def test_tuning_entry_point_registers_all_five_commands(monkeypatch):
+def test_tuning_entry_point_registers_all_three_commands(monkeypatch):
     from klipper_foci_tuning.registry import register as tuning_register
 
     monkeypatch.setattr(
@@ -156,12 +156,11 @@ def test_tuning_entry_point_registers_all_five_commands(monkeypatch):
     gcode = printer.lookup_object("gcode")
     handlers_by_name = {args[0]: args[3] for args, _kwargs in gcode._mux_commands}
     expected = {
-        "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD": "set_velocity_transient_feedforward",
         "FOCI_SET_ACCEL_FEEDFORWARD": "set_accel_feedforward",
-        "FOCI_SET_DECOUPLING_FEEDFORWARD": "set_decoupling_feedforward",
         "FOCI_SET_POSITION_LEAD": "set_position_lead",
         "FOCI_SET_PHASE_ADVANCE": "set_phase_advance",
     }
+    assert len(expected) == 3
     for command_name, handler_name in expected.items():
         assert command_name in handlers_by_name
         bound_method = handlers_by_name[command_name]

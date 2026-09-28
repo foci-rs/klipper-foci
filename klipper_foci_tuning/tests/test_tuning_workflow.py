@@ -7,60 +7,6 @@ from mocks import MockGCmd, make_driver
 from klipper_foci_tuning.workflow import TuningWorkflow
 
 
-class TestVelocityTransientFeedforwardCommand(unittest.TestCase):
-    def test_sets_transient_feedforward_parameters(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-
-        tuning.set_velocity_transient_feedforward(
-            MockGCmd(
-                {
-                    "ENABLE": 1,
-                    "LEAD_TIME_US": 400,
-                    "GAIN": 750,
-                    "MAX_OFFSET": 1200,
-                    "RATE_HZ": 10000,
-                }
-            )
-        )
-
-        self.assertEqual(
-            d.protocol.commands.set_velocity_transient_feedforward.last_args,
-            [d.oid, 1, 400, 750, 1200, 10000],
-        )
-        self.assertTrue(d.settings.velocity_transient_feedforward)
-        self.assertEqual(d.settings.velocity_transient_lead_time_us, 400)
-        self.assertEqual(d.settings.velocity_transient_gain, 750)
-        self.assertEqual(d.settings.velocity_transient_max_offset, 1200)
-        self.assertEqual(d.settings.velocity_transient_rate_hz, 10000)
-
-    def test_disable_preserves_transient_parameters(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-        d.settings.velocity_transient_lead_time_us = 250
-        d.settings.velocity_transient_gain = 500
-        d.settings.velocity_transient_max_offset = 900
-        d.settings.velocity_transient_rate_hz = 10000
-
-        tuning.set_velocity_transient_feedforward(
-            MockGCmd(
-                {
-                    "ENABLE": 0,
-                }
-            )
-        )
-
-        self.assertEqual(
-            d.protocol.commands.set_velocity_transient_feedforward.last_args,
-            [d.oid, 0, 250, 500, 900, 10000],
-        )
-        self.assertFalse(d.settings.velocity_transient_feedforward)
-        self.assertEqual(d.settings.velocity_transient_lead_time_us, 250)
-        self.assertEqual(d.settings.velocity_transient_gain, 500)
-        self.assertEqual(d.settings.velocity_transient_max_offset, 900)
-        self.assertEqual(d.settings.velocity_transient_rate_hz, 10000)
-
-
 class TestAccelFeedforwardCommand(unittest.TestCase):
     def test_sets_accel_feedforward_enable_and_split_gains(self):
         d = make_driver()
@@ -117,38 +63,6 @@ class TestAccelFeedforwardCommand(unittest.TestCase):
         self.assertFalse(d.settings.accel_feedforward)
         self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
         self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
-
-
-class TestDecouplingFeedforwardCommand(unittest.TestCase):
-    def test_sets_decoupling_feedforward_enable_and_model(self):
-        d = make_driver()
-        tuning = TuningWorkflow(d)
-
-        tuning.set_decoupling_feedforward(
-            MockGCmd(
-                {
-                    "ENABLE": 1,
-                    "R_INT": 3000,
-                    "L_INT": 4095,
-                    "POLE_PAIRS": 50,
-                    "POSITION_UNITS_PER_REV": 65536,
-                    "F_PWM_HZ": 25000,
-                    "MAX_OFFSET": 500,
-                }
-            )
-        )
-
-        self.assertEqual(
-            d.protocol.commands.set_decoupling_feedforward.last_args,
-            [d.oid, 1, 3000, 4095, 50, 65536, 25000, 500],
-        )
-        self.assertTrue(d.settings.decoupling_feedforward)
-        self.assertEqual(d.settings.decoupling_r_int, 3000)
-        self.assertEqual(d.settings.decoupling_l_int, 4095)
-        self.assertEqual(d.settings.decoupling_pole_pairs, 50)
-        self.assertEqual(d.settings.decoupling_position_units_per_rev, 65536)
-        self.assertEqual(d.settings.decoupling_f_pwm_hz, 25000)
-        self.assertEqual(d.settings.decoupling_max_offset, 500)
 
 
 class TestPositionLeadCommand(unittest.TestCase):

@@ -11,6 +11,7 @@ from klipper_foci.protocol.bindings import (
     register_commissioning_responses,
     register_last_boot_diagnostic_response,
 )
+from klipper_foci.protocol.commands import FociMcuCommands
 from tests.mocks import (
     CommandError,
     MockCartesianKinematics,
@@ -21,6 +22,43 @@ from tests.mocks import (
     make_config_printer,
     make_driver,
 )
+
+REMOVED_COMMAND_PREFIXES = (
+    "tmc_set_velocity_transient_feedforward ",
+    "tmc_set_decoupling_feedforward ",
+)
+
+
+class DictionaryMCU(MockMCU):
+    """MCU whose command dictionary rejects the given format prefixes, like Klipper does."""
+
+    def __init__(self, missing_prefixes=()):
+        super().__init__()
+        self.missing_prefixes = missing_prefixes
+
+    def lookup_command(self, fmt, cq=None):
+        if fmt.startswith(self.missing_prefixes):
+            raise KeyError(fmt)
+        return super().lookup_command(fmt, cq=cq)
+
+
+def test_bind_succeeds_against_dictionary_without_removed_feedforward_commands():
+    driver = make_driver()
+    mcu = DictionaryMCU(REMOVED_COMMAND_PREFIXES)
+
+    FociMcuCommands().bind(driver, mcu, driver.oid)
+
+    assert not any(fmt.startswith(REMOVED_COMMAND_PREFIXES) for fmt in mcu.command_formats)
+
+
+def test_bind_succeeds_against_dictionary_with_removed_feedforward_commands():
+    driver = make_driver()
+    mcu = DictionaryMCU()
+
+    commands = FociMcuCommands()
+    commands.bind(driver, mcu, driver.oid)
+
+    assert commands.set_accel_feedforward is not None
 
 
 def response_names(mcu):
@@ -672,26 +710,10 @@ def test_fine_grained_control_methods_send_existing_payloads():
 def test_expert_control_protocol_methods_send_existing_payloads():
     driver = make_driver()
 
-    driver.protocol.set_velocity_transient_feedforward(
-        enable=True,
-        lead_time_us=400,
-        gain=750,
-        max_offset=1200,
-        rate_hz=10000,
-    )
     driver.protocol.set_accel_feedforward(
         enable=False,
         accel_gain=750,
         decel_gain=250,
-    )
-    driver.protocol.set_decoupling_feedforward(
-        enable=True,
-        r_int=3000,
-        l_int=4095,
-        pole_pairs=50,
-        position_units_per_rev=65536,
-        f_pwm_hz=25000,
-        max_offset=500,
     )
     driver.protocol.set_position_lead(
         enable=True,
@@ -706,29 +728,11 @@ def test_expert_control_protocol_methods_send_existing_payloads():
     )
 
     commands = driver.protocol.commands
-    assert commands.set_velocity_transient_feedforward.last_args == [
-        driver.oid,
-        1,
-        400,
-        750,
-        1200,
-        10000,
-    ]
     assert commands.set_accel_feedforward.last_args == [
         driver.oid,
         0,
         750,
         250,
-    ]
-    assert commands.set_decoupling_feedforward.last_args == [
-        driver.oid,
-        1,
-        3000,
-        4095,
-        50,
-        65536,
-        25000,
-        500,
     ]
     assert commands.set_position_lead.last_args == [driver.oid, 1, 10, 20]
     assert commands.set_phase_advance.last_args == [

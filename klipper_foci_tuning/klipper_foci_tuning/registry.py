@@ -11,22 +11,10 @@ def register(driver) -> tuple[GcodeCommandSpec, ...]:
     driver.tuning = TuningWorkflow(driver)
     return (
         GcodeCommandSpec(
-            "FOCI_SET_VELOCITY_TRANSIENT_FEEDFORWARD",
-            "tuning",
-            "set_velocity_transient_feedforward",
-            "Set FOCI diagnostic velocity transient feedforward for bringup debugging",
-        ),
-        GcodeCommandSpec(
             "FOCI_SET_ACCEL_FEEDFORWARD",
             "tuning",
             "set_accel_feedforward",
             "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging",
-        ),
-        GcodeCommandSpec(
-            "FOCI_SET_DECOUPLING_FEEDFORWARD",
-            "tuning",
-            "set_decoupling_feedforward",
-            "Set FOCI diagnostic q/d decoupling proxy feedforward for bringup debugging",
         ),
         GcodeCommandSpec(
             "FOCI_SET_POSITION_LEAD",

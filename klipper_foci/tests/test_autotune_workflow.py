@@ -7,6 +7,7 @@ from unittest.mock import patch
 from klipper_foci.autotune import (
     OUTER_SAFETY_REASON_NAMES,
     POSITION_TUNE_OUTCOME_NAMES,
+    _format_feedforward_paths,
     _nominal_bandwidth_hz,
 )
 from klipper_foci.commissioning import format_inner_warning_flags
@@ -29,6 +30,12 @@ from tests.mocks import (
     make_driver,
 )
 from tests.test_robustness_reversal import build_cycle_evidence_payload
+
+
+def test_feedforward_path_mask_decoding_pins_the_five_slot_table():
+    assert _format_feedforward_paths(0b00100) == "accel"
+    assert _format_feedforward_paths(0b10000) == "phase_advance"
+    assert _format_feedforward_paths(0b00101) == "velocity,accel"
 
 
 class MockConfigFile:

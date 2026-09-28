@@ -9,53 +9,6 @@ class TuningWorkflow:
     def __init__(self, driver) -> None:
         self.driver = driver
 
-    def set_velocity_transient_feedforward(self, gcmd) -> None:
-        """Set live-only command-acceleration velocity feedforward."""
-        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
-        lead_time_us = gcmd.get_int(
-            "LEAD_TIME_US",
-            self.driver.settings.velocity_transient_lead_time_us,
-            minval=0,
-            maxval=65535,
-        )
-        gain = gcmd.get_int(
-            "GAIN",
-            self.driver.settings.velocity_transient_gain,
-            minval=0,
-            maxval=65535,
-        )
-        max_offset = gcmd.get_int(
-            "MAX_OFFSET",
-            self.driver.settings.velocity_transient_max_offset,
-            minval=0,
-            maxval=32767,
-        )
-        rate_hz = gcmd.get_int(
-            "RATE_HZ",
-            self.driver.settings.velocity_transient_rate_hz,
-            minval=1000,
-            maxval=10000,
-        )
-
-        self.driver.protocol.set_velocity_transient_feedforward(
-            enable=enable != 0,
-            lead_time_us=lead_time_us,
-            gain=gain,
-            max_offset=max_offset,
-            rate_hz=rate_hz,
-        )
-        self.driver.settings.velocity_transient_feedforward = enable != 0
-        self.driver.settings.velocity_transient_lead_time_us = lead_time_us
-        self.driver.settings.velocity_transient_gain = gain
-        self.driver.settings.velocity_transient_max_offset = max_offset
-        self.driver.settings.velocity_transient_rate_hz = rate_hz
-
-        gcmd.respond_info(
-            f"FOCI {self.driver.name} velocity transient feedforward set: enable={int(enable)} "
-            f"lead_time_us={int(lead_time_us)} gain={int(gain)} max_offset={int(max_offset)} "
-            f"rate_hz={int(rate_hz)}"
-        )
-
     def set_accel_feedforward(self, gcmd) -> None:
         """Set acceleration feedforward gains for live bringup debugging.
 
@@ -102,70 +55,6 @@ class TuningWorkflow:
         gcmd.respond_info(
             f"FOCI {self.driver.name} acceleration feedforward set: enable={int(enable)} "
             f"accel_gain={int(accel_gain)} decel_gain={int(decel_gain)}"
-        )
-
-    def set_decoupling_feedforward(self, gcmd) -> None:
-        """Set bounded q/d decoupling proxy feedforward for live debugging."""
-        enable = gcmd.get_int("ENABLE", 1, minval=0, maxval=1)
-        r_int = gcmd.get_int(
-            "R_INT",
-            self.driver.settings.decoupling_r_int,
-            minval=1,
-            maxval=0xFFFFFFFF,
-        )
-        l_int = gcmd.get_int(
-            "L_INT",
-            self.driver.settings.decoupling_l_int,
-            minval=1,
-            maxval=0xFFFFFFFF,
-        )
-        pole_pairs = gcmd.get_int(
-            "POLE_PAIRS",
-            self.driver.settings.decoupling_pole_pairs,
-            minval=1,
-            maxval=65535,
-        )
-        position_units_per_rev = gcmd.get_int(
-            "POSITION_UNITS_PER_REV",
-            self.driver.settings.decoupling_position_units_per_rev,
-            minval=1,
-            maxval=0xFFFFFFFF,
-        )
-        f_pwm_hz = gcmd.get_int(
-            "F_PWM_HZ",
-            self.driver.settings.decoupling_f_pwm_hz,
-            minval=1,
-            maxval=0xFFFFFFFF,
-        )
-        max_offset = gcmd.get_int(
-            "MAX_OFFSET",
-            self.driver.settings.decoupling_max_offset,
-            minval=0,
-            maxval=32767,
-        )
-
-        self.driver.protocol.set_decoupling_feedforward(
-            enable=enable != 0,
-            r_int=r_int,
-            l_int=l_int,
-            pole_pairs=pole_pairs,
-            position_units_per_rev=position_units_per_rev,
-            f_pwm_hz=f_pwm_hz,
-            max_offset=max_offset,
-        )
-        self.driver.settings.decoupling_feedforward = enable != 0
-        self.driver.settings.decoupling_r_int = r_int
-        self.driver.settings.decoupling_l_int = l_int
-        self.driver.settings.decoupling_pole_pairs = pole_pairs
-        self.driver.settings.decoupling_position_units_per_rev = position_units_per_rev
-        self.driver.settings.decoupling_f_pwm_hz = f_pwm_hz
-        self.driver.settings.decoupling_max_offset = max_offset
-
-        gcmd.respond_info(
-            f"FOCI {self.driver.name} decoupling feedforward set: enable={int(enable)} r_int="
-            f"{int(r_int)} l_int={int(l_int)} pole_pairs={int(pole_pairs)} "
-            f"position_units_per_rev={int(position_units_per_rev)} f_pwm_hz={int(f_pwm_hz)} "
-            f"max_offset={int(max_offset)}"
         )
 
     def set_position_lead(self, gcmd) -> None:

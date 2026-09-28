@@ -41,9 +41,7 @@ class FociMcuCommands:
         self.set_flux_filter = None
         self.set_position_gains = None
         self.set_velocity_feedforward = None
-        self.set_velocity_transient_feedforward = None
         self.set_accel_feedforward = None
-        self.set_decoupling_feedforward = None
         self.set_position_lead = None
         self.set_phase_advance = None
         self.set_velocity_limit = None
@@ -156,18 +154,9 @@ class FociMcuCommands:
         self.set_velocity_feedforward = mcu.lookup_command(
             "tmc_set_velocity_feedforward_rpm oid=%c enable=%c gain_permille=%hu"
         )
-        self.set_velocity_transient_feedforward = mcu.lookup_command(
-            "tmc_set_velocity_transient_feedforward oid=%c enable=%c"
-            " lead_time_us=%hu gain_permille=%hu max_offset=%hu rate_hz=%hu"
-        )
         self.set_accel_feedforward = mcu.lookup_command(
             "tmc_set_accel_feedforward oid=%c enable=%c"
             " accel_gain_permille=%hu decel_gain_permille=%hu"
-        )
-        self.set_decoupling_feedforward = mcu.lookup_command(
-            "tmc_set_decoupling_feedforward oid=%c enable=%c"
-            " r_int=%u l_int=%u pole_pairs=%hu position_units_per_rev=%u"
-            " f_pwm_hz=%u max_offset=%hu"
         )
         self.set_position_lead = mcu.lookup_command(
             "tmc_set_position_lead oid=%c enable=%c gain_permille=%hu max_counts=%hu"
