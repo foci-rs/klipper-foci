@@ -9,11 +9,4 @@ from .workflow import TuningWorkflow
 
 def register(driver) -> tuple[GcodeCommandSpec, ...]:
     driver.tuning = TuningWorkflow(driver)
-    return (
-        GcodeCommandSpec(
-            "FOCI_SET_ACCEL_FEEDFORWARD",
-            "tuning",
-            "set_accel_feedforward",
-            "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging",
-        ),
-    )
+    return ()

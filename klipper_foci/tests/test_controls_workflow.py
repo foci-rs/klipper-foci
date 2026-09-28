@@ -282,6 +282,42 @@ class TestVoltageLimitCommand(unittest.TestCase):
         self.assertEqual(d.protocol.commands.set_voltage_limit.last_args, [d.oid, 20000])
 
 
+class TestAccelFeedforwardCommand(unittest.TestCase):
+    def test_sets_accel_feedforward_enable_and_split_gains(self):
+        d = make_driver()
+
+        d.controls.set_accel_feedforward(
+            MockGCmd({"ENABLE": 1, "ACCEL_GAIN": 750, "DECEL_GAIN": 250})
+        )
+
+        self.assertEqual(d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 750, 250])
+        self.assertTrue(d.settings.accel_feedforward)
+        self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
+        self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
+
+    def test_gain_alias_sets_both_split_gains(self):
+        d = make_driver()
+
+        d.controls.set_accel_feedforward(MockGCmd({"ENABLE": 1, "GAIN": 500}))
+
+        self.assertEqual(d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 1, 500, 500])
+        self.assertTrue(d.settings.accel_feedforward)
+        self.assertEqual(d.settings.accel_feedforward_accel_gain, 500)
+        self.assertEqual(d.settings.accel_feedforward_decel_gain, 500)
+
+    def test_disable_preserves_configured_gain(self):
+        d = make_driver()
+        d.settings.accel_feedforward_accel_gain = 750
+        d.settings.accel_feedforward_decel_gain = 250
+
+        d.controls.set_accel_feedforward(MockGCmd({"ENABLE": 0}))
+
+        self.assertEqual(d.protocol.commands.set_accel_feedforward.last_args, [d.oid, 0, 750, 250])
+        self.assertFalse(d.settings.accel_feedforward)
+        self.assertEqual(d.settings.accel_feedforward_accel_gain, 750)
+        self.assertEqual(d.settings.accel_feedforward_decel_gain, 250)
+
+
 def test_controls_workflow_has_no_raw_register_method():
     driver = make_driver()
     assert not hasattr(driver.controls, "tmc_write_register")
@@ -291,7 +327,6 @@ def test_controls_workflow_no_longer_has_rare_setters():
     driver = make_driver()
     for name in (
         "set_velocity_transient_feedforward",
-        "set_accel_feedforward",
         "set_decoupling_feedforward",
         "set_position_lead",
         "set_phase_advance",

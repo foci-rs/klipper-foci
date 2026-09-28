@@ -130,6 +130,7 @@ def test_default_control_commands_register_controls_workflow_handlers():
         "FOCI_SET_CURRENT",
         "FOCI_SET_VELOCITY_FEEDFORWARD",
         "FOCI_SET_VOLTAGE_LIMIT",
+        "FOCI_SET_ACCEL_FEEDFORWARD",
     }
 
     handlers = {
@@ -140,34 +141,6 @@ def test_default_control_commands_register_controls_workflow_handlers():
     assert all(
         handler.__self__.__class__.__name__ == "ControlsWorkflow" for handler in handlers.values()
     )
-
-
-def test_tuning_entry_point_registers_only_accel_feedforward(monkeypatch):
-    from klipper_foci_tuning.registry import register as tuning_register
-
-    monkeypatch.setattr(
-        "klipper_foci.registry.entry_points",
-        lambda *, group: [_FakeEntryPoint("tuning", tuning_register)],
-    )
-    printer, _chips, sections = make_config_printer(
-        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
-    )
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-    gcode = printer.lookup_object("gcode")
-    handlers_by_name = {args[0]: args[3] for args, _kwargs in gcode._mux_commands}
-    expected = {
-        "FOCI_SET_ACCEL_FEEDFORWARD": "set_accel_feedforward",
-    }
-    assert len(expected) == 1
-    for command_name, handler_name in expected.items():
-        assert command_name in handlers_by_name
-        bound_method = handlers_by_name[command_name]
-        assert bound_method.__self__ is driver.tuning
-        assert bound_method.__func__.__name__ == handler_name
-    # Computed, not a literal: len(GCODE_COMMANDS) always reflects core's
-    # current static table, so this stays correct if that table's size
-    # ever changes again.
-    assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
 def test_diagnostics_active_and_passive_absent_with_core_only(monkeypatch):
@@ -214,7 +187,7 @@ def test_diagnostics_entry_point_registers_all_nine_commands(monkeypatch):
     assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
-def test_core_alone_registers_exactly_eleven_commands(monkeypatch):
+def test_core_alone_registers_exactly_twelve_commands(monkeypatch):
     monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
     printer, _chips, sections = make_config_printer(
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
@@ -223,10 +196,10 @@ def test_core_alone_registers_exactly_eleven_commands(monkeypatch):
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert registered_names == {spec.name for spec in GCODE_COMMANDS}
-    assert len(registered_names) == 11
+    assert len(registered_names) == 12
 
 
-def test_diagnostics_alone_without_tuning_works(monkeypatch):
+def test_diagnostics_alone_works(monkeypatch):
     from klipper_foci_diagnostics.registry import register as diagnostics_register
 
     monkeypatch.setattr(
@@ -240,24 +213,6 @@ def test_diagnostics_alone_without_tuning_works(monkeypatch):
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert "FOCI_CURRENT_STEP_TEST" in registered_names
-    assert "FOCI_SET_ACCEL_FEEDFORWARD" not in registered_names
-
-
-def test_tuning_alone_without_diagnostics_works(monkeypatch):
-    from klipper_foci_tuning.registry import register as tuning_register
-
-    monkeypatch.setattr(
-        "klipper_foci.registry.entry_points",
-        lambda *, group: [_FakeEntryPoint("tuning", tuning_register)],
-    )
-    printer, _chips, sections = make_config_printer(
-        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
-    )
-    make_config_driver(printer, sections, "foci stepper_x")  # must not raise
-    gcode = printer.lookup_object("gcode")
-    registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
-    assert "FOCI_SET_ACCEL_FEEDFORWARD" in registered_names
-    assert "FOCI_CURRENT_STEP_TEST" not in registered_names
 
 
 def test_homing_events_register_homing_workflow_callbacks():

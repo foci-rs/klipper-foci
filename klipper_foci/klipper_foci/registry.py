@@ -98,6 +98,12 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "set_voltage_limit",
         "Set FOCI PIDOUT_UQ_UD_LIMITS for bringup authority diagnostics",
     ),
+    GcodeCommandSpec(
+        "FOCI_SET_ACCEL_FEEDFORWARD",
+        "controls",
+        "set_accel_feedforward",
+        "Set FOCI acceleration/deceleration feedforward runtime gains for bringup debugging",
+    ),
 )
 
 
