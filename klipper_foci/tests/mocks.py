@@ -624,12 +624,10 @@ class MockConfig:
         return CommandError(msg)
 
 
-def make_config_printer(stepper_sections, chips=None, kinematics=None, foci_mode=None):
+def make_config_printer(stepper_sections, chips=None, kinematics=None):
     """Create a printer/config section set for FociDriver construction."""
     chips = chips or {"foci": MockMCU("foci")}
     sections = {}
-    if foci_mode is not None:
-        sections["foci"] = {"mode": foci_mode}
     stepper_names = []
     next_stepper_oid = 10
     for name, values in stepper_sections.items():
@@ -685,7 +683,7 @@ def make_driver(
     driver.oid = 0
     driver.stepper_oid = None
     driver.channel = 0
-    driver.global_config = SimpleNamespace(mode="default", debug=False)
+    driver.global_config = SimpleNamespace(debug=False)
 
     # Printer and objects
     toolhead = MockToolhead(kinematics)

@@ -4,7 +4,7 @@ import pytest
 
 from klipper_foci.config import velocity_mm_s_to_mrev_s
 from klipper_foci.registry import GCODE_COMMANDS, GcodeCommandSpec
-from tests.mocks import CommandError, MockConfig, MockMCU, make_config_driver, make_config_printer
+from tests.mocks import CommandError, MockMCU, make_config_driver, make_config_printer
 from tests.test_registry import _FakeEntryPoint
 
 
@@ -60,15 +60,6 @@ def test_absent_foci_section_registers_all_gcode_commands():
     printer = build_driver_with_mode()
 
     assert registered_command_names(printer) == {spec.name for spec in GCODE_COMMANDS}
-
-
-def test_stale_mode_key_raises_config_error():
-    printer, _chips, sections = make_config_printer(
-        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
-        foci_mode="expert",
-    )
-    with pytest.raises(printer.config_error("").__class__):
-        printer.load_object(MockConfig(printer, sections, "foci"), "foci")
 
 
 def test_registry_resolves_component_handler_and_inline_help():

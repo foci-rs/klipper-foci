@@ -1,4 +1,4 @@
-"""FOCI host G-code command registry and global mode config."""
+"""FOCI host G-code command registry and global config."""
 
 from __future__ import annotations
 
@@ -12,11 +12,6 @@ class FociGlobalConfig:
     """Global `[foci]` host-module configuration."""
 
     def __init__(self, config) -> None:
-        if config.get("mode", None) is not None:
-            raise config.error(
-                "[foci] no longer supports 'mode' -- install "
-                "klipper-foci-diagnostics instead of setting a mode"
-            )
         self.debug: bool = config.getboolean("debug", default=False)
 
 

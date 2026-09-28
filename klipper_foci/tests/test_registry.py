@@ -41,11 +41,6 @@ def test_debug_can_be_enabled():
     assert config.debug is True
 
 
-def test_no_mode_attribute_when_mode_key_absent():
-    config = FociGlobalConfig(FakeConfigfileGetters({}))
-    assert not hasattr(config, "mode")
-
-
 def test_no_raw_register_commands_in_gcode_commands():
     names = {spec.name for spec in GCODE_COMMANDS}
     assert "FOCI_TMC_READ_REGISTER" not in names
