@@ -141,8 +141,8 @@ def terminal_payload(
         (None, 7),
         ("amplitude_up", 1),
         ("amplitude_down", 2),
-        ("integral_resume", 8),
-        ("robustness_reversal", 9),
+        ("velocity_i_tune", 8),
+        ("velocity_tune_check", 9),
     ),
 )
 def test_action_mapping_is_selector_only(value, expected):
@@ -566,8 +566,8 @@ def recovery_wide_workflow(assembler, shape=1):
 
 def test_breakaway_seeded_action_resolves_to_firmware_wire_code_seven():
     """AutotuneAction::BreakawaySeeded = 7 (foci-firmware src/tmc.rs) is
-    reachable from FOCI_AUTOTUNE ACTION=breakaway_seeded."""
-    assert parse_autotune_action("breakaway_seeded") == 7
+    reachable from FOCI_AUTOTUNE ACTION=velocity_p_tune."""
+    assert parse_autotune_action("velocity_p_tune") == 7
 
 
 def test_plan_unpacks_the_packed_schedule_order_byte():

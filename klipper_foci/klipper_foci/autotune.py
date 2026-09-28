@@ -812,7 +812,7 @@ class AutotuneWorkflow:
 
     def _finish_velocity_integral_terminal(self, gcmd, request_fields: dict) -> str:
         """Report a velocity-integral terminal, raise on fault, and retain
-        the request identity for a possible integral_resume dispatch.
+        the request identity for a possible velocity_i_tune dispatch.
 
         Firmware emits this terminal from two places that must resolve
         identically: a plain velocity-integral dispatch, and an accepted breakaway
@@ -892,11 +892,11 @@ class AutotuneWorkflow:
         unhomes the axes and re-zeroes the encoder, so a chained dispatch would
         otherwise run against an unaligned encoder and fail with "encoder not
         aligned". The re-home runs unconditionally so it covers the first
-        dispatch, the auto-issued integral_resume, and any future chained stage.
+        dispatch, the auto-issued velocity_i_tune, and any future chained stage.
 
-        ``orchestrated`` marks a robustness_reversal dispatch the host itself
+        ``orchestrated`` marks a velocity_tune_check dispatch the host itself
         chained after a reproduced resume, as opposed to the standalone
-        ACTION=robustness_reversal diagnostic command. It only affects a
+        ACTION=velocity_tune_check diagnostic command. It only affects a
         non-pass robustness terminal: the diagnostic path keeps its full
         report-only handling (reverting the deployed gain when a
         pre-tune snapshot exists), while an orchestrated dispatch handles
@@ -976,10 +976,10 @@ class AutotuneWorkflow:
                     raise gcmd.error(f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name}")
         except Exception:
             self._cancel_inflight_dispatch(toolhead)
-            if action_code == ACTION_CODES["position_tune"] and self.done:
+            if action_code == ACTION_CODES["position_p_tune"] and self.done:
                 self._resync_step_clock_after_stimulus()
             raise
-        if action_code == ACTION_CODES["position_tune"]:
+        if action_code == ACTION_CODES["position_p_tune"]:
             self._resync_step_clock_after_stimulus()
 
         if not self._workflow_finished():
@@ -1115,7 +1115,7 @@ class AutotuneWorkflow:
                 # velocity-integral terminal in the SAME dispatch as this
                 # campaign-acceptance terminal -- resolve it the same way
                 # the non-breakaway path below does, so a first_run_retained
-                # outcome still drives the caller's integral_resume dispatch
+                # outcome still drives the caller's velocity_i_tune dispatch
                 # instead of being masked by the generic marker below.
                 report_summary(
                     gcmd, f"{self._summary_prefix()}: {self._format_proportional_gain_accepted()}"
@@ -1145,8 +1145,8 @@ class AutotuneWorkflow:
         except FixedGainAmplitudeProtocolError as err:
             raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
         # Only the production path -- ACTION left unspecified -- auto-chains
-        # into position_tune. Any explicit ACTION (diagnostic or otherwise,
-        # including ACTION=breakaway_seeded spelled out) opts out.
+        # into position_p_tune. Any explicit ACTION (diagnostic or otherwise,
+        # including ACTION=velocity_p_tune spelled out) opts out.
         chain_position_tune = action_param is None
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
@@ -1256,7 +1256,7 @@ class AutotuneWorkflow:
             outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead, safe_pose_move)
             if outcome == "first_run_retained":
                 # The accepted candidate has not yet reproduced. Re-dispatch the
-                # exact same request under integral_resume so firmware rebuilds
+                # exact same request under velocity_i_tune so firmware rebuilds
                 # the identical plan digest against its retained authority.
                 self._reset_dispatch_state()
                 self.driver.commissioning.phase_label_override = (
@@ -1265,7 +1265,7 @@ class AutotuneWorkflow:
                 try:
                     outcome = self._run_one_dispatch(
                         gcmd,
-                        ACTION_CODES["integral_resume"],
+                        ACTION_CODES["velocity_i_tune"],
                         request_fields,
                         toolhead,
                         safe_pose_move,
@@ -1279,7 +1279,7 @@ class AutotuneWorkflow:
                     self._reset_dispatch_state()
                     outcome = self._run_one_dispatch(
                         gcmd,
-                        ACTION_CODES["robustness_reversal"],
+                        ACTION_CODES["velocity_tune_check"],
                         request_fields,
                         toolhead,
                         safe_pose_move,
@@ -1306,7 +1306,7 @@ class AutotuneWorkflow:
                 # Its own tune_result reply carries the just-installed
                 # velocity fields, so it fully replaces `self.result` below.
                 # Capture the velocity phase's cycle evidence before the
-                # reset below clears it -- position_tune never repopulates it.
+                # reset below clears it -- position_p_tune never repopulates it.
                 chained_velocity_evidence = (
                     self._evidence_by_direction("iae_median_qs"),
                     self._evidence_by_direction("dac_rms_median_q"),
@@ -1315,7 +1315,7 @@ class AutotuneWorkflow:
                 self._synchronize_disarmed_workflow_terminal(toolhead)
                 outcome = self._run_one_dispatch(
                     gcmd,
-                    ACTION_CODES["position_tune"],
+                    ACTION_CODES["position_p_tune"],
                     request_fields,
                     toolhead,
                     safe_pose_move,

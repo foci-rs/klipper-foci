@@ -594,7 +594,7 @@ def test_autotune_reports_the_robustness_reversal_terminal(caplog):
         return reactor._time
 
     reactor.pause = finish_robustness
-    gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+    gcmd = MockGCmd({"ACTION": "velocity_tune_check"})
     with caplog.at_level(logging.INFO, logger="klipper_foci.autotune"):
         driver.autotune.autotune(gcmd)
 
@@ -640,7 +640,7 @@ def test_robustness_safety_fault_reports_outer_envelope_detail(caplog):
         return reactor._time
 
     reactor.pause = finish_with_safety_fault
-    gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+    gcmd = MockGCmd({"ACTION": "velocity_tune_check"})
     with (
         caplog.at_level(logging.INFO, logger="klipper_foci.autotune"),
         pytest.raises(CommandError, match="robustness safety fault"),
@@ -672,7 +672,7 @@ def test_autotune_raises_on_robustness_reversal_transport_failure():
         return reactor._time
 
     reactor.pause = fail_robustness
-    gcmd = MockGCmd({"ACTION": "robustness_reversal"})
+    gcmd = MockGCmd({"ACTION": "velocity_tune_check"})
 
     with pytest.raises(CommandError, match="robustness reversal transport failure"):
         driver.autotune.autotune(gcmd)

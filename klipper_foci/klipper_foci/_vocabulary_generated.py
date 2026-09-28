@@ -28,10 +28,10 @@ BREAKAWAY_PHASE_NAMES: dict[int, str] = {
 ACTION_CODES: dict[str, int] = {
     "amplitude_up": 1,
     "amplitude_down": 2,
-    "breakaway_seeded": 7,
-    "integral_resume": 8,
-    "robustness_reversal": 9,
-    "position_tune": 10,
+    "velocity_p_tune": 7,
+    "velocity_i_tune": 8,
+    "velocity_tune_check": 9,
+    "position_p_tune": 10,
 }
 
 SHAPE_RESUME = 0

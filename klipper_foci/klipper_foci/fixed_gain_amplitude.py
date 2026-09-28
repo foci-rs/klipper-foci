@@ -12,7 +12,7 @@ import struct
 # `AutotuneAction::from_u8`, and the host cannot even name them since
 # they're absent from the generated `ACTION_CODES`. Integral carries the
 # same slot-order confound and is not lifecycle-limited, so
-# breakaway_seeded is the production and measurement path.
+# velocity_p_tune is the production and measurement path.
 from ._vocabulary_generated import (
     ACTION_CODES,
     SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING,
@@ -67,7 +67,7 @@ class FixedGainAmplitudeProtocolError(Exception):
 
 def parse_autotune_action(value: str | None) -> int:
     """Map the sole host-authored selector to its firmware wire value."""
-    name = "breakaway_seeded" if value is None else str(value).lower()
+    name = "velocity_p_tune" if value is None else str(value).lower()
     try:
         return ACTION_CODES[name]
     except KeyError as err:
