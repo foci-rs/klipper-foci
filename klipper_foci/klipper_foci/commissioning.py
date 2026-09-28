@@ -788,7 +788,7 @@ class CommissioningWorkflow:
                     self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
                     report_summary(
                         gcmd,
-                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED — timed out waiting "
+                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED, timed out waiting "
                         "for the commissioning firmware.",
                     )
                     raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP timed out")
@@ -816,7 +816,7 @@ class CommissioningWorkflow:
                         phrase = operator_failure_phrase(self.error_code)
                     report_summary(
                         gcmd,
-                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED — {phrase}.",
+                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED, {phrase}.",
                     )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_SETUP failed at {phase_name}: {error_name}"
@@ -858,8 +858,7 @@ class CommissioningWorkflow:
                 self.on_commission_failure(str(error))
                 report_summary(
                     gcmd,
-                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED — timing evidence "
-                    "was rejected.",
+                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED, timing evidence was rejected.",
                 )
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: FOCI_SETUP timing evidence rejected: {error}"
@@ -873,7 +872,7 @@ class CommissioningWorkflow:
                     self.on_commission_failure(error_name)
                 report_summary(
                     gcmd,
-                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED — "
+                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED, "
                     f"{operator_failure_phrase(status)}.",
                 )
                 raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP failed: {error_name}")
@@ -911,7 +910,7 @@ class CommissioningWorkflow:
 
             report_summary(
                 gcmd,
-                f"FOCI_SETUP {self.driver.stepper_name}: SUCCEEDED — resistance/inductance "
+                f"FOCI_SETUP {self.driver.stepper_name}: SUCCEEDED, resistance/inductance "
                 "identified, current gains applied.",
             )
             status_str = "accepted" if status == 0 else "accepted with warnings"

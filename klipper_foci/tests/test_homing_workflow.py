@@ -434,7 +434,7 @@ class TestHomingInvalidation(unittest.TestCase):
 
     def test_noop_for_none_kinematics(self):
         d = make_driver(kinematics=MockNoneKinematics())
-        # NoneKinematics has no rails or clear_homing_state — should be a no-op
+        # NoneKinematics has no rails or clear_homing_state, should be a no-op
         d.homing.invalidate_homing()
 
     def test_noop_when_no_rails_attribute(self):

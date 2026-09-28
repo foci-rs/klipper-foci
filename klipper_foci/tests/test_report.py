@@ -8,8 +8,8 @@ from tests.mocks import MockGCode
 
 def test_report_summary_calls_respond_info_with_the_message():
     gcode = MockGCode()
-    report_summary(gcode, "FOCI_SETUP stepper_x: SUCCEEDED — done.")
-    assert gcode._responses == ["FOCI_SETUP stepper_x: SUCCEEDED — done."]
+    report_summary(gcode, "FOCI_SETUP stepper_x: SUCCEEDED, done.")
+    assert gcode._responses == ["FOCI_SETUP stepper_x: SUCCEEDED, done."]
 
 
 def test_report_detail_logs_at_info_when_debug_enabled(caplog):

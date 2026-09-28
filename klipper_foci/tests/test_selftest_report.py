@@ -539,7 +539,7 @@ def test_cmd_selftest_duplicate_stage_updates_without_inflating_report(caplog):
     assert "7/7 stages" not in out
     assert "6/6 stages" not in out
     assert gcmd._responses[-1] == (
-        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 6 stages passed."
+        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED, all 6 stages passed."
     )
 
 
@@ -573,9 +573,9 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     ):
         d.selftest.selftest(gcmd)
 
-    # report_summary was called before the raise — the console line is still available.
+    # report_summary was called before the raise, the console line is still available.
     assert gcmd._responses[-1] == (
-        "FOCI_SELFTEST manual_stepper stepper_x: FAILED — ADC calibration fault."
+        "FOCI_SELFTEST manual_stepper stepper_x: FAILED, ADC calibration fault."
     )
 
     out = caplog.text
@@ -601,7 +601,7 @@ def test_cmd_selftest_pass_does_not_raise(caplog):
         d.selftest.selftest(gcmd)  # must not raise
 
     assert gcmd.last_info == (
-        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 1 stages passed."
+        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED, all 1 stages passed."
     )
 
 
@@ -620,7 +620,7 @@ def test_cmd_selftest_pass_prints_succeeded_summary():
 
     assert (
         gcmd._responses[-1]
-        == "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED — all 1 stages passed."
+        == "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED, all 1 stages passed."
     )
 
 
@@ -714,5 +714,5 @@ def test_cmd_selftest_failure_prints_failed_summary_and_still_raises():
         d.selftest.selftest(gcmd)
 
     assert gcmd._responses[-1] == (
-        "FOCI_SELFTEST manual_stepper stepper_x: FAILED — ADC calibration fault."
+        "FOCI_SELFTEST manual_stepper stepper_x: FAILED, ADC calibration fault."
     )

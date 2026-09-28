@@ -54,7 +54,7 @@ class ActiveDiagnostics:
         # handle_resistance_axis below; folded into the commission result
         # dict on commission success by CommissioningWorkflow.commission()
         # via pop_resistance_cache(), which only returns a non-empty dict
-        # when all three replies (run, axis0, axis1) are present — a
+        # when all three replies (run, axis0, axis1) are present, a
         # partial set folds in nothing, so persist_commission_results'
         # presence-gated resistance block either persists a complete set
         # of identified_r_* keys or none at all. The cache entry for an
@@ -293,7 +293,7 @@ class ActiveDiagnostics:
         as reported: count-slope, intercept, fit residual, point-selection
         masks, signed-anchor slope/asymmetry, and thermal drift. The host
         does not fit, select points, or evaluate quality gates here. Also
-        caches the axis fields (keyed by oid, routed by electrical_axis —
+        caches the axis fields (keyed by oid, routed by electrical_axis,
         not arrival order) so a subsequent commission completion can fold
         them into the persisted result; see pop_resistance_cache().
         """
@@ -505,8 +505,8 @@ class ActiveDiagnostics:
 
         All-or-nothing: returns the full folded dict only when the cache
         holds the run reply AND both axis0 and axis1 replies. If any of
-        the three is missing — for example a commission that completed
-        before every resistance reply arrived — returns `{}` so the
+        the three is missing, for example a commission that completed
+        before every resistance reply arrived, returns `{}` so the
         presence-gate in persist_commission_results' resistance block
         skips the block entirely instead of persisting a partial set of
         identified_r_* keys (or raising a KeyError on the missing one).

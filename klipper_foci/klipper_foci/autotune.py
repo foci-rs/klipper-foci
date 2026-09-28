@@ -133,9 +133,9 @@ _VELOCITY_INTEGRAL_SUCCESS_PHRASES = {
 # and safety-fault causes have their own dedicated branches above this one
 # and never reach this table).
 _ROBUSTNESS_REJECT_PHRASES = {
-    4: ("gain robustness check inconclusive — motor did not settle within the measurement window"),
+    4: ("gain robustness check inconclusive, motor did not settle within the measurement window"),
     11: (
-        "robustness check failed — could not reposition for the next "
+        "robustness check failed, could not reposition for the next "
         "reversal leg; existing gains retained"
     ),
 }
@@ -145,7 +145,7 @@ def _format_robustness_reject_phrase(cause: int) -> str:
     if cause in _ROBUSTNESS_REJECT_PHRASES:
         return _ROBUSTNESS_REJECT_PHRASES[cause]
     cause_name = ROBUSTNESS_CAUSE_NAMES.get(cause, "unknown")
-    return f"robustness check rejected — {humanize(cause_name)}"
+    return f"robustness check rejected, {humanize(cause_name)}"
 
 
 # Bit order of PositionTuneProvenance.stimulus_feedforward_paths.
@@ -738,7 +738,7 @@ class AutotuneWorkflow:
         confirmed_p = int(
             (self.breakaway_campaign.confirmation_terminal or {}).get("confirmed_p_raw", 0)
         )
-        return f"SUCCEEDED — proportional gain accepted (P={confirmed_p})."
+        return f"SUCCEEDED, proportional gain accepted (P={confirmed_p})."
 
     def _format_outer_safety_fault(self) -> str:
         fault = self.outer_safety_fault
@@ -837,7 +837,7 @@ class AutotuneWorkflow:
         )
         candidate_i = (self.velocity_integral.terminal or {}).get("candidate_i")
         suffix = f" (velocity_i={int(candidate_i)})" if candidate_i is not None else ""
-        report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — {phrase}{suffix}.")
+        report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED, {phrase}{suffix}.")
         self._retain_request_from_terminal(request_fields)
         return self.velocity_integral.outcome
 
@@ -999,12 +999,12 @@ class AutotuneWorkflow:
                 fail_cause = (self.fixed_gain_amplitude.terminal or {}).get(
                     "cause_name", outcome_name
                 )
-                report_summary(gcmd, f"{self._summary_prefix()}: FAILED — {humanize(fail_cause)}.")
+                report_summary(gcmd, f"{self._summary_prefix()}: FAILED, {humanize(fail_cause)}.")
                 raise gcmd.error(
                     f"FOCI {self.driver.name}: fixed-gain amplitude validation "
                     f"{self.fixed_gain_amplitude.outcome}"
                 )
-            report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED — {humanize(outcome_name)}.")
+            report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED, {humanize(outcome_name)}.")
             return "fixed_gain_amplitude"
         if self.robustness_reversal_terminal is not None:
             safety_detail = self._format_outer_safety_fault()
@@ -1051,7 +1051,7 @@ class AutotuneWorkflow:
                     )
                     report_summary(
                         gcmd,
-                        f"{self._summary_prefix()}: FAILED — no robust gain within the "
+                        f"{self._summary_prefix()}: FAILED, no robust gain within the "
                         "response band.",
                     )
                     raise gcmd.error(
@@ -1074,7 +1074,7 @@ class AutotuneWorkflow:
                 # (its own FAILED summary, or an unchanged gcmd.error()).
                 report_summary(
                     gcmd,
-                    f"{self._summary_prefix()}: SUCCEEDED — "
+                    f"{self._summary_prefix()}: SUCCEEDED, "
                     f"{humanize(terminal.get('outcome_name', 'unknown'))}.",
                 )
             self._handle_robustness_verdict(gcmd)
@@ -1420,7 +1420,7 @@ class AutotuneWorkflow:
                 f", position_p={int(result['position_p'])})." if nominal_bandwidth_hz else ")."
             )
             summary_line = (
-                f"{self._summary_prefix()}: SUCCEEDED — tuned ({gain_text}{summary_suffix}"
+                f"{self._summary_prefix()}: SUCCEEDED, tuned ({gain_text}{summary_suffix}"
             )
             if evidence_missing:
                 summary_line += " missing=evidence"
@@ -1517,7 +1517,7 @@ class AutotuneWorkflow:
         detail = "inconclusive - re-run" if outcome == 2 else "reject"
         report_summary(
             gcmd,
-            f"{self._summary_prefix()}: FAILED — robustness check {detail}; retained "
+            f"{self._summary_prefix()}: FAILED, robustness check {detail}; retained "
             "the pre-tune gain.",
         )
 

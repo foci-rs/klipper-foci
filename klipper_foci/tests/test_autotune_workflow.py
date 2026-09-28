@@ -891,7 +891,7 @@ class TestAutotuneGates(unittest.TestCase):
         with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
             d.autotune.autotune(gcmd)
 
-        summary = next((msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg), None)
+        summary = next((msg for msg in gcmd._responses if "SUCCEEDED, tuned" in msg), None)
         self.assertIsNotNone(summary)
         self.assertIn(
             "position_p=282",
@@ -980,7 +980,7 @@ class TestAutotuneGates(unittest.TestCase):
         gcmd = MockGCmd({"ACTION": "breakaway_seeded"})
         d.autotune.autotune(gcmd)
 
-        summary = next((msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg), None)
+        summary = next((msg for msg in gcmd._responses if "SUCCEEDED, tuned" in msg), None)
         self.assertIsNotNone(summary)
         self.assertIn("missing=evidence", summary)
 
@@ -2554,7 +2554,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(gcmd)
 
-        summary = next(msg for msg in gcmd._responses if "SUCCEEDED — tuned" in msg)
+        summary = next(msg for msg in gcmd._responses if "SUCCEEDED, tuned" in msg)
         self.assertIn("velocity_p=863", summary)
         self.assertIn("velocity_i=12", summary)
         self.assertNotIn("(tuned)", summary)
@@ -2573,7 +2573,7 @@ def test_robustness_verdict_reject_prints_failed_not_gcmd_error():
     d.autotune._handle_robustness_verdict(gcmd)
 
     assert gcmd._responses[-1] == (
-        "FOCI_AUTOTUNE manual_stepper stepper_x: FAILED — robustness check "
+        "FOCI_AUTOTUNE manual_stepper stepper_x: FAILED, robustness check "
         "reject; retained the pre-tune gain."
     )
 

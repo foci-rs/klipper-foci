@@ -140,7 +140,7 @@ class SelftestWorkflow:
         if self.status == 0:
             report_summary(
                 gcmd,
-                f"FOCI_SELFTEST {self.driver.stepper_name}: SUCCEEDED — all "
+                f"FOCI_SELFTEST {self.driver.stepper_name}: SUCCEEDED, all "
                 f"{int(total)} stages passed.",
             )
         else:
@@ -151,7 +151,7 @@ class SelftestWorkflow:
                 )
             err = last_phase_detail_reason or operator_failure_phrase(self.status)
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
-            report_summary(gcmd, f"FOCI_SELFTEST {self.driver.stepper_name}: FAILED — {err}.")
+            report_summary(gcmd, f"FOCI_SELFTEST {self.driver.stepper_name}: FAILED, {err}.")
 
         if self.status != 0:
             err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")

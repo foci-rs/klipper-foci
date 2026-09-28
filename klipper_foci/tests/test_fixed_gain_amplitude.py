@@ -433,7 +433,7 @@ def test_autotune_relays_one_complete_amplitude_without_host_decisions():
     driver.autotune.autotune(gcmd)
 
     assert driver.protocol.commands.tune.last_args[1] == 1
-    assert gcmd._responses[0] == "FOCI_AUTOTUNE stepper_x: SUCCEEDED — complete."
+    assert gcmd._responses[0] == "FOCI_AUTOTUNE stepper_x: SUCCEEDED, complete."
 
 
 def test_autotune_prints_failed_summary_on_fixed_gain_amplitude_failure():
@@ -471,7 +471,7 @@ def test_autotune_prints_failed_summary_on_fixed_gain_amplitude_failure():
     with pytest.raises(CommandError, match="fixed-gain amplitude validation failed"):
         driver.autotune.autotune(gcmd)
 
-    assert gcmd._responses[0] == ("FOCI_AUTOTUNE stepper_x: FAILED — missing acceptance point.")
+    assert gcmd._responses[0] == ("FOCI_AUTOTUNE stepper_x: FAILED, missing acceptance point.")
 
 
 def test_fixed_gain_amplitude_detail_is_absent_from_log_when_debug_disabled(caplog):
@@ -506,7 +506,7 @@ def test_fixed_gain_amplitude_detail_is_absent_from_log_when_debug_disabled(capl
         driver.autotune.autotune(gcmd)
 
     assert "klipper_foci.autotune" not in {r.name for r in caplog.records}
-    assert gcmd._responses[0] == "FOCI_AUTOTUNE stepper_x: SUCCEEDED — complete."
+    assert gcmd._responses[0] == "FOCI_AUTOTUNE stepper_x: SUCCEEDED, complete."
 
 
 PLAN_FRAGMENT_BYTES = 33

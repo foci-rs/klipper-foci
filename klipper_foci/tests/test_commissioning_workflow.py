@@ -463,7 +463,7 @@ class TestCommissionGates(unittest.TestCase):
         self.assertIn("unknown profile", str(ctx.exception).lower())
 
     def test_does_not_require_homed_state(self):
-        """Commission should not check homing — it works from cold boot."""
+        """Commission should not check homing, it works from cold boot."""
         d = make_driver()
         gcmd = MockGCmd({"PROFILE": "balanced"})
         # Will fail in the commission polling loop, but should
@@ -474,7 +474,7 @@ class TestCommissionGates(unittest.TestCase):
         d.printer._objects["reactor"] = MockReactor()
         # This will fail because we don't have full mock infrastructure
         # for the success path, but it should NOT raise "not homed"
-        # Expected — incomplete mocks for full path
+        # Expected, incomplete mocks for full path
         with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
         # Verify no homing error was raised
@@ -660,7 +660,7 @@ def test_commission_timing_evidence_rejected_prints_failed_summary():
         d.commissioning.commission(gcmd)
 
     assert gcmd.last_info == (
-        "FOCI_SETUP manual_stepper stepper_x: FAILED — timing evidence was rejected."
+        "FOCI_SETUP manual_stepper stepper_x: FAILED, timing evidence was rejected."
     )
 
 
@@ -679,7 +679,7 @@ def test_commission_terminal_status_failure_prints_failed_summary():
     with pytest.raises(CommandError, match="encoder fault"):
         d.commissioning.commission(gcmd)
 
-    assert gcmd.last_info == ("FOCI_SETUP manual_stepper stepper_x: FAILED — encoder fault.")
+    assert gcmd.last_info == ("FOCI_SETUP manual_stepper stepper_x: FAILED, encoder fault.")
 
 
 class TestChipResetDetected(unittest.TestCase):
@@ -1200,7 +1200,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         driver.protocol.commands.commission.send = drive_partial_success
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
-        # Must not raise — the partial cache must not reach the
+        # Must not raise, the partial cache must not reach the
         # unconditional result[key] lookups in
         # _persist_resistance_identification.
         driver.commissioning.commission(gcmd)

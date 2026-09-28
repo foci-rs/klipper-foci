@@ -153,7 +153,7 @@ class MockToolhead:
 
 
 class MockNoneKinematics:
-    """NoneKinematics — no get_rails, no axes."""
+    """NoneKinematics, no get_rails, no axes."""
 
     pass
 
@@ -180,7 +180,7 @@ class MockCartesianKinematics:
 
 
 class MockCoreXYKinematics(MockCartesianKinematics):
-    """CoreXY kinematics — class name used for coupling lookup."""
+    """CoreXY kinematics, class name used for coupling lookup."""
 
     # The COUPLED_AXES table uses type(kin).__name__
     pass
