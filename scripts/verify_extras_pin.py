@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Verify a built klipper-foci wheel pins its diagnostics/tuning extras."""
+"""Verify a built klipper-foci wheel pins its diagnostics extra."""
 
 import re
 import sys
 import zipfile
 
-EXTRAS = ("diagnostics", "tuning")
-NAMES = {"diagnostics": "klipper-foci-diagnostics", "tuning": "klipper-foci-tuning"}
+EXTRAS = ("diagnostics",)
+NAMES = {"diagnostics": "klipper-foci-diagnostics"}
 
 
 def main(wheel_path: str, version: str) -> int:

@@ -15,8 +15,7 @@ class FociGlobalConfig:
         if config.get("mode", None) is not None:
             raise config.error(
                 "[foci] no longer supports 'mode' -- install "
-                "klipper-foci-diagnostics/klipper-foci-tuning instead of "
-                "setting a mode"
+                "klipper-foci-diagnostics instead of setting a mode"
             )
         self.debug: bool = config.getboolean("debug", default=False)
 

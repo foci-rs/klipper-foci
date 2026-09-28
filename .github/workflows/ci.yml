@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12", "3.13"]
-        package: [klipper_foci, klipper_foci_diagnostics, klipper_foci_tuning]
+        package: [klipper_foci, klipper_foci_diagnostics]
     defaults:
       run:
         working-directory: ${{ matrix.package }}

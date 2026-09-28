@@ -5,7 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-EXTRAS = ("klipper-foci-diagnostics", "klipper-foci-tuning")
+EXTRAS = ("klipper-foci-diagnostics",)
 
 
 def main(pyproject_path: str, version: str) -> None:

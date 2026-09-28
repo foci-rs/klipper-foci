@@ -46,11 +46,10 @@ teardown() { rm -rf "$TEST_ROOT"; }
   grep -q 'restarted:moonraker' "$TEST_ROOT/restarts.log"
 }
 
-@test "foci_main --diagnostics --tuning installs with both extras, pinned together" {
-  run foci_main --diagnostics --tuning
-  [ "$status" -eq 0 ]
-  grep -q 'pip_install:klipper-foci\[diagnostics,tuning\]==0.3.0' "$TEST_ROOT/pip.log"
-  grep -q 'project_name: klipper-foci\[diagnostics,tuning\]' "$TEST_ROOT/moonraker.conf"
+@test "foci_main rejects the removed --tuning flag" {
+  run foci_main --tuning
+  [ "$status" -ne 0 ]
+  [ ! -f "$TEST_ROOT/pip.log" ]
 }
 
 @test "re-running with a different flag combination recomputes the extras set fresh" {
@@ -59,7 +58,6 @@ teardown() { rm -rf "$TEST_ROOT"; }
   run foci_main --diagnostics
   [ "$status" -eq 0 ]
   grep -q 'pip_install:klipper-foci\[diagnostics\]==0.3.0' "$TEST_ROOT/pip.log"
-  ! grep -q 'tuning' "$TEST_ROOT/pip.log"
   grep -q 'project_name: klipper-foci\[diagnostics\]' "$TEST_ROOT/moonraker.conf"
 }
 
@@ -107,13 +105,13 @@ teardown() { rm -rf "$TEST_ROOT"; }
 }
 
 @test "foci_main run twice with identical flags is fully idempotent end to end" {
-  run foci_main --diagnostics --tuning
+  run foci_main --diagnostics
   [ "$status" -eq 0 ]
-  run foci_main --diagnostics --tuning
+  run foci_main --diagnostics
   [ "$status" -eq 0 ]
   [ "$(grep -c 'pip_install' "$TEST_ROOT/pip.log")" -eq 2 ]
-  grep -c 'pip_install:klipper-foci\[diagnostics,tuning\]==0.3.0' "$TEST_ROOT/pip.log" | grep -q '^2$'
+  grep -c 'pip_install:klipper-foci\[diagnostics\]==0.3.0' "$TEST_ROOT/pip.log" | grep -q '^2$'
   [ "$(grep -c 'klippy/extras/foci.py' "$TEST_ROOT/klipper/.git/info/exclude")" -eq 1 ]
   [ "$(grep -c '\[update_manager klipper-foci\]' "$TEST_ROOT/moonraker.conf")" -eq 1 ]
-  [ "$(grep -c 'project_name: klipper-foci\[diagnostics,tuning\]' "$TEST_ROOT/moonraker.conf")" -eq 1 ]
+  [ "$(grep -c 'project_name: klipper-foci\[diagnostics\]' "$TEST_ROOT/moonraker.conf")" -eq 1 ]
 }

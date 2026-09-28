@@ -30,7 +30,6 @@ if _PKG_NAME not in sys.modules:
     sys.modules.setdefault("__init__", module)
 
 _SIBLING_PACKAGES = [
-    Path(__file__).parent.parent / "klipper_foci_tuning",
     Path(__file__).parent.parent / "klipper_foci_diagnostics",
 ]
 for _sibling in _SIBLING_PACKAGES:

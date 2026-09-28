@@ -29,7 +29,7 @@ jobs:
         run: python scripts/patch_optional_deps.py klipper_foci/pyproject.toml "${{ steps.version.outputs.version }}"
       - name: Build wheels and sdists
         run: |
-          for pkg in klipper_foci klipper_foci_diagnostics klipper_foci_tuning; do
+          for pkg in klipper_foci klipper_foci_diagnostics; do
             python -m build "$pkg" --outdir dist
           done
       - name: Verify the extras pin took effect
@@ -54,7 +54,7 @@ jobs:
             git worktree add -B gh-pages /tmp/gh-pages origin/main
             rm -rf /tmp/gh-pages/*
           fi
-          for pkg in klipper-foci klipper-foci-diagnostics klipper-foci-tuning; do
+          for pkg in klipper-foci klipper-foci-diagnostics; do
             mkdir -p "/tmp/gh-pages/simple/$pkg"
             for asset_url in $(python -c "import json,sys; print('\n'.join(a['browser_download_url'] for a in json.loads('''${{ steps.gh_release.outputs.assets }}''') if a['name'].startswith('${pkg//-/_}')))"); do
               name=$(basename "$asset_url")
@@ -65,7 +65,6 @@ jobs:
           cat > /tmp/gh-pages/simple/index.html <<'INDEXEOF'
           <a href="klipper-foci/">klipper-foci</a><br>
           <a href="klipper-foci-diagnostics/">klipper-foci-diagnostics</a><br>
-          <a href="klipper-foci-tuning/">klipper-foci-tuning</a><br>
           INDEXEOF
           cd /tmp/gh-pages
           git add -A
@@ -102,7 +101,7 @@ jobs:
             ok=1
             curl -fsS "https://mjonuschat.github.io/klipper-foci/simple/" \
               | grep -q 'klipper-foci-diagnostics/' || ok=0
-            for pkg in klipper-foci klipper-foci-diagnostics klipper-foci-tuning; do
+            for pkg in klipper-foci klipper-foci-diagnostics; do
               curl -fsS "https://mjonuschat.github.io/klipper-foci/simple/$pkg/" \
                 | grep -qE "$pattern" || ok=0
             done

@@ -16,7 +16,6 @@ root = ".."
 
 [project.optional-dependencies]
 diagnostics = ["klipper-foci-diagnostics"]
-tuning = ["klipper-foci-tuning"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["klipper_foci"]

@@ -15,25 +15,19 @@ def _make_wheel(tmp_path, requires_dist_lines):
     return wheel_path
 
 
-def test_passes_when_both_extras_are_pinned(tmp_path):
+def test_passes_when_the_extra_is_pinned(tmp_path):
     wheel = _make_wheel(
         tmp_path,
-        [
-            'klipper-foci-diagnostics (==1.4.0) ; extra == "diagnostics"',
-            'klipper-foci-tuning (==1.4.0) ; extra == "tuning"',
-        ],
+        ['klipper-foci-diagnostics (==1.4.0) ; extra == "diagnostics"'],
     )
     result = subprocess.run([sys.executable, str(SCRIPT), str(wheel), "1.4.0"])
     assert result.returncode == 0
 
 
-def test_fails_when_an_extra_is_unpinned(tmp_path):
+def test_fails_when_the_extra_is_unpinned(tmp_path):
     wheel = _make_wheel(
         tmp_path,
-        [
-            'klipper-foci-diagnostics ; extra == "diagnostics"',
-            'klipper-foci-tuning (==1.4.0) ; extra == "tuning"',
-        ],
+        ['klipper-foci-diagnostics ; extra == "diagnostics"'],
     )
     result = subprocess.run(
         [sys.executable, str(SCRIPT), str(wheel), "1.4.0"], capture_output=True, text=True
@@ -42,16 +36,13 @@ def test_fails_when_an_extra_is_unpinned(tmp_path):
     assert "diagnostics" in result.stderr
 
 
-def test_fails_when_an_extra_is_pinned_to_the_wrong_version(tmp_path):
+def test_fails_when_the_extra_is_pinned_to_the_wrong_version(tmp_path):
     wheel = _make_wheel(
         tmp_path,
-        [
-            'klipper-foci-diagnostics (==1.4.0) ; extra == "diagnostics"',
-            'klipper-foci-tuning (==1.3.9) ; extra == "tuning"',
-        ],
+        ['klipper-foci-diagnostics (==1.3.9) ; extra == "diagnostics"'],
     )
     result = subprocess.run(
         [sys.executable, str(SCRIPT), str(wheel), "1.4.0"], capture_output=True, text=True
     )
     assert result.returncode == 1
-    assert "tuning" in result.stderr
+    assert "diagnostics" in result.stderr

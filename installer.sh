@@ -165,10 +165,9 @@ foci_write_moonraker_block() {
 
 foci_usage() {
     cat <<'EOF'
-Usage: install.sh [--diagnostics] [--tuning] [--force] [--help]
+Usage: install.sh [--diagnostics] [--force] [--help]
 
   --diagnostics  Also install klipper-foci-diagnostics
-  --tuning       Also install klipper-foci-tuning
   --force        Overwrite a foreign pip.conf index-url or shim file
                  (never overrides an unowned moonraker.conf section)
   --help         Show this message and exit
@@ -180,11 +179,10 @@ pip_install() {
 }
 
 foci_main() {
-    local want_diagnostics="" want_tuning="" force=""
+    local want_diagnostics="" force=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --diagnostics) want_diagnostics=1 ;;
-            --tuning) want_tuning=1 ;;
             --force) force=1 ;;
             -h|--help) foci_usage; return 0 ;;
             *) log "Unknown flag: $1" >&2; return 1 ;;
@@ -213,9 +211,6 @@ foci_main() {
 
     local extras=""
     [ -n "$want_diagnostics" ] && extras="diagnostics"
-    if [ -n "$want_tuning" ]; then
-        [ -n "$extras" ] && extras="$extras,tuning" || extras="tuning"
-    fi
 
     local pip_target="klipper-foci"
     local project_name=""

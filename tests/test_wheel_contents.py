@@ -40,7 +40,6 @@ def test_core_wheel_contains_expected_files_and_no_optional_modules(tmp_path):
     # Then the negative assertions this task exists for.
     assert not any("diagnostics_active" in name for name in modules)
     assert not any("diagnostics_passive" in name for name in modules)
-    assert not any("klipper_foci_tuning" in name for name in modules)
     assert not any("klipper_foci_diagnostics" in name for name in modules)
 
 
@@ -55,17 +54,9 @@ def test_diagnostics_wheel_contains_only_its_own_modules(tmp_path):
     assert any(name.endswith("passive.py") for name in modules)
 
 
-def test_tuning_wheel_contains_only_its_own_modules(tmp_path):
-    tuning_wheel = _build_wheel(_HOST_KLIPPER_FOCI / "klipper_foci_tuning", tmp_path / "tuning")
-    modules = _wheel_module_names(tuning_wheel)
-    assert modules, "tuning wheel must not be empty"
-    assert all(name.startswith("klipper_foci_tuning/") for name in modules)
-    assert any(name.endswith("workflow.py") for name in modules)
-
-
 def test_core_alone_install_cannot_import_optional_packages(tmp_path):
     """Install the built core wheel into an isolated venv and confirm
-    diagnostics/tuning genuinely aren't importable -- the file-listing
+    diagnostics genuinely isn't importable -- the file-listing
     checks above prove the wheel's contents; this proves what actually
     happens after a real `pip install`."""
     core_wheel = _build_wheel(_HOST_KLIPPER_FOCI / "klipper_foci", tmp_path / "core_for_install")
@@ -76,10 +67,10 @@ def test_core_alone_install_cannot_import_optional_packages(tmp_path):
         [str(venv_python), "-m", "pip", "install", "--quiet", str(core_wheel)], check=True
     )
     # cwd is pinned away from the source tree: host/klipper-foci contains
-    # sibling directories named exactly klipper_foci_diagnostics and
-    # klipper_foci_tuning (their package project roots, no __init__.py), which
-    # `python -c` would otherwise pick up from cwd as spurious PEP 420
-    # namespace packages, masking a real "not installed" result.
+    # a sibling directory named exactly klipper_foci_diagnostics (its package
+    # project root, no __init__.py), which `python -c` would otherwise pick up
+    # from cwd as a spurious PEP 420 namespace package, masking a real
+    # "not installed" result.
     result = subprocess.run(
         [str(venv_python), "-c", "import klipper_foci.driver"],
         capture_output=True,
@@ -87,7 +78,7 @@ def test_core_alone_install_cannot_import_optional_packages(tmp_path):
         cwd=tmp_path,
     )
     assert result.returncode == 0, result.stderr
-    for missing_module in ("klipper_foci_diagnostics", "klipper_foci_tuning"):
+    for missing_module in ("klipper_foci_diagnostics",):
         result = subprocess.run(
             [str(venv_python), "-c", f"import {missing_module}"],
             capture_output=True,

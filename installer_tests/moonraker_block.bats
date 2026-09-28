@@ -22,9 +22,9 @@ teardown() { rm -f "$TEST_CONF"; }
 }
 
 @test "foci_write_moonraker_block emits project_name with extras when passed" {
-  run foci_write_moonraker_block "$TEST_CONF" "/home/pi/klippy-env" "klipper-foci[diagnostics,tuning]"
+  run foci_write_moonraker_block "$TEST_CONF" "/home/pi/klippy-env" "klipper-foci[diagnostics]"
   [ "$status" -eq 0 ]
-  grep -q 'project_name: klipper-foci\[diagnostics,tuning\]' "$TEST_CONF"
+  grep -q 'project_name: klipper-foci\[diagnostics\]' "$TEST_CONF"
 }
 
 @test "foci_write_moonraker_block refuses a pre-existing unmarked matching section" {
