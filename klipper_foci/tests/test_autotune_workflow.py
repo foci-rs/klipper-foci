@@ -7,6 +7,7 @@ from unittest.mock import patch
 from klipper_foci.autotune import (
     OUTER_SAFETY_REASON_NAMES,
     POSITION_TUNE_OUTCOME_NAMES,
+    DispatchOutcome,
     _format_feedforward_paths,
     _nominal_bandwidth_hz,
 )
@@ -590,6 +591,33 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(events[0], ("script", "G28 X Y"))
         self.assertEqual(events[1], ("script", "G0 X100.000 Y100.000"))
         self.assertEqual(events[2], ("run_tune", ACTION_CODES["velocity_p_tune"]))
+
+    def test_run_one_dispatch_reports_a_full_tune_result_as_the_tune_result_outcome(self):
+        d = self._commissioned_driver()
+        toolhead = d.printer.lookup_object("toolhead")
+        gcode = d.printer.lookup_object("gcode")
+        gcode.run_script_from_command = lambda command: None
+        d.protocol.run_tune = lambda **kw: None
+        reactor = d.printer.get_reactor()
+
+        def pause(deadline):
+            reactor._time = deadline
+            _feed_dispatch_terminal(d.autotune, "tune_result")
+            return reactor._time
+
+        reactor.pause = pause
+        d.state.operation_lock = True
+
+        outcome = d.autotune._run_one_dispatch(
+            MockGCmd({}),
+            ACTION_CODES["velocity_p_tune"],
+            {"profile_code": 1, "requested_velocity_mrev_s": 2929},
+            toolhead,
+            "G0 X100.000 Y100.000",
+        )
+
+        self.assertIs(outcome, DispatchOutcome.TUNE_RESULT)
+        self.assertEqual(outcome, "tune_result")
 
     def test_homing_failure_aborts_before_run_tune(self):
         """A homing failure during the per-dispatch re-home must abort autotune,

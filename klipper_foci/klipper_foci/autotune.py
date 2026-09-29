@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from enum import StrEnum
 
 from ._vocabulary_generated import (
     SHAPE_BREAKAWAY_SEEDED,
@@ -102,6 +103,16 @@ _OUTER_SAFETY_REASON_PHRASES = {
 
 def _outer_safety_reason_phrase(reason_name: str) -> str:
     return _OUTER_SAFETY_REASON_PHRASES.get(reason_name, humanize(reason_name))
+
+
+class DispatchOutcome(StrEnum):
+    """Marker returned by `_run_one_dispatch` when it handled the workflow inline."""
+
+    TUNE_RESULT = "tune_result"
+    FIXED_GAIN_AMPLITUDE = "fixed_gain_amplitude"
+    ROBUSTNESS_REVERSAL = "robustness_reversal"
+    BREAKAWAY_CAMPAIGN = "breakaway_campaign"
+    VELOCITY_INTEGRAL_INCOMPLETE = "velocity_integral_incomplete"
 
 
 # Wire code 0 is reserved to mean "not applicable" and never appears here.
@@ -931,7 +942,7 @@ class AutotuneWorkflow:
             self._resync_step_clock_after_stimulus()
 
         if not self._workflow_finished():
-            return "tune_result"
+            return DispatchOutcome.TUNE_RESULT
 
         self._synchronize_disarmed_workflow_terminal(toolhead)
         if self.fixed_gain_amplitude.done:
@@ -953,7 +964,7 @@ class AutotuneWorkflow:
                     f"{self.fixed_gain_amplitude.outcome}"
                 )
             report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED, {humanize(outcome_name)}.")
-            return "fixed_gain_amplitude"
+            return DispatchOutcome.FIXED_GAIN_AMPLITUDE
         if self.robustness_reversal_terminal is not None:
             safety_detail = self._format_outer_safety_fault()
             detail_suffix = f"; {safety_detail}" if safety_detail else ""
@@ -1015,7 +1026,7 @@ class AutotuneWorkflow:
                     f"{humanize(terminal.get('outcome_name', 'unknown'))}.",
                 )
             self._handle_robustness_verdict(gcmd)
-            return "robustness_reversal"
+            return DispatchOutcome.ROBUSTNESS_REVERSAL
         if self.breakaway_campaign.done:
             report_detail(
                 log,
@@ -1055,10 +1066,10 @@ class AutotuneWorkflow:
             report_summary(
                 gcmd, f"{self._summary_prefix()}: {self._format_proportional_gain_accepted()}"
             )
-            return "breakaway_campaign"
+            return DispatchOutcome.BREAKAWAY_CAMPAIGN
         if self.velocity_integral.done:
             return self._finish_velocity_integral_terminal(gcmd, request_fields)
-        return "velocity_integral_incomplete"
+        return DispatchOutcome.VELOCITY_INTEGRAL_INCOMPLETE
 
     def autotune(self, gcmd) -> None:
         """Installed tuning after commissioning.
@@ -1200,7 +1211,7 @@ class AutotuneWorkflow:
                         safe_pose_move,
                         orchestrated=True,
                     )
-                    if outcome != "tune_result":
+                    if outcome != DispatchOutcome.TUNE_RESULT:
                         # Defensive: the orchestrated dispatch above raises
                         # for every non-pass terminal (ordinary reject and
                         # safety fault alike), so this is unreachable today.
@@ -1208,12 +1219,12 @@ class AutotuneWorkflow:
                             f"FOCI {self.driver.name}: robustness reversal after "
                             f"reproduced resume did not pass (outcome={outcome})"
                         )
-                elif outcome != "tune_result":
+                elif outcome != DispatchOutcome.TUNE_RESULT:
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: velocity-integral resume did not reproduce "
                         f"the accepted candidate (outcome={outcome})"
                     )
-            elif outcome != "tune_result":
+            elif outcome != DispatchOutcome.TUNE_RESULT:
                 return
 
             chained_velocity_evidence = None
@@ -1231,7 +1242,7 @@ class AutotuneWorkflow:
                     toolhead,
                     safe_pose_move,
                 )
-                if outcome != "tune_result":
+                if outcome != DispatchOutcome.TUNE_RESULT:
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune chain did not "
                         f"produce a result (outcome={outcome})"
