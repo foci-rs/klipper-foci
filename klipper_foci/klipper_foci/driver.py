@@ -147,8 +147,7 @@ class FociDriver:
     def _read_run_current_cap(self) -> int:
         """Return the board's run current cap in milliamps from the MCU dictionary."""
         mcu_name = self.mcu.get_name()
-        get_constants = getattr(self.mcu, "get_constants", None)
-        constants = get_constants() if get_constants is not None else {}
+        constants = self.mcu.get_constants()
         if FOCI_MAX_RUN_CURRENT_MA_CONSTANT not in constants:
             raise self.printer.config_error(
                 f"[{self.name}] MCU {mcu_name} does not report "
