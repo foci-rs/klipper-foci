@@ -17,14 +17,14 @@ consumers.
 The recommended install is a single command, run on the printer:
 
 ```sh
-curl -sL https://raw.githubusercontent.com/mjonuschat/foci/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/foci-rs/foci/main/install.sh | bash
 ```
 
 Add `-s -- --diagnostics` before the pipe's final `bash` to also install
 the optional diagnostics package, for example:
 
 ```sh
-curl -sL https://raw.githubusercontent.com/mjonuschat/foci/main/install.sh | bash -s -- --diagnostics
+curl -sL https://raw.githubusercontent.com/foci-rs/foci/main/install.sh | bash -s -- --diagnostics
 ```
 
 (`bash -s -- <args>` is required, not `bash -- <args>`: a script fed on
@@ -41,9 +41,9 @@ the printer can self-update going forward.
    (`klippy-env`):
 
    ```sh
-   ~/klippy-env/bin/pip install --index-url https://mjonuschat.github.io/klipper-foci/simple/ klipper-foci
+   ~/klippy-env/bin/pip install --index-url https://foci-rs.github.io/klipper-foci/simple/ klipper-foci
    # optionally:
-   ~/klippy-env/bin/pip install --index-url https://mjonuschat.github.io/klipper-foci/simple/ klipper-foci-diagnostics
+   ~/klippy-env/bin/pip install --index-url https://foci-rs.github.io/klipper-foci/simple/ klipper-foci-diagnostics
    ```
 
 2. Copy the shim to the right directory for your distribution. All the

@@ -72,7 +72,7 @@ jobs:
             commit -m "Publish ${{ steps.version.outputs.version }} to the simple index"
           git push origin gh-pages
       - name: Build the installer asset
-        run: make installer VERSION="${{ steps.version.outputs.version }}" INDEX_URL="https://mjonuschat.github.io/klipper-foci/simple/"
+        run: make installer VERSION="${{ steps.version.outputs.version }}" INDEX_URL="https://foci-rs.github.io/klipper-foci/simple/"
       - name: Smoke-test the generated installer
         run: |
           bash -n build/klipper-foci-installer.sh
@@ -99,10 +99,10 @@ jobs:
           pattern="(^|[^0-9])${version//./\\.}([^0-9]|$)"
           for i in $(seq 1 30); do
             ok=1
-            curl -fsS "https://mjonuschat.github.io/klipper-foci/simple/" \
+            curl -fsS "https://foci-rs.github.io/klipper-foci/simple/" \
               | grep -q 'klipper-foci-diagnostics/' || ok=0
             for pkg in klipper-foci klipper-foci-diagnostics; do
-              curl -fsS "https://mjonuschat.github.io/klipper-foci/simple/$pkg/" \
+              curl -fsS "https://foci-rs.github.io/klipper-foci/simple/$pkg/" \
                 | grep -qE "$pattern" || ok=0
             done
             [ "$ok" = "1" ] && exit 0
