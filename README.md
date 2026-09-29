@@ -61,4 +61,4 @@ See the [FOCI documentation](https://foci.rs/getting-started/installation/) for 
 
 ## License
 
-GPL-3.0. See `COPYING` at the repo root for the full text..
+GPL-3.0. See `LICENSE` at the repo root for the full text.
