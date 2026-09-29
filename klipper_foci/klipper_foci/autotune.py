@@ -165,26 +165,14 @@ TAU_Q16 = 411_775
 
 
 def _nominal_bandwidth_hz(last_rung_p: int) -> int:
-    """Nominal position-loop bandwidth, mirroring firmware's pure function.
-
-    ``bandwidth_hz = (position_p/256) * 65536 / (60 * 2*pi)``, evaluated in
-    integer arithmetic with the /256 folded into the 16_777_216 literal, and
-    rounded to nearest rather than truncated.
-    """
+    """Nominal position-loop bandwidth, mirroring firmware's pure function."""
     numerator = last_rung_p * 16_777_216
     denominator = 60 * TAU_Q16
     return (numerator + denominator // 2) // denominator
 
 
 def _position_tune_evidence(result: dict) -> str:
-    """Render the last measured rung's evidence for a position-tune failure.
-
-    Every terminal a PositionTune walk can reach -- Conflict, SweepExhausted,
-    a generic Failed, a chip reset, or a safety fault mid-walk -- carries
-    whatever rungs were measured before the stop, per the design spec's
-    "every terminal outcome carries the last measured rung's evidence" rule.
-    Returns "" when no rung was measured yet.
-    """
+    """Render the last measured rung's evidence for a position-tune failure."""
     if int(result.get("rungs_measured", 0)) == 0:
         return ""
     last_rung_p = int(result.get("last_rung_p", 0))
@@ -208,10 +196,7 @@ def _integral_cause_namespace_text(cause_namespace: int) -> str:
 
 
 def _integral_cause_text(cause_namespace: int, cause: int) -> str:
-    """Render a velocity-integral terminal cause as its number and, for a dispatch
-    cause, its name. The dispatch name table only applies within its own
-    namespace -- the same number from the engine or error namespace means
-    something else."""
+    """Render a velocity-integral terminal cause as a number, plus its name for a dispatch cause."""
     name = (
         INTEGRAL_TERMINAL_CAUSE_NAMES.get(cause)
         if cause_namespace == INTEGRAL_CAUSE_DISPATCH_NAMESPACE
@@ -241,12 +226,7 @@ def _rest_rejection_owner_text(owner: str | None) -> str | None:
 
 
 def _robustness_direction_text(index: int, direction: dict) -> str:
-    """Render one robustness-reversal direction summary.
-
-    A `valid_cycles == 0` direction (the fault/early-abort paths still
-    produce these) must render as "not measured", never as zero-millisecond
-    medians -- firmware never wrote those fields for an unmeasured direction.
-    """
+    """Render one robustness-reversal direction summary."""
     valid_cycles = int(direction.get("valid_cycles", 0))
     trip_count = int(direction.get("trip_count", 0))
     retry_count = int(direction.get("retry_count", 0))
@@ -509,14 +489,7 @@ class AutotuneWorkflow:
             enable_line.motor_disable(print_time)
 
     def _resync_step_clock_after_stimulus(self) -> None:
-        """Re-sync the tuned stepper after a firmware-driven step-queue stimulus.
-
-        The stimulus stops the channel the way a trigger stop does, so the
-        firmware discards host steps until it sees a reset_step_clock. Klipper
-        issues that only from note_homing_end(), which also re-reads the MCU
-        position. Only valid once a terminal has confirmed the stimulus
-        stopped: firmware shuts down on a reset while the step timer runs.
-        """
+        """Re-sync the tuned stepper after a firmware-driven step-queue stimulus."""
         self.driver._find_linked_stepper().note_homing_end()
 
     def _cancel_inflight_dispatch(self, toolhead) -> None:
@@ -640,14 +613,7 @@ class AutotuneWorkflow:
         )
 
     def _format_breakaway_campaign_result(self) -> str:
-        """Relay the firmware-authored breakaway campaign report verbatim.
-
-        Every value here is copied straight out of BreakawayCampaignAssembler
-        -- the resolved breakaway gain, additive-ladder geometry, the
-        nomination margin, confirmation bounds, and terminal cause -- with no
-        recomputation. The host does not choose or restate a rung, gain, or
-        verdict; it only names the wire codes firmware already sent.
-        """
+        """Relay the firmware-authored breakaway campaign report verbatim."""
         campaign = self.breakaway_campaign
         terminal = campaign.campaign_terminal or {}
         cause = int(terminal.get("terminal_cause", 0))
@@ -749,13 +715,7 @@ class AutotuneWorkflow:
             )
 
     def _reset_dispatch_state(self) -> None:
-        """Clear the per-dispatch assemblers before issuing one firmware dispatch.
-
-        Runs once before each ``_run_one_dispatch`` call, including the second
-        one auto-issued after a FirstRunRetained terminal, so the resume
-        dispatch assembles its own evidence rather than mixing state left over
-        from the candidate run.
-        """
+        """Clear the per-dispatch assemblers before issuing one firmware dispatch."""
         self.done = False
         self.result = None
         self.outer_safety_fault = None
@@ -775,15 +735,8 @@ class AutotuneWorkflow:
         self.driver.commissioning.phase_label_override = None
 
     def _finish_velocity_integral_terminal(self, gcmd, request_fields: dict) -> str:
-        """Report a velocity-integral terminal, raise on fault, and retain
-        the request identity for a possible velocity_i_tune dispatch.
-
-        Firmware emits this terminal from two places that must resolve
-        identically: a plain velocity-integral dispatch, and an accepted breakaway
-        campaign (where it lands in the same dispatch as the campaign's own
-        acceptance terminal). Both call this helper so the returned outcome
-        -- for example "first_run_retained" -- always reaches the caller
-        instead of being masked by a workflow-specific marker.
+        """Report a velocity-integral terminal, raise on fault, and retain the request identity
+        for a possible velocity_i_tune dispatch.
         """
         report_detail(
             log,
@@ -806,18 +759,7 @@ class AutotuneWorkflow:
         return self.velocity_integral.outcome
 
     def _rehome_and_center(self, gcmd, toolhead, safe_pose_move: str) -> None:
-        """Re-home the FOCI axes, re-align the encoder, and re-center.
-
-        Homing runs through Klipper's ``G28``; its calibrate-on-enable hook
-        re-runs FOCI encoder alignment. Only X and Y are re-homed -- the FOCI
-        axes -- because a breakaway terminal unhomes exactly those, while Z is
-        homed separately and re-homing it would add an unneeded probe cycle
-        between dispatches. The G28 homing hook re-acquires this driver's
-        operation lock, so release it across the re-home and take it back
-        afterward, matching the manual workflow where G28 ran with no FOCI lock
-        held. ``invalidate_homing`` then lands after the re-home so the axes are
-        left unhomed once the dispatch moves the motor in raw motor space.
-        """
+        """Re-home the FOCI axes, re-align the encoder, and re-center."""
         gcode = self.driver.printer.lookup_object("gcode")
         had_lock = self.driver.state.operation_lock
         if had_lock:
@@ -847,28 +789,12 @@ class AutotuneWorkflow:
     ) -> str:
         """Issue one firmware dispatch and wait for its terminal.
 
-        Every dispatch first re-homes and re-centers: a breakaway terminal
-        unhomes the axes and re-zeroes the encoder, so a chained dispatch would
-        otherwise run against an unaligned encoder and fail with "encoder not
-        aligned". The re-home runs unconditionally so it covers the first
-        dispatch, the auto-issued velocity_i_tune, and any future chained stage.
-
-        ``orchestrated`` marks a velocity_tune_check dispatch the host itself
-        chained after a reproduced resume, as opposed to the standalone
-        ACTION=velocity_tune_check diagnostic command. It only affects a
-        non-pass robustness terminal: the diagnostic path keeps its full
-        report-only handling (reverting the deployed gain when a
-        pre-tune snapshot exists), while an orchestrated dispatch handles
-        the reject or safety fault itself and raises, without touching
-        ``pre_tune_snapshot`` or reverting config.
-
-        Returns "tune_result" once a full TuneResult reply arrived (``self.done``).
-        Returns the velocity-integral outcome name (for example
-        "first_run_retained" or "inconclusive") when the workflow finished via a
-        plain velocity-integral evidence terminal instead. Any other workflow (velocity
-        confidence amplitude, robustness reversal, or breakaway campaign) is fully
-        handled inline -- including raising on fault -- and returns its own
-        marker, since none of those retry through a second dispatch.
+        Returns "tune_result" once a full TuneResult reply arrived (``self.done``). Returns the
+        velocity-integral outcome name (for example "first_run_retained" or "inconclusive") when the
+        workflow finished via a plain velocity-integral evidence terminal instead. Any other
+        workflow (velocity confidence amplitude, robustness reversal, or breakaway campaign) is
+        fully handled inline -- including raising on fault -- and returns its own marker, since none
+        of those retry through a second dispatch.
         """
         self._rehome_and_center(gcmd, toolhead, safe_pose_move)
         dispatch_fields = dict(request_fields, action=action_code)
@@ -1072,13 +998,7 @@ class AutotuneWorkflow:
         return DispatchOutcome.VELOCITY_INTEGRAL_INCOMPLETE
 
     def autotune(self, gcmd) -> None:
-        """Installed tuning after commissioning.
-
-        Each dispatch re-homes, re-centers, and arms the motor before it moves,
-        so this does not require the axes homed on entry -- a commissioned
-        driver that lost calibration/homing (e.g. after a klipper restart)
-        self-homes through the dispatch.
-        """
+        """Installed tuning after commissioning."""
         action_param = gcmd.get("ACTION", None)
         try:
             action = parse_autotune_action(action_param)
@@ -1392,13 +1312,7 @@ class AutotuneWorkflow:
             self.driver.state.release()
 
     def _snapshot_pre_tune_state(self) -> dict:
-        """Capture the pre-tune state before acceptance overwrites active_gains.
-
-        Sourced from live runtime state, not the connect-time config: within a
-        session persist_tune_results stages autotune_status via configfile.set
-        without updating driver.config, so config.autotune_status is stale while
-        runtime_status tracks same-session tunes.
-        """
+        """Capture the pre-tune state before acceptance overwrites active_gains."""
         gains = self.driver.state.active_gains
         return {
             "active_gains": dict(gains) if gains is not None else None,
@@ -1407,12 +1321,7 @@ class AutotuneWorkflow:
         }
 
     def _handle_robustness_verdict(self, gcmd) -> None:
-        """Revert the deployed gain and config on a non-pass robustness verdict.
-
-        Runs in the separate robustness invocation. Reads the pre-tune snapshot
-        captured during the acceptance run; with no snapshot there is nothing to
-        revert (report only), except a safety fault, which still inhibits.
-        """
+        """Revert the deployed gain and config on a non-pass robustness verdict."""
         terminal = self.robustness_reversal_terminal
         outcome = int(terminal["outcome"])
         cause = int(terminal["cause"])
@@ -1444,12 +1353,7 @@ class AutotuneWorkflow:
         )
 
     def _handle_robustness_safety_fault(self, gcmd) -> None:
-        """Revert config and block in-session enable without re-pushing.
-
-        Chip state is unknown after a mid-run safety fault, so the runtime
-        re-push is skipped; the prior gain returns on the next startup from the
-        reverted config. The enable-inhibit blocks the in-session leak.
-        """
+        """Revert config and block in-session enable without re-pushing."""
         snapshot = self.driver.state.pre_tune_snapshot
         if snapshot is not None:
             self._revert_config_only(snapshot)
@@ -1472,29 +1376,13 @@ class AutotuneWorkflow:
         )
 
     def _inhibit_enable_for_safety_fault(self) -> None:
-        """Block a subsequent SET_STEPPER_ENABLE until restart.
-
-        Shared by the standalone diagnostic's revert-and-report path
-        (`_handle_robustness_safety_fault`) and the orchestrated production
-        path (`_inhibit_orchestrated_safety_fault`); it never raises so each
-        caller controls its own error.
-        """
+        """Block a subsequent SET_STEPPER_ENABLE until restart."""
         self.driver.state.inhibited = True
         self.driver.state.last_commission_failure = "robustness safety fault"
         self.driver.homing.set_auto_calibrate_on_enable_allowed(False)
 
     def _inhibit_orchestrated_safety_fault(self, gcmd) -> None:
-        """Inhibit enable for an orchestrated safety fault without touching config.
-
-        Runs when the host-orchestrated robustness dispatch (the third
-        dispatch issued after a reproduced resume) reports a safety fault.
-        Unlike `_handle_robustness_safety_fault`, this path deployed
-        nothing: `pre_tune_snapshot` is only populated after a
-        `tune_result`, so a fresh orchestrated reject has none, and a stale
-        one left over from an earlier diagnostic run would revert unrelated
-        config. printer.cfg already holds the operator baseline; firmware
-        restores the physical registers on its own.
-        """
+        """Inhibit enable for an orchestrated safety fault without touching config."""
         self._inhibit_enable_for_safety_fault()
         self._raise_robustness_safety_fault(gcmd)
 

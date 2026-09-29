@@ -223,11 +223,7 @@ class ActiveDiagnostics:
         self.driver.printer.lookup_object("gcode").respond_info(msg)
 
     def handle_resistance_profile(self, params: dict) -> None:
-        """Handle foci_resistance_profile from firmware.
-
-        Displays board/profile constants used by the resistance sweep
-        exactly as reported. The host performs no interpretation.
-        """
+        """Handle foci_resistance_profile from firmware."""
         msg = (
             f"FOCI {self.driver.name} resistance profile: pwm_maxcnt={int(params['pwm_maxcnt'])} "
             f"bbm_h={int(params['bbm_h'])} bbm_l={int(params['bbm_l'])} dsadc_mdec_a="
@@ -240,14 +236,7 @@ class ActiveDiagnostics:
         report_detail(log, self.driver.global_config.debug, msg)
 
     def handle_resistance_run(self, params: dict) -> None:
-        """Handle foci_resistance_run from firmware.
-
-        Displays the firmware-selected count-space resistance slope and
-        run-level warning/readback evidence as reported. The host does not
-        recompute or re-select this value. Also caches the run fields
-        (keyed by oid) so a subsequent commission completion can fold
-        them into the persisted result; see pop_resistance_cache().
-        """
+        """Handle foci_resistance_run from firmware."""
         self.resistance_cache.setdefault(params["oid"], {})["run"] = {
             "selected_r_count_slope_milli": params["selected_r_count_slope_milli"],
             "gain_path_count_slope_milli": params.get("gain_path_count_slope_milli", 0),
@@ -287,16 +276,7 @@ class ActiveDiagnostics:
             )
 
     def handle_resistance_axis(self, params: dict) -> None:
-        """Handle foci_resistance_axis from firmware.
-
-        Displays the firmware-fitted per-axis resistance evidence exactly
-        as reported: count-slope, intercept, fit residual, point-selection
-        masks, signed-anchor slope/asymmetry, and thermal drift. The host
-        does not fit, select points, or evaluate quality gates here. Also
-        caches the axis fields (keyed by oid, routed by electrical_axis,
-        not arrival order) so a subsequent commission completion can fold
-        them into the persisted result; see pop_resistance_cache().
-        """
+        """Handle foci_resistance_axis from firmware."""
         axis_key = f"axis{int(params['electrical_axis'])}"
         self.resistance_cache.setdefault(params["oid"], {})[axis_key] = {
             "r_count_slope_milli": params["r_count_slope_milli"],
@@ -494,27 +474,7 @@ class ActiveDiagnostics:
         return "telemetry"
 
     def pop_resistance_cache(self, oid: int) -> dict:
-        """Fold cached commission-stream resistance replies into result keys.
-
-        Returns a dict of `resistance_*` keys (the keys
-        CommissioningWorkflow.persist_commission_results' presence-gated
-        resistance block already expects), built from the cached
-        foci_resistance_run / foci_resistance_axis replies for `oid` by
-        handle_resistance_run / handle_resistance_axis. Clears the cache
-        entry for `oid` unconditionally (see clear_resistance_cache).
-
-        All-or-nothing: returns the full folded dict only when the cache
-        holds the run reply AND both axis0 and axis1 replies. If any of
-        the three is missing, for example a commission that completed
-        before every resistance reply arrived, returns `{}` so the
-        presence-gate in persist_commission_results' resistance block
-        skips the block entirely instead of persisting a partial set of
-        identified_r_* keys (or raising a KeyError on the missing one).
-
-        The host performs no fitting, point selection, unit conversion,
-        or quality-gate evaluation here: every value is copied through
-        from the firmware-reported reply fields as-is.
-        """
+        """Fold cached commission-stream resistance replies into result keys."""
         cached = self.clear_resistance_cache(oid)
         if not cached:
             return {}
@@ -532,14 +492,7 @@ class ActiveDiagnostics:
         return folded
 
     def clear_resistance_cache(self, oid: int) -> dict:
-        """Discard and return the cached resistance replies for `oid`.
-
-        Called by pop_resistance_cache on the commission success path, and
-        directly by CommissioningWorkflow on every early-exit failure path
-        (timeout, mid-phase error) so a failed or aborted commission never
-        leaves a stale resistance-reply cache for a later run to fold in.
-        Returns an empty dict if nothing was cached.
-        """
+        """Discard and return the cached resistance replies for `oid`."""
         return self.resistance_cache.pop(oid, None) or {}
 
     def clear_inductance_cache(self, oid: int) -> dict:

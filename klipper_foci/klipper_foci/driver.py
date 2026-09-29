@@ -204,14 +204,7 @@ class FociDriver:
         int | None,
         dict[str, int | None],
     ]:
-        """Resolve the single connect-time send, preferring saved gains over config.
-
-        Saved autotune gains (when present) take the same precedence they held under
-        the old two-pass connect sequence, where the second pass ran after and
-        therefore won on every field it touched. voltage_limit is deliberately not
-        resolved here: it is `settings.voltage_limit` in both the old first and
-        second pass, so there is nothing to resolve.
-        """
+        """Resolve the single connect-time send, preferring saved gains over config."""
         flux_p = active_gains["flux_p"] if active_gains is not None else settings.pid_flux_p
         pid_gains = None
         if flux_p is not None:
@@ -253,11 +246,9 @@ class FociDriver:
     def _warn_if_tuned_below_operating_range(self) -> None:
         """Compare the configured operating velocity against the probed tune.
 
-        Advisory only: this runs inside a ``klippy:connect`` handler, where
-        Klipper's connect dispatcher treats any raised exception as a fatal
-        "Internal error during connect" and aborts startup. A malformed or
-        unavailable toolhead status must therefore degrade to "no warning",
-        never to a startup failure.
+        Advisory only: this runs inside a ``klippy:connect`` handler, where Klipper's connect
+        dispatcher treats any raised exception as a fatal "Internal error during connect" and aborts
+        startup.
         """
         toolhead = self.printer.lookup_object("toolhead", None)
         if toolhead is None:

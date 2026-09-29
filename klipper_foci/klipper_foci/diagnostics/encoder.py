@@ -1,10 +1,4 @@
-"""Host-side shortest-path encoder delta arithmetic.
-
-Mirrors `EncoderDomain::delta` in
-`shared/foci-firmware/src/commissioning/encoder_domain.rs` so the host can
-derive `encoder_delta` from the raw `encoder_before`/`encoder_after` counts
-firmware sends instead of duplicating the computation on the wire.
-"""
+"""Host-side shortest-path encoder delta arithmetic."""
 
 from __future__ import annotations
 

@@ -522,15 +522,7 @@ class BreakawayCampaignProtocolError(Exception):
 
 
 class BreakawayCampaignAssembler:
-    """Strictly relay one firmware-authored breakaway-campaign report.
-
-    This assembler never decides anything: it validates that each phase's
-    plan names the previous phase's exact digest, that individual records are
-    internally well-formed (ordering, interval and mask
-    sanity), and that a batch's declared count matches the records actually
-    received -- then stores every firmware value unchanged for the operator
-    report. No rung, family size, candidate, or retry is ever chosen here.
-    """
+    """Strictly relay one firmware-authored breakaway-campaign report."""
 
     def __init__(self) -> None:
         self.probe_plan: dict | None = None

@@ -210,16 +210,7 @@ class HomingWorkflow:
             )
 
     def sync_enable_line_armed(self) -> None:
-        """Mirror a firmware-armed motor into Klipper's EnableLine.
-
-        `run_calibration()` arms the motor directly through the FOCI
-        commissioning backend, bypassing EnableLine, the same gap
-        FOCI_SETUP's own success path guards against. Without this sync,
-        EnableLine's is_enabled bookkeeping stays False, so a later
-        motor_disable() call (e.g. mirroring a firmware-driven disarm into
-        Klipper state) is a silent no-op and this stepper's is_calibrated
-        never gets cleared.
-        """
+        """Mirror a firmware-armed motor into Klipper's EnableLine."""
         stepper_enable = self.driver.printer.lookup_object("stepper_enable")
         enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
         toolhead = self.driver.printer.lookup_object("toolhead")
@@ -359,8 +350,7 @@ class HomingWorkflow:
             self.ensure_calibrated()
 
     def _report(self, message: str) -> None:
-        """Developer-facing homing diagnostic line: klippy.log only, gated behind
-        [foci] debug -- see report.report_detail."""
+        """Developer-facing homing diagnostic line."""
         report_detail(log, self.driver.global_config.debug, message)
 
     def handle_homing_move_begin(self, homing_move) -> None:

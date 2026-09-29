@@ -572,23 +572,14 @@ AUTOTUNE_STALENESS_MARGIN_PERCENT = 10
 
 
 def velocity_mm_s_to_mrev_s(velocity_mm_s: float, rotation_distance_mm: float) -> float:
-    """Convert a printer-space linear velocity (mm/s) to motor mrev/s.
-
-    ``rev/s = mm_s / rotation_distance``, ``mrev_s = rev/s * 1000``.
-    """
+    """Convert a printer-space linear velocity (mm/s) to motor mrev/s."""
     return (velocity_mm_s / rotation_distance_mm) * 1000.0
 
 
 def check_autotune_staleness(config: FociDriverConfig, operating_velocity_mm_s: float) -> None:
     """Warn when the configured operating velocity outruns the probed tune.
 
-    ``autotune_probed_velocity_mrev_s`` records the highest velocity
-    FOCI_AUTOTUNE actually probed while producing the deployed gain. If the
-    operating velocity now exceeds that by more than
-    ``AUTOTUNE_STALENESS_MARGIN_PERCENT``, the gain was never validated up
-    there. This is advisory only: it never raises and never blocks startup.
-    Silent when the driver has no recorded probe velocity (untuned, or a
-    tune saved before this provenance field existed).
+    Advisory only: it never raises. Silent when the driver has no recorded probe velocity.
     """
     probed_mrev_s = config.autotune_probed_velocity_mrev_s
     if probed_mrev_s is None:

@@ -157,13 +157,7 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
 
 
 def operator_failure_phrase(code: int) -> str:
-    """Console-safe FAILED phrase for a COMMISSION_REASON_NAMES code.
-
-    Plain English only: no doc links, no raw evidence, no enum-symbol
-    names. Used exclusively for the report_summary FAILED line -- never for
-    gcmd.error()/command_error() text, which keeps using
-    format_commission_failure()/COMMISSION_REASON_NAMES directly, unchanged.
-    """
+    """Console-safe FAILED phrase for a COMMISSION_REASON_NAMES code."""
     if code in _FAILURE_PHRASE_OVERRIDES:
         return _FAILURE_PHRASE_OVERRIDES[code]
     return COMMISSION_REASON_NAMES.get(code, f"unknown error {int(code)}")
@@ -464,26 +458,14 @@ def format_commission_detail(detail: dict) -> str:
 
 
 def _encoder_direction_sweep_failed(details: list[dict]) -> bool:
-    """True when the collected details include a failed direction-sweep
-    result (phase 4/"EncoderCheck", code 2, DIAG_ENCODER_DIRECTION_RESULT,
-    status != 0) -- the specific diagnostic format_encoder_direction_failure
-    interprets. A phase-4 detail of any other code (e.g. code 1, unstable
-    encoder read) is a different failure and must not take this path.
-    """
+    """True when the collected details include a failed direction-sweep result."""
     return any(
         detail["phase"] == 4 and detail["code"] == 2 and detail["status"] != 0 for detail in details
     )
 
 
 def format_encoder_direction_failure(details: list[dict]) -> str:
-    """Build the FAILED summary phrase for a failed direction-sweep phase.
-
-    Only call this when _encoder_direction_sweep_failed(details) is True.
-
-    Correlates code 2 (DIAG_ENCODER_DIRECTION_RESULT, unsigned delta only)
-    with code 40 (DIAG_ENCODER_DIRECTION_EXPECTED, signed expected/observed),
-    which the firmware pushes alongside code 2 whenever pole_pairs != 0.
-    """
+    """Build the FAILED summary phrase for a failed direction-sweep phase."""
     generic = "encoder direction sweep didn't move as expected"
     expected_detail = next((d for d in details if d["phase"] == 4 and d["code"] == 40), None)
     if expected_detail is None:
@@ -699,15 +681,8 @@ class CommissioningWorkflow:
         return accepted
 
     def cancel_and_await_quiescence(self, reactor, wait_predicate, eventtime: float) -> float:
-        """Send foci_commission_cancel and poll until wait_predicate() is true
-        or COMMISSION_CANCEL_GRACE_PERIOD_S elapses, whichever comes first.
-
-        Returns the eventtime this call stopped at. Callers still raise their
-        own "timed out" error regardless of the outcome here -- this method
-        only decides how long to wait before that raise, and whether firmware
-        actually quiesced in time (observable via wait_predicate() afterward).
-        It never touches the caller's operation lock; the caller's own
-        try/finally holds and releases it around this call.
+        """Send foci_commission_cancel and poll until wait_predicate() is true or
+        COMMISSION_CANCEL_GRACE_PERIOD_S elapses, whichever comes first.
         """
         self.driver.protocol.run_commission_cancel()
         deadline = eventtime + COMMISSION_CANCEL_GRACE_PERIOD_S
@@ -980,11 +955,7 @@ class CommissioningWorkflow:
 
     @staticmethod
     def _derive_tau_e_us(result: dict) -> int | None:
-        """Derive the electrical time constant the firmware stopped sending.
-
-        ``r_count_milli`` is 0 only on failure results, which never persist
-        this value; guard against it rather than dividing by zero.
-        """
+        """Derive the electrical time constant the firmware stopped sending."""
         r_count_milli = result["r_count_milli"]
         if r_count_milli == 0:
             return None
@@ -1058,16 +1029,7 @@ class CommissioningWorkflow:
     )
 
     def _persist_resistance_identification(self, configfile, result: dict) -> None:
-        """Persist firmware-owned resistance-identification evidence.
-
-        Persists only the selected count-space slope, reported by firmware
-        as-is; the host performs no fitting, point selection, unit
-        conversion, or quality-gate evaluation.
-
-        Skips this group entirely when ``result`` does not contain this
-        key, so commissioning against older firmware that has not yet
-        added it to its reply still persists cleanly.
-        """
+        """Persist firmware-owned resistance-identification evidence."""
         if "resistance_selected_count_slope_milli" not in result:
             return
         for result_key, config_key in self.RESISTANCE_RESULT_KEYS:

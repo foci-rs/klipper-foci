@@ -545,16 +545,8 @@ class FieldHelper:
         self.field_formatters = field_formatters
 
     def get_field(self, field_name: str, reg_name: str, reg_value: int) -> int:
-        """Extract a named field from a 32-bit register value.
-
-        Args:
-            field_name: Name of the field to extract.
-            reg_name: Name of the register containing the field.
-            reg_value: Full 32-bit register value.
-
-        Returns:
-            The extracted field value, sign-extended if the field is
-            listed in signed_fields.
+        """Extract a named field from a 32-bit register value, sign-extended if it is listed in
+        signed_fields.
         """
         mask = self.all_fields[reg_name][field_name]
         shift = _ffs(mask)
@@ -568,16 +560,7 @@ class FieldHelper:
     def pretty_format(self, reg_name: str, reg_value: int) -> str:
         """Format a register as 'NAME: hex field=val field=val'.
 
-        Zero-valued fields are omitted. Fields are sorted by bitmask
-        position (lowest bit first).
-
-        Args:
-            reg_name: Register name used as display label.
-            reg_value: Full 32-bit register value.
-
-        Returns:
-            A human-readable string showing the register name, raw hex
-            value, and any non-zero fields with their formatted values.
+        Zero-valued fields are omitted and fields are sorted by bitmask position, lowest bit first.
         """
         reg_fields = self.all_fields.get(reg_name, {})
         sorted_fields = sorted([(mask, name) for name, mask in reg_fields.items()])

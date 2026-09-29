@@ -1,12 +1,4 @@
-"""Host-side derivation of stepper motion-scale and physical-waveform fields.
-
-`foci_stepper_exec_stats_result` no longer carries fields the host can derive
-from `planner_steps_per_rev`, `encoder_ppr` and the firmware's own reported
-`CLOCK_FREQ` constant. This mirrors, exactly, the firmware formulas in
-`shared/foci-firmware/src/step_pulse.rs` (`StepPulseTiming`) and
-`shared/foci-klipper/src/pulse_mapper.rs` (`PulseMapperConfig`), so the host
-can keep printing every key `FOCI_STEPPER_STATS` printed before the wire trim.
-"""
+"""Host-side derivation of stepper motion-scale and physical-waveform fields."""
 
 from __future__ import annotations
 
@@ -33,11 +25,7 @@ def tmc_grid(planner_steps_per_rev: int) -> int:
 
 
 def derived_exec_stats(planner_steps_per_rev: int, encoder_ppr: int, clock_freq: int) -> dict:
-    """Return the fields `foci_stepper_exec_stats_result` no longer sends.
-
-    `planner_steps_per_rev` and `encoder_ppr` come from the trimmed exec-stats
-    reply; `clock_freq` is the MCU's `CLOCK_FREQ` constant.
-    """
+    """Return the fields `foci_stepper_exec_stats_result` no longer sends."""
     encoder_counts_per_rev = QUADRATURE_COUNTS_PER_PULSE * encoder_ppr
 
     grid = tmc_grid(planner_steps_per_rev)

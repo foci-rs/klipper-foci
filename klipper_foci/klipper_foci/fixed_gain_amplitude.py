@@ -149,12 +149,7 @@ class FixedGainAmplitudeAssembler:
         }
 
     def _collect_plan_payload(self, params: dict) -> bytes | None:
-        """Reassemble the fragmented plan reply, or pass a whole payload through.
-
-        The 66-byte plan exceeds the ordinary reply budget, so firmware ships it
-        as ``PLAN_REPLY_FRAGMENTS`` equal fragments. Retained single-message
-        captures predate fragmentation and carry no ``fragment`` field.
-        """
+        """Reassemble the fragmented plan reply, or pass a whole payload through."""
         payload = _raw_payload(params, "amplitude plan")
         if "fragment" not in params:
             self._plan_fragments = []

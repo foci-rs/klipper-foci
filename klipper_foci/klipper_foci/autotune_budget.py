@@ -23,11 +23,7 @@ class AutotuneBudgetError(Exception):
 
 @dataclass(frozen=True)
 class AutotuneMotionBudget:
-    """Firmware-ready motion budget plus host safe-pose evidence.
-
-    ``max_duration_ms`` caps one active motion or excitation primitive. It is
-    not a whole-autotune timeout.
-    """
+    """Firmware-ready motion budget plus host safe-pose evidence."""
 
     kinematics: str
     stepper_role: str

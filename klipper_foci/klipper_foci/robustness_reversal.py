@@ -1,23 +1,4 @@
-"""Strict relay for the reversal-standstill robustness terminal and evidence replies.
-
-The terminal wire layout is frozen at 51 bytes (schema revision 4) and must
-match firmware's `encode_robustness_terminal_reply` in
-`foci-firmware/src/commissioning/outer/velocity/robustness_reporting.rs`
-byte-for-byte: a 15-byte header, two 12-byte per-direction summary blocks,
-then a 12-byte run-level tail carrying the gate's constructed `plant_rate_q`
-(rate-Q units, unscaled) and `iae_max_q` (scaled to rate-Q seconds, matching
-`iae_median_qs` below so the two compare directly) -- diagnostic fields for
-an on-target calibration pass, not consumed by gate logic.
-
-The per-cycle evidence reply is a separate, per-direction 51-byte message
-(`encode_robustness_cycle_evidence` in the same firmware module) that
-carries up to `ROBUSTNESS_CYCLES_PER_DIRECTION` individual cycle samples,
-plus a trailing tail count and displaced-tail triple (the cycle bumped out
-of the K-cycle window by a grace-tail retry). Unfilled cycle slots and an
-absent displaced tail both use the sentinel 0xFFFF on all three per-cycle
-fields, and are elided/`None` in the parsed result rather than surfaced as
-zeros.
-"""
+"""Strict relay for the reversal-standstill robustness terminal and evidence replies."""
 
 from __future__ import annotations
 
@@ -190,12 +171,7 @@ def handle_terminal(params: dict) -> dict:
 
 
 def _cycle_slot_or_none(fields: tuple) -> dict | None:
-    """Decode one `(reconvergence_ms, overshoot_counts, forward_settle_ms)` slot.
-
-    Returns `None` when all three fields are the 0xFFFF sentinel -- the
-    shared "not filled" encoding for both an unfilled cycle slot and an
-    absent displaced tail.
-    """
+    """Decode one `(reconvergence_ms, overshoot_counts, forward_settle_ms)` slot."""
     reconvergence_ms, overshoot_counts, forward_settle_ms = fields
     if (
         reconvergence_ms == _CYCLE_SENTINEL
@@ -211,12 +187,7 @@ def _cycle_slot_or_none(fields: tuple) -> dict | None:
 
 
 def handle_cycle_evidence(params: dict) -> dict:
-    """Parse one compact robustness-reversal per-cycle evidence reply.
-
-    Unfilled cycle slots and an absent displaced tail (all three fields
-    equal to the 0xFFFF sentinel) are elided/`None` in the returned result
-    rather than surfaced as zeros.
-    """
+    """Parse one compact robustness-reversal per-cycle evidence reply."""
     unpacked = _CYCLE_EVIDENCE.unpack(_cycle_evidence_payload(params))
     direction, schema, residual_median_q, iae_median_qs, dac_rms_median_q = unpacked[:5]
     if schema != ROBUSTNESS_SCHEMA_REVISION:

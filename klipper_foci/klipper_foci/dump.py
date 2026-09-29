@@ -175,11 +175,7 @@ class RegisterDumpWorkflow:
     def dump_registers(self, gcmd) -> None:
         """Handler for DUMP_FOCI and DUMP_TMC GCode commands.
 
-        Sends a single foci_dump_registers command to the firmware and
-        waits for all register values to be streamed back via the
-        FOCI:DUMP: output protocol, then prints them formatted to the
-        GCode console. ``TUNING=1`` appends host-derived read-only tuning
-        analysis using the same dump response.
+        ``TUNING=1`` appends host-derived read-only tuning analysis using the same dump response.
         """
         include_tuning = bool(gcmd.get_int("TUNING", 0, minval=0, maxval=1))
         if not self._request_dump_values():
