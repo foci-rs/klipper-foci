@@ -258,9 +258,6 @@ class TestFullDiagnosticChains(unittest.TestCase):
 
         self.assertIn("axis=flux", gcmd.last_info)
         self.assertIn("target=250", gcmd.last_info)
-        # Derive the reply's correlating fields from what the trigger
-        # actually sent, not a literal that happens to match today -- a
-        # broken axis/target pass-through must fail this test.
         _oid, axis, target, _duration_ms, _voltage_limit = (
             d.protocol.commands.current_step_test.last_args
         )

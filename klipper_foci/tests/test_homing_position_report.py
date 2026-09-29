@@ -112,10 +112,6 @@ def test_homing_move_end_reports_matching_stepper_positions(caplog):
     ],
 )
 def test_report_stall_result_names_non_margin_trigger_paths(trigger_path, expected_name, caplog):
-    # The shared mock's default query_stall response fixes trigger_path=2
-    # ("margin"), so every other existing test only exercises that one
-    # entry. A swapped or wrong entry in _TRIGGER_PATH_NAMES for the
-    # safety-relevant "ceiling"/"none" labels would pass unnoticed otherwise.
     driver = make_driver(stepper_name="stepper_y")
     driver.global_config.debug = True
     driver.protocol.commands.query_stall.response = {

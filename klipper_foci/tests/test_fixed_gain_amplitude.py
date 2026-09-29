@@ -309,9 +309,6 @@ def test_amplitude_workflow_rejects_non_amplitude_shapes(shape, nominal, maximum
 
 
 def test_plan_rejects_wrong_order_target_geometry_and_counts():
-    # family_size and the workflow durations are firmware-authored and no longer
-    # re-derived here; what remains is agreement between the plan and the
-    # workflow the host already bound.
     cases = (
         plan_payload(order=2),
         plan_payload(targets=(16, 33, 66, 132, 132)),
@@ -437,11 +434,6 @@ def test_autotune_relays_one_complete_amplitude_without_host_decisions():
 
 
 def test_autotune_prints_failed_summary_on_fixed_gain_amplitude_failure():
-    # outcome=3 ("failed") is a pre-motion failure: no plan/workflow may have
-    # been disclosed yet, and (per handle_terminal's expected_causes table)
-    # it only pairs with cause in {3, 4, 5, 7} -- cause=3 here
-    # ("missing_acceptance_point"), not the post-motion cause=1
-    # ("insufficient_shared_floor") that pairs only with outcome=1.
     driver = ready_driver()
     reactor = driver.printer.get_reactor()
 
@@ -475,7 +467,7 @@ def test_autotune_prints_failed_summary_on_fixed_gain_amplitude_failure():
 
 
 def test_fixed_gain_amplitude_detail_is_absent_from_log_when_debug_disabled(caplog):
-    driver = ready_driver()  # debug defaults to False, per make_driver()
+    driver = ready_driver()
     reactor = driver.printer.get_reactor()
 
     def finish_amplitude(deadline):

@@ -1,8 +1,4 @@
 setup() {
-  # installer.sh calls into kpi.sh's log(); stub it so this suite exercises
-  # only installer.sh's own logic, not the vendored library. backup_file is
-  # installer.sh's own real function (kpi.sh has no single-file backup
-  # primitive), so it is not stubbed here.
   log() { :; }
   export -f log
   source "$BATS_TEST_DIRNAME/../installer.sh"

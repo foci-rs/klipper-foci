@@ -81,10 +81,6 @@ def test_bind_mcu_succeeds_with_no_diagnostics_package(monkeypatch):
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
     )
     driver = make_config_driver(printer, sections, "foci stepper_x")
-    # driver.oid stays None until _handle_mcu_identify() resolves it --
-    # calling bind_mcu() directly here would pass oid=None, not
-    # exercising the real startup path. _handle_mcu_identify() resolves
-    # the oid and calls bind_mcu() internally with the correct value.
     driver._handle_mcu_identify()
     assert hasattr(driver.diagnostics, "handle_current_step_result")
     assert hasattr(driver.diagnostics.active, "handle_inductance_run")

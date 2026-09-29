@@ -247,9 +247,6 @@ def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
     assert assembler.plan["schema_revision"] == 18
 
 
-# Every valid shape other than resume (0) and breakaway (3) reaches the
-# schema-pairing gate below unrefused -- there is no earlier, shape-specific
-# gate any more, since every live shape now names a real firmware workflow.
 @pytest.mark.parametrize("shape", (1, 2, 4))
 def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
     assembler = VelocityIntegralAssembler()
@@ -274,7 +271,6 @@ def test_mirrored_slot_order_flag_is_accepted():
 
 
 def test_reserved_plan_recovery_flags_above_the_known_set_are_still_rejected():
-    # Bits 2 and 3 are the slot-order field; bit 4 is the first still-reserved bit.
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, maximum_ms=182_512)
 
@@ -632,10 +628,6 @@ def test_handle_terminal_rejects_candidate_i_value_without_presence_flag():
             )
         )
 
-
-# ============================================================================
-# Breakaway-seeded campaign: BreakawayCampaignAssembler
-# ============================================================================
 
 BREAKAWAY_RUN_SEQUENCE = 21
 PROBE_DIGEST = (0x1111_1111, 0x2222_2222)
@@ -1086,7 +1078,7 @@ def test_breakaway_confirmation_masks_reject_included_exceeding_eligible():
                 "evidence_sequence": 3,
                 "forward_collected_mask": 0b1111,
                 "forward_eligible_mask": 0b0011,
-                "forward_included_mask": 0b1111,  # exceeds eligible
+                "forward_included_mask": 0b1111,
                 "reverse_collected_mask": 0b1111,
                 "reverse_eligible_mask": 0b1111,
                 "reverse_included_mask": 0b1111,
@@ -1176,8 +1168,6 @@ def test_breakaway_campaign_accepts_and_relays_the_full_report():
     assert assembler.done
     assert assembler.accepted is True
     assert assembler.integral_plan_digest == (INTEGRAL_DIGEST[0] | (INTEGRAL_DIGEST[1] << 32))
-    # The confirmed gain is the exact confirmation candidate, never a
-    # host-reselected value.
     assert (
         assembler.confirmation_terminal["confirmed_p_raw"]
         == (assembler.confirmation_plan["nominated_p_raw"])

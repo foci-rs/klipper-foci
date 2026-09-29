@@ -173,8 +173,6 @@ def test_diagnostics_entry_point_registers_all_nine_commands(monkeypatch):
         bound_method = handlers_by_name[command_name]
         assert bound_method.__self__ is getattr(driver, component_attr)
         assert bound_method.__func__.__name__ == handler_name
-    # Computed, not a literal: len(GCODE_COMMANDS) always reflects core's
-    # current static table.
     assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
@@ -200,7 +198,7 @@ def test_diagnostics_alone_works(monkeypatch):
     printer, _chips, sections = make_config_printer(
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
     )
-    make_config_driver(printer, sections, "foci stepper_x")  # must not raise
+    make_config_driver(printer, sections, "foci stepper_x")
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert "FOCI_CURRENT_STEP_TEST" in registered_names
@@ -664,7 +662,6 @@ def test_resistance_identification_fields_default_to_none():
 
 
 def test_velocity_mm_s_to_mrev_s_converts_via_rotation_distance():
-    # rotation_distance=40mm/rev, 300mm/s -> 7.5rev/s -> 7500mrev/s
     assert velocity_mm_s_to_mrev_s(300.0, 40.0) == pytest.approx(7500.0)
 
 
@@ -681,7 +678,7 @@ def test_staleness_warns_when_operating_exceeds_probed(caplog):
     )
     sections["foci stepper_x"]["autotune_status"] = "tuned"
     sections["foci stepper_x"]["autotune_probed_velocity_mrev_s"] = "5366"
-    printer._objects["toolhead"].max_velocity = 300.0  # 7500mrev/s, well above probed
+    printer._objects["toolhead"].max_velocity = 300.0
 
     driver = make_config_driver(printer, sections, "foci stepper_x")
     driver._handle_mcu_identify()
@@ -695,9 +692,9 @@ def test_staleness_warns_when_operating_exceeds_probed(caplog):
 @pytest.mark.parametrize(
     ("probed_mrev_s", "max_velocity_mm_s", "case"),
     (
-        (8000, 300.0, "below_probed"),  # 7500mrev/s < 8000mrev/s
-        (7500, 300.0, "equal_to_probed"),  # 7500mrev/s == 7500mrev/s
-        (1000, 44.0, "exactly_at_margin_threshold"),  # 1100mrev/s == 1000 * 1.10
+        (8000, 300.0, "below_probed"),
+        (7500, 300.0, "equal_to_probed"),
+        (1000, 44.0, "exactly_at_margin_threshold"),
     ),
 )
 def test_staleness_does_not_warn_at_or_within_margin_boundary(
@@ -743,7 +740,7 @@ def test_staleness_does_not_raise_or_warn_when_max_velocity_is_non_numeric(caplo
     driver = make_config_driver(printer, sections, "foci stepper_x")
     driver._handle_mcu_identify()
 
-    driver._handle_connect()  # must not raise
+    driver._handle_connect()
 
     assert "tuned below operating range" not in caplog.text
 
@@ -770,7 +767,7 @@ def test_staleness_does_not_raise_or_warn_when_toolhead_status_raises(caplog):
     driver = make_config_driver(printer, sections, "foci stepper_x")
     driver._handle_mcu_identify()
 
-    driver._handle_connect()  # must not raise
+    driver._handle_connect()
 
     assert "tuned below operating range" not in caplog.text
 
@@ -835,7 +832,6 @@ def test_component_collision_across_entry_points_is_detected(monkeypatch):
 
 def test_register_returning_spec_for_unset_component_fails_loudly(monkeypatch):
     def broken_register(driver):
-        # forgets to set driver.something before returning its spec
         return (GcodeCommandSpec("FOCI_BROKEN", "something", "do_it", "broken"),)
 
     monkeypatch.setattr(
@@ -853,8 +849,6 @@ def test_register_returning_spec_for_unset_handler_fails_loudly(monkeypatch):
     class FakeComponent:
         def __init__(self, driver):
             self.driver = driver
-
-        # deliberately has no `do_it` method
 
     def broken_register(driver):
         driver.fake_component = FakeComponent(driver)
@@ -897,8 +891,5 @@ def test_successful_entry_point_command_registers_alongside_core(monkeypatch):
     bound_method = handlers_by_name["FOCI_FAKE_THING"]
     assert bound_method.__self__ is driver.fake_component
     assert bound_method.__func__.__name__ == "do_fake_thing"
-    # Not an exact-count assertion: GCODE_COMMANDS may contain more entries
-    # than any one entry point's specs, and this only needs to confirm none
-    # of them were displaced by the entry-point registration pass.
     for spec in GCODE_COMMANDS:
         assert spec.name in handlers_by_name

@@ -8,8 +8,6 @@ setup() {
   export FOCI_INDEX_URL="https://example.test/simple/"
   export INSTALLER_VERSION="0.3.0"
 
-  # Stub kpi-sh functions this task does not own, so main.bats exercises
-  # only installer.sh's own orchestration logic.
   discover_klipper_env() {
     KLIPPER_PATH="$TEST_ROOT/klipper"
     KLIPPY_PYTHON="$TEST_ROOT/klippy-env/bin/python"
@@ -24,9 +22,6 @@ setup() {
   source "$BATS_TEST_DIRNAME/../installer.sh"
   printf '[printer]\n' > "$TEST_ROOT/moonraker.conf"
 
-  # Override installer.sh's real pip_install (which shells out to
-  # $KLIPPY_PYTHON -m pip) with a recorder, so tests observe what it would
-  # have run without actually invoking pip.
   pip_install() { echo "pip_install:$*" >> "$TEST_ROOT/pip.log"; }
   export -f pip_install
 }
@@ -69,8 +64,6 @@ teardown() { rm -rf "$TEST_ROOT"; }
 
 @test "foci_main fails closed when KLIPPER_PATH is not a git checkout" {
   rm -rf "$TEST_ROOT/klipper/.git"
-  # The suite-wide log() stub is a silent no-op so other tests' $output stays
-  # clean; this test needs the real message, so it overrides log() locally.
   log() { echo "$*"; }
   export -f log
   run foci_main

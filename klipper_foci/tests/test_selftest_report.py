@@ -184,7 +184,6 @@ def test_format_commission_detail_measurements():
 
 
 def test_format_commission_detail_resistance_capture_timing_summary():
-    # Real values captured from a passing FOCI_SELFTEST run.
     line = format_commission_detail(
         {
             "phase": 5,
@@ -475,7 +474,6 @@ def test_cmd_selftest_builds_multiline_report(caplog):
     d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
-    # Drive the response stream synchronously when the self-test command is sent.
     def drive_stream(_args):
         for result in [
             {"stage": 1, "status": 0, "value": (0x0ADC << 16) | 0x0CDC},
@@ -501,7 +499,7 @@ def test_cmd_selftest_builds_multiline_report(caplog):
     assert "Motor coil A" in out
     assert "Motor coil B" in out
     assert "Phase wiring" in out
-    assert "Encoder " in out  # trailing space distinguishes from "Encoder direction"
+    assert "Encoder " in out
     assert "Encoder direction" in out
     assert "R-model evidence" in out
     assert "L control-model evidence" in out
@@ -548,8 +546,6 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     d.global_config.debug = True
     d.protocol.commands.selftest = MockCommand()
 
-    # The ADC-calibration stage fails; firmware emits a foci_selftest_result then foci_selftest_done
-    # with the ADC calibration fault code (4 = "ADC calibration fault").
     def drive_stream(_args):
         d.commissioning.handle_commission_detail(
             {
@@ -573,7 +569,6 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     ):
         d.selftest.selftest(gcmd)
 
-    # report_summary was called before the raise, the console line is still available.
     assert gcmd._responses[-1] == (
         "FOCI_SELFTEST manual_stepper stepper_x: FAILED, ADC calibration fault."
     )
@@ -581,7 +576,7 @@ def test_cmd_selftest_failure_raises_and_still_emits_report(caplog):
     out = caplog.text
     assert "FAIL" in out
     assert "legacy inductance fit rejected" in out
-    assert "1/1 stages" not in out  # the only stage failed, so passed count is 0
+    assert "1/1 stages" not in out
     assert "0/1 stages" not in out
 
 
@@ -598,7 +593,7 @@ def test_cmd_selftest_pass_does_not_raise(caplog):
 
     gcmd = MockGCmd()
     with caplog.at_level(logging.INFO, logger="klipper_foci.selftest"):
-        d.selftest.selftest(gcmd)  # must not raise
+        d.selftest.selftest(gcmd)
 
     assert gcmd.last_info == (
         "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED, all 1 stages passed."
@@ -675,8 +670,6 @@ def test_cmd_selftest_per_stage_breakdown_reaches_the_console():
 
     d.selftest.selftest(gcmd)
 
-    # notice + 3 stage lines (no header) + verdict -- the breakdown's line
-    # count reaches the console, not just the debug log.
     assert len(gcmd._responses) == 1 + len(d.selftest.results) + 1
 
 

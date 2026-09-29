@@ -20,7 +20,6 @@ class TestEnsureCalibratedGates(unittest.TestCase):
     def test_returns_immediately_if_already_calibrated(self):
         d = make_driver()
         d.state.is_calibrated = True
-        # Should return without error or side effects
         d.homing.ensure_calibrated()
 
     def test_inhibited_raises_even_if_already_calibrated(self):
@@ -60,7 +59,6 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         with self.assertRaises(CommandError) as ctx:
             d.homing.ensure_calibrated()
         self.assertIn("cannot auto-calibrate", str(ctx.exception))
-        # No blocking calibration attempt or lock acquisition was made.
         self.assertIsNone(d.protocol.commands.calibrate.last_args)
         self.assertFalse(d.state.operation_lock)
 
@@ -68,7 +66,6 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         d = make_driver()
         d.state.is_calibrated = True
         d.homing.ensure_calibrated()
-        # Calibration should not have been requested.
         self.assertIsNone(d.protocol.commands.calibrate.last_args)
 
     def test_calibration_failure_reports_encoder_check_diagnostics(self):
@@ -159,9 +156,6 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         }
 
         def send_calibrate(_args):
-            # Simulates a bounded direction-sweep retry: the first attempt
-            # found no movement but a later attempt recovered, so the
-            # calibrate call still succeeds overall.
             d.commissioning.handle_commission_detail(
                 {
                     "phase": 4,
@@ -429,12 +423,10 @@ class TestHomingInvalidation(unittest.TestCase):
     def test_noop_without_toolhead(self):
         d = make_driver()
         d.printer._objects.pop("toolhead", None)
-        # Should not raise
         d.homing.invalidate_homing()
 
     def test_noop_for_none_kinematics(self):
         d = make_driver(kinematics=MockNoneKinematics())
-        # NoneKinematics has no rails or clear_homing_state, should be a no-op
         d.homing.invalidate_homing()
 
     def test_noop_when_no_rails_attribute(self):
@@ -460,7 +452,6 @@ class TestHomingInvalidation(unittest.TestCase):
             kinematics=kin,
         )
         d.homing.invalidate_homing()
-        # Cartesian: stepper_x is rail 0 → axis 0 (x)
         self.assertIn(0, kin._cleared_axes)
         self.assertIn("x", kin._cleared_axes)
         self.assertNotIn(1, kin._cleared_axes)
@@ -489,7 +480,6 @@ class TestHomingInvalidation(unittest.TestCase):
             kinematics=kin,
         )
         d.homing.invalidate_homing()
-        # CoreXY: rail 0 maps to axes (0, 1) → x and y
         self.assertIn(0, kin._cleared_axes)
         self.assertIn(1, kin._cleared_axes)
         self.assertIn("x", kin._cleared_axes)
@@ -500,7 +490,6 @@ class TestHomingInvalidation(unittest.TestCase):
         kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_y", kinematics=kin)
         d.homing.invalidate_homing()
-        # CoreXY: rail 1 maps to axes (0, 1) → x and y
         self.assertIn(0, kin._cleared_axes)
         self.assertIn(1, kin._cleared_axes)
         self.assertNotIn(2, kin._cleared_axes)
@@ -509,7 +498,6 @@ class TestHomingInvalidation(unittest.TestCase):
         kin = MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
         d = make_driver(stepper_name="stepper_z", kinematics=kin)
         d.homing.invalidate_homing()
-        # CoreXY: rail 2 maps to axis (2,) → z only
         self.assertIn(2, kin._cleared_axes)
         self.assertNotIn(0, kin._cleared_axes)
         self.assertNotIn(1, kin._cleared_axes)
@@ -612,7 +600,6 @@ class TestCommandHomingInvalidation(unittest.TestCase):
         d.commissioning.result = SAMPLE_COMMISSION_RESULT
         with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
-        # Homing should have been invalidated
         self.assertIsNotNone(kin._cleared_axes)
 
     def test_autotune_invalidates_homing(self):

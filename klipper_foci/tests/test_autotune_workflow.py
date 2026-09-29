@@ -216,10 +216,6 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
         workflow.handle_tune_result(dict(tune_result or SAMPLE_INTEGRAL_RESUME_RESULT))
         return
     if terminal == "breakaway_accepted_first_run_retained":
-        # Real firmware behavior: an accepted velocity_p_tune run reaches
-        # its velocity-integral terminal in the SAME dispatch as the
-        # breakaway campaign's own acceptance terminal -- both terminals
-        # land together, not one after the other.
         workflow.breakaway_campaign.done = True
         workflow.breakaway_campaign.accepted = True
         workflow.velocity_integral.outcome = "first_run_retained"
@@ -227,11 +223,6 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
         workflow.velocity_integral.done = True
         return
     if terminal == "breakaway_accepted_repeatability_confirmed":
-        # The combined-workflow completion case: the velocity_p_tune run's
-        # own dispatch reproduces retained authority from an earlier attempt,
-        # so the accepted campaign's dispatch lands directly on
-        # "repeatability_confirmed" instead of "first_run_retained" -- no
-        # separate velocity_i_tune dispatch precedes it.
         workflow.breakaway_campaign.done = True
         workflow.breakaway_campaign.accepted = True
         workflow.velocity_integral.outcome = "repeatability_confirmed"
@@ -352,7 +343,7 @@ def test_rehome_and_center_releases_then_reacquires_the_autotune_label():
     d = make_driver()
     d.state.try_acquire("autotune")
     gcode = d.printer.lookup_object("gcode")
-    observed = []  # (command, active_label at call time)
+    observed = []
 
     def fake_run_script(command):
         observed.append((command, d.state.active_label))
@@ -364,10 +355,6 @@ def test_rehome_and_center_releases_then_reacquires_the_autotune_label():
 
     d.autotune._rehome_and_center(gcmd, toolhead, "G1 X0 Y0")
 
-    # _rehome_and_center issues two commands: "G28 X Y" while the lock is
-    # free (released so G28's calibrate-on-enable hook can take it), then
-    # the caller's safe_pose_move after the lock is reacquired under the
-    # same "autotune" label.
     assert observed == [
         ("G28 X Y", None),
         ("G1 X0 Y0", "autotune"),
@@ -436,7 +423,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_tune_request_has_no_current_ringing(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})  # default ACTION -> velocity_p_tune, chain-eligible
+        gcmd = MockGCmd({})
         captured = []
         d.protocol.run_tune = lambda **kw: captured.append(kw)
         drive_two_dispatch_scenario(
@@ -456,7 +443,7 @@ class TestAutotuneGates(unittest.TestCase):
     def test_first_run_retained_auto_issues_integral_resume(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})  # default ACTION -> velocity_p_tune, chain-eligible
+        gcmd = MockGCmd({})
         issued = []
         d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
         drive_two_dispatch_scenario(
@@ -554,7 +541,7 @@ class TestAutotuneGates(unittest.TestCase):
         is only for a successful velocity tune."""
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({})  # default ACTION, chain-eligible
+        gcmd = MockGCmd({})
         issued = []
         d.protocol.run_tune = lambda **kw: issued.append(kw["action"])
         drive_two_dispatch_scenario(
@@ -589,7 +576,7 @@ class TestAutotuneGates(unittest.TestCase):
             return reactor._time
 
         reactor.pause = pause
-        d.state.operation_lock = True  # autotune() holds the lock across dispatches
+        d.state.operation_lock = True
 
         request_fields = {"profile_code": 1, "requested_velocity_mrev_s": 2929}
         d.autotune._run_one_dispatch(
@@ -720,9 +707,6 @@ class TestAutotuneGates(unittest.TestCase):
             "the lock must stay held at every pause during the grace period, "
             "not just at the start and end",
         )
-        # _run_one_dispatch/_cancel_inflight_dispatch never release the lock
-        # themselves -- only autotune()'s own outer finally does, and this
-        # test calls _run_one_dispatch directly without going through it.
         self.assertTrue(d.state.operation_lock)
 
     def test_dispatch_timeout_releases_lock_immediately_on_ack_inside_grace_period(self):
@@ -764,10 +748,6 @@ class TestAutotuneGates(unittest.TestCase):
                 "G0 X100.000 Y100.000",
             )
 
-        # The ack (status 74) sets self.done immediately when
-        # run_commission_cancel is called, so the grace-period loop must
-        # exit on its first predicate check rather than polling for the
-        # full COMMISSION_CANCEL_GRACE_PERIOD_S.
         self.assertLessEqual(len(pause_calls), 2)
 
     def test_dispatch_cancel_stops_waiting_on_a_workflow_terminal(self):
@@ -1204,9 +1184,6 @@ class TestAutotuneGates(unittest.TestCase):
 
         d.autotune.autotune(MockGCmd({}))
 
-        # SAMPLE_TUNE_RESULT: velocity_p=863, position_p=480.
-        # SAMPLE_POSITION_TUNE_RESULT: velocity_p=1152, position_p=282.
-        # The persisted values must come from the SECOND (chained) payload.
         self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "1152")
         self.assertEqual(cfg.values[(d.name, "pid_position_p")], "282")
 
@@ -1485,8 +1462,6 @@ class TestAutotuneGates(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         d.state.pre_tune_snapshot = None
         drive_orchestrated_robustness_scenario(d, outcome=3, cause=6)
-        # _reset_dispatch_state() clears outer_safety_fault before each chained
-        # dispatch, so it must be injected alongside the terminal, not up front.
         orig_handler = d.autotune.handle_robustness_reversal_terminal
         velocity_reason_code = 4
 
@@ -1508,7 +1483,6 @@ class TestAutotuneGates(unittest.TestCase):
         d.state.pre_tune_snapshot = self._tuned_snapshot()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
-        # Same reset-wipes-injected-state issue as the orchestrated case above.
         orig_handler = d.autotune.handle_robustness_reversal_terminal
         current_reason_code = 9
 
@@ -1545,9 +1519,6 @@ class TestAutotuneGates(unittest.TestCase):
         message = str(ctx.exception)
         self.assertNotRegex(message, r"cause=\d", f"leaks a raw cause code: {message!r}")
         self.assertNotIn("production path", message)
-        # Earlier stages (proportional, integral) legitimately report their
-        # own SUCCEEDED summaries before the robustness terminal fires; only
-        # the duplicate FAILED summary for *this* reject is gone.
         self.assertFalse(
             any("FAILED" in response for response in gcmd._responses),
             f"duplicate FAILED summary before the raise: {gcmd._responses!r}",
@@ -1834,9 +1805,6 @@ class TestAutotuneGates(unittest.TestCase):
 
         reactor.pause = pause_with_plan
 
-        # status 2 is a terminal failure here only to end the reactor.pause
-        # loop after the timeout workflow runs; it now raises like any
-        # other non-accepted terminal status.
         with self.assertRaises(CommandError):
             d.autotune.autotune(gcmd)
 
@@ -1852,7 +1820,6 @@ class TestAutotuneGates(unittest.TestCase):
         def pause_with_robustness_plan(deadline):
             reactor._time = deadline
             if d.autotune.robustness_workflow_plan is None:
-                # The firmware discloses the run duration before any motion.
                 d.autotune.handle_commissioning_workflow_plan(
                     {
                         "run_sequence": 7,
@@ -1863,8 +1830,6 @@ class TestAutotuneGates(unittest.TestCase):
                         "digest_high": 0,
                     }
                 )
-            # The terminal only arrives well past the 5 s initial plan window;
-            # without the extended arming this run would already have timed out.
             if reactor._time >= 6.0:
                 d.autotune.handle_robustness_reversal_terminal(
                     {"payload": build_terminal_payload(outcome=0, cause=0)}
@@ -1890,7 +1855,6 @@ class TestAutotuneGates(unittest.TestCase):
         def pause_with_position_tune_plan(deadline):
             reactor._time = deadline
             if d.autotune.position_tune_workflow_plan is None:
-                # The firmware discloses the sweep duration before any motion.
                 d.autotune.handle_commissioning_workflow_plan(
                     {
                         "run_sequence": 7,
@@ -1901,16 +1865,12 @@ class TestAutotuneGates(unittest.TestCase):
                         "digest_high": 0,
                     }
                 )
-            # The terminal only arrives well past the 5 s initial plan window;
-            # without the extended arming this run would already have timed out.
             if reactor._time >= 6.0:
                 d.autotune.handle_tune_result({"status": 2})
             return reactor._time
 
         reactor.pause = pause_with_position_tune_plan
 
-        # status 2 is a terminal failure here only to end the reactor.pause
-        # loop once the extended timeout has been armed.
         with self.assertRaises(CommandError) as ctx:
             d.autotune.autotune(gcmd)
 
@@ -2069,8 +2029,6 @@ class TestAutotuneGates(unittest.TestCase):
             dispatch_count["n"] += 1
             if dispatch_count["n"] == 1:
                 _feed_dispatch_terminal(d.autotune, "tune_result", SAMPLE_TUNE_RESULT)
-                # Cycle evidence gathered during the velocity dispatch --
-                # never re-emitted by the chained position_p_tune dispatch.
                 for direction, iae, dac_rms in ((0, 9, 21), (1, -9, -21)):
                     d.autotune.handle_robustness_cycle_evidence(
                         {
@@ -2228,7 +2186,6 @@ class TestAutotuneGates(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         d.state.pre_tune_snapshot = self._tuned_snapshot()
         self._run_robustness(d, outcome=1, cause=3)
-        # Retained (not cleared) so a later re-run still has a revert target.
         self.assertIsNotNone(d.state.pre_tune_snapshot)
         self.assertEqual(d.state.pre_tune_snapshot["active_gains"]["velocity_p"], 999)
 
@@ -2372,8 +2329,6 @@ class TestAutotuneGates(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("safety fault: safety envelope violation", message)
         self.assertIn("outer safety velocity", message)
-        # The velocity check evaluates a sliding two-interval window and reports
-        # that window's totals, so the labels must not read as one observation.
         self.assertIn("window_delta_counts=-125", message)
         self.assertIn("window_dt_us=4000", message)
         self.assertIn("velocity_counts_per_ms=-31", message)
@@ -2440,9 +2395,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("FOCI_AUTOTUNE failed", message)
         self.assertIn("closed-loop entry stability failed", message)
         self.assertIn("motor holding with entry gains", message)
-        # The disposition message moved entirely into the raised error
-        # rather than being printed as an info message a script wouldn't
-        # see as a failure.
         self.assertEqual(gcmd._responses, [])
 
     def test_proportional_acceptance_names_the_accepted_gain(self):
@@ -2880,7 +2832,7 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
     def test_readiness_warning_is_reported_before_dispatch(self):
         d = self._ready_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        d.config.identified_bandwidth_hz = 0  # trips _classify_bandwidth's warning
+        d.config.identified_bandwidth_hz = 0
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         self._finish_tune_on_next_pause(d)
 
@@ -2898,10 +2850,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.printer._objects["configfile"] = MockConfigFile()
         d.config.autotune_mode = None
         prior_gains = d.state.active_gains.copy()
-        # velocity_limit/position_i/filter_hz are carried forward from
-        # active_gains unchanged (they no longer arrive on the wire result),
-        # so only the tuned fields (velocity_p/velocity_i/position_p) need
-        # to differ from prior_gains for this assertion to be meaningful.
         self._finish_tune_on_next_pause(d, {"velocity_p": 863, "velocity_i": 12})
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
         d.autotune.autotune(gcmd)
@@ -2927,7 +2875,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         d.autotune.autotune(gcmd)
 
         gcode = d.printer.lookup_object("gcode")
-        # The dispatch's own re-home then re-center; no redundant up-front move.
         self.assertEqual(
             gcode._scripts,
             ["G28 X Y", "G0 X60.000 Y60.000"],
@@ -3056,10 +3003,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertIsNotNone(args)
         self.assertEqual(args[7], 1 << 5)
 
-
-# ============================================================================
-# Breakaway-seeded campaign: end-to-end host orchestration
-# ============================================================================
 
 BREAKAWAY_RUN_SEQUENCE = 21
 BREAKAWAY_PROBE_DIGEST = (0x1111_1111, 0x2222_2222)
@@ -3783,7 +3726,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
                 "prior_plan_digest_high": discovery_high,
                 "family_size": 8,
                 "observations_per_direction": 4,
-                "nominated_p_raw": 360,  # a different candidate: never chosen
+                "nominated_p_raw": 360,
                 "band_lower_percent": 70,
                 "band_upper_percent": 80,
                 "capture_profile": 0,

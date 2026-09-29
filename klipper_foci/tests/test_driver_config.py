@@ -476,8 +476,6 @@ def test_parse_driver_config_rejects_current_filters_above_ten_khz():
 
 
 def test_parse_driver_config_rejects_velocity_filter_above_motion_ceiling():
-    # 2000 Hz is a valid torque/flux cutoff but must stay rejected for
-    # velocity, which keeps the 1000 Hz motion-filter ceiling.
     _printer, _chips, _sections, config = make_foci_config(foci_values={"velocity_filter_hz": 2000})
 
     with pytest.raises(CommandError, match="above maximum"):
@@ -774,8 +772,6 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
     assert sink.values[(driver.name, "pid_flux_i")] == str(configured_i["flux_i"])
     assert sink.values[(driver.name, "pid_torque_i")] == str(configured_i["torque_i"])
     assert sink.values[(driver.name, "commissioned_velocity_i")] == str(configured_i["velocity_i"])
-    # fallback_position_i is no longer on the wire: firmware's inner position
-    # integrator is always reset to 0 at commission time.
     assert sink.values[(driver.name, "commissioned_position_i")] == "0"
 
 
@@ -892,7 +888,6 @@ def test_handle_connect_installs_validation_result():
         }
     )
     driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
-    # make_config_printer installs MockCartesianKinematics with this stepper OID.
     driver._handle_mcu_identify()
 
     driver._handle_connect()
@@ -901,11 +896,6 @@ def test_handle_connect_installs_validation_result():
     assert driver.state.active_gains["velocity_p"] == 1100
 
 
-# Config for a stepper with saved commissioned gains that differ from the
-# printer.cfg pid_position_p/i, pid_velocity_p/i, pid_velocity_limit values.
-# Captured against the pre-change (two-pass) `_handle_connect` so the expected
-# values below are the actual two-pass result, not a hand-derived guess: the
-# saved commissioned_* gains run second and win over the printer.cfg values.
 _CONNECT_SAVED_GAINS_DIFFER_FROM_CFG = {
     "autotune_status": "commissioned",
     "pid_flux_p": 256,
@@ -1174,11 +1164,6 @@ def test_homing_defaults_and_threshold_units():
 
 
 def test_stall_margin_rejected_when_units_collapse_at_rounding_boundary():
-    # stall_margin_mm=0.15 and stall_ceiling_mm=0.1501 both pass the raw mm
-    # comparison (0.15 < 0.1501), but at rotation_distance=40 they both round
-    # to 246 position units (245.76 and 246.16 respectively), which the
-    # firmware's unit-level `margin < ceiling` check rejects. The host must
-    # catch this before ever talking to the MCU.
     with pytest.raises(CommandError):
         printer, _chips, sections, _config = make_foci_config(
             stepper_values={"rotation_distance": 40.0},
@@ -1202,11 +1187,11 @@ def test_stall_margin_rejected_when_units_collapse_at_rounding_boundary():
         {"stall_ceiling_mm": "10.1"},
         {"stall_margin_mm": "0"},
         {"stall_margin_mm": "10.1"},
-        {"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.5"},  # margin == ceiling
-        {"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.6"},  # margin > ceiling
+        {"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.5"},
+        {"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.6"},
         {"stall_persistence": "0"},
         {"stall_persistence": "256"},
-        {"stall_distance": "0.5"},  # removed key, must be a config error
+        {"stall_distance": "0.5"},
     ],
 )
 def test_homing_config_rejects_out_of_range(values):
@@ -1238,8 +1223,6 @@ def test_homing_config_accepts_boundary_values(values, field_name, expected):
 
 
 def test_stall_ceiling_and_margin_default_independently():
-    # Setting only stall_ceiling_mm still applies the stall_margin_mm
-    # default, and vice versa -- neither requires the other.
     printer, _chips, sections, _config = make_foci_config(
         stepper_values={"rotation_distance": 40.0},
         foci_values={"run_current": 2.3, "stall_ceiling_mm": "2.0"},
@@ -1273,7 +1256,5 @@ def test_mock_getfloat_does_not_validate_absent_default():
     from tests.mocks import MockConfig
 
     config = MockConfig(printer=None, sections={"section": {}}, name="section")
-    # A default of 0.0 with above=0.0 would fail this bound if it were
-    # validated; it must not be, since the key is absent.
     assert config.getfloat("missing_key", 0.0, above=0.0) == 0.0
     assert config.getint("missing_int_key", 0, minval=1) == 0

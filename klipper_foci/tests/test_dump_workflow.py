@@ -138,7 +138,7 @@ def test_dump_foci_works_with_no_diagnostics_package_installed(monkeypatch):
     handler = _registered_handler(driver, "DUMP_FOCI")
     gcmd = MockGCmd({})
 
-    handler(gcmd)  # must not raise AttributeError on driver.diagnostics.*
+    handler(gcmd)
 
     assert protocol.calls == ["dump_registers"]
     assert gcmd.last_info is not None

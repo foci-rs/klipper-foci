@@ -182,11 +182,9 @@ class MockCartesianKinematics:
 class MockCoreXYKinematics(MockCartesianKinematics):
     """CoreXY kinematics, class name used for coupling lookup."""
 
-    # The COUPLED_AXES table uses type(kin).__name__
     pass
 
 
-# Give it the right class name for the coupling table lookup
 MockCoreXYKinematics.__name__ = "CoreXYKinematics"
 
 
@@ -679,7 +677,6 @@ def make_driver(
     """
     driver = FociDriver.__new__(FociDriver)
 
-    # Identity
     driver.name = "foci " + stepper_name
     driver.stepper_name = stepper_name
     driver.oid = 0
@@ -688,7 +685,6 @@ def make_driver(
     driver.max_run_current_ma = 10_000
     driver.global_config = SimpleNamespace(debug=False)
 
-    # Printer and objects
     toolhead = MockToolhead(kinematics)
     toolhead._homed_axes = homed_axes
     printer = MockPrinter()
@@ -698,7 +694,6 @@ def make_driver(
     printer._objects["print_stats"] = MockPrintStats()
     driver.printer = printer
 
-    # Runtime collaborators installed by FociDriver.__init__.
     driver.protocol = FociProtocol(driver)
     driver.state = FociRuntimeState()
     driver.dump = RegisterDumpWorkflow(driver)

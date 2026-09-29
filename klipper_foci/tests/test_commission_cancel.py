@@ -132,7 +132,7 @@ class SelftestTimeoutCancelTests(unittest.TestCase):
 
 class EnsureCalibratedTimeoutCancelTests(unittest.TestCase):
     def test_ensure_calibrated_timeout_sends_cancel_and_waits_again(self):
-        d = make_driver()  # commissioned, not yet calibrated for this call
+        d = make_driver()
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         sent = []
         d.protocol.run_calibration = lambda: None
@@ -148,7 +148,7 @@ class EnsureCalibratedTimeoutCancelTests(unittest.TestCase):
             def wait(self, deadline, waketime_result=None):
                 wait_deadlines.append(deadline)
                 reactor._time = deadline
-                return waketime_result  # always times out, both calls
+                return waketime_result
 
         fake = FakeCompletion()
         reactor.completion = lambda: fake

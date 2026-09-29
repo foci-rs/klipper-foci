@@ -466,19 +466,11 @@ class TestCommissionGates(unittest.TestCase):
         """Commission should not check homing, it works from cold boot."""
         d = make_driver()
         gcmd = MockGCmd({"PROFILE": "balanced"})
-        # Will fail in the commission polling loop, but should
-        # NOT fail at a homing gate. Simulate immediate firmware response.
         d.commissioning.done = True
         d.commissioning.result = SAMPLE_COMMISSION_RESULT
-        # The polling loop needs a reactor
         d.printer._objects["reactor"] = MockReactor()
-        # This will fail because we don't have full mock infrastructure
-        # for the success path, but it should NOT raise "not homed"
-        # Expected, incomplete mocks for full path
         with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
-        # Verify no homing error was raised
-        # (if we got here, the homing gate was not hit)
 
     def test_waits_for_disable_to_flush_before_requesting_commission(self):
         """A pending motor_disable must be flushed before run_commission is sent.
@@ -534,7 +526,6 @@ class TestCommissionGates(unittest.TestCase):
         d.commissioning.result = SAMPLE_COMMISSION_RESULT
         with contextlib.suppress(CommandError, AttributeError, TypeError):
             d.commissioning.commission(gcmd)
-        # Should not raise "not commissioned"
 
     def test_commission_failure_reports_diagnostics(self):
         d = make_driver()
@@ -604,8 +595,6 @@ def test_commission_succeeds_with_no_diagnostics_package_installed(monkeypatch):
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
     )
     driver = make_config_driver(printer, sections, "foci stepper_x")
-    # driver.oid stays None until _handle_mcu_identify() resolves it --
-    # calling bind_mcu() directly would pass oid=None.
     driver._handle_mcu_identify()
     printer._objects["configfile"] = MockConfigFile()
 
@@ -616,7 +605,7 @@ def test_commission_succeeds_with_no_diagnostics_package_installed(monkeypatch):
     driver.protocol.commands.commission.send = drive_success
     gcmd = MockGCmd({"PROFILE": "balanced"})
 
-    driver.commissioning.commission(gcmd)  # must not raise AttributeError on driver.diagnostics.*
+    driver.commissioning.commission(gcmd)
 
     assert gcmd._responses[0].startswith("FOCI_SETUP stepper_x: SUCCEEDED")
 
@@ -643,8 +632,7 @@ def test_commission_skipped_gain_floor_warns_the_operator_without_debug():
 def test_commission_timing_evidence_rejected_prints_failed_summary():
     d = make_driver()
     result = complete_commission_result()
-    result["timing_summary"] = 2 << 4 | 1 << 6  # rejected, per the existing
-    # test_rejected_timing_is_fatal_even_with_plausible_model_values fixture
+    result["timing_summary"] = 2 << 4 | 1 << 6
 
     def drive_rejected_timing(_args):
         d.commissioning.handle_commission_timing(
@@ -851,7 +839,6 @@ class TestCommissioningStateTransitions(unittest.TestCase):
         d.state.runtime_status = "commissioned"
         d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         d.state.is_calibrated = True
-        # Simulate failure
         d.commissioning.on_commission_failure()
         self.assertTrue(d.state.inhibited)
         self.assertIsNone(d.state.active_gains)
@@ -1065,10 +1052,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         result = complete_commission_result()
 
         def drive_success(_args):
-            # Firmware emits these three replies, in order, just before
-            # foci_commission_result, as part of the same FOCI_SETUP
-            # run. Axis replies arrive axis1-before-axis0 here on purpose
-            # to prove routing uses electrical_axis, not arrival order.
             driver.diagnostics.handle_resistance_run(
                 {
                     "oid": driver.oid,
@@ -1129,7 +1112,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
 
         driver.commissioning.commission(gcmd)
 
-        # The presence-gate key from the run reply.
         self.assertEqual(
             configfile.values[(driver.name, "identified_r_count_slope_milli")],
             "1042",
@@ -1157,8 +1139,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         result = complete_commission_result()
 
         def drive_partial_success(_args):
-            # Only run + axis0 arrive before foci_commission_result;
-            # axis1 never shows up in this commission attempt.
             driver.diagnostics.handle_resistance_run(
                 {
                     "oid": driver.oid,
@@ -1200,18 +1180,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         driver.protocol.commands.commission.send = drive_partial_success
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
-        # Must not raise, the partial cache must not reach the
-        # unconditional result[key] lookups in
-        # _persist_resistance_identification.
         driver.commissioning.commission(gcmd)
 
-        # Commission itself succeeded.
         self.assertTrue(driver.state.is_calibrated)
 
-        # The entire resistance-identification block must be skipped: none
-        # of its config keys persisted, not even the ones the run/axis0
-        # replies could have supplied on their own. (Excludes the
-        # unrelated always-persisted count-space electrical model keys.)
         resistance_config_keys = {
             config_key for _, config_key in CommissioningWorkflow.RESISTANCE_RESULT_KEYS
         }
@@ -1220,8 +1192,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         ]
         self.assertEqual(persisted_resistance_keys, [])
 
-        # The per-oid cache must be cleared, not left dangling with the
-        # partial axis0-only entry for a later commission to pick up.
         self.assertNotIn(driver.oid, driver.diagnostics.active.resistance_cache)
 
     def test_standalone_resistance_test_does_not_persist(self):
@@ -1288,8 +1258,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
             }
         )
 
-        # No commission ran; persist_commission_results was never called.
-        # Confirm nothing resistance-related landed in config.
         resistance_keys = [key for key in configfile.values if "identified_r_" in key[1]]
         self.assertEqual(resistance_keys, [])
 
@@ -1318,8 +1286,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         driver.printer._objects["configfile"] = configfile
         result = complete_commission_result()
 
-        # Simulate a prior standalone FOCI_RESISTANCE_TEST that completed
-        # and left a full run+axis0+axis1 cache entry for this oid.
         driver.diagnostics.handle_resistance_run(
             {
                 "oid": driver.oid,
@@ -1372,8 +1338,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
                 "warning_flags": 0,
             }
         )
-        # Confirm the standalone cache really is fully populated, as the
-        # narrative above claims.
         self.assertIn(driver.oid, driver.diagnostics.active.resistance_cache)
         stale_entry = driver.diagnostics.active.resistance_cache[driver.oid]
         self.assertIn("run", stale_entry)
@@ -1381,10 +1345,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         self.assertIn("axis1", stale_entry)
 
         def drive_partial_commission(_args):
-            # The commission only delivers run + axis0; axis1 never
-            # arrives in this commission attempt. Without the start-of-
-            # commission clear, axis1 from the stale standalone run above
-            # would still be sitting in the cache under this oid.
             driver.diagnostics.handle_resistance_run(
                 {
                     "oid": driver.oid,
@@ -1426,17 +1386,10 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         driver.protocol.commands.commission.send = drive_partial_commission
         gcmd = MockGCmd({"PROFILE": "balanced"})
 
-        # Must not raise.
         driver.commissioning.commission(gcmd)
 
-        # Commission itself succeeded.
         self.assertTrue(driver.state.is_calibrated)
 
-        # The stale axis1 from the standalone run must NOT leak through:
-        # since the start-of-commission clear removed it, the all-or-
-        # nothing fold correctly sees axis1 absent for this commission and
-        # folds/persists nothing, rather than blending the stale axis1
-        # with the fresh run+axis0.
         resistance_config_keys = {
             config_key for _, config_key in CommissioningWorkflow.RESISTANCE_RESULT_KEYS
         }
@@ -1445,7 +1398,6 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
         ]
         self.assertEqual(persisted_resistance_keys, [])
 
-        # The per-oid cache must be cleared at the end too.
         self.assertNotIn(driver.oid, driver.diagnostics.active.resistance_cache)
 
 

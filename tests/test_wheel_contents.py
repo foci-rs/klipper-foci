@@ -30,14 +30,10 @@ def _wheel_module_names(wheel_path: Path) -> set[str]:
 def test_core_wheel_contains_expected_files_and_no_optional_modules(tmp_path):
     core_wheel = _build_wheel(_HOST_KLIPPER_FOCI / "klipper_foci", tmp_path / "core")
     modules = _wheel_module_names(core_wheel)
-    # Positive assertions first -- an empty or truncated wheel must not
-    # pass just because it also happens to contain nothing forbidden.
     assert any(name.endswith("klipper_foci/driver.py") for name in modules)
     assert any(name.endswith("klipper_foci/registry.py") for name in modules)
     assert any(name.endswith("klipper_foci/diagnostics/workflow.py") for name in modules)
-    # core has ~20 top-level modules plus diagnostics/protocol subpackages
     assert len(modules) >= 20
-    # Then the negative assertions this task exists for.
     assert not any("diagnostics_active" in name for name in modules)
     assert not any("diagnostics_passive" in name for name in modules)
     assert not any("klipper_foci_diagnostics" in name for name in modules)
