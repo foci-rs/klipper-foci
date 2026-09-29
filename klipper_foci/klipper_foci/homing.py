@@ -40,8 +40,6 @@ CALIBRATION_REASON_NAMES: dict[int, str] = {
 class HomingWorkflow:
     """Coordinate calibration-on-enable and homing-related reporting."""
 
-    # Kinematics coupling map: in coupled kinematics a single motor affects
-    # multiple Cartesian axes. Maps rail index -> affected axes.
     COUPLED_AXES: ClassVar[dict[str, dict[int, tuple[int, ...]]]] = {
         "CoreXYKinematics": {0: (0, 1), 1: (0, 1), 2: (2,)},
         "CoreXZKinematics": {0: (0, 2), 1: (1,), 2: (0, 2)},

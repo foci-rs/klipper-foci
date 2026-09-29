@@ -168,7 +168,6 @@ REGISTERS: dict[str, int] = {
     "STATUS_FLAGS": 0x7C,
     "PWM_BBM_H_BBM_L": 0x19,
     "PWM_SV_CHOP": 0x1A,
-    # Sub-registers (synthetic addresses 0x80+, match firmware encoding)
     "INTERIM_PIDIN_TARGET_VELOCITY": 0x80,
     "INTERIM_PIDOUT_TARGET_VELOCITY": 0x81,
     "PID_POSITION_ERROR_SUM": 0x82,
@@ -355,8 +354,6 @@ Fields["PID_VELOCITY_ACTUAL"] = {
     "velocity_actual": 0xFFFFFFFF,
 }
 
-# Sub-register fields (synthetic addresses 0x80+). These are raw s32
-# values displayed as a single field.
 Fields["INTERIM_PIDIN_TARGET_VELOCITY"] = {
     "pidin_target_velocity": 0xFFFFFFFF,
 }

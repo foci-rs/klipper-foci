@@ -32,10 +32,6 @@ from .selftest import SelftestWorkflow
 from .state import FociRuntimeState
 from .virtual_endstop import FociVirtualEndstop
 
-######################################################################
-# FociDriver - per-axis driver instance
-######################################################################
-
 
 class FociDriver:
     """Klipper extras driver for a single TMC4671 FOC channel."""
@@ -51,8 +47,6 @@ class FociDriver:
         self.mcu = self.config.mcu
         self.channel = self.config.channel
 
-        # Runtime FOCI commands use the Klipper stepper OID. It is resolved
-        # after MCU identification, when Klipper has loaded all steppers.
         self.oid: int | None = None
         self.stepper_oid: int | None = None
         self.max_run_current_ma: int | None = None
@@ -68,16 +62,11 @@ class FociDriver:
         self.autotune = AutotuneWorkflow(self)
         self.diagnostics = DiagnosticsWorkflow(self)
 
-        # Two-stage commissioning volatile state (per-session, not persisted)
-        # See spec: docs/specs/2026-04-11-two-stage-foci-commissioning-design.md
-        # Commissioning phase tracking (used by commission/tune progress callbacks)
-        # Register GCode commands
         gcode = self.printer.lookup_object("gcode")
         register_gcode_commands(
             self, gcode, command_specs=GCODE_COMMANDS + discover_optional_specs(self)
         )
 
-        # Lifecycle events
         self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler(

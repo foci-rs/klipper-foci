@@ -568,11 +568,6 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
     return RuntimeValidationResult(status, active_gains)
 
 
-# Operating velocity must clear the probed velocity by this percentage before
-# FOCI warns of a stale tune. A pure equality check would fire on ordinary
-# rounding/unit-conversion noise between nominally-equal probed and operating
-# velocities; 10% is large enough to absorb that noise while still catching a
-# genuine increase in configured operating range.
 AUTOTUNE_STALENESS_MARGIN_PERCENT = 10
 
 

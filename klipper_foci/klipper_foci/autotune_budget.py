@@ -163,10 +163,6 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     kinematics = toolhead.get_kinematics()
     kind = _kinematics_kind(kinematics)
     role = _stepper_role(driver.stepper_name)
-    # Sized from the static axis bounds and the bed-center pose every dispatch
-    # re-centers to, not the live toolhead position, so the plan is
-    # homing-independent and identical across the breakaway and resume
-    # dispatches.
     status = toolhead.get_status(toolhead.get_last_move_time())
     min_x, min_y = _status_axis_tuple(status, "axis_minimum")
     max_x, max_y = _status_axis_tuple(status, "axis_maximum")
@@ -195,16 +191,6 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     headroom_mm = min(negative_mm, positive_mm) - absolute_margin_mm
     travel_is_defaulted = gcmd.get("TRAVEL", None) is None
     if travel_is_defaulted:
-        # Default to the travel the machine actually has, bounded by the safety
-        # cap, rather than a fixed figure. The commissioning velocity is
-        # travel over stroke time, so a fixed 40 mm default produced 87 RPM on
-        # a 40 mm rotation distance -- an operating point at which no archived
-        # capture yields a single eligible observation.
-        #
-        # The moving stroke is the full stroke less the settle reserve, so
-        # bounding the full stroke by `headroom_mm + AUTOTUNE_SAFETY_MARGIN_MM`
-        # keeps the planned motion inside the runtime position window rather
-        # than relying on that guard to contain motion the plan expects.
         requested_travel_mm = min(
             available_mm,
             MAX_AUTOTUNE_TRAVEL_MM,
@@ -231,12 +217,6 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     if negative_position_headroom_mrev <= 0 or positive_position_headroom_mrev <= 0:
         raise AutotuneBudgetError("insufficient absolute-position headroom")
 
-    # Firmware plans travel velocity from `max_stroke_travel_mrev` less
-    # `settle_travel_reserve_mrev`, while the headroom fields bound the runtime
-    # position window. The first must not exceed the second, and the check
-    # belongs on the integer fields: each is floored independently, so a bound
-    # applied in millimetres can still overshoot by one mrev when the rotation
-    # distance does not divide the margin cleanly.
     safe_stroke_mrev = (
         min(negative_position_headroom_mrev, positive_position_headroom_mrev)
         + settle_travel_reserve_mrev
@@ -257,8 +237,6 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
     ):
         raise AutotuneBudgetError("insufficient motor travel for FOCI_AUTOTUNE")
 
-    # Report the millimetre travel that matches the integer budget actually
-    # sent, which the clamp above may have reduced.
     moving_travel_mm = (
         (max_stroke_travel_mrev - settle_travel_reserve_mrev) * rotation_distance / 1000.0
     )

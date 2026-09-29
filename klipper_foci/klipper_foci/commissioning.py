@@ -169,25 +169,16 @@ def operator_failure_phrase(code: int) -> str:
     return COMMISSION_REASON_NAMES.get(code, f"unknown error {int(code)}")
 
 
-# Error codes for which the failure message should point at a dedicated
-# troubleshooting doc instead of just the bare error name.
 TROUBLESHOOTING_DOC_LINKS: dict[int, str] = dict.fromkeys(
     [*range(19, 32), 73], "docs/troubleshooting/resistance-identification.md"
 )
 
-# Resistance-identification failures that are not operator-remediable by
-# changing a printer setting. The firmware could not find a safe resistance
-# measurement envelope, or a safety backstop rejected the envelope it tried.
 RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31})
 
-# Error codes that indicate a hard-disable fault: firmware has disabled the
-# motor and cleared its state. The host must sync its enable line and clear
-# is_calibrated.
 HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17, 42})
 
 INNER_WARNING_GAIN_FLOOR_SKIPPED = 1 << 7
 
-# Bit-to-name mapping for the firmware-side `inner_warning_flags` bitfield.
 INNER_WARNING_FLAG_NAMES: list[tuple[int, str]] = [
     (1 << 0, "coil R mismatch"),
     (1 << 1, "coil control-model tau mismatch"),
@@ -1062,14 +1053,6 @@ class CommissioningWorkflow:
         configfile.set(self.driver.name, "autotune_profile", profile_name)
         configfile.set(self.driver.name, "autotune_status", "commissioned")
 
-    # Maps each firmware-reported resistance-identification result key to
-    # the persisted config key. All values are firmware-owned: the host
-    # neither fits, selects points, nor evaluates quality gates here, it
-    # only stores what firmware already decided. The
-    # `foci_commission_result` wire reply does not carry these fields yet
-    # (tracked separately); `persist_commission_results` skips this group
-    # entirely when firmware has not reported it, rather than persist
-    # fabricated zeros.
     RESISTANCE_RESULT_KEYS: tuple[tuple[str, str], ...] = (
         ("resistance_selected_count_slope_milli", "identified_r_count_slope_milli"),
     )

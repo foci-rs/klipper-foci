@@ -85,9 +85,6 @@ OUTER_SAFETY_REASON_NAMES = {
     11: "position_local",
 }
 
-# Plain-English override for the outer-safety-fault reasons that reach an
-# operator-facing message. humanize()'s underscore-to-space pass reads fine
-# for most of these; the ones here read awkwardly without it.
 _OUTER_SAFETY_REASON_PHRASES = {
     "duration": "run duration exceeded",
     "velocity": "velocity limit exceeded",
@@ -103,8 +100,6 @@ def _outer_safety_reason_phrase(reason_name: str) -> str:
     return _OUTER_SAFETY_REASON_PHRASES.get(reason_name, humanize(reason_name))
 
 
-# Mirrors firmware's `PositionTuneOutcome::to_wire_code()`. Kept in
-# sync with that Rust enum by hand, same pattern as COMMISSION_REASON_NAMES.
 # Wire code 0 is reserved to mean "not applicable" and never appears here.
 # 1 (AccelerationFitRejected), 2, 3, and 5 (FloorCeilingConflict) are retired
 # from the P-only torque-step floor design and are reserved, not reused.
@@ -117,21 +112,11 @@ POSITION_TUNE_OUTCOME_NAMES: dict[int, str] = {
     10: "restoration_timeout",
 }
 
-# Plain-English phrasing for the two velocity-integral outcomes that reach
-# _finish_velocity_integral_terminal on a SUCCEEDED path. humanize() cannot
-# turn "first_run_retained" into a sentence that explains what happens next,
-# so these two get an explicit phrase instead of the generic underscore-to-
-# space pass every other outcome/cause name still uses.
 _VELOCITY_INTEGRAL_SUCCESS_PHRASES = {
     "first_run_retained": "integral gain candidate found, confirming repeatability",
     "repeatability_confirmed": "integral gain confirmed",
 }
 
-# Cause-specific plain-English phrasing for an orchestrated robustness
-# reject. Every entry keeps its own accuracy about whether gains were
-# retained (cause 11 is a non-safety fault with no inhibit; the IAE-exceeded
-# and safety-fault causes have their own dedicated branches above this one
-# and never reach this table).
 _ROBUSTNESS_REJECT_PHRASES = {
     4: ("gain robustness check inconclusive, motor did not settle within the measurement window"),
     11: (
@@ -148,7 +133,6 @@ def _format_robustness_reject_phrase(cause: int) -> str:
     return f"robustness check rejected, {humanize(cause_name)}"
 
 
-# Bit order of PositionTuneProvenance.stimulus_feedforward_paths.
 FEEDFORWARD_PATH_NAMES: tuple[str, ...] = (
     "velocity",
     "transient",
@@ -162,10 +146,6 @@ def _format_feedforward_paths(mask: int) -> str:
     return ",".join(name for bit, name in enumerate(FEEDFORWARD_PATH_NAMES) if mask & (1 << bit))
 
 
-# Q16.16 tau constant, mirroring firmware's `position_tune/mod.rs` TAU_Q16.
-# `nominal_bandwidth_hz` no longer arrives on the wire (spec's frame-budget
-# split); the host recomputes it independently from `last_rung_p`, and a
-# firmware-side pinned test asserts the two formulas never drift apart.
 TAU_Q16 = 411_775
 
 
@@ -231,9 +211,6 @@ def _robustness_reversal_cause_text(cause: int) -> str:
     return str(cause) if name is None else f"{cause} ({name})"
 
 
-# Display-only translation of `velocity_integral.py`'s `REST_REJECTION_OWNER_NAMES`
-# wire-mirrored values (which stay `integral_*` for parity with firmware's
-# `RestSelectionOwner::Integral*` variants) into the physical phrasing operators see.
 _REST_REJECTION_OWNER_TEXT = {
     "integral_anchor": "velocity-integral anchor",
     "integral_positive_observation": "velocity-integral positive-current observation",
@@ -293,10 +270,6 @@ class AutotuneWorkflow:
         self.robustness_workflow_plan: dict | None = None
         self.position_tune_workflow_plan: dict | None = None
         self._proportional_candidate_request: dict | None = None
-        # Per-oid stitch cache for foci_tune_position_evidence, keyed onto
-        # (report_seq, {"evidence": params}) -- the same shape as
-        # ActiveDiagnostics' own fragment caches, reused here rather than
-        # reimplemented.
         self.tune_position_evidence_fragments: dict[int, tuple[int, dict[str, dict]]] = {}
         self.done = False
 
@@ -345,11 +318,6 @@ class AutotuneWorkflow:
         except VelocityIntegralProtocolError as err:
             self.velocity_integral_error = err
             return
-        # Once the breakaway velocity-integral plan is fully assembled, cross-check its
-        # exact digest against the digest the campaign terminal already
-        # disclosed at acceptance time. This is a firmware-identity check --
-        # confirming two things firmware itself sent agree -- not a
-        # recomputation of either value.
         if (
             method_name == "handle_plan_rung"
             and workflow is not None
@@ -386,15 +354,9 @@ class AutotuneWorkflow:
                 self.fixed_gain_amplitude_error = err
             return
         if shape == SHAPE_ROBUSTNESS_REVERSAL:
-            # Robustness reversal: record the run's worst-case duration so the
-            # wait loop arms its extended timeout. It does not feed the
-            # fixed-gain-amplitude or velocity-integral assemblers.
             self.robustness_workflow_plan = params
             return
         if shape == SHAPE_POSITION_TUNE:
-            # Position-P sweep: record the sweep's worst-case duration so the
-            # wait loop arms its extended timeout. It does not feed the
-            # fixed-gain-amplitude or velocity-integral assemblers.
             self.position_tune_workflow_plan = params
             return
         self._handle_velocity_integral("handle_workflow_plan", params)
@@ -508,23 +470,14 @@ class AutotuneWorkflow:
             return True
         workflow = self.velocity_integral.workflow_plan
         if workflow is None:
-            # Only a refusal can complete without an envelope: the exact-plan
-            # path refuses to assemble until a velocity-integral workflow has arrived. Its
-            # terminal is still terminal, and nothing else will follow it.
             return self.velocity_integral.done
         shape = int(workflow["shape"])
         if shape == SHAPE_BREAKAWAY_SEEDED:
-            # The breakaway campaign's own campaign terminal is the only
-            # phase-independent completion signal. A non-accept terminal ends
-            # the workflow immediately; an accepted one only finishes once the
-            # handed-off classic velocity-integral evidence completes.
             if not self.breakaway_campaign.done:
                 return False
             if not self.breakaway_campaign.accepted:
                 return True
             return self.velocity_integral.done
-        # A resumed velocity-integral run (shape 0) and any other enveloped workflow complete on
-        # the integral-response terminal.
         return self.velocity_integral.done
 
     def _synchronize_disarmed_workflow_terminal(self, toolhead) -> None:
@@ -753,10 +706,6 @@ class AutotuneWorkflow:
                 reason_code,
             )
             reason = f"unknown_{reason_code}"
-        # The velocity check evaluates a sliding two-interval window and reports
-        # that window's summed counts and elapsed time; every other reason
-        # evaluates a single observation. Label them apart so a window total is
-        # not read as one long observation.
         windowed = reason == "velocity"
         delta_label = "window_delta_counts" if windowed else "delta_counts"
         dt_label = "window_dt_us" if windowed else "dt_us"
@@ -861,11 +810,6 @@ class AutotuneWorkflow:
         try:
             gcode.run_script_from_command("G28 X Y")
         except Exception as err:
-            # A homing failure aborts autotune here: falling through to the
-            # dispatch's run_tune would drive the motor in raw motor space
-            # against unhomed, encoder-unaligned axes. Re-take the operation
-            # lock (best effort) so autotune()'s finally can release it, then
-            # surface the homing failure unmasked.
             if had_lock:
                 self.driver.state.try_acquire("autotune")
             raise gcmd.error(
@@ -1030,15 +974,7 @@ class AutotuneWorkflow:
                         iae_by_direction,
                         dac_rms_by_direction,
                     )
-                # The orchestrated dispatch deployed nothing: there is no
-                # pre_tune_snapshot to revert (fresh) or one may be stale
-                # (from an earlier diagnostic run), so this branch must
-                # never read or mutate it. printer.cfg already holds the
-                # operator baseline; firmware restores its own registers.
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
-                    # Safety fault: same in-session enable-inhibit as the
-                    # standalone diagnostic below, without the config
-                    # revert. Raises on its own.
                     self._inhibit_orchestrated_safety_fault(gcmd)
                 if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_IAE_EXCEEDED:
                     measured = max(
@@ -1069,9 +1005,6 @@ class AutotuneWorkflow:
                     f"{_format_robustness_reject_phrase(cause)}."
                 )
             if int(terminal.get("outcome", -1)) == 0:
-                # The one non-error path: a genuine pass. Every non-pass
-                # outcome is reported by _handle_robustness_verdict itself
-                # (its own FAILED summary, or an unchanged gcmd.error()).
                 report_summary(
                     gcmd,
                     f"{self._summary_prefix()}: SUCCEEDED, "
@@ -1111,18 +1044,10 @@ class AutotuneWorkflow:
                     f"existing gains retained.{cause_suffix}"
                 )
             if self.velocity_integral.done:
-                # An accepted breakaway campaign reaches its
-                # velocity-integral terminal in the SAME dispatch as this
-                # campaign-acceptance terminal -- resolve it the same way
-                # the non-breakaway path below does, so a first_run_retained
-                # outcome still drives the caller's velocity_i_tune dispatch
-                # instead of being masked by the generic marker below.
                 report_summary(
                     gcmd, f"{self._summary_prefix()}: {self._format_proportional_gain_accepted()}"
                 )
                 return self._finish_velocity_integral_terminal(gcmd, request_fields)
-            # Accepted with no velocity-integral terminal in this dispatch
-            # yet: a degenerate, rare shape with nothing further to report.
             report_summary(
                 gcmd, f"{self._summary_prefix()}: {self._format_proportional_gain_accepted()}"
             )
@@ -1144,9 +1069,6 @@ class AutotuneWorkflow:
             action = parse_autotune_action(action_param)
         except FixedGainAmplitudeProtocolError as err:
             raise gcmd.error(f"FOCI {self.driver.name}: {err}") from err
-        # Only the production path -- ACTION left unspecified -- auto-chains
-        # into position_p_tune. Any explicit ACTION (diagnostic or otherwise,
-        # including ACTION=velocity_p_tune spelled out) opts out.
         chain_position_tune = action_param is None
         profile_name = gcmd.get("PROFILE", "balanced").lower()
         mode_name = gcmd.get("MODE", "nominal").lower()
@@ -1174,11 +1096,6 @@ class AutotuneWorkflow:
                 )
             toolhead = self.driver.printer.lookup_object("toolhead")
             self._ensure_printer_idle(gcmd, toolhead)
-            # The motion plan is derived from static axis bounds (bed-center),
-            # not live position, so it needs no prior homing. Each dispatch
-            # re-homes, re-centers, and arms the motor before it moves, so a
-            # commissioned-but-cold driver (e.g. after a klipper restart)
-            # self-homes rather than being rejected here.
             try:
                 motion_budget = compute_autotune_motion_budget(self.driver, gcmd)
             except AutotuneBudgetError as err:
@@ -1255,9 +1172,6 @@ class AutotuneWorkflow:
 
             outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead, safe_pose_move)
             if outcome == "first_run_retained":
-                # The accepted candidate has not yet reproduced. Re-dispatch the
-                # exact same request under velocity_i_tune so firmware rebuilds
-                # the identical plan digest against its retained authority.
                 self._reset_dispatch_state()
                 self.driver.commissioning.phase_label_override = (
                     "Confirming integral gain repeatability"
@@ -1273,9 +1187,6 @@ class AutotuneWorkflow:
                 finally:
                     self.driver.commissioning.phase_label_override = None
                 if outcome == "repeatability_confirmed":
-                    # Reproduced: the accepted candidate still needs a
-                    # robustness verdict before it can deploy. Firmware emits
-                    # a full TuneResult directly on a robustness pass.
                     self._reset_dispatch_state()
                     outcome = self._run_one_dispatch(
                         gcmd,
@@ -1303,10 +1214,6 @@ class AutotuneWorkflow:
 
             chained_velocity_evidence = None
             if chain_position_tune and int((self.result or {}).get("status", 255)) <= 1:
-                # Its own tune_result reply carries the just-installed
-                # velocity fields, so it fully replaces `self.result` below.
-                # Capture the velocity phase's cycle evidence before the
-                # reset below clears it -- position_p_tune never repopulates it.
                 chained_velocity_evidence = (
                     self._evidence_by_direction("iae_median_qs"),
                     self._evidence_by_direction("dac_rms_median_q"),

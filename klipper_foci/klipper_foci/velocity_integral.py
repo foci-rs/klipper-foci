@@ -25,9 +25,6 @@ OUTCOME_NAMES = {
 
 PLAN_RECOVERY_QUANTIZATION_EXPOSED = 1 << 0
 PLAN_PROBE_CONSTRAINED_TEST_POINT = 1 << 1
-# Set when a combined run executed its forward and reverse observation slots in
-# mirrored order. Firmware records this without moving the velocity-integral schema, so
-# unlike the older bits it is accepted at every schema revision.
 PLAN_SLOT_ORDER_SHIFT = 2
 PLAN_SLOT_ORDER_MASK = 0b11 << PLAN_SLOT_ORDER_SHIFT
 
@@ -400,25 +397,6 @@ class VelocityIntegralAssembler:
         return merged
 
 
-# ============================================================================
-# Breakaway-seeded campaign reporting
-# ============================================================================
-#
-# The breakaway campaign
-# (VelocityAutotuneWorkflowKind.BreakawaySeededProportionalThenIntegral = 3) is a
-# three-phase acquisition -- a physical-excursion upward probe, an additive
-# discovery ladder, and a held-out eight-stroke confirmation block -- that
-# firmware runs entirely on its own authority before, on acceptance, handing
-# off into the existing velocity-integral flow above (the breakaway schema,
-# handled by VelocityIntegralAssembler already). BreakawayCampaignAssembler
-# below covers only the campaign's own evidence: it validates the firmware's
-# digest chain (each phase's plan names the prior phase's digest) and the
-# wire's own internal structure (direction codes, monotonic indices, interval
-# ordering, mask subset relationships), and otherwise relays every firmware
-# value unchanged. It never selects a rung, changes a family size, retries a
-# candidate, or synthesizes a value firmware did not send -- see
-# tests/test_velocity_integral.py's dumb-host proof tests.
-
 INTEGRAL_CAUSE_EVIDENCE_INTEGRITY = 4
 INTEGRAL_CAUSE_REPRODUCTION_MISMATCH = 6
 INTEGRAL_CAUSE_PLAN_MISMATCH = 7
@@ -427,9 +405,6 @@ INTEGRAL_CAUSE_NO_RETAINED_AUTHORITY = 12
 INTEGRAL_CAUSE_AUTHORITY_LOST_MID_RUN = 14
 INTEGRAL_CAUSE_UNEXPECTED_TERMINAL_OUTCOME = 15
 
-# A velocity-integral terminal's `cause` number is only unambiguous once paired with
-# `cause_namespace`: the engine, error, and dispatch producers each number
-# their own causes independently and can emit the same raw value.
 INTEGRAL_CAUSE_NAMESPACE_NAMES = {0: "engine", 1: "error", 2: "dispatch"}
 INTEGRAL_CAUSE_DISPATCH_NAMESPACE = 2
 
@@ -494,8 +469,6 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     27: "confirmation_no_transition_capable_candidate",
 }
 
-# Advisory text only -- relays what the disclosed cause means, not a
-# host-computed remedy.
 BREAKAWAY_TERMINAL_REMEDIATION = {
     1: "no rung showed repeatable motion within the probe's authority; check current limits",
     5: "probe authority was exhausted before repeatable motion resolved",
@@ -535,9 +508,6 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
 FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}
 CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}
 
-# Firmware's `combined_plan::BREAKAWAY_PROPORTIONAL_SCHEMA_REVISION`: the only
-# discovery-plan-geometry schema this host currently understands.
-# Current firmware revisions, used when this host authors a request.
 BREAKAWAY_DISCOVERY_SCHEMA_REVISION = 17
 BREAKAWAY_INTEGRAL_SCHEMA_REVISION = 18
 BREAKAWAY_DISCOVERY_MIN_SCHEMA_REVISION = 15
@@ -580,8 +550,6 @@ class BreakawayCampaignAssembler:
         self._last_evidence_sequence: int | None = None
         self._discovery_identity: dict | None = None
         self._confirmation_terminal_identity: dict | None = None
-
-    # -- shared identity/sequence plumbing ---------------------------------
 
     def _bind_run(self, params: dict) -> None:
         if self._run_sequence is not None:
@@ -634,14 +602,6 @@ class BreakawayCampaignAssembler:
                 "breakaway evidence arrived before the confirmation plan"
             )
         self._require_run(params)
-
-    # The live host no longer reconciles per-stroke confirmation evidence:
-    # the per-stroke observation replies were removed, so it validates
-    # only the confirmation terminal's own mask structure (in
-    # handle_confirmation_terminal_masks). foci-trace owns per-stroke and
-    # collected-mask reconciliation from the canonical trace.
-
-    # -- probe phase ---------------------------------------------------------
 
     def handle_probe_plan(self, params: dict) -> None:
         if self.probe_plan is not None:
@@ -717,8 +677,6 @@ class BreakawayCampaignAssembler:
         if cause not in BREAKAWAY_TERMINAL_CAUSE_NAMES or cause == 0:
             raise BreakawayCampaignProtocolError("invalid probe terminal cause")
         self.probe_terminal = _metadata_free(params)
-
-    # -- discovery phase -------------------------------------------------
 
     def handle_discovery_plan_identity(self, params: dict) -> None:
         if self._discovery_identity is not None or self.discovery_plan is not None:
@@ -809,8 +767,6 @@ class BreakawayCampaignAssembler:
             raise BreakawayCampaignProtocolError("invalid discovery terminal cause")
         self.discovery_terminal = _metadata_free(params)
 
-    # -- confirmation phase ------------------------------------------------
-
     def handle_confirmation_plan(self, params: dict) -> None:
         if self.discovery_plan is None:
             raise BreakawayCampaignProtocolError(
@@ -895,13 +851,6 @@ class BreakawayCampaignAssembler:
             **_metadata_free(params),
         }
         self._confirmation_terminal_identity = None
-
-    # Per-stroke raw-observation replies were removed: the family-free
-    # mean/variance/target inputs and the frozen classify/consensus inputs are
-    # detailed trace-only evidence that foci-trace decodes and reconstructs. The
-    # live host neither receives nor relays them.
-
-    # -- campaign closure ----------------------------------------------------
 
     def handle_campaign_terminal(self, params: dict) -> None:
         self._require_run(params)

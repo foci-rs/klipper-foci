@@ -115,8 +115,6 @@ CLOSED_LOOP_ACTIVATION_STATUS_NAMES: dict[int, str] = {
 CURRENT_VALIDATION_AXIS_FLUX = 0x01
 CURRENT_VALIDATION_AXIS_TORQUE = 0x02
 
-# Firmware-owned resistance-identification evidence (count-space, no
-# host-side fitting). Displayed as persisted; not recomputed here.
 RESISTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = ("identified_r_count_slope_milli",)
 
 INDUCTANCE_IDENTIFICATION_FIELDS: tuple[str, ...] = (
@@ -168,8 +166,6 @@ class RegisterDumpWorkflow:
         self._dump_complete = False
         self.driver.protocol.dump_registers()
 
-        # Wait for dump completion. The serial reader thread calls
-        # handle_dump_done which sets _dump_complete.
         deadline = reactor.monotonic() + 5.0
         while not self._dump_complete and reactor.monotonic() < deadline:
             reactor.pause(reactor.monotonic() + 0.05)
@@ -224,7 +220,6 @@ class RegisterDumpWorkflow:
 
         lines = ["", "========== Tuning Analysis =========="]
 
-        # -- Status --
         lines.append(self._format_block_header("Status"))
         lines.append("-- Runtime status --")
         lines.append(self._format_pair("autotune_status", config.autotune_status))
@@ -251,7 +246,6 @@ class RegisterDumpWorkflow:
         )
         lines.extend(format_readiness_report(readiness, self.driver.name))
 
-        # -- Persisted --
         lines.append(self._format_block_header("Persisted"))
         lines.append("-- Persisted config gains --")
         lines.extend(
@@ -300,7 +294,6 @@ class RegisterDumpWorkflow:
         lines.append("-- Position tune provenance --")
         lines.extend(self._format_position_tune_provenance(config))
 
-        # -- Volatile --
         lines.append(self._format_block_header("Volatile"))
         lines.append("-- Live TMC gains --")
         lines.extend(
@@ -343,7 +336,6 @@ class RegisterDumpWorkflow:
             lines.append("-- Last inductance evidence (not persisted) --")
             lines.extend(self._format_last_inductance_evidence(last_inductance))
 
-        # -- Comparison --
         lines.append(self._format_block_header("Comparison"))
         lines.extend(self._format_gain_comparison(live_gains, active_gains))
         return lines
