@@ -35,6 +35,10 @@ from .report import humanize, report_detail, report_summary
 from .robustness_reversal import (
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
+    ROBUSTNESS_CAUSE_SAFETY_FAULT,
+    ROBUSTNESS_OUTCOME_COMPLETE,
+    ROBUSTNESS_OUTCOME_FAILED,
+    ROBUSTNESS_OUTCOME_INCONCLUSIVE,
     RobustnessReversalProtocolError,
 )
 from .robustness_reversal import (
@@ -1401,17 +1405,17 @@ class AutotuneWorkflow:
         terminal = self.robustness_reversal_terminal
         outcome = int(terminal["outcome"])
         cause = int(terminal["cause"])
-        if outcome == 0:  # complete / pass
+        if outcome == ROBUSTNESS_OUTCOME_COMPLETE:
             self.driver.state.pre_tune_snapshot = None
             return
-        if outcome == 3 and cause == 6:  # failed / safety_fault
+        if outcome == ROBUSTNESS_OUTCOME_FAILED and cause == ROBUSTNESS_CAUSE_SAFETY_FAULT:
             self._handle_robustness_safety_fault(gcmd)
             return
         snapshot = self.driver.state.pre_tune_snapshot
         if snapshot is None:
             return
         self._revert_runtime_and_config(snapshot)
-        if outcome == 3:  # evidence-integrity / internal fault (cause 7/8)
+        if outcome == ROBUSTNESS_OUTCOME_FAILED:
             raise gcmd.error(
                 f"FOCI {self.driver.name}: robustness evidence-integrity fault; "
                 f"retained the pre-tune gain"
@@ -1421,7 +1425,7 @@ class AutotuneWorkflow:
                 f"FOCI {self.driver.stepper_name}: robustness check rejected the "
                 f"candidate gain; nothing deployed (commissioned gains retained)."
             )
-        detail = "inconclusive - re-run" if outcome == 2 else "reject"
+        detail = "inconclusive - re-run" if outcome == ROBUSTNESS_OUTCOME_INCONCLUSIVE else "reject"
         report_summary(
             gcmd,
             f"{self._summary_prefix()}: FAILED, robustness check {detail}; retained "

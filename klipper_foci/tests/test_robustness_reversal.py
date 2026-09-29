@@ -11,8 +11,12 @@ from klipper_foci.robustness_reversal import (
     _TERMINAL,
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
+    ROBUSTNESS_CAUSE_SAFETY_FAULT,
     ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES,
     ROBUSTNESS_CYCLES_PER_DIRECTION,
+    ROBUSTNESS_OUTCOME_COMPLETE,
+    ROBUSTNESS_OUTCOME_FAILED,
+    ROBUSTNESS_OUTCOME_INCONCLUSIVE,
     ROBUSTNESS_OUTCOME_NAMES,
     ROBUSTNESS_SCHEMA_REVISION,
     ROBUSTNESS_TERMINAL_REPLY_BYTES,
@@ -253,6 +257,13 @@ def test_cause_names_cover_firmware_values_zero_through_twenty_two():
 def test_outcome_names_cover_firmware_values_zero_through_three():
     assert set(ROBUSTNESS_OUTCOME_NAMES) == set(range(4))
     assert ROBUSTNESS_OUTCOME_NAMES[3] == "failed"
+
+
+def test_named_outcome_and_cause_constants_point_at_their_wire_names():
+    assert ROBUSTNESS_OUTCOME_NAMES[ROBUSTNESS_OUTCOME_COMPLETE] == "complete"
+    assert ROBUSTNESS_OUTCOME_NAMES[ROBUSTNESS_OUTCOME_INCONCLUSIVE] == "inconclusive"
+    assert ROBUSTNESS_OUTCOME_NAMES[ROBUSTNESS_OUTCOME_FAILED] == "failed"
+    assert ROBUSTNESS_CAUSE_NAMES[ROBUSTNESS_CAUSE_SAFETY_FAULT] == "safety_fault"
 
 
 def test_terminal_rejects_wrong_size_payload():
