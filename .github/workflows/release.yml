@@ -28,10 +28,14 @@ jobs:
       - name: Pin optional-dependency extras to this release
         run: python scripts/patch_optional_deps.py klipper_foci/pyproject.toml "${{ steps.version.outputs.version }}"
       - name: Build wheels and sdists
+        env:
+          SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.version.outputs.version }}
         run: |
           for pkg in klipper_foci klipper_foci_diagnostics; do
             python -m build "$pkg" --outdir dist
           done
+      - name: Verify the built version
+        run: python scripts/verify_dist_version.py dist "${{ steps.version.outputs.version }}"
       - name: Verify the extras pin took effect
         run: python scripts/verify_extras_pin.py dist/klipper_foci-*.whl "${{ steps.version.outputs.version }}"
       - name: Create GitHub Release and upload wheels/sdists
@@ -96,7 +100,7 @@ jobs:
             build/klipper-foci-installer.sh.sha256
       - name: Verify the new release's own assets are publicly reachable
         run: |
-          version="${{ steps.version.outputs.version }}"
+          version="$(python -c 'import sys; from packaging.version import Version; print(Version(sys.argv[1]))' "${{ steps.version.outputs.version }}")"
           pattern="(^|[^0-9])${version//./\\.}([^0-9]|$)"
           for _ in $(seq 1 30); do
             ok=1
