@@ -18,7 +18,8 @@ def main(wheel_path: str, version: str) -> int:
     for extra in EXTRAS:
         name = NAMES[extra]
         pattern = re.compile(
-            rf'Requires-Dist:\s*{re.escape(name)}\s*\(==([^)]+)\)\s*;\s*extra == "{extra}"'
+            rf"Requires-Dist:\s*{re.escape(name)}\s*\(?==([^)\s;]+)\)?"
+            rf"\s*;\s*extra == ['\"]{extra}['\"]"
         )
         match = pattern.search(metadata)
         if not match:

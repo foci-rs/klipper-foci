@@ -46,3 +46,24 @@ def test_fails_when_the_extra_is_pinned_to_the_wrong_version(tmp_path):
     )
     assert result.returncode == 1
     assert "diagnostics" in result.stderr
+
+
+def test_passes_when_the_extra_is_pinned_in_the_normalized_form(tmp_path):
+    wheel = _make_wheel(
+        tmp_path,
+        ["klipper-foci-diagnostics==1.4.0; extra == 'diagnostics'"],
+    )
+    result = subprocess.run([sys.executable, str(SCRIPT), str(wheel), "1.4.0"])
+    assert result.returncode == 0
+
+
+def test_fails_when_the_normalized_form_is_pinned_to_the_wrong_version(tmp_path):
+    wheel = _make_wheel(
+        tmp_path,
+        ["klipper-foci-diagnostics==1.3.9; extra == 'diagnostics'"],
+    )
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(wheel), "1.4.0"], capture_output=True, text=True
+    )
+    assert result.returncode == 1
+    assert "1.3.9" in result.stderr
