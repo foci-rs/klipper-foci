@@ -40,6 +40,9 @@ jobs:
         with:
           files: dist/*
       - name: Publish to the PEP 503 index on gh-pages
+        env:
+          ASSETS: ${{ steps.gh_release.outputs.assets }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           # actions/checkout configures a narrow fetch refspec covering only
           # the tag that triggered this run, so a plain "git fetch origin
@@ -56,7 +59,7 @@ jobs:
           fi
           for pkg in klipper-foci klipper-foci-diagnostics; do
             mkdir -p "/tmp/gh-pages/simple/$pkg"
-            for asset_url in $(python -c "import json,sys; print('\n'.join(a['browser_download_url'] for a in json.loads('''${{ steps.gh_release.outputs.assets }}''') if a['name'].startswith('${pkg//-/_}')))"); do
+            for asset_url in $(DIST="${pkg//-/_}" python -c 'import json,os,re; print("\n".join(a["browser_download_url"] for a in json.loads(os.environ["ASSETS"]) if re.match(re.escape(os.environ["DIST"]) + r"-\d", a["name"])))'); do
               name=$(basename "$asset_url")
               grep -qF "$asset_url" "/tmp/gh-pages/simple/$pkg/index.html" 2>/dev/null || \
                 echo "<a href=\"$asset_url\">$name</a><br>" >> "/tmp/gh-pages/simple/$pkg/index.html"
@@ -68,9 +71,11 @@ jobs:
           INDEXEOF
           cd /tmp/gh-pages
           git add -A
-          git -c user.name=github-actions -c user.email=github-actions@github.com \
-            commit -m "Publish ${{ steps.version.outputs.version }} to the simple index"
-          git push origin gh-pages
+          if ! git diff --cached --quiet; then
+            git -c user.name=github-actions -c user.email=github-actions@github.com \
+              commit -m "Publish $VERSION to the simple index"
+            git push origin gh-pages
+          fi
       - name: Build the installer asset
         run: make installer VERSION="${{ steps.version.outputs.version }}" INDEX_URL="https://foci-rs.github.io/klipper-foci/simple/"
       - name: Smoke-test the generated installer
