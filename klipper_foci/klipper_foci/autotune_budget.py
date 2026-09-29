@@ -6,8 +6,7 @@ from dataclasses import dataclass
 
 MAX_AUTOTUNE_TRAVEL_MM = 120.0
 AUTOTUNE_SAFETY_MARGIN_MM = 10.0
-# Maximum duration of one active motion or excitation primitive.
-DEFAULT_MAX_DURATION_MS = 3000
+PRIMITIVE_MAX_DURATION_MS = 3000
 REQUESTED_VELOCITY_EXPLICIT = 0
 REQUESTED_VELOCITY_DEFAULTED = 1
 
@@ -295,7 +294,7 @@ def compute_autotune_motion_budget(driver, gcmd) -> AutotuneMotionBudget:
         settle_travel_reserve_mrev=settle_travel_reserve_mrev,
         negative_position_headroom_mrev=negative_position_headroom_mrev,
         positive_position_headroom_mrev=positive_position_headroom_mrev,
-        max_duration_ms=DEFAULT_MAX_DURATION_MS,
+        max_duration_ms=PRIMITIVE_MAX_DURATION_MS,
         homing_speed_mrev_s=homing_speed_mrev_s,
         max_accel_mrev_s2=max_accel_mrev_s2,
     )
