@@ -91,10 +91,6 @@ jobs:
             build/klipper-foci-installer.sh.sha256
       - name: Verify the new release's own assets are publicly reachable
         run: |
-          # A bare version substring can false-positive: "1.2.3" is a
-          # substring of an older "1.2.30" release's filename. Require a
-          # non-digit boundary on both sides of the version so "1.2.3" only
-          # matches "1.2.3" exactly, not as a prefix of "1.2.30".
           version="${{ steps.version.outputs.version }}"
           pattern="(^|[^0-9])${version//./\\.}([^0-9]|$)"
           for i in $(seq 1 30); do

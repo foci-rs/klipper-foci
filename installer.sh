@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# installer.sh — klipper-foci printer-side install logic.
-# Sourced after kpi.sh by the generated installer; not run standalone.
 
 foci_resolve_venv() {
     local python_path="$1"
@@ -38,8 +36,6 @@ foci_write_pip_conf() {
 
     backup_file "$conf"
 
-    # Preserve every unrelated line (other settings, other sections); only
-    # index-url/extra-index-url are touched, never the rest of the file.
     awk '!/^index-url/ && !/^extra-index-url/ { print }' "$conf" > "$conf.new"
     if grep -q '^\[global\]' "$conf.new"; then
         awk -v url="$index_url" '
@@ -123,10 +119,6 @@ foci_write_moonraker_block() {
         fi
     fi
 
-    # Every occurrence of the section header must lie inside our own marked
-    # block. A marker existing SOMEWHERE in the file is not proof that every
-    # matching section is ours -- a second, unmarked section could sit
-    # alongside it.
     local total_sections managed_sections
     total_sections="$(grep -c '^\[update_manager klipper-foci\]' "$conf" 2>/dev/null || true)"
     total_sections="${total_sections:-0}"
@@ -143,9 +135,6 @@ foci_write_moonraker_block() {
         return 1
     fi
 
-    # Rewrite (not skip) an existing well-formed marked block every run, so
-    # a changed flag combination (e.g. adding --diagnostics later) actually
-    # updates project_name instead of silently keeping the stale value.
     if [ "$begin_count" = "1" ]; then
         sed -i.bak "${begin_line},${end_line}d" "$conf" && rm -f "$conf.bak"
     fi
