@@ -224,14 +224,46 @@ def test_parse_driver_config_captures_identity_motor_binding_and_defaults():
     assert printer.lookup_object("pins") is not None
 
 
-def test_parse_driver_config_bounds_run_current_at_five_amps():
-    _printer, _chips, _sections, config = make_foci_config(foci_values={"run_current": 5.0})
+def test_parse_driver_config_leaves_run_current_maximum_to_the_board_cap():
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"run_current": 20.0})
 
-    assert parse_driver_config(config).run_current == 5.0
+    assert parse_driver_config(config).run_current == 20.0
 
-    _printer, _chips, _sections, config = make_foci_config(foci_values={"run_current": 5.001})
-    with pytest.raises(CommandError, match="run_current above maximum"):
+    _printer, _chips, _sections, config = make_foci_config(foci_values={"run_current": 0.0})
+    with pytest.raises(CommandError, match="run_current must be above"):
         parse_driver_config(config)
+
+
+def identify_with_cap(run_current, constants):
+    chips = {"foci": MockMCU("foci", constants=constants)}
+    printer, _chips, sections, _config = make_foci_config(
+        foci_values={"run_current": run_current}, chips=chips
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+    return driver
+
+
+def test_identify_accepts_run_current_at_the_board_cap():
+    driver = identify_with_cap(10.0, {"FOCI_MAX_RUN_CURRENT_MA": 10_000})
+
+    assert driver.max_run_current_ma == 10_000
+
+
+def test_identify_rejects_run_current_one_milliamp_over_the_board_cap():
+    with pytest.raises(CommandError, match=r"10\.001.*10\.000 A.*foci"):
+        identify_with_cap(10.001, {"FOCI_MAX_RUN_CURRENT_MA": 10_000})
+
+
+def test_identify_requires_the_board_cap_constant():
+    with pytest.raises(CommandError, match="FOCI_MAX_RUN_CURRENT_MA.*update the firmware"):
+        identify_with_cap(0.8, {})
+
+
+@pytest.mark.parametrize("bad", [0, "many", None])
+def test_identify_rejects_unusable_board_cap_constant(bad):
+    with pytest.raises(CommandError, match="FOCI_MAX_RUN_CURRENT_MA"):
+        identify_with_cap(0.8, {"FOCI_MAX_RUN_CURRENT_MA": bad})
 
 
 def test_parse_driver_config_accepts_largest_encoder_ppr_that_fits_quadrature():

@@ -10,7 +10,6 @@ from .config import (
 )
 from .constants import (
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
-    MAX_RUN_CURRENT_AMPS,
     MIN_RAW_VOLTAGE_LIMIT,
     PID_GAIN_MAX_RAW,
 )
@@ -139,11 +138,17 @@ class ControlsWorkflow:
         value is applied immediately and kept in memory for the current Klipper
         session, but is not persisted to printer.cfg.
         """
-        run_current = gcmd.get_float("RUN_CURRENT", minval=0.0, maxval=MAX_RUN_CURRENT_AMPS)
+        run_current = gcmd.get_float("RUN_CURRENT", minval=0.0)
         if run_current <= 0.0:
             raise gcmd.error(f"FOCI {self.driver.name}: RUN_CURRENT must be above 0")
 
         run_ma = int(run_current * 1000.0 + 0.5)
+        cap_ma = self.driver.max_run_current_ma
+        if run_ma > cap_ma:
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: RUN_CURRENT {run_current:.3f} A exceeds the "
+                f"{cap_ma / 1000.0:.3f} A cap of MCU {self.driver.mcu.get_name()}"
+            )
         self.driver.protocol.set_current(run_ma)
         self.driver.settings.run_current = run_current
 

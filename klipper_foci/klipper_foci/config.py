@@ -8,7 +8,6 @@ from dataclasses import dataclass, fields
 from .constants import (
     DEFAULT_OPERATIONAL_VOLTAGE_LIMIT,
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
-    MAX_RUN_CURRENT_AMPS,
     MIN_RAW_VOLTAGE_LIMIT,
     PID_GAIN_MAX_RAW,
 )
@@ -187,11 +186,7 @@ def parse_driver_config(config) -> FociDriverConfig:
     stepper_name = " ".join(name.split()[1:])
     printer = config.get_printer()
 
-    run_current = config.getfloat(
-        "run_current",
-        above=0.0,
-        maxval=MAX_RUN_CURRENT_AMPS,
-    )
+    run_current = config.getfloat("run_current", above=0.0)
     encoder_ppr = config.getint("encoder_ppr", minval=1)
     if encoder_ppr > MAX_ENCODER_PPR:
         raise config.error(
@@ -209,7 +204,7 @@ def parse_driver_config(config) -> FociDriverConfig:
         default="default",
     )
 
-    homing_current = config.getfloat("homing_current", 0.0, above=0.0, maxval=MAX_RUN_CURRENT_AMPS)
+    homing_current = config.getfloat("homing_current", 0.0, above=0.0)
     if homing_current > 0.0 and homing_current > run_current - HOMING_CURRENT_MARGIN_AMPS:
         raise config.error(
             f"homing_current {homing_current:.3f} in [{name}] must be at least "

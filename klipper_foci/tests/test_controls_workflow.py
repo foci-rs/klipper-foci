@@ -70,18 +70,19 @@ class TestDebugGainsCommand(unittest.TestCase):
     def test_sets_run_current_in_milliamps_without_persisting(self):
         d = make_driver()
 
-        gcmd = MockGCmd({"RUN_CURRENT": 5.0})
+        gcmd = MockGCmd({"RUN_CURRENT": 10.0})
         d.controls.set_current(gcmd)
 
-        self.assertEqual(d.protocol.commands.set_current.last_args, [d.oid, 5000])
-        self.assertEqual(d.settings.run_current, 5.0)
+        self.assertEqual(d.protocol.commands.set_current.last_args, [d.oid, 10000])
+        self.assertEqual(d.settings.run_current, 10.0)
         self.assertEqual(d.config.run_current, 0.8)
-        self.assertIn("run_current=5.000A", gcmd.last_info)
+        self.assertIn("run_current=10.000A", gcmd.last_info)
 
         previous_count = d.protocol.commands.set_current.call_count
-        with self.assertRaises(CommandError):
-            d.controls.set_current(MockGCmd({"RUN_CURRENT": 5.001}))
+        with self.assertRaisesRegex(CommandError, "10.001.*10.000 A"):
+            d.controls.set_current(MockGCmd({"RUN_CURRENT": 10.001}))
         self.assertEqual(d.protocol.commands.set_current.call_count, previous_count)
+        self.assertEqual(d.settings.run_current, 10.0)
 
     def test_requests_position_and_velocity_gains_without_claiming_applied_state(self):
         d = make_driver()

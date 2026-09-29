@@ -446,7 +446,9 @@ class MockMCU:
     def __init__(self, name="foci", allowed_pins=None, constants=None):
         self.name = name
         self.allowed_pins = set(allowed_pins) if allowed_pins is not None else None
-        self.constants = dict(constants or {})
+        self.constants = (
+            {"FOCI_MAX_RUN_CURRENT_MA": 10_000} if constants is None else dict(constants)
+        )
         self._next_oid = 1
         self._config_callbacks = []
         self.config_commands = []
@@ -683,6 +685,7 @@ def make_driver(
     driver.oid = 0
     driver.stepper_oid = None
     driver.channel = 0
+    driver.max_run_current_ma = 10_000
     driver.global_config = SimpleNamespace(debug=False)
 
     # Printer and objects
@@ -712,6 +715,7 @@ def make_driver(
             "ENVELOPE_PROPORTIONAL_DEN": 2,
             "ENVELOPE_ABSOLUTE_MARGIN_MREV_S": 2000,
             "CLOCK_FREQ": 84_000_000,
+            "FOCI_MAX_RUN_CURRENT_MA": 10_000,
         }
     )
     printer._objects["pins"] = MockPins({"foci": driver.mcu})

@@ -18,6 +18,7 @@ from .config import (
     stall_margin_units,
     validate_runtime_config,
 )
+from .constants import FOCI_MAX_RUN_CURRENT_MA_CONSTANT
 from .controls import (
     ControlsWorkflow,
 )
@@ -54,6 +55,7 @@ class FociDriver:
         # after MCU identification, when Klipper has loaded all steppers.
         self.oid: int | None = None
         self.stepper_oid: int | None = None
+        self.max_run_current_ma: int | None = None
 
         self.protocol = FociProtocol(self)
         self.state = FociRuntimeState()
@@ -134,6 +136,35 @@ class FociDriver:
         self.stepper_oid = self._resolve_stepper_oid()
         self.oid = self.stepper_oid
         self.protocol.bind_mcu(self.mcu, self.oid)
+        self.max_run_current_ma = self._read_run_current_cap()
+        run_ma = int(self.settings.run_current * 1000.0)
+        if run_ma > self.max_run_current_ma:
+            raise self.printer.config_error(
+                f"[{self.name}] run_current {self.settings.run_current:.3f} A exceeds the "
+                f"{self.max_run_current_ma / 1000.0:.3f} A cap of MCU {self.mcu.get_name()}"
+            )
+
+    def _read_run_current_cap(self) -> int:
+        """Return the board's run current cap in milliamps from the MCU dictionary."""
+        mcu_name = self.mcu.get_name()
+        get_constants = getattr(self.mcu, "get_constants", None)
+        constants = get_constants() if get_constants is not None else {}
+        if FOCI_MAX_RUN_CURRENT_MA_CONSTANT not in constants:
+            raise self.printer.config_error(
+                f"[{self.name}] MCU {mcu_name} does not report "
+                f"{FOCI_MAX_RUN_CURRENT_MA_CONSTANT}; update the firmware"
+            )
+        raw = constants[FOCI_MAX_RUN_CURRENT_MA_CONSTANT]
+        try:
+            cap_ma = int(raw)
+        except (TypeError, ValueError):
+            cap_ma = 0
+        if cap_ma <= 0:
+            raise self.printer.config_error(
+                f"[{self.name}] MCU {mcu_name} reports an invalid "
+                f"{FOCI_MAX_RUN_CURRENT_MA_CONSTANT}: {raw!r}"
+            )
+        return cap_ma
 
     def _handle_connect(self) -> None:
         """Send truthful planner and encoder configuration to firmware."""
