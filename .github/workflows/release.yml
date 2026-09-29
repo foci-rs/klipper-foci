@@ -22,7 +22,10 @@ jobs:
           python-version: "3.12"
       - name: Resolve version from tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "${version%%+*}" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac >> "$GITHUB_OUTPUT"
       - name: Install build tooling
         run: pip install build hatch-vcs
       - name: Pin optional-dependency extras to this release
@@ -42,6 +45,7 @@ jobs:
         id: gh_release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.version.outputs.prerelease }}
           files: dist/*
       - name: Publish to the PEP 503 index on gh-pages
         env:
@@ -95,6 +99,7 @@ jobs:
       - name: Upload installer asset
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.version.outputs.prerelease }}
           files: |
             build/klipper-foci-installer.sh
             build/klipper-foci-installer.sh.sha256
