@@ -98,7 +98,7 @@ jobs:
         run: |
           version="${{ steps.version.outputs.version }}"
           pattern="(^|[^0-9])${version//./\\.}([^0-9]|$)"
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             ok=1
             curl -fsS "https://foci-rs.github.io/klipper-foci/simple/" \
               | grep -q 'klipper-foci-diagnostics/' || ok=0
