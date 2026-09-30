@@ -191,7 +191,7 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
     assert assembler.plan["maximum_workflow_ms"] == 1_000_000
 
 
-@pytest.mark.parametrize("shape", [0, 1, 2])
+@pytest.mark.parametrize("shape", [0, 3, 4])
 def test_workflow_shapes_preserve_exact_digest_and_duration(shape):
     assembler = VelocityIntegralAssembler()
     maximum_ms = 300_000 + shape
@@ -207,7 +207,7 @@ def test_workflow_shapes_preserve_exact_digest_and_duration(shape):
 def test_workflow_timeout_uses_firmware_composite_maximum_verbatim():
     assembler = VelocityIntegralAssembler()
 
-    feed_workflow(assembler, shape=1, maximum_ms=389_520)
+    feed_workflow(assembler, shape=3, maximum_ms=389_520)
 
     assert assembler.maximum_duration_s == 389.52
 
@@ -247,7 +247,7 @@ def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
     assert assembler.plan["schema_revision"] == 18
 
 
-@pytest.mark.parametrize("shape", (1, 2, 4))
+@pytest.mark.parametrize("shape", (4,))
 def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=shape, nominal_ms=49_920, maximum_ms=49_920)
@@ -301,7 +301,7 @@ def test_breakaway_integral_plan_assembles():
 
 def test_breakaway_integral_plan_requires_breakaway_workflow():
     assembler = VelocityIntegralAssembler()
-    feed_workflow(assembler, shape=1, nominal_ms=20_000, maximum_ms=20_000)
+    feed_workflow(assembler, shape=4, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="breakaway workflow"):
         feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)

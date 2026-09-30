@@ -4,15 +4,18 @@ import struct
 import unittest
 from unittest.mock import patch
 
+import pytest
+
+from klipper_foci._vocabulary_generated import ACTION_CODES
 from klipper_foci.autotune import (
     OUTER_SAFETY_REASON_NAMES,
     POSITION_TUNE_OUTCOME_NAMES,
     DispatchOutcome,
     _format_feedforward_paths,
     _nominal_bandwidth_hz,
+    parse_autotune_action,
 )
 from klipper_foci.commissioning import format_inner_warning_flags
-from klipper_foci.fixed_gain_amplitude import ACTION_CODES
 from klipper_foci.registers import REGISTERS
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
@@ -61,6 +64,84 @@ def install_live_dump(driver, dump_values=None):
         driver.dump.handle_dump_done({})
 
     driver.protocol.dump_registers = dump_registers
+
+
+def ready_driver():
+    driver = make_driver(
+        stepper_name="stepper_x",
+        kinematics=MockCartesianKinematics([["stepper_x"], ["stepper_y"]]),
+        homed_axes="xyz",
+    )
+    driver.state.is_calibrated = True
+    driver.state.runtime_status = "commissioned"
+    driver.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+    driver.config.identified_lambda_us = 700
+    driver.config.identified_tau_e_us = 730
+    driver.config.identified_theta_e_us = 160
+    driver.config.identified_bandwidth_hz = 1600
+    driver.config.identified_inner_warning_flags = 0
+    driver.config.identified_current_gains_source = 1
+    driver.config.identified_current_gains_tier = 1
+    driver.config.identified_current_retry_budget_exhausted = 0
+    driver.config.identified_current_failure_reason = 0
+    driver.config.identified_l_source = 1
+    driver.config.identified_l_reactance_count_ratio_milli = 8600
+    driver.config.identified_l_saliency_status = 1
+    driver.config.identified_r_count_slope_milli = 1042
+    install_live_dump(driver)
+    return driver
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (None, 7),
+        ("velocity_i_tune", 8),
+        ("velocity_tune_check", 9),
+    ),
+)
+def test_action_mapping_is_selector_only(value, expected):
+    assert parse_autotune_action(value) == expected
+
+
+def test_unknown_action_is_rejected():
+    with pytest.raises(ValueError, match="unknown ACTION"):
+        parse_autotune_action("pick_p_1024")
+
+
+@pytest.mark.parametrize("name", ("combined", "combined_mirrored", "combined_paired"))
+def test_removed_combined_actions_are_rejected(name):
+    """The combined acquisition path is retired.
+
+    Firmware rejects wire actions 0/5/6 outright; the host mirrors that by
+    dropping the names from ACTION_CODES entirely, so they now fail the same
+    unknown-ACTION path as any other unrecognized selector.
+    """
+    with pytest.raises(ValueError, match="unknown ACTION"):
+        parse_autotune_action(name)
+
+
+def test_unknown_action_rejects_before_any_mcu_command():
+    driver = ready_driver()
+    with pytest.raises(CommandError, match="unknown ACTION"):
+        driver.autotune.autotune(MockGCmd({"ACTION": "pick_p_1024"}))
+    assert driver.protocol.commands.tune.last_args is None
+
+
+@pytest.mark.parametrize(
+    "selector", ("combined", "combined_mirrored", "combined_paired", "pick_p_1024")
+)
+def test_reserved_selectors_issue_no_mcu_command(selector):
+    driver = ready_driver()
+    with pytest.raises(CommandError, match="unknown ACTION"):
+        driver.autotune.autotune(MockGCmd({"ACTION": selector}))
+    assert driver.protocol.commands.tune.last_args is None
+
+
+def test_breakaway_seeded_action_resolves_to_firmware_wire_code_seven():
+    """AutotuneAction::BreakawaySeeded = 7 (foci-firmware src/tmc.rs) is
+    reachable from FOCI_AUTOTUNE ACTION=velocity_p_tune."""
+    assert parse_autotune_action("velocity_p_tune") == 7
 
 
 def feed_no_transition_terminal(workflow, run_sequence):
@@ -1872,7 +1953,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIsNotNone(d.autotune.robustness_reversal_terminal)
         self.assertIsNone(d.autotune.robustness_reversal_error)
         self.assertIsNotNone(d.autotune.robustness_workflow_plan)
-        self.assertIsNone(d.autotune.fixed_gain_amplitude.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
 
     def test_position_tune_workflow_arms_extended_timeout_past_setup_window(self):
@@ -1905,7 +1985,6 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn("timed out", str(ctx.exception))
         self.assertGreaterEqual(reactor._time, 6.0)
         self.assertIsNotNone(d.autotune.position_tune_workflow_plan)
-        self.assertIsNone(d.autotune.fixed_gain_amplitude.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral.workflow_plan)
         self.assertIsNone(d.autotune.velocity_integral_error)
 

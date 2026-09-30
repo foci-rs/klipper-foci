@@ -128,14 +128,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
             "foci_velocity_integral_terminal",
         ),
         (
-            driver.autotune.handle_fixed_gain_amplitude_plan,
-            "foci_fixed_gain_amplitude_plan",
-        ),
-        (
-            driver.autotune.handle_fixed_gain_amplitude_terminal,
-            "foci_fixed_gain_amplitude_terminal",
-        ),
-        (
             driver.autotune.handle_robustness_cycle_evidence,
             "foci_robustness_cycle_evidence",
         ),

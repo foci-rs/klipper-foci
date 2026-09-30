@@ -545,7 +545,7 @@ def test_formatted_message_renders_unmeasured_direction_as_not_measured():
 def ready_driver():
     """Build a driver that passes FOCI_AUTOTUNE's readiness gates.
 
-    Mirrors `ready_driver()` in `test_fixed_gain_amplitude.py`: the robustness
+    Mirrors `ready_driver()` in `test_autotune_workflow.py`: the robustness
     reversal terminal reaches the same wait/report loop in `autotune()`, so
     exercising it end to end needs the same commissioned/calibrated setup.
     """
