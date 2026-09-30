@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
+VOLTAGE_LIMIT_FULL_SCALE = 32767
+ADC_OFFSET_MIDSCALE = 32768
 MOTOR_TYPES: dict[int, str] = {0: "none", 1: "dc", 2: "stepper", 3: "bldc"}
 PHI_E_SOURCES: dict[int, str] = {
     1: "ext",
@@ -44,6 +46,8 @@ def _fmt_motor_type(val: int) -> str:
 
 
 def _fmt_phi_e(val: int) -> str:
+    if val in (0, 4):
+        return f"{int(val)}(reserved)"
     return PHI_E_SOURCES.get(val, str(val))
 
 
@@ -60,11 +64,24 @@ def _fmt_motion_mode(val: int) -> str:
 
 
 def _fmt_pid_type(val: int) -> str:
-    return "advanced" if val else ""
+    return "advanced" if val else "classic"
 
 
 def _fmt_q8_8(val: int) -> str:
     return f"{val * 2 ** (-8):.3f}"
+
+
+def _fmt_p_gain(val: int) -> str:
+    return f"{int(val)} ({_fmt_q8_8(val)})"
+
+
+def _fmt_voltage_limit(val: int) -> str:
+    limit = abs(int(val))
+    return f"{limit} ({limit / VOLTAGE_LIMIT_FULL_SCALE * 100:.1f}%)"
+
+
+def _fmt_adc_offset(val: int) -> str:
+    return f"{int(val)} ({int(val) - ADC_OFFSET_MIDSCALE:+d} from mid)"
 
 
 def format_p_gain(raw: int) -> str:
@@ -79,14 +96,7 @@ def format_i_gain(raw: int) -> str:
 
 
 def _fmt_i_gain(val: int) -> str:
-    return format_i_gain(val).removesuffix(" Q4.12")
-
-
-def _fmt_advanced_pi_current_i(val: int) -> str:
-    if val == 0:
-        return "0"
-    q4_12 = format_i_gain(val).removesuffix(" Q4.12")
-    return f"{int(val)}(q4.12={q4_12},zero={int(val)}/1048576)"
+    return f"{int(val)} ({format_i_gain(val).removesuffix(' Q4.12')})"
 
 
 def adc_vm_raw_to_volts(
@@ -129,11 +139,11 @@ def fmt_adc_vm_raw(
 
 
 def _fmt_direction(val: int) -> str:
-    return "reversed" if val else ""
+    return "reversed" if val else "normal"
 
 
 def _fmt_on_off(val: int) -> str:
-    return "on" if val else ""
+    return "on" if val else "off"
 
 
 REGISTERS: dict[str, int] = {
@@ -350,6 +360,14 @@ Fields["PID_VELOCITY_OFFSET"] = {
     "velocity_offset": 0xFFFFFFFF,
 }
 
+Fields["PID_POSITION_TARGET"] = {
+    "position_target": 0xFFFFFFFF,
+}
+
+Fields["PID_POSITION_ACTUAL"] = {
+    "position_actual": 0xFFFFFFFF,
+}
+
 Fields["PID_VELOCITY_ACTUAL"] = {
     "velocity_actual": 0xFFFFFFFF,
 }
@@ -403,6 +421,8 @@ SIGNED_FIELDS: list[str] = [
     "torque_offset",
     "velocity_offset",
     "velocity_actual",
+    "position_target",
+    "position_actual",
     "pidin_target_velocity",
     "pidout_target_velocity",
     "position_error_sum",
@@ -423,21 +443,22 @@ FIELD_FORMATTERS: dict[str, Callable[[int], str]] = {
     "mode_pid_type": _fmt_pid_type,
     "abn_direction": _fmt_direction,
     "pwm_sv": _fmt_on_off,
-    "flux_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    # Current I is Q4.12 under the firmware-owned fixed representation. The
-    # advanced PI integrator makes the effective zero factor raw/1048576.
-    "flux_i": _fmt_advanced_pi_current_i,
-    "torque_p": _fmt_q8_8,  # Q8.8 per DS 4.7.6
-    "torque_i": _fmt_advanced_pi_current_i,
-    "velocity_p": _fmt_q8_8,
+    "flux_p": _fmt_p_gain,  # Q8.8 per DS 4.7.6
+    "flux_i": _fmt_i_gain,
+    "torque_p": _fmt_p_gain,  # Q8.8 per DS 4.7.6
+    "torque_i": _fmt_i_gain,
+    "velocity_p": _fmt_p_gain,
     "velocity_i": _fmt_i_gain,
-    "position_p": _fmt_q8_8,
+    "position_p": _fmt_p_gain,
     "position_i": _fmt_i_gain,
+    "voltage_limit": _fmt_voltage_limit,
+    "adc_i0_offset": _fmt_adc_offset,
+    "adc_i1_offset": _fmt_adc_offset,
 }
 
 DUMP_GROUPS: list[tuple[str, list[str]]] = [
     (
-        "FOCI %s",
+        "Motor / Selection",
         [
             "MOTOR_TYPE_N_POLE_PAIRS",
             "VELOCITY_SELECTION",
@@ -474,6 +495,11 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         [
             "PID_POSITION_TARGET",
             "PID_POSITION_ACTUAL",
+        ],
+    ),
+    (
+        "Filters",
+        [
             "CONFIG_BIQUAD_X_ENABLE",
         ],
     ),
@@ -489,13 +515,6 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
             "PID_TORQUE_ERROR_SUM",
             "PID_FLUX_ERROR_SUM",
             "PID_VELOCITY_ERROR_SUM",
-        ],
-    ),
-    (
-        "Velocity Feedforward Clamp",
-        [
-            "VELOCITY_FF_CLAMP_LATCHED",
-            "VELOCITY_FF_CLAMP_COUNT",
         ],
     ),
     (
@@ -524,6 +543,10 @@ DUMP_GROUPS: list[tuple[str, list[str]]] = [
         ],
     ),
 ]
+
+
+DUMP_NAME_WIDTH = max(len(name) for name in REGISTERS) + 2
+FLAG_LIST_REGISTERS: frozenset[str] = frozenset({"STATUS_FLAGS"})
 
 
 def _ffs(mask: int) -> int:
@@ -560,15 +583,20 @@ class FieldHelper:
     def pretty_format(self, reg_name: str, reg_value: int) -> str:
         """Format a register as 'NAME: hex field=val field=val'.
 
-        Zero-valued fields are omitted and fields are sorted by bitmask position, lowest bit first.
+        Every field is shown, highest bits first to match the register name. Registers listed in
+        FLAG_LIST_REGISTERS print only the names of the set flags.
         """
         reg_fields = self.all_fields.get(reg_name, {})
-        sorted_fields = sorted([(mask, name) for name, mask in reg_fields.items()])
+        sorted_fields = sorted(((mask, name) for name, mask in reg_fields.items()), reverse=True)
+        head = f"{reg_name + ':':{DUMP_NAME_WIDTH}}{reg_value:08x}"
+        if reg_name in FLAG_LIST_REGISTERS:
+            set_flags = [
+                name for _mask, name in sorted_fields if self.get_field(name, reg_name, reg_value)
+            ]
+            return f"{head}  set: {' '.join(set_flags) if set_flags else 'none'}"
         parts: list[str] = []
         for _mask, field_name in sorted_fields:
             field_value = self.get_field(field_name, reg_name, reg_value)
             fmt = self.field_formatters.get(field_name, str)
-            sval = fmt(field_value)
-            if sval and sval != "0":
-                parts.append(f" {field_name}={sval}")
-        return f"{reg_name + ':':30} {reg_value:08x}{''.join(parts)}"
+            parts.append(f"{field_name}={fmt(field_value)}")
+        return f"{head}  {' '.join(parts)}" if parts else head

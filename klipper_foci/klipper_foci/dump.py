@@ -7,6 +7,7 @@ from .config import POSITION_UNITS_PER_REV
 from .readiness import format_readiness_report, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
+    DUMP_NAME_WIDTH,
     FIELD_FORMATTERS,
     REGISTERS,
     SIGNED_FIELDS,
@@ -182,31 +183,37 @@ class RegisterDumpWorkflow:
             gcmd.respond_info("FOCI register dump timed out")
             return
 
-        lines: list[str] = []
+        rule = "=" * 64
+        lines: list[str] = [rule, f"FOCI {self.driver.stepper_name}", rule]
         for group_name, regs in DUMP_GROUPS:
-            if "%s" in group_name:
-                header = group_name % self.driver.stepper_name
-            else:
-                header = group_name
-            lines.append(f"========== {header} ==========")
+            lines.append(f"---------- {group_name} ----------")
             for reg_name in regs:
                 addr = REGISTERS[reg_name]
                 if addr in self._dump_buffer:
                     val = self._dump_buffer[addr]
                     lines.append(self._pretty_format_register(reg_name, val))
                 else:
-                    lines.append(f"  {reg_name:30} = (not in dump)")
+                    lines.append(f"{reg_name + ':':{DUMP_NAME_WIDTH}}(not in dump)")
 
-        stall = self.driver.protocol.query_stall()
-        lines.append(
-            f"homing clamp_active={stall['clamp_active']} last_stall latched={stall['latched']} "
-            f"peak_error_units={stall['peak_error_units']} trigger_tick={stall['trigger_tick']}"
-        )
+        lines.extend(self._format_firmware_state())
 
         if include_tuning:
             lines.extend(self._format_tuning_analysis())
 
         gcmd.respond_info("\n".join(lines))
+
+    def _format_firmware_state(self) -> list[str]:
+        buffer = self._dump_buffer
+        latched = buffer.get(REGISTERS["VELOCITY_FF_CLAMP_LATCHED"])
+        count = buffer.get(REGISTERS["VELOCITY_FF_CLAMP_COUNT"])
+        stall = self.driver.protocol.query_stall()
+        return [
+            "---------- Firmware state (not chip registers) ----------",
+            f"velocity_ff_clamp: latched={'?' if latched is None else latched} "
+            f"count={'?' if count is None else count}",
+            f"homing: clamp_active={stall['clamp_active']} last_stall(latched={stall['latched']} "
+            f"peak_error_units={stall['peak_error_units']} trigger_tick={stall['trigger_tick']})",
+        ]
 
     def _format_tuning_analysis(self) -> list[str]:
         config = self.driver.config
@@ -337,6 +344,8 @@ class RegisterDumpWorkflow:
         return lines
 
     def _pretty_format_register(self, reg_name: str, reg_value: int) -> str:
+        if reg_name == "PID_POSITION_ACTUAL":
+            return self._format_position_actual(reg_value)
         if reg_name != "ADC_VM_RAW":
             return self.fields.pretty_format(reg_name, reg_value)
 
@@ -346,9 +355,18 @@ class RegisterDumpWorkflow:
             constants = get_constants()
         raw = self.fields.get_field("adc_vm_raw", reg_name, reg_value)
         return (
-            f"{reg_name + ':':30} {reg_value:08x} adc_vm_raw="
+            f"{reg_name + ':':{DUMP_NAME_WIDTH}}{reg_value:08x}  adc_vm_raw="
             f"{fmt_adc_vm_raw(raw, constants, self.driver.state.adc_vm_offset_raw)}"
         )
+
+    def _format_position_actual(self, reg_value: int) -> str:
+        line = self.fields.pretty_format("PID_POSITION_ACTUAL", reg_value)
+        target = self._dump_buffer.get(REGISTERS["PID_POSITION_TARGET"])
+        if target is None:
+            return line
+        actual = self.fields.get_field("position_actual", "PID_POSITION_ACTUAL", reg_value)
+        target = self.fields.get_field("position_target", "PID_POSITION_TARGET", target)
+        return f"{line} (error={target - actual})"
 
     def _live_gain_values(self) -> dict[str, int | None]:
         values: dict[str, int | None] = {}

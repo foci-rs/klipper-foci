@@ -120,18 +120,28 @@ class TestPrettyFormat(unittest.TestCase):
     def setUp(self):
         self.fh = FieldHelper(Fields, SIGNED_FIELDS, FIELD_FORMATTERS)
 
-    def test_all_zeros_no_fields(self):
+    def test_status_flags_all_clear_says_none(self):
         out = self.fh.pretty_format("STATUS_FLAGS", 0x00000000)
         self.assertIn("STATUS_FLAGS:", out)
         self.assertIn("00000000", out)
-        self.assertNotIn("=", out)
+        self.assertIn("none", out)
+        self.assertNotIn("enc_n", out)
+
+    def test_status_flags_list_only_set_flags(self):
+        out = self.fh.pretty_format("STATUS_FLAGS", 0x70000000)
+        for name in ("enc_n", "enc_2_n", "aenc_n"):
+            self.assertIn(name, out)
+        self.assertNotIn("pid_x_target_limit", out)
 
     def test_status_errsum_flags(self):
         out = self.fh.pretty_format("STATUS_FLAGS", 0x00004488)
-        self.assertIn("pid_x_output_limit=1", out)
-        self.assertIn("pid_v_output_limit=1", out)
-        self.assertIn("pid_id_errsum_limit=1", out)
-        self.assertIn("pid_iq_errsum_limit=1", out)
+        for name in (
+            "pid_x_output_limit",
+            "pid_v_output_limit",
+            "pid_id_errsum_limit",
+            "pid_iq_errsum_limit",
+        ):
+            self.assertIn(name, out)
 
     def test_pid_error_sums_are_signed(self):
         out = self.fh.pretty_format("PID_TORQUE_ERROR_SUM", 0xFFFFFFFE)
@@ -148,7 +158,7 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertIn("current_i_q4_12=1", out)
         self.assertIn("velocity_i_q4_12=1", out)
         self.assertIn("position_i_q4_12=1", out)
-        self.assertNotIn("current_p_q4_12", out)
+        self.assertIn("current_p_q4_12=0", out)
 
     def test_adc_i_select_is_named_current_dump_field(self):
         self.assertEqual(REGISTERS["ADC_I_SELECT"], 0x0A)
@@ -184,10 +194,66 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertIn("flux_actual=-6", out)
         self.assertIn("torque_actual=200", out)
 
-    def test_zero_fields_hidden(self):
+    def test_zero_fields_are_shown(self):
         out = self.fh.pretty_format("PID_TORQUE_FLUX_ACTUAL", 0x0000FFFA)
-        self.assertNotIn("torque_actual", out)
+        self.assertIn("torque_actual=0", out)
         self.assertIn("flux_actual=-6", out)
+
+    def test_every_field_of_every_decoded_register_is_named_at_zero(self):
+        for reg_name, fields in Fields.items():
+            if reg_name == "STATUS_FLAGS":
+                continue
+            out = self.fh.pretty_format(reg_name, 0)
+            for field_name in fields:
+                self.assertIn(f"{field_name}=", out, f"{reg_name}.{field_name}")
+
+    def test_fields_follow_register_name_order_high_field_first(self):
+        cases = (
+            ("PID_TORQUE_FLUX_ACTUAL", "torque_actual", "flux_actual"),
+            ("PID_TORQUE_FLUX_TARGET", "torque_target", "flux_target"),
+            ("ABN_DECODER_PHI_E_PHI_M", "abn_phi_e", "abn_phi_m"),
+            ("ABN_DECODER_PHI_E_PHI_M_OFFSET", "abn_phi_e_offset", "abn_phi_m_offset"),
+            ("PWM_BBM_H_BBM_L", "bbm_h", "bbm_l"),
+            ("PID_FLUX_P_FLUX_I", "flux_p", "flux_i"),
+            ("ADC_I0_SCALE_OFFSET", "adc_i0_scale", "adc_i0_offset"),
+        )
+        for reg_name, first, second in cases:
+            out = self.fh.pretty_format(reg_name, 0x00010002)
+            self.assertLess(out.index(first), out.index(second), reg_name)
+
+    def test_position_registers_decode_as_signed(self):
+        self.assertIn(
+            "position_target=-8192", self.fh.pretty_format("PID_POSITION_TARGET", 0xFFFFE000)
+        )
+        self.assertIn(
+            "position_actual=-8176", self.fh.pretty_format("PID_POSITION_ACTUAL", 0xFFFFE010)
+        )
+
+    def test_reserved_phi_e_selection_is_named(self):
+        out = self.fh.pretty_format("PHI_E_SELECTION", 0)
+        self.assertIn("phi_e=0(reserved)", out)
+
+    def test_gain_fields_show_raw_then_scaled(self):
+        out = self.fh.pretty_format("PID_VELOCITY_P_VELOCITY_I", 0x02F30100)
+        self.assertIn("velocity_p=755 (2.949)", out)
+        self.assertIn("velocity_i=256 (0.0625)", out)
+        out = self.fh.pretty_format("PID_POSITION_P_POSITION_I", 0x00A40000)
+        self.assertIn("position_p=164 (0.641)", out)
+        self.assertIn("position_i=0 (0)", out)
+
+    def test_voltage_limit_is_shown_as_share_of_full_scale(self):
+        out = self.fh.pretty_format("PIDOUT_UQ_UD_LIMITS", 0x00007148)
+        self.assertIn("voltage_limit=29000 (88.5%)", out)
+
+    def test_voltage_limit_uses_absolute_value_like_the_chip(self):
+        out = self.fh.pretty_format("PIDOUT_UQ_UD_LIMITS", 0x0000FFFF)
+        self.assertIn("voltage_limit=1 (0.0%)", out)
+
+    def test_adc_offsets_are_shown_relative_to_midscale(self):
+        out = self.fh.pretty_format("ADC_I0_SCALE_OFFSET", 0x0100814E)
+        self.assertIn("adc_i0_offset=33102 (+334 from mid)", out)
+        out = self.fh.pretty_format("ADC_I1_SCALE_OFFSET", 0x01007FF0)
+        self.assertIn("adc_i1_offset=32752 (-16 from mid)", out)
 
     def test_pid_torque_flux_limits_is_single_current_limit(self):
         out = self.fh.pretty_format("PID_TORQUE_FLUX_LIMITS", 0x0000072C)
@@ -206,13 +272,10 @@ class TestPrettyFormat(unittest.TestCase):
         self.assertEqual(format_i_gain(2544), "0.62109375 Q4.12")
         self.assertEqual(format_i_gain(32767), "7.999755859375 Q4.12")
 
-    def test_current_i_uses_advanced_pi_zero_scale(self):
+    def test_current_i_is_shown_as_raw_and_q4_12(self):
         out = self.fh.pretty_format("PID_FLUX_P_FLUX_I", 0x010001A0)
-        self.assertIn("flux_p=1.000", out)
-        self.assertIn(
-            "flux_i=416(q4.12=0.1015625,zero=416/1048576)",
-            out,
-        )
+        self.assertIn("flux_p=256 (1.000)", out)
+        self.assertIn("flux_i=416 (0.1015625)", out)
         self.assertNotIn("65536", out)
 
     def test_register_without_fields(self):

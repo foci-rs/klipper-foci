@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from klipper_foci.registers import REGISTERS
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
@@ -151,8 +153,51 @@ def test_default_dump_omits_tuning_section_and_sends_one_dump_request():
     output, calls = _run_dump(driver)
 
     assert calls == ["dump_registers"]
-    assert "========== PID Gains ==========" in output
+    assert "---------- PID Gains ----------" in output
     assert "========== Tuning Analysis ==========" not in output
+
+
+def test_dump_shows_homing_state_under_firmware_state_as_key_values():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, _calls = _run_dump(driver)
+
+    firmware = output.split("Firmware state (not chip registers)")[1]
+    assert (
+        "homing: clamp_active=0 last_stall(latched=1 peak_error_units=1234 trigger_tick=7)"
+        in firmware
+    )
+
+
+def test_dump_reports_position_error_as_target_minus_actual():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, _calls = _run_dump(
+        driver,
+        values={
+            REGISTERS["PID_POSITION_TARGET"]: 0xFFFFE000,
+            REGISTERS["PID_POSITION_ACTUAL"]: 0xFFFFE010,
+        },
+    )
+
+    assert "position_actual=-8176 (error=-16)" in output
+
+
+def test_dump_register_values_start_in_one_column():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, _calls = _run_dump(driver, values=dict.fromkeys(REGISTERS.values(), 0))
+
+    columns = {
+        re.search(r"[0-9a-f]{8}", line).start()
+        for line in output.splitlines()
+        if re.match(r"[A-Z][A-Z0-9_]*:", line)
+    }
+    assert len(columns) == 1
+    assert sum(1 for line in output.splitlines() if re.match(r"[A-Z][A-Z0-9_]*:", line)) > 30
 
 
 def test_dump_reports_live_adc_vm_raw():
@@ -172,7 +217,7 @@ def test_dump_reports_live_adc_vm_raw():
     output, calls = _run_dump(driver, values={REGISTERS["ADC_VM_RAW"]: 43389})
 
     assert calls == ["dump_registers"]
-    assert "========== Voltage / Brake ==========" in output
+    assert "---------- Voltage / Brake ----------" in output
     assert "ADC_VM_RAW" in output
     assert "adc_vm_raw=43389(~36.12V)" in output
 
@@ -224,9 +269,10 @@ def test_dump_reports_velocity_ff_clamp_latch_and_count():
     )
 
     assert calls == ["dump_registers"]
-    assert "========== Velocity Feedforward Clamp ==========" in output
-    assert f"{'VELOCITY_FF_CLAMP_LATCHED:':30} {1:08x}" in output
-    assert f"{'VELOCITY_FF_CLAMP_COUNT:':30} {42:08x}" in output
+    assert "---------- Firmware state (not chip registers) ----------" in output
+    assert "velocity_ff_clamp: latched=1 count=42" in output
+    assert "Velocity Feedforward Clamp" not in output
+    assert "VELOCITY_FF_CLAMP_LATCHED" not in output
 
 
 def test_tuning_flag_appends_context_and_count_space_note():
@@ -765,16 +811,8 @@ def test_dump_tmc_alias_accepts_tuning_flag():
     assert "========== Tuning Analysis ==========" in gcmd.last_info
 
 
-def test_dump_reports_homing_stall_state():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-
-    output, calls = _run_dump(driver)
-
-    assert calls == ["dump_registers"]
-    assert (
-        "homing clamp_active=0 last_stall latched=1 peak_error_units=1234 trigger_tick=7" in output
-    )
+def output_section(output, title):
+    return output.split(f"---------- {title} ----------")[1].split("----------")[0]
 
 
 def test_dump_reports_position_filter_enable():
@@ -785,7 +823,8 @@ def test_dump_reports_position_filter_enable():
     disabled, _calls = _run_dump(driver, values={REGISTERS["CONFIG_BIQUAD_X_ENABLE"]: 0})
     line = next(row for row in disabled.splitlines() if "CONFIG_BIQUAD_X_ENABLE" in row)
     assert "00000000" in line
-    assert "biquad_x_enable=" not in line
+    assert "biquad_x_enable=0" in line
+    assert output_section(disabled, "Filters").count("CONFIG_BIQUAD_X_ENABLE") == 1
 
     enabled, _calls = _run_dump(driver, values={REGISTERS["CONFIG_BIQUAD_X_ENABLE"]: 1})
     assert "biquad_x_enable=1" in enabled
