@@ -105,6 +105,22 @@ def _seed_tuning_state(driver):
     driver.config.identified_r_count_slope_milli = 1042
 
 
+def kv(text, key):
+    """Value of the first `key: value` line in text, with alignment padding stripped."""
+    for line in text.splitlines():
+        if line.startswith(f"{key}:"):
+            return line[len(key) + 1 :].strip()
+    raise AssertionError(f"no {key!r} line in output")
+
+
+def section(output, title):
+    return output.split(f"---------- {title} ----------")[1].split("----------")[0]
+
+
+def table_row(output, gain):
+    return next(line for line in output.splitlines() if re.match(rf"{gain}\s", line))
+
+
 def _run_dump(driver, params=None, values=None):
     protocol = _install_dump_response(driver, values)
     gcmd = MockGCmd(params or {})
@@ -275,53 +291,89 @@ def test_dump_reports_velocity_ff_clamp_latch_and_count():
     assert "VELOCITY_FF_CLAMP_LATCHED" not in output
 
 
-def test_tuning_flag_appends_context_and_count_space_note():
+def test_tuning_flag_appends_banner_verdict_and_status():
     driver = make_driver()
     _seed_tuning_state(driver)
 
     output, calls = _run_dump(driver, {"TUNING": "1"})
 
     assert calls == ["dump_registers"]
-    assert "========== Tuning Analysis ==========" in output
-    assert "autotune_status" in output
-    assert "tuned" in output
-    assert "runtime_status" in output
-    assert "active_gains_present" in output
-    assert "live.flux_p" in output
-    assert "active.flux_p" in output
-    assert "config.identified_lambda_us" in output
-    assert "config.identified_theta_source" in output
-    assert "control-model count-space fields" in output
+    assert "tuning analysis" in output
+    verdict = kv(output, "verdict")
+    assert "tuned (persisted) / tuned (runtime)" in verdict
+    assert "live registers match host active gains" in verdict
+    status = section(output, "Autotune status")
+    assert kv(status, "autotune_status") == "tuned"
+    assert kv(status, "runtime_status") == "tuned"
+    assert kv(status, "active_gains_present") == "yes"
+    assert kv(status, "autotune_profile") == "conservative"
+    assert kv(status, "autotune_mode") == "outer"
 
 
-def test_tuning_analysis_has_four_top_level_blocks_in_order():
-    d = make_driver()
-    d.state.active_gains = SAMPLE_ACTIVE_GAINS
-    lines = d.dump._format_tuning_analysis()
-    text = "\n".join(lines)
-    status_index = text.index("== Status ==")
-    persisted_index = text.index("== Persisted ==")
-    volatile_index = text.index("== Volatile ==")
-    comparison_index = text.index("== Comparison ==")
-    assert status_index < persisted_index < volatile_index < comparison_index
+def test_tuning_key_value_lines_always_separate_key_from_value():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    for title in (
+        "Autotune status",
+        "Readiness",
+        "Identified model (count-space, not physical units)",
+    ):
+        for line in section(output, title).strip().splitlines():
+            assert re.match(r"[a-z_]+:\s+\S", line), line
 
 
-def test_tuning_analysis_still_contains_every_existing_subsection():
+def test_tuning_analysis_sections_come_in_order():
     d = make_driver()
     d.state.active_gains = SAMPLE_ACTIVE_GAINS
     text = "\n".join(d.dump._format_tuning_analysis())
-    for subsection in (
-        "Runtime status",
-        "Live TMC gains",
-        "Host active gains",
-        "Persisted config gains",
-        "Identified count-space model",
-        "Persisted inductance evidence",
-        "Current-loop commissioning evidence",
-        "Resistance identification evidence",
-        "Comparison",
-    ):
-        assert subsection in text, subsection
+    titles = (
+        "Autotune status",
+        "Readiness",
+        "Gains",
+        "Identified model (count-space, not physical units)",
+        "Velocity tune provenance",
+        "Position tune provenance",
+    )
+    indexes = [text.index(f"---------- {title} ----------") for title in titles]
+    assert indexes == sorted(indexes)
+
+
+def test_tuning_gains_table_shows_live_config_and_active_once():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.pid_velocity_p = 700
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    gains = section(output, "Gains")
+    assert re.fullmatch(r"flux_p\s+256 \(1\.000\)\s+256\s+256", table_row(gains, "flux_p"))
+    assert re.fullmatch(r"flux_i\s+416 \(0\.1016\)\s+416\s+416", table_row(gains, "flux_i"))
+    assert re.fullmatch(
+        r"velocity_p\s+1152 \(4\.500\)\s+700\s+1152", table_row(gains, "velocity_p")
+    )
+    assert re.fullmatch(
+        r"velocity_limit\s+500000\s+500000\s+500000", table_row(gains, "velocity_limit")
+    )
+    assert "commissioned" not in output
+    assert "live.flux_p" not in output
+    assert kv(gains, "filters_hz") == "velocity=0 torque=0 position=200 flux=0"
+
+
+def test_tuning_gains_table_marks_absent_active_gains():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.state.active_gains = None
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert re.fullmatch(
+        r"flux_p\s+256 \(1\.000\)\s+256\s+-", table_row(section(output, "Gains"), "flux_p")
+    )
+    assert "filters_hz" not in output
+    assert "host active gains unavailable" in kv(output, "verdict")
 
 
 def test_tuning_flag_appends_autotune_readiness_report():
@@ -338,16 +390,16 @@ def test_tuning_flag_appends_autotune_readiness_report():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Autotune readiness --" in output
-    assert "FOCI foci manual_stepper stepper_x autotune readiness:" in output
-    assert "result: ready" in output
-    assert "installed_tuning_policy: normal" in output
-    assert "blockers: none" in output
-    assert "warnings: none" in output
-    trusted_inputs_line = next(line for line in output.splitlines() if "trusted_inputs:" in line)
-    assert "current_loop_gains" in trusted_inputs_line
-    assert "current_bandwidth" in trusted_inputs_line
-    assert "unavailable_inputs: none" in output
+    readiness = section(output, "Readiness")
+    assert "FOCI foci" not in output
+    assert kv(readiness, "result") == "ready"
+    assert kv(readiness, "installed_tuning_policy") == "normal"
+    assert kv(readiness, "blockers") == "none"
+    assert kv(readiness, "warnings") == "none"
+    assert "current_loop_gains" in kv(readiness, "trusted_inputs")
+    assert "current_bandwidth" in kv(readiness, "trusted_inputs")
+    assert kv(readiness, "unavailable_inputs") == "none"
+    assert "ready" in kv(output, "verdict")
 
 
 def test_tuning_readiness_blocks_live_current_gain_mismatch():
@@ -360,11 +412,11 @@ def test_tuning_readiness_blocks_live_current_gain_mismatch():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"}, values)
 
-    assert "-- Autotune readiness --" in output
-    assert "result: blocked" in output
-    assert "installed_tuning_policy: unavailable" in output
-    assert "warnings: inner confidence:" in output
-    assert "unavailable_inputs: none" in output
+    readiness = section(output, "Readiness")
+    assert kv(readiness, "result") == "blocked"
+    assert kv(readiness, "installed_tuning_policy") == "unavailable"
+    assert kv(readiness, "warnings").startswith("inner confidence:")
+    assert kv(readiness, "unavailable_inputs") == "none"
     assert "live current-loop gain flux_p mismatch live=257 host=256" in output
 
 
@@ -378,21 +430,29 @@ def test_tuning_readiness_reports_unavailable_inputs_line():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "result: ready_with_warnings" in output
-    assert "blockers: none" in output
-    assert "warnings: inner confidence:" in output
-    assert "unavailable_inputs: average_inductance" in output
+    readiness = section(output, "Readiness")
+    assert kv(readiness, "result") == "ready_with_warnings"
+    assert kv(readiness, "blockers") == "none"
+    assert kv(readiness, "warnings").startswith("inner confidence:")
+    assert kv(readiness, "unavailable_inputs") == "average_inductance"
 
 
-def test_tuning_flag_appends_resistance_identification_evidence():
+def test_tuning_flag_reports_identified_model_in_count_space():
     driver = make_driver()
     _seed_tuning_state(driver)
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Resistance identification evidence --" in output
-    assert "config.identified_r_count_slope_milli" in output
-    assert "1042" in output
+    model = section(output, "Identified model (count-space, not physical units)")
+    assert kv(model, "resistance") == "r_count_milli=3002 r_count_slope_milli=1042"
+    assert kv(model, "electrical") == (
+        "lambda_us=0 tau_e_us=1348 (1.35 ms) theta_e_us=160 theta_source=1"
+    )
+    assert kv(model, "bandwidth_hz") == "0"
+    assert kv(model, "inner_warning_flags") == "36"
+    assert kv(model, "inductance") == (
+        "l_source=1 l_reactance_count_ratio_milli=8600 l_saliency_status=1"
+    )
 
 
 def test_tuning_flag_appends_velocity_tune_provenance():
@@ -407,11 +467,11 @@ def test_tuning_flag_appends_velocity_tune_provenance():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Velocity tune provenance --" in output
-    assert "config.autotune_probed_velocity_mrev_s" in output
-    assert "5366" in output
-    assert "config.autotune_band_position_q" in output
-    assert "3000" in output
+    line = section(output, "Velocity tune provenance").strip()
+    assert line == (
+        "probed_velocity_mrev_s=5366 (5.366 rev/s) band=70..80% d_eq_q=1234 "
+        "confidence_q=5000 band_position_q=3000"
+    )
 
 
 def test_tuning_flag_appends_position_tune_provenance():
@@ -423,13 +483,20 @@ def test_tuning_flag_appends_position_tune_provenance():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Position tune provenance --" in output
-    assert "bound" in output
-    assert "homing peak" in output
-    assert "motion cruise" in output
-    assert "409u (0.250mm)" in output
-    assert "300u (0.183mm)" in output
-    assert "210u (0.128mm)" in output
+    line = section(output, "Position tune provenance").strip()
+    assert line == "bound=409u (0.250mm) homing_peak=300u (0.183mm) motion_cruise=210u (0.128mm)"
+
+
+def test_tuning_flag_reports_position_tune_not_run_when_unset():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.autotune_position_bound_units = None
+    driver.config.autotune_position_homing_peak_units = None
+    driver.config.autotune_position_motion_cruise_units = None
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    assert section(output, "Position tune provenance").strip().startswith("not run")
 
 
 def test_tuning_flag_separates_persisted_and_last_inductance_evidence():
@@ -479,11 +546,8 @@ def test_tuning_flag_separates_persisted_and_last_inductance_evidence():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Persisted inductance evidence --" in output
-    assert "config.identified_l_reactance_count_ratio_milli" in output
-    assert "8600" in output
-    assert "persisted identified_l_* inductance fields" in output
-    assert "-- Last inductance evidence (not persisted) --" in output
+    assert "l_reactance_count_ratio_milli=8600" in output
+    assert "---------- Last inductance evidence (not persisted) ----------" in output
     assert "last.inductance_run.source" in output
     assert "last.inductance_run.warning_flags" in output
     assert "last.inductance_frame.iq_mean_milli_count" in output
@@ -498,15 +562,11 @@ def test_tuning_flag_appends_current_loop_evidence():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Current-loop commissioning evidence --" in output
-    assert "current_gains_source: measured" in output
-    assert "current_gains_tier: measured_split" in output
-    assert "config.identified_current_gains_source" in output
-    assert "config.identified_current_gains_tier" in output
-    assert "config.identified_current_retry_budget_exhausted" in output
-    assert "config.identified_current_failure_reason" in output
-    assert "firmware-reported current-loop" in output
-    assert "identified_current_* fields" in output
+    model = section(output, "Identified model (count-space, not physical units)")
+    assert kv(model, "current_loop") == (
+        "gains_source=measured(1) gains_tier=measured_split(2) "
+        "retry_budget_exhausted=no failure_reason=none(0)"
+    )
 
 
 def test_tuning_flag_names_failed_current_loop_evidence():
@@ -519,10 +579,10 @@ def test_tuning_flag_names_failed_current_loop_evidence():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "current_gains_source: failed" in output
-    assert "current_gains_tier: none" in output
-    assert "retry_budget_exhausted: yes" in output
-    assert "failure_reason: saturation" in output
+    assert "gains_source=failed(0)" in output
+    assert "gains_tier=none(0)" in output
+    assert "retry_budget_exhausted=yes" in output
+    assert "failure_reason=saturation(6)" in output
 
 
 def test_tuning_flag_names_physical_current_gain_tier():
@@ -535,10 +595,10 @@ def test_tuning_flag_names_physical_current_gain_tier():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "current_gains_source: measured" in output
-    assert "current_gains_tier: physical_symmetric" in output
-    assert "retry_budget_exhausted: no" in output
-    assert "failure_reason: none" in output
+    assert "gains_source=measured(1)" in output
+    assert "gains_tier=physical_symmetric(4)" in output
+    assert "retry_budget_exhausted=no" in output
+    assert "failure_reason=none(0)" in output
 
 
 def test_tuning_flag_appends_last_current_loop_run_evidence():
@@ -607,7 +667,7 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Last current-loop run (not persisted) --" in output
+    assert "---------- Last current-loop run (not persisted) ----------" in output
     assert "last.current_gains_source          = failed" in output
     assert "last.candidate_gains_source        = measured" in output
     assert "last.candidate_gains_tier          = measured_symmetric" in output
@@ -618,12 +678,12 @@ def test_tuning_flag_appends_last_current_loop_run_evidence():
     assert "last.candidate_attempt             = 1" in output
     assert "last.current_validation            = flux=fail torque=not_run" in output
     assert "last.failure_reason                = retry_exhausted" in output
-    assert "-- Last closed-loop entry (not persisted) --" in output
+    assert "---------- Last closed-loop entry (not persisted) ----------" in output
     assert "last.entry_status                = fail_drift" in output
     assert "last.entry_position              = pos1=-3 pos2=4" in output
     assert "last.entry_drift                 = drift=7 threshold=2" in output
     assert "last.entry_runaway               = no" in output
-    assert "-- Last sustained-hold gate (not persisted) --" in output
+    assert "---------- Last sustained-hold gate (not persisted) ----------" in output
     assert "last.hold_status                 = pass" in output
     assert "last.hold_samples                = 250 @ 1000 us, elapsed_us=250000" in output
     assert "last.hold_position               = span=1 drift=1" in output
@@ -648,7 +708,7 @@ def test_tuning_flag_names_bounded_closed_loop_activation_drift():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "-- Last closed-loop entry (not persisted) --" in output
+    assert "---------- Last closed-loop entry (not persisted) ----------" in output
     assert "last.entry_status                = warn_drift" in output
     assert "last.entry_drift                 = drift=17 threshold=2" in output
 
@@ -744,10 +804,10 @@ def test_tuning_flag_names_default_current_loop_evidence():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "current_gains_source: default" in output
-    assert "current_gains_tier: default" in output
-    assert "retry_budget_exhausted: no" in output
-    assert "failure_reason: none" in output
+    assert "gains_source=default(2)" in output
+    assert "gains_tier=default(3)" in output
+    assert "retry_budget_exhausted=no" in output
+    assert "failure_reason=none(0)" in output
 
 
 def test_tuning_output_preserves_default_dump_prefix():
@@ -794,7 +854,7 @@ def test_tuning_reports_absent_active_gains_without_field_spam():
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
-    assert "active_gains unavailable; live/host comparison skipped" in output
+    assert "host active gains unavailable" in kv(output, "verdict")
     assert "WARNING: flux_p mismatch" not in output
 
 
@@ -808,11 +868,7 @@ def test_dump_tmc_alias_accepts_tuning_flag():
     handler(gcmd)
 
     assert protocol.calls == ["dump_registers"]
-    assert "========== Tuning Analysis ==========" in gcmd.last_info
-
-
-def output_section(output, title):
-    return output.split(f"---------- {title} ----------")[1].split("----------")[0]
+    assert "tuning analysis" in gcmd.last_info
 
 
 def test_dump_reports_position_filter_enable():
@@ -824,7 +880,7 @@ def test_dump_reports_position_filter_enable():
     line = next(row for row in disabled.splitlines() if "CONFIG_BIQUAD_X_ENABLE" in row)
     assert "00000000" in line
     assert "biquad_x_enable=0" in line
-    assert output_section(disabled, "Filters").count("CONFIG_BIQUAD_X_ENABLE") == 1
+    assert section(disabled, "Filters").count("CONFIG_BIQUAD_X_ENABLE") == 1
 
     enabled, _calls = _run_dump(driver, values={REGISTERS["CONFIG_BIQUAD_X_ENABLE"]: 1})
     assert "biquad_x_enable=1" in enabled

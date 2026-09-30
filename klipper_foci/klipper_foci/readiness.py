@@ -114,19 +114,16 @@ def resolve_autotune_readiness(
     )
 
 
-def format_readiness_report(report: AutotuneReadiness, stepper_name: str) -> list[str]:
-    """Format a readiness report for DUMP_FOCI TUNING=1."""
-    lines = [
-        "-- Autotune readiness --",
-        f"  FOCI {stepper_name} autotune readiness:",
-        f"    result: {report.result}",
-        f"    installed_tuning_policy: {report.installed_tuning_policy}",
-        f"    blockers: {_format_list(report.blockers)}",
-        f"    warnings: {_format_list(report.warnings)}",
-        f"    trusted_inputs: {_format_list(report.trusted_inputs)}",
-        f"    unavailable_inputs: {_format_list(report.unavailable_inputs)}",
+def readiness_fields(report: AutotuneReadiness) -> list[tuple[str, str]]:
+    """Return the readiness report as (name, value) rows for DUMP_FOCI TUNING=1."""
+    return [
+        ("result", report.result),
+        ("installed_tuning_policy", report.installed_tuning_policy),
+        ("blockers", _format_list(report.blockers)),
+        ("warnings", _format_list(report.warnings)),
+        ("trusted_inputs", _format_list(report.trusted_inputs)),
+        ("unavailable_inputs", _format_list(report.unavailable_inputs)),
     ]
-    return lines
 
 
 def _resolve_inner_confidence(driver) -> tuple[int, int]:
