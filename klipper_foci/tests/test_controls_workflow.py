@@ -84,6 +84,36 @@ class TestDebugGainsCommand(unittest.TestCase):
         self.assertEqual(d.protocol.commands.set_current.call_count, previous_count)
         self.assertEqual(d.settings.run_current, 10.0)
 
+    def test_set_current_is_refused_while_accel_feedforward_is_live(self):
+        cases = {"accel_gain": (1000, 0), "decel_gain": (0, 1000)}
+        for name, (accel_gain, decel_gain) in cases.items():
+            with self.subTest(case=name):
+                d = make_driver()
+                d.settings.accel_feedforward = True
+                d.settings.accel_feedforward_accel_gain = accel_gain
+                d.settings.accel_feedforward_decel_gain = decel_gain
+                previous_run_current = d.settings.run_current
+
+                with self.assertRaises(CommandError):
+                    d.controls.set_current(MockGCmd({"RUN_CURRENT": 1.0}))
+
+                self.assertEqual(d.protocol.commands.set_current.call_count, 0)
+                self.assertEqual(d.settings.run_current, previous_run_current)
+
+    def test_set_current_is_allowed_when_accel_feedforward_is_off_or_both_gains_are_zero(self):
+        cases = {"disabled": (False, 1000, 1000), "zero_gains": (True, 0, 0)}
+        for name, (enabled, accel_gain, decel_gain) in cases.items():
+            with self.subTest(case=name):
+                d = make_driver()
+                d.settings.accel_feedforward = enabled
+                d.settings.accel_feedforward_accel_gain = accel_gain
+                d.settings.accel_feedforward_decel_gain = decel_gain
+
+                d.controls.set_current(MockGCmd({"RUN_CURRENT": 1.0}))
+
+                self.assertEqual(d.protocol.commands.set_current.call_count, 1)
+                self.assertEqual(d.settings.run_current, 1.0)
+
     def test_requests_position_and_velocity_gains_without_claiming_applied_state(self):
         d = make_driver()
         d.settings.pid_velocity_p = 101

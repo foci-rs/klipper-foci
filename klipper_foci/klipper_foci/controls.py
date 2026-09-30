@@ -149,6 +149,15 @@ class ControlsWorkflow:
                 f"FOCI {self.driver.name}: RUN_CURRENT {run_current:.3f} A exceeds the "
                 f"{cap_ma / 1000.0:.3f} A cap of MCU {self.driver.mcu.get_name()}"
             )
+        settings = self.driver.settings
+        if settings.accel_feedforward and (
+            settings.accel_feedforward_accel_gain != 0 or settings.accel_feedforward_decel_gain != 0
+        ):
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: run-current changes are refused while acceleration "
+                "feedforward is enabled with a non-zero accel or decel gain; disable it or set "
+                "both gains to 0 first"
+            )
         self.driver.protocol.set_current(run_ma)
         self.driver.settings.run_current = run_current
 
