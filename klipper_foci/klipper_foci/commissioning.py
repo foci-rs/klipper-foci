@@ -132,6 +132,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     116: "gain floor velocity gain unrepresentable",
     117: "gain floor position gain unrepresentable",
     118: "gain floor step overshoot",
+    119: "coil check current envelope exceeded",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
