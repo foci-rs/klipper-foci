@@ -111,7 +111,7 @@ def test_unknown_action_is_rejected():
 
 @pytest.mark.parametrize(
     "name",
-    ("combined", "combined_mirrored", "combined_paired", "amplitude_up", "amplitude_down"),
+    ("combined", "combined_mirrored", "combined_paired"),
 )
 def test_removed_combined_actions_are_rejected(name):
     """The combined acquisition path is retired.
@@ -122,6 +122,13 @@ def test_removed_combined_actions_are_rejected(name):
     """
     with pytest.raises(ValueError, match="unknown ACTION"):
         parse_autotune_action(name)
+
+
+@pytest.mark.parametrize("name", ("amplitude_up", "AMPLITUDE_DOWN"))
+def test_retired_amplitude_actions_are_named_as_removed(name):
+    with pytest.raises(ValueError, match=f"ACTION '{name.lower()}' was removed") as excinfo:
+        parse_autotune_action(name)
+    assert "velocity_p_tune" in str(excinfo.value)
 
 
 def test_action_codes_admit_only_live_actions():
@@ -142,14 +149,20 @@ def test_unknown_action_rejects_before_any_mcu_command():
         "combined",
         "combined_mirrored",
         "combined_paired",
-        "amplitude_up",
-        "amplitude_down",
         "pick_p_1024",
     ),
 )
 def test_reserved_selectors_issue_no_mcu_command(selector):
     driver = ready_driver()
     with pytest.raises(CommandError, match="unknown ACTION"):
+        driver.autotune.autotune(MockGCmd({"ACTION": selector}))
+    assert driver.protocol.commands.tune.last_args is None
+
+
+@pytest.mark.parametrize("selector", ("amplitude_up", "amplitude_down"))
+def test_retired_amplitude_selectors_issue_no_mcu_command(selector):
+    driver = ready_driver()
+    with pytest.raises(CommandError, match=f"ACTION '{selector}' was removed"):
         driver.autotune.autotune(MockGCmd({"ACTION": selector}))
     assert driver.protocol.commands.tune.last_args is None
 

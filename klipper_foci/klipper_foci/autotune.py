@@ -98,6 +98,9 @@ def _outer_safety_reason_phrase(reason_name: str) -> str:
     return _OUTER_SAFETY_REASON_PHRASES.get(reason_name, humanize(reason_name))
 
 
+RETIRED_AUTOTUNE_ACTIONS = frozenset({"amplitude_up", "amplitude_down"})
+
+
 def parse_autotune_action(value: str | None) -> int:
     """Map the sole host-authored selector to its firmware wire value.
 
@@ -108,9 +111,13 @@ def parse_autotune_action(value: str | None) -> int:
         The firmware wire code for the named action.
 
     Raises:
-        ValueError: If the name is not in ``ACTION_CODES``.
+        ValueError: If the name is a retired action or is not in ``ACTION_CODES``.
     """
     name = "velocity_p_tune" if value is None else str(value).lower()
+    if name in RETIRED_AUTOTUNE_ACTIONS:
+        raise ValueError(
+            f"ACTION '{name}' was removed (expected: {', '.join(sorted(ACTION_CODES))})"
+        )
     try:
         return ACTION_CODES[name]
     except KeyError as err:
