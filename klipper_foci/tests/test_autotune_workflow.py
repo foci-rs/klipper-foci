@@ -114,12 +114,6 @@ def test_unknown_action_is_rejected():
     ("combined", "combined_mirrored", "combined_paired"),
 )
 def test_removed_combined_actions_are_rejected(name):
-    """The combined acquisition path is retired.
-
-    Firmware rejects wire actions 0/5/6 outright; the host mirrors that by
-    dropping the names from ACTION_CODES entirely, so they now fail the same
-    unknown-ACTION path as any other unrecognized selector.
-    """
     with pytest.raises(ValueError, match="unknown ACTION"):
         parse_autotune_action(name)
 
