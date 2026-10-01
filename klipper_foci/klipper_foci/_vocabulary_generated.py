@@ -11,7 +11,6 @@ PHASE_NAMES: dict[int, str] = {
     8: "Inner done",
     18: "Finding proportional gain (velocity)",
     19: "Finding integral gain (velocity)",
-    20: "Fixed-gain amplitude validation",
     21: "Verifying gain under reversal/standstill",
     16: "Encoder alignment",
     17: "Closed-loop entry",
@@ -26,8 +25,6 @@ BREAKAWAY_PHASE_NAMES: dict[int, str] = {
 }
 
 ACTION_CODES: dict[str, int] = {
-    "amplitude_up": 1,
-    "amplitude_down": 2,
     "velocity_p_tune": 7,
     "velocity_i_tune": 8,
     "velocity_tune_check": 9,
@@ -35,13 +32,6 @@ ACTION_CODES: dict[str, int] = {
 }
 
 SHAPE_RESUME = 0
-SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING = 1
-SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING = 2
 SHAPE_BREAKAWAY_SEEDED = 3
 SHAPE_ROBUSTNESS_REVERSAL = 4
 SHAPE_POSITION_TUNE = 5
-
-WORKFLOW_SHAPE_TO_AMPLITUDE_ORDER: dict[int, int] = {
-    SHAPE_FIXED_GAIN_AMPLITUDE_ASCENDING: 1,
-    SHAPE_FIXED_GAIN_AMPLITUDE_DESCENDING: 2,
-}

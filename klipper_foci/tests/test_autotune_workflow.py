@@ -109,7 +109,10 @@ def test_unknown_action_is_rejected():
         parse_autotune_action("pick_p_1024")
 
 
-@pytest.mark.parametrize("name", ("combined", "combined_mirrored", "combined_paired"))
+@pytest.mark.parametrize(
+    "name",
+    ("combined", "combined_mirrored", "combined_paired", "amplitude_up", "amplitude_down"),
+)
 def test_removed_combined_actions_are_rejected(name):
     """The combined acquisition path is retired.
 
@@ -121,6 +124,11 @@ def test_removed_combined_actions_are_rejected(name):
         parse_autotune_action(name)
 
 
+def test_action_codes_admit_only_live_actions():
+    assert set(ACTION_CODES.values()) == {7, 8, 9, 10}
+    assert set(ACTION_CODES.values()).isdisjoint({0, 1, 2, 3, 4, 5, 6})
+
+
 def test_unknown_action_rejects_before_any_mcu_command():
     driver = ready_driver()
     with pytest.raises(CommandError, match="unknown ACTION"):
@@ -129,7 +137,15 @@ def test_unknown_action_rejects_before_any_mcu_command():
 
 
 @pytest.mark.parametrize(
-    "selector", ("combined", "combined_mirrored", "combined_paired", "pick_p_1024")
+    "selector",
+    (
+        "combined",
+        "combined_mirrored",
+        "combined_paired",
+        "amplitude_up",
+        "amplitude_down",
+        "pick_p_1024",
+    ),
 )
 def test_reserved_selectors_issue_no_mcu_command(selector):
     driver = ready_driver()

@@ -852,12 +852,13 @@ class TestNameMaps(unittest.TestCase):
     def test_all_phase_ids_have_names(self):
         """Every live `CommissionPhase` wire code should have a name.
 
-        Codes 9-15 are permanently retired (the removed `MechanicalId`,
+        Code 20 (fixed-gain amplitude validation) is retired. Codes 9-15 are
+        permanently retired (the removed `MechanicalId`,
         `VelocityTune`, `VelocityValidate` and the pre-renumber outer block) and
         must not appear. Codes 22-25 are likewise retired (the removed
         `PositionTune`, `FilterTune`, `Commit`, `OuterDone`) and must not appear.
         """
-        live_codes = {1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21}
+        live_codes = {1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 21}
         for phase_id in live_codes:
             self.assertIn(
                 phase_id,
