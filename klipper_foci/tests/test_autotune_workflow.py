@@ -10,9 +10,11 @@ from klipper_foci._vocabulary_generated import ACTION_CODES
 from klipper_foci.autotune import (
     OUTER_SAFETY_REASON_NAMES,
     POSITION_TUNE_OUTCOME_NAMES,
+    POSITION_TUNE_STEP_NAMES,
     DispatchOutcome,
     _format_feedforward_paths,
     _nominal_bandwidth_hz,
+    _velocity_ceiling_mrev_s,
     parse_autotune_action,
 )
 from klipper_foci.commissioning import format_inner_warning_flags
@@ -269,6 +271,9 @@ SAMPLE_POSITION_TUNE_RESULT = {
     "rungs_measured": 1,
     "stimulus_feedforward_paths": 1,
     "position_tune_outcome_code": 0,
+    "velocity_ceiling_reached": 0,
+    "peak_velocity_mrev_s": 9800,
+    "tune_step": 0,
 }
 
 # Same PositionTune success terminal, but with every evidence-fragment-only
@@ -303,6 +308,45 @@ SAMPLE_POSITION_TUNE_FAILURE_RESULT = {
     "motion_overshoot_units": 500,
     "min_overshoot_p": 195,
     "min_overshoot_units": 40,
+    "velocity_ceiling_reached": 0,
+    "peak_velocity_mrev_s": 9800,
+    "tune_step": 0,
+}
+
+
+# Ceiling-limited accept: the walk stopped on p=248 and accepted the candidate
+# p=176, whose motion cruise error was over the bound.
+SAMPLE_POSITION_TUNE_CEILING_RESULT = {
+    **SAMPLE_POSITION_TUNE_RESULT,
+    "position_p": 176,
+    "predicted_start_p": 124,
+    "last_rung_p": 248,
+    "rungs_measured": 2,
+    "homing_speed_mrev_s": 4375,
+    "motion_speed_mrev_s": 12500,
+    "homing_peak_abs_units": 300,
+    "motion_cruise_mean_abs_units": 1042,
+    "motion_overshoot_units": 120,
+    "velocity_ceiling_reached": 1,
+    "peak_velocity_mrev_s": 15210,
+    "tune_step": 0,
+}
+
+# Ceiling on the first rung with nothing to fall back on. rungs_measured is 0, but
+# the ceiling flag makes firmware emit the evidence fragment, so the stitched result
+# still carries last_rung_p and the planned speeds.
+SAMPLE_POSITION_TUNE_CEILING_CONFLICT_RESULT = {
+    "status": 12,
+    "position_tune_outcome_code": 8,
+    "rungs_measured": 0,
+    "predicted_start_p": 124,
+    "velocity_ceiling_reached": 1,
+    "peak_velocity_mrev_s": 15300,
+    "tune_step": 3,
+    "last_rung_p": 124,
+    "homing_speed_mrev_s": 4375,
+    "motion_speed_mrev_s": 12500,
+    "bound_units": 409,
 }
 
 
@@ -989,6 +1033,170 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "identified_b_eff"), cfg.values)
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
 
+    def test_velocity_ceiling_is_derived_from_the_envelope_rule(self):
+        # 12500 mrev/s: max(ceil(1.5 * 12500), 12500 + 2000) = 18750; * 4 / 5 = 15000
+        self.assertEqual(_velocity_ceiling_mrev_s(4375, 12500), 15000)
+        # 1000 mrev/s: the absolute margin wins, 3000 * 4 / 5 = 2400
+        self.assertEqual(_velocity_ceiling_mrev_s(500, 1000), 2400)
+        # the faster leg sets the cap
+        self.assertEqual(_velocity_ceiling_mrev_s(12500, 4375), 15000)
+
+    def test_ceiling_limited_accept_names_both_rungs_on_the_console(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_CEILING_RESULT,
+        )
+
+        gcmd = MockGCmd({"ACTION": "velocity_p_tune"})
+        d.autotune.autotune(gcmd)
+
+        ceiling_line = next((msg for msg in gcmd._responses if "velocity ceiling" in msg), None)
+        self.assertIsNotNone(ceiling_line)
+        self.assertIn("accepted p=176", ceiling_line)
+        self.assertIn("rung p=248 reached 15210 mrev/s against a ceiling of 15000", ceiling_line)
+        self.assertIn("(planned 12500)", ceiling_line)
+        self.assertIn("motion cruise error 1042u at p=176 is above the 409u bound", ceiling_line)
+        self.assertEqual(cfg.values[(d.name, "pid_position_p")], "176")
+        self.assertEqual(cfg.values[(d.name, "autotune_position_velocity_ceiling_reached")], "1")
+        self.assertEqual(cfg.values[(d.name, "autotune_position_peak_velocity_mrev_s")], "15210")
+
+    def test_normal_accept_prints_no_ceiling_line_but_logs_the_peak(self):
+        d = self._commissioned_driver()
+        d.global_config.debug = True
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_RESULT,
+        )
+        gcmd = MockGCmd({"ACTION": "velocity_p_tune"})
+        with self.assertLogs("klipper_foci.autotune", level="INFO") as log_ctx:
+            d.autotune.autotune(gcmd)
+        self.assertFalse(any("velocity ceiling" in msg for msg in gcmd._responses))
+        diagnostic = next((msg for msg in log_ctx.output if "position tune:" in msg), None)
+        self.assertIn("peak_velocity=9800mrev_s", diagnostic)
+        self.assertEqual(cfg.values[(d.name, "autotune_position_velocity_ceiling_reached")], "0")
+
+    def test_ceiling_conflict_on_the_first_rung_names_the_predicted_rung(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=SAMPLE_POSITION_TUNE_CEILING_CONFLICT_RESULT,
+        )
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+        message = str(ctx.exception)
+        self.assertIn("conflict (velocity ceiling on the first rung p=124", message)
+        self.assertIn("reached 15300 mrev/s against ceiling 15000", message)
+        self.assertNotIn("last rung:", message)
+
+    def test_ceiling_accept_line_survives_missing_evidence(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        stripped = {
+            k: v
+            for k, v in SAMPLE_POSITION_TUNE_CEILING_RESULT.items()
+            if k not in _POSITION_TUNE_EVIDENCE_KEYS
+        }
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="breakaway_accepted_first_run_retained",
+            second_terminal="tune_result",
+            tune_result=stripped,
+        )
+        gcmd = MockGCmd({"ACTION": "velocity_p_tune"})
+        d.autotune.autotune(gcmd)
+        ceiling_line = next((msg for msg in gcmd._responses if "velocity ceiling" in msg), None)
+        self.assertIsNotNone(ceiling_line)
+        self.assertIn("accepted p=176", ceiling_line)
+        self.assertIn("reached 15210 mrev/s", ceiling_line)
+        self.assertIn("evidence missing", ceiling_line)
+
+    def test_safety_fault_during_position_tune_names_the_step_and_rung(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report(deadline):
+            reactor._time = deadline
+            d.autotune.handle_outer_safety_fault(
+                {
+                    "reason": 4,
+                    "delta_counts": -162,
+                    "dt_us": 2016,
+                    "velocity_counts_per_ms": -80,
+                    "velocity_cap_counts_per_ms": 75,
+                }
+            )
+            d.autotune.handle_tune_position_evidence(
+                {"oid": d.oid, "report_seq": 1, **TUNE_POSITION_EVIDENCE, "last_rung_p": 248}
+            )
+            d.autotune.handle_tune_result(
+                {
+                    "oid": d.oid,
+                    "report_seq": 1,
+                    "status": 17,
+                    "rungs_measured": 1,
+                    "predicted_start_p": 124,
+                    "velocity_ceiling_reached": 0,
+                    "peak_velocity_mrev_s": 20010,
+                    "tune_step": 2,
+                }
+            )
+            return reactor._time
+
+        reactor.pause = pause_and_report
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+        message = str(ctx.exception)
+        self.assertIn("during position tune, motion stroke of rung p=248", message)
+
+    def test_safety_fault_on_the_first_rung_names_the_predicted_rung_and_step(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report(deadline):
+            reactor._time = deadline
+            d.autotune.handle_tune_position_evidence(
+                {"oid": d.oid, "report_seq": 2, **TUNE_POSITION_EVIDENCE, "last_rung_p": 124}
+            )
+            d.autotune.handle_tune_result(
+                {
+                    "oid": d.oid,
+                    "report_seq": 2,
+                    "status": 17,
+                    "rungs_measured": 0,
+                    "predicted_start_p": 124,
+                    "velocity_ceiling_reached": 0,
+                    "peak_velocity_mrev_s": 0,
+                    "tune_step": 4,
+                }
+            )
+            return reactor._time
+
+        reactor.pause = pause_and_report
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+        self.assertIn(
+            "during position tune, standstill hold of the first rung p=124", str(ctx.exception)
+        )
+
+    def test_position_tune_step_names_cover_every_firmware_code(self):
+        self.assertEqual(sorted(POSITION_TUNE_STEP_NAMES), [0, 1, 2, 3, 4])
+
     def test_position_tune_result_surfaces_diagnostic_fields(self):
         """A PositionTune success terminal reports its diagnostic surface
         (nominal/inner bandwidth, dither margin, ramped-stroke response) as
@@ -1106,6 +1314,8 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_velocity_ceiling_reached"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_peak_velocity_mrev_s"), cfg.values)
 
         self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "1152")
         self.assertEqual(cfg.values[(d.name, "pid_velocity_i")], "0")
@@ -1230,6 +1440,8 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_velocity_ceiling_reached"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_peak_velocity_mrev_s"), cfg.values)
 
     def test_velocity_only_tune_result_does_not_persist_position_tune_keys(self):
         """A plain velocity/robustness tune result carries no position-tune
@@ -1250,6 +1462,8 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertNotIn((d.name, "autotune_position_bound_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_homing_peak_units"), cfg.values)
         self.assertNotIn((d.name, "autotune_position_motion_cruise_units"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_velocity_ceiling_reached"), cfg.values)
+        self.assertNotIn((d.name, "autotune_position_peak_velocity_mrev_s"), cfg.values)
 
     def test_tune_persists_same_keys_as_before(self):
         """Pin the exact persisted-config-key set for a production position
@@ -1284,6 +1498,8 @@ class TestAutotuneGates(unittest.TestCase):
                 "autotune_position_bound_units",
                 "autotune_position_homing_peak_units",
                 "autotune_position_motion_cruise_units",
+                "autotune_position_velocity_ceiling_reached",
+                "autotune_position_peak_velocity_mrev_s",
                 "autotune_mode",
                 "autotune_status",
             },
@@ -2691,6 +2907,9 @@ NARROW_TUNE_TERMINAL = {
     "rungs_measured": 1,
     "stimulus_feedforward_paths": 1,
     "position_tune_outcome_code": 0,
+    "velocity_ceiling_reached": 0,
+    "peak_velocity_mrev_s": 9800,
+    "tune_step": 0,
 }
 
 # `FociTunePositionEvidence` fragment shape, stitched onto the terminal above
@@ -2712,6 +2931,56 @@ TUNE_POSITION_EVIDENCE = {
 
 
 class TestTunePositionEvidenceStitching(unittest.TestCase):
+    def test_zero_rung_ceiling_terminal_merges_its_evidence(self):
+        """A first-rung ceiling trip completes no rung, but firmware still sends
+        the evidence fragment; the host must merge it so the console can name
+        the rung and derive the ceiling."""
+        d = make_driver()
+        d.autotune.handle_tune_position_evidence(
+            {"oid": d.oid, "report_seq": 4, **TUNE_POSITION_EVIDENCE, "last_rung_p": 124}
+        )
+        d.autotune.handle_tune_result(
+            {
+                **NARROW_TUNE_TERMINAL,
+                "oid": d.oid,
+                "report_seq": 4,
+                "status": 12,
+                "position_tune_outcome_code": 8,
+                "rungs_measured": 0,
+                "velocity_ceiling_reached": 1,
+            }
+        )
+        self.assertEqual(d.autotune.result["last_rung_p"], 124)
+        self.assertEqual(d.autotune.result["motion_speed_mrev_s"], 10000)
+        self.assertNotIn("missing", d.autotune.result)
+
+    def test_zero_rung_ceiling_terminal_without_fragment_flags_missing_evidence(self):
+        d = make_driver()
+        d.autotune.handle_tune_result(
+            {
+                **NARROW_TUNE_TERMINAL,
+                "oid": d.oid,
+                "report_seq": 4,
+                "rungs_measured": 0,
+                "velocity_ceiling_reached": 1,
+            }
+        )
+        self.assertEqual(d.autotune.result["missing"], ["evidence"])
+
+    def test_zero_rung_terminal_before_any_stroke_expects_no_evidence(self):
+        d = make_driver()
+        d.autotune.handle_tune_result(
+            {
+                **NARROW_TUNE_TERMINAL,
+                "oid": d.oid,
+                "report_seq": 4,
+                "rungs_measured": 0,
+                "velocity_ceiling_reached": 0,
+                "tune_step": 0,
+            }
+        )
+        self.assertNotIn("missing", d.autotune.result)
+
     def test_tune_without_rungs_renders_terminal_only(self):
         """rungs_measured == 0 must render/persist using only the terminal's
         own fields, even if an unrelated evidence fragment happens to be

@@ -584,6 +584,8 @@ def test_config_reads_optional_provenance():
             "autotune_position_bound_units": "409",
             "autotune_position_homing_peak_units": "300",
             "autotune_position_motion_cruise_units": "210",
+            "autotune_position_velocity_ceiling_reached": "1",
+            "autotune_position_peak_velocity_mrev_s": "15210",
         }
     )
 
@@ -598,6 +600,8 @@ def test_config_reads_optional_provenance():
     assert driver.config.autotune_position_bound_units == 409
     assert driver.config.autotune_position_homing_peak_units == 300
     assert driver.config.autotune_position_motion_cruise_units == 210
+    assert driver.config.autotune_position_velocity_ceiling_reached == 1
+    assert driver.config.autotune_position_peak_velocity_mrev_s == 15210
 
 
 def test_config_provenance_defaults_to_none_when_absent():
@@ -622,6 +626,8 @@ def test_config_provenance_defaults_to_none_when_absent():
     assert driver.config.autotune_position_bound_units is None
     assert driver.config.autotune_position_homing_peak_units is None
     assert driver.config.autotune_position_motion_cruise_units is None
+    assert driver.config.autotune_position_velocity_ceiling_reached is None
+    assert driver.config.autotune_position_peak_velocity_mrev_s is None
 
 
 def test_saved_resistance_identification_fields_are_accepted_on_restart():

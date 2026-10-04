@@ -674,6 +674,12 @@ class RegisterDumpWorkflow:
                 continue
             mm = value / POSITION_UNITS_PER_REV * rotation_distance
             parts.append(f"{name}={int(value)}u ({mm:.3f}mm)")
+        ceiling = config.autotune_position_velocity_ceiling_reached
+        peak = config.autotune_position_peak_velocity_mrev_s
+        if ceiling is not None:
+            parts.append(f"ceiling_reached={'yes' if ceiling else 'no'}")
+        if peak is not None:
+            parts.append(f"peak_velocity={int(peak)}mrev_s")
         return " ".join(parts)
 
     def _format_hold_pair(self, name: str, value: object | None) -> str:

@@ -109,6 +109,8 @@ class FociDriverConfig:
     autotune_position_bound_units: int | None
     autotune_position_homing_peak_units: int | None
     autotune_position_motion_cruise_units: int | None
+    autotune_position_velocity_ceiling_reached: int | None
+    autotune_position_peak_velocity_mrev_s: int | None
 
 
 @dataclass
@@ -333,6 +335,12 @@ def parse_driver_config(config) -> FociDriverConfig:
     autotune_position_motion_cruise_units = config.getint(
         "autotune_position_motion_cruise_units", None, minval=0
     )
+    autotune_position_velocity_ceiling_reached = config.getint(
+        "autotune_position_velocity_ceiling_reached", None, minval=0, maxval=1
+    )
+    autotune_position_peak_velocity_mrev_s = config.getint(
+        "autotune_position_peak_velocity_mrev_s", None, minval=0, maxval=0xFFFF
+    )
 
     if not config.has_section(stepper_name):
         raise config.error(f"[{name}] cannot find stepper section for '{stepper_name}'")
@@ -442,6 +450,8 @@ def parse_driver_config(config) -> FociDriverConfig:
         autotune_position_bound_units=autotune_position_bound_units,
         autotune_position_homing_peak_units=autotune_position_homing_peak_units,
         autotune_position_motion_cruise_units=autotune_position_motion_cruise_units,
+        autotune_position_velocity_ceiling_reached=autotune_position_velocity_ceiling_reached,
+        autotune_position_peak_velocity_mrev_s=autotune_position_peak_velocity_mrev_s,
     )
 
     ceiling_units = stall_ceiling_units(driver_config)

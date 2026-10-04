@@ -96,6 +96,8 @@ CONFIG_FIELD_NAMES = {
     "autotune_position_bound_units",
     "autotune_position_homing_peak_units",
     "autotune_position_motion_cruise_units",
+    "autotune_position_velocity_ceiling_reached",
+    "autotune_position_peak_velocity_mrev_s",
 }
 
 

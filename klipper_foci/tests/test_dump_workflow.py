@@ -487,6 +487,21 @@ def test_tuning_flag_appends_position_tune_provenance():
     assert line == "bound=409u (0.250mm) homing_peak=300u (0.183mm) motion_cruise=210u (0.128mm)"
 
 
+def test_tuning_flag_appends_the_ceiling_flag_and_peak_velocity():
+    driver = make_driver()
+    _seed_tuning_state(driver)
+    driver.config.autotune_position_bound_units = 409
+    driver.config.autotune_position_homing_peak_units = 300
+    driver.config.autotune_position_motion_cruise_units = 1042
+    driver.config.autotune_position_velocity_ceiling_reached = 1
+    driver.config.autotune_position_peak_velocity_mrev_s = 15210
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    line = section(output, "Position tune provenance").strip()
+    assert line.endswith("ceiling_reached=yes peak_velocity=15210mrev_s")
+
+
 def test_tuning_flag_reports_position_tune_not_run_when_unset():
     driver = make_driver()
     _seed_tuning_state(driver)

@@ -147,6 +147,56 @@ POSITION_TUNE_OUTCOME_NAMES: dict[int, str] = {
     10: "restoration_timeout",
 }
 
+# `tune_step` on foci_tune_result: the position-tune sub-state at exit.
+POSITION_TUNE_STEP_NAMES: dict[int, str] = {
+    0: "none",
+    1: "homing stroke",
+    2: "motion stroke",
+    3: "restore wait",
+    4: "standstill hold",
+}
+
+# Firmware outer-safety envelope: max(ceil(1.5 * v), v + 2000 mrev/s) on the faster leg,
+# and the position tune's ceiling at 4/5 of it. Duplicated here only so the console can
+# print the ceiling without spending wire bytes on it.
+_ENVELOPE_PROPORTIONAL_NUM = 3
+_ENVELOPE_PROPORTIONAL_DEN = 2
+_ENVELOPE_ABSOLUTE_MARGIN_MREV_S = 2000
+_VELOCITY_CEILING_NUM = 4
+_VELOCITY_CEILING_DEN = 5
+
+
+def _velocity_ceiling_mrev_s(homing_speed_mrev_s: int, motion_speed_mrev_s: int) -> int:
+    """The position tune's velocity ceiling for the planned legs, in mrev/s."""
+    v_fast = max(int(homing_speed_mrev_s), int(motion_speed_mrev_s))
+    proportional = -(-v_fast * _ENVELOPE_PROPORTIONAL_NUM // _ENVELOPE_PROPORTIONAL_DEN)
+    cap = max(proportional, v_fast + _ENVELOPE_ABSOLUTE_MARGIN_MREV_S)
+    return cap * _VELOCITY_CEILING_NUM // _VELOCITY_CEILING_DEN
+
+
+def _expects_position_evidence(params: dict) -> bool:
+    """Mirror of firmware `PositionTuneProvenance::drove_a_rung`: the evidence fragment is
+    sent whenever a rung was driven, completed or not."""
+    return (
+        int(params.get("rungs_measured", 0)) > 0
+        or int(params.get("velocity_ceiling_reached", 0)) != 0
+        or int(params.get("tune_step", 0)) != 0
+    )
+
+
+def _position_tune_rung_text(result: dict) -> str:
+    """Name the rung the tune was driving when it ended."""
+    rung_p = int(result.get("last_rung_p", result.get("predicted_start_p", 0)))
+    if int(result.get("rungs_measured", 0)) == 0:
+        return f"the first rung p={rung_p}"
+    return f"rung p={rung_p}"
+
+
+def _position_tune_step_text(result: dict) -> str:
+    code = int(result.get("tune_step", 0))
+    return POSITION_TUNE_STEP_NAMES.get(code, f"unknown_{code}")
+
+
 _VELOCITY_INTEGRAL_SUCCESS_PHRASES = {
     "first_run_retained": "integral gain candidate found, confirming repeatability",
     "repeatability_confirmed": "integral gain confirmed",
@@ -298,7 +348,7 @@ class AutotuneWorkflow:
             params.get("oid", 0),
             params.get("report_seq", 0),
         )
-        if int(params.get("rungs_measured", 0)) > 0:
+        if _expects_position_evidence(params):
             evidence = fragments.get("evidence")
             if evidence:
                 skip_keys = ("oid", "report_seq")
@@ -654,6 +704,26 @@ class AutotuneWorkflow:
             (self.breakaway_campaign.confirmation_terminal or {}).get("confirmed_p_raw", 0)
         )
         return f"SUCCEEDED, proportional gain accepted (P={confirmed_p})."
+
+    def _format_ceiling_accept(self, result: dict) -> str:
+        accepted_p = int(result["position_p"])
+        peak = int(result.get("peak_velocity_mrev_s", 0))
+        if "last_rung_p" not in result:
+            return (
+                f"FOCI {self.driver.name} position tune accepted p={accepted_p}, limited by the "
+                f"velocity ceiling: the interrupted rung reached {peak} mrev/s (evidence missing)"
+            )
+        ceiling = _velocity_ceiling_mrev_s(
+            result["homing_speed_mrev_s"], result["motion_speed_mrev_s"]
+        )
+        planned = max(int(result["homing_speed_mrev_s"]), int(result["motion_speed_mrev_s"]))
+        return (
+            f"FOCI {self.driver.name} position tune accepted p={accepted_p}, limited by the "
+            f"velocity ceiling: rung p={int(result['last_rung_p'])} reached {peak} mrev/s "
+            f"against a ceiling of {ceiling} (planned {planned}) and was stopped; motion cruise "
+            f"error {int(result['motion_cruise_mean_abs_units'])}u at p={accepted_p} is above the "
+            f"{int(result['bound_units'])}u bound and was not met"
+        )
 
     def _format_outer_safety_fault(self) -> str:
         fault = self.outer_safety_fault
@@ -1136,6 +1206,11 @@ class AutotuneWorkflow:
                     self._disable_kinematic_motors(toolhead)
                     safety_detail = self._format_outer_safety_fault()
                     detail_suffix = f"; {safety_detail}" if safety_detail else ""
+                    if int(result.get("tune_step", 0)):
+                        detail_suffix += (
+                            f"; during position tune, {_position_tune_step_text(result)} of "
+                            f"{_position_tune_rung_text(result)}"
+                        )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE safety fault: {error_name}"
                         f"{detail_suffix} (motor disabled by firmware){evidence}"
@@ -1146,6 +1221,21 @@ class AutotuneWorkflow:
                         position_tune_outcome_code,
                         f"unknown_{position_tune_outcome_code}",
                     )
+                    if outcome_name == "conflict" and int(
+                        result.get("velocity_ceiling_reached", 0)
+                    ):
+                        if "motion_speed_mrev_s" in result:
+                            ceiling = _velocity_ceiling_mrev_s(
+                                result["homing_speed_mrev_s"], result["motion_speed_mrev_s"]
+                            )
+                            ceiling_text = f" against ceiling {ceiling}"
+                        else:
+                            ceiling_text = " (evidence missing)"
+                        outcome_name = (
+                            f"conflict (velocity ceiling on {_position_tune_rung_text(result)}, "
+                            f"reached {int(result.get('peak_velocity_mrev_s', 0))} mrev/s"
+                            f"{ceiling_text})"
+                        )
                     if chained_velocity_evidence is not None:
                         raise gcmd.error(
                             f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
@@ -1218,6 +1308,8 @@ class AutotuneWorkflow:
             if evidence_missing:
                 summary_line += " missing=evidence"
             report_summary(gcmd, summary_line)
+            if int(result.get("velocity_ceiling_reached", 0)):
+                report_summary(gcmd, self._format_ceiling_accept(result))
             if nominal_bandwidth_hz:
                 report_detail(
                     log,
@@ -1235,6 +1327,7 @@ class AutotuneWorkflow:
                     f"nominal_bw={nominal_bandwidth_hz}Hz "
                     f"dither_margin={int(result['dither_margin_milli']) / 1000.0:.2f}x "
                     f"rungs={int(result['rungs_measured'])} "
+                    f"peak_velocity={int(result.get('peak_velocity_mrev_s', 0))}mrev_s "
                     f"ff={_format_feedforward_paths(int(result['stimulus_feedforward_paths']))}",
                 )
             if inner_warning_flags:
@@ -1435,6 +1528,16 @@ class AutotuneWorkflow:
                     self.driver.name,
                     "autotune_position_motion_cruise_units",
                     f"{int(result['motion_cruise_mean_abs_units'])}",
+                )
+                configfile.set(
+                    self.driver.name,
+                    "autotune_position_velocity_ceiling_reached",
+                    f"{int(result.get('velocity_ceiling_reached', 0))}",
+                )
+                configfile.set(
+                    self.driver.name,
+                    "autotune_position_peak_velocity_mrev_s",
+                    f"{int(result.get('peak_velocity_mrev_s', 0))}",
                 )
         configfile.set(self.driver.name, "autotune_mode", mode_name)
         configfile.set(self.driver.name, "autotune_status", status)
