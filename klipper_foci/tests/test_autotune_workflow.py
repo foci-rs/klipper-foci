@@ -1206,6 +1206,7 @@ class TestAutotuneGates(unittest.TestCase):
             message,
         )
         self.assertNotIn("rung p=124", message.replace("first rung p=124", ""))
+        self.assertNotIn("last rung:", message)
 
     def test_safety_fault_on_the_first_rung_names_the_predicted_rung_and_step(self):
         d = self._commissioned_driver()

@@ -241,9 +241,9 @@ def _nominal_bandwidth_hz(last_rung_p: int) -> int:
 
 def _position_tune_evidence(result: dict) -> str:
     """Render the last measured rung's evidence for a position-tune failure."""
-    if int(result.get("rungs_measured", 0)) == 0:
+    if int(result.get("rungs_measured", 0)) == 0 or "last_rung_p" not in result:
         return ""
-    last_rung_p = int(result.get("last_rung_p", 0))
+    last_rung_p = int(result["last_rung_p"])
     homing_peak = int(result.get("homing_peak_abs_units", 0))
     motion_cruise = int(result.get("motion_cruise_mean_abs_units", 0))
     overshoot = int(result.get("motion_overshoot_units", 0))
