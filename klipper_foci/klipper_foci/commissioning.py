@@ -133,6 +133,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     117: "gain floor position gain unrepresentable",
     118: "gain floor step overshoot",
     119: "coil check current envelope exceeded",
+    120: "current validation envelope unreachable",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
@@ -154,6 +155,8 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
     117: "the computed gain-floor position gain is outside the range the firmware can represent",
     118: "the current loop overshot the gain-floor torque step; "
     "the selected profile's current-loop bandwidth is too high for this motor",
+    120: "the selected profile's current-loop bandwidth needs more run current than this motor "
+    "is configured for; raise the run current or choose a less stiff profile",
 }
 
 

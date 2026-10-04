@@ -1700,6 +1700,18 @@ def test_gain_floor_step_overshoot_is_a_named_failure():
     assert "bandwidth" in operator_failure_phrase(118)
 
 
+def test_current_validation_envelope_unreachable_is_a_named_failure():
+    from klipper_foci.commissioning import (
+        format_commission_error_name,
+        operator_failure_phrase,
+    )
+
+    assert "envelope" in format_commission_error_name(120)
+    assert "unknown" not in operator_failure_phrase(120)
+    assert "run current" in operator_failure_phrase(120)
+    assert "profile" in operator_failure_phrase(120)
+
+
 def test_breakaway_and_integral_phase_labels_avoid_internal_jargon():
     from klipper_foci._vocabulary_generated import PHASE_NAMES
 
