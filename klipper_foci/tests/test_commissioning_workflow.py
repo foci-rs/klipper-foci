@@ -1724,6 +1724,20 @@ def test_current_gain_unrepresentable_is_a_named_failure():
     assert "profile" in operator_failure_phrase(121)
 
 
+def test_resistance_bus_voltage_out_of_range_is_a_named_failure():
+    from klipper_foci.commissioning import (
+        TROUBLESHOOTING_DOC_LINKS,
+        format_commission_error_name,
+        operator_failure_phrase,
+    )
+
+    assert "bus voltage" in format_commission_error_name(122)
+    assert "unknown" not in operator_failure_phrase(122)
+    assert "supply voltage" in operator_failure_phrase(122)
+    assert "18" in operator_failure_phrase(122) and "60" in operator_failure_phrase(122)
+    assert TROUBLESHOOTING_DOC_LINKS[122].endswith("resistance-identification.md")
+
+
 def test_breakaway_and_integral_phase_labels_avoid_internal_jargon():
     from klipper_foci._vocabulary_generated import PHASE_NAMES
 

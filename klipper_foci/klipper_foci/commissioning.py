@@ -135,6 +135,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     119: "coil check current envelope exceeded",
     120: "current validation envelope unreachable",
     121: "current gain unrepresentable",
+    122: "resistance bus voltage out of range",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
@@ -160,6 +161,8 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
     "is configured for; raise the run current or choose a less stiff profile",
     121: "this motor's inductance is too high for the selected profile's current-loop bandwidth "
     "on this bus voltage; choose a less stiff profile",
+    122: "the measured supply voltage was outside the 18 to 60 volt range the resistance "
+    "sweep supports; check the supply and the VM divider configuration",
 }
 
 
@@ -171,7 +174,7 @@ def operator_failure_phrase(code: int) -> str:
 
 
 TROUBLESHOOTING_DOC_LINKS: dict[int, str] = dict.fromkeys(
-    [*range(19, 32), 73], "docs/troubleshooting/resistance-identification.md"
+    [*range(19, 32), 73, 122], "docs/troubleshooting/resistance-identification.md"
 )
 
 RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31})
