@@ -1712,6 +1712,18 @@ def test_current_validation_envelope_unreachable_is_a_named_failure():
     assert "profile" in operator_failure_phrase(120)
 
 
+def test_current_gain_unrepresentable_is_a_named_failure():
+    from klipper_foci.commissioning import (
+        format_commission_error_name,
+        operator_failure_phrase,
+    )
+
+    assert "gain" in format_commission_error_name(121)
+    assert "unknown" not in operator_failure_phrase(121)
+    assert "inductance" in operator_failure_phrase(121)
+    assert "profile" in operator_failure_phrase(121)
+
+
 def test_breakaway_and_integral_phase_labels_avoid_internal_jargon():
     from klipper_foci._vocabulary_generated import PHASE_NAMES
 

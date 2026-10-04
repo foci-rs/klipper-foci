@@ -134,6 +134,7 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     118: "gain floor step overshoot",
     119: "coil check current envelope exceeded",
     120: "current validation envelope unreachable",
+    121: "current gain unrepresentable",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
@@ -157,6 +158,8 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
     "the selected profile's current-loop bandwidth is too high for this motor",
     120: "the selected profile's current-loop bandwidth needs more run current than this motor "
     "is configured for; raise the run current or choose a less stiff profile",
+    121: "this motor's inductance is too high for the selected profile's current-loop bandwidth "
+    "on this bus voltage; choose a less stiff profile",
 }
 
 
