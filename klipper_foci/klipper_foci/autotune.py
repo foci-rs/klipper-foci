@@ -147,7 +147,6 @@ POSITION_TUNE_OUTCOME_NAMES: dict[int, str] = {
     10: "restoration_timeout",
 }
 
-# `tune_step` on foci_tune_result: the position-tune sub-state at exit.
 POSITION_TUNE_STEP_NAMES: dict[int, str] = {
     0: "none",
     1: "homing stroke",
@@ -156,9 +155,7 @@ POSITION_TUNE_STEP_NAMES: dict[int, str] = {
     4: "standstill hold",
 }
 
-# Firmware outer-safety envelope: max(ceil(1.5 * v), v + 2000 mrev/s) on the faster leg,
-# and the position tune's ceiling at 4/5 of it. Duplicated here only so the console can
-# print the ceiling without spending wire bytes on it.
+# Mirrors the firmware envelope and ceiling rule; change both together.
 _ENVELOPE_PROPORTIONAL_NUM = 3
 _ENVELOPE_PROPORTIONAL_DEN = 2
 _ENVELOPE_ABSOLUTE_MARGIN_MREV_S = 2000
@@ -167,7 +164,6 @@ _VELOCITY_CEILING_DEN = 5
 
 
 def _velocity_ceiling_mrev_s(homing_speed_mrev_s: int, motion_speed_mrev_s: int) -> int:
-    """The position tune's velocity ceiling for the planned legs, in mrev/s."""
     v_fast = max(int(homing_speed_mrev_s), int(motion_speed_mrev_s))
     proportional = -(-v_fast * _ENVELOPE_PROPORTIONAL_NUM // _ENVELOPE_PROPORTIONAL_DEN)
     cap = max(proportional, v_fast + _ENVELOPE_ABSOLUTE_MARGIN_MREV_S)
@@ -175,8 +171,7 @@ def _velocity_ceiling_mrev_s(homing_speed_mrev_s: int, motion_speed_mrev_s: int)
 
 
 def _expects_position_evidence(params: dict) -> bool:
-    """Mirror of firmware `PositionTuneProvenance::drove_a_rung`: the evidence fragment is
-    sent whenever a rung was driven, completed or not."""
+    """Mirrors firmware PositionTuneProvenance::drove_a_rung; change both together."""
     return (
         int(params.get("rungs_measured", 0)) > 0
         or int(params.get("velocity_ceiling_reached", 0)) != 0
@@ -185,7 +180,6 @@ def _expects_position_evidence(params: dict) -> bool:
 
 
 def _position_tune_rung_text(result: dict) -> str:
-    """Name the rung the tune was driving when it ended."""
     rung_p = int(result.get("last_rung_p", result.get("predicted_start_p", 0)))
     if int(result.get("rungs_measured", 0)) == 0:
         return f"the first rung p={rung_p}"

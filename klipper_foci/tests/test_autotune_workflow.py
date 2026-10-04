@@ -314,8 +314,6 @@ SAMPLE_POSITION_TUNE_FAILURE_RESULT = {
 }
 
 
-# Ceiling-limited accept: the walk stopped on p=248 and accepted the candidate
-# p=176, whose motion cruise error was over the bound.
 SAMPLE_POSITION_TUNE_CEILING_RESULT = {
     **SAMPLE_POSITION_TUNE_RESULT,
     "position_p": 176,
@@ -332,9 +330,6 @@ SAMPLE_POSITION_TUNE_CEILING_RESULT = {
     "tune_step": 0,
 }
 
-# Ceiling on the first rung with nothing to fall back on. rungs_measured is 0, but
-# the ceiling flag makes firmware emit the evidence fragment, so the stitched result
-# still carries last_rung_p and the planned speeds.
 SAMPLE_POSITION_TUNE_CEILING_CONFLICT_RESULT = {
     "status": 12,
     "position_tune_outcome_code": 8,
@@ -1034,11 +1029,8 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(cfg.values[(d.name, "autotune_probed_velocity_mrev_s")], "5366")
 
     def test_velocity_ceiling_is_derived_from_the_envelope_rule(self):
-        # 12500 mrev/s: max(ceil(1.5 * 12500), 12500 + 2000) = 18750; * 4 / 5 = 15000
         self.assertEqual(_velocity_ceiling_mrev_s(4375, 12500), 15000)
-        # 1000 mrev/s: the absolute margin wins, 3000 * 4 / 5 = 2400
         self.assertEqual(_velocity_ceiling_mrev_s(500, 1000), 2400)
-        # the faster leg sets the cap
         self.assertEqual(_velocity_ceiling_mrev_s(12500, 4375), 15000)
 
     def test_ceiling_limited_accept_names_both_rungs_on_the_console(self):
@@ -2932,9 +2924,6 @@ TUNE_POSITION_EVIDENCE = {
 
 class TestTunePositionEvidenceStitching(unittest.TestCase):
     def test_zero_rung_ceiling_terminal_merges_its_evidence(self):
-        """A first-rung ceiling trip completes no rung, but firmware still sends
-        the evidence fragment; the host must merge it so the console can name
-        the rung and derive the ceiling."""
         d = make_driver()
         d.autotune.handle_tune_position_evidence(
             {"oid": d.oid, "report_seq": 4, **TUNE_POSITION_EVIDENCE, "last_rung_p": 124}
