@@ -180,10 +180,14 @@ def _expects_position_evidence(params: dict) -> bool:
 
 
 def _position_tune_rung_text(result: dict) -> str:
-    rung_p = int(result.get("last_rung_p", result.get("predicted_start_p", 0)))
-    if int(result.get("rungs_measured", 0)) == 0:
-        return f"the first rung p={rung_p}"
-    return f"rung p={rung_p}"
+    first_rung = int(result.get("rungs_measured", 0)) == 0
+    if "last_rung_p" in result:
+        rung_p = int(result["last_rung_p"])
+        return f"the first rung p={rung_p}" if first_rung else f"rung p={rung_p}"
+    start_p = int(result.get("predicted_start_p", 0))
+    if first_rung:
+        return f"the first rung p={start_p}"
+    return f"a rung after the first rung p={start_p} (evidence missing)"
 
 
 def _position_tune_step_text(result: dict) -> str:

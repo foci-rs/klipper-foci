@@ -1155,6 +1155,58 @@ class TestAutotuneGates(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("during position tune, motion stroke of rung p=248", message)
 
+    def _position_tune_safety_fault_message(self, last_rung_p, tune_step):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_and_report(deadline):
+            reactor._time = deadline
+            if last_rung_p is not None:
+                d.autotune.handle_tune_position_evidence(
+                    {
+                        "oid": d.oid,
+                        "report_seq": 3,
+                        **TUNE_POSITION_EVIDENCE,
+                        "last_rung_p": last_rung_p,
+                    }
+                )
+            d.autotune.handle_tune_result(
+                {
+                    "oid": d.oid,
+                    "report_seq": 3,
+                    "status": 17,
+                    "rungs_measured": 1,
+                    "predicted_start_p": 124,
+                    "velocity_ceiling_reached": 0,
+                    "peak_velocity_mrev_s": 0,
+                    "tune_step": tune_step,
+                }
+            )
+            return reactor._time
+
+        reactor.pause = pause_and_report
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+        return str(ctx.exception)
+
+    def test_safety_fault_during_position_tune_names_the_homing_stroke(self):
+        message = self._position_tune_safety_fault_message(last_rung_p=248, tune_step=1)
+        self.assertIn("during position tune, homing stroke of rung p=248", message)
+
+    def test_safety_fault_during_position_tune_names_the_restore_wait(self):
+        message = self._position_tune_safety_fault_message(last_rung_p=248, tune_step=3)
+        self.assertIn("during position tune, restore wait of rung p=248", message)
+
+    def test_safety_fault_without_evidence_after_the_first_rung_says_the_rung_is_unknown(self):
+        message = self._position_tune_safety_fault_message(last_rung_p=None, tune_step=2)
+        self.assertIn(
+            "during position tune, motion stroke of a rung after the first rung p=124 "
+            "(evidence missing)",
+            message,
+        )
+        self.assertNotIn("rung p=124", message.replace("first rung p=124", ""))
+
     def test_safety_fault_on_the_first_rung_names_the_predicted_rung_and_step(self):
         d = self._commissioned_driver()
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
