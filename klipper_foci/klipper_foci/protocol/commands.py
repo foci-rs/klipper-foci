@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .bindings import (
-    register_active_diagnostic_responses,
     register_commissioning_responses,
     register_dump_responses,
     register_homing_responses,
@@ -18,6 +17,13 @@ class FociMcuCommands:
     """Bound Klipper MCU commands and protocol response handlers."""
 
     def __init__(self) -> None:
+        self.diagnostic_commands_available = False
+        self.current_step_test = None
+        self.current_vector_step_test = None
+        self.current_torque_sample_test = None
+        self.position_torque_offset_sample_test = None
+        self.voltage_step_test = None
+        self.resistance_test = None
         self.stepper_get_position = None
         self.stepper_stats = None
         self.stepper_exec_stats = None
@@ -53,6 +59,35 @@ class FociMcuCommands:
         self.set_auto_calibrate_on_enable = None
         self.config_homing = None
         self.query_stall = None
+
+    def _bind_diagnostic_commands(self, mcu) -> bool:
+        formats = {
+            "current_step_test": (
+                "tmc_current_step_test oid=%c axis=%c target=%hi duration_ms=%hu voltage_limit=%hu"
+            ),
+            "current_vector_step_test": (
+                "tmc_current_vector_step_test oid=%c torque_target=%hi flux_target=%hi"
+                " duration_ms=%hu voltage_limit=%hu"
+            ),
+            "current_torque_sample_test": (
+                "tmc_current_torque_sample_test oid=%c target=%hi flux_target=%hi"
+                " sample_delay_ms=%hu voltage_limit=%hu"
+            ),
+            "position_torque_offset_sample_test": (
+                "tmc_position_torque_offset_sample_test oid=%c target=%hi"
+                " sample_delay_ms=%hu voltage_limit=%hu"
+            ),
+            "voltage_step_test": (
+                "tmc_voltage_step_test oid=%c uq_ext=%hi ud_ext=%hi sample_delay_ms=%hu"
+            ),
+            "resistance_test": "tmc_resistance_test oid=%c detail=%c",
+        }
+        found = {name: _lookup_optional(mcu, fmt) for name, fmt in formats.items()}
+        if any(command is None for command in found.values()):
+            return False
+        for name, command in found.items():
+            setattr(self, name, command)
+        return True
 
     def bind(self, driver, mcu, oid: int) -> None:
         """Bind MCU command handles and response callbacks for one FOCI OID."""
@@ -159,26 +194,7 @@ class FociMcuCommands:
         )
         self.set_velocity_limit = mcu.lookup_command("tmc_set_velocity_limit oid=%c limit=%u")
         self.set_voltage_limit = mcu.lookup_command("tmc_set_voltage_limit oid=%c voltage_limit=%u")
-        self.current_step_test = mcu.lookup_command(
-            "tmc_current_step_test oid=%c axis=%c target=%hi duration_ms=%hu voltage_limit=%hu"
-        )
-        self.current_vector_step_test = mcu.lookup_command(
-            "tmc_current_vector_step_test oid=%c torque_target=%hi flux_target=%hi"
-            " duration_ms=%hu voltage_limit=%hu"
-        )
-        self.current_torque_sample_test = mcu.lookup_command(
-            "tmc_current_torque_sample_test oid=%c target=%hi flux_target=%hi"
-            " sample_delay_ms=%hu voltage_limit=%hu"
-        )
-        self.position_torque_offset_sample_test = mcu.lookup_command(
-            "tmc_position_torque_offset_sample_test oid=%c target=%hi"
-            " sample_delay_ms=%hu voltage_limit=%hu"
-        )
-        self.voltage_step_test = mcu.lookup_command(
-            "tmc_voltage_step_test oid=%c uq_ext=%hi ud_ext=%hi sample_delay_ms=%hu"
-        )
-        self.resistance_test = mcu.lookup_command("tmc_resistance_test oid=%c detail=%c")
-        register_active_diagnostic_responses(mcu._serial, driver, oid)
+        self.diagnostic_commands_available = self._bind_diagnostic_commands(mcu)
         register_stepper_event_response(mcu, driver)
         self.set_auto_calibrate_on_enable = mcu.lookup_command(
             "tmc_set_auto_calibrate_on_enable oid=%c enable=%c"
@@ -194,3 +210,10 @@ class FociMcuCommands:
             " peak_margin_delta_units=%u",
             oid=oid,
         )
+
+
+def _lookup_optional(mcu, fmt: str):
+    try:
+        return mcu.lookup_command(fmt)
+    except Exception:  # Klipper raises its own msgproto error type for unknown commands
+        return None

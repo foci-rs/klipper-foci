@@ -5,6 +5,8 @@
 #
 # Register reference: TMC4671-LA datasheet rev 2.08
 
+from collections.abc import Callable
+
 from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
@@ -51,6 +53,7 @@ class FociDriver:
         self.stepper_oid: int | None = None
         self.max_run_current_ma: int | None = None
 
+        self.mcu_bound_hooks: list[Callable[[FociDriver], None]] = []
         self.protocol = FociProtocol(self)
         self.state = FociRuntimeState()
         self.dump = RegisterDumpWorkflow(self)
@@ -125,6 +128,8 @@ class FociDriver:
         self.stepper_oid = self._resolve_stepper_oid()
         self.oid = self.stepper_oid
         self.protocol.bind_mcu(self.mcu, self.oid)
+        for hook in self.mcu_bound_hooks:
+            hook(self)
         self.max_run_current_ma = self._read_run_current_cap()
         run_ma = int(self.settings.run_current * 1000.0)
         if run_ma > self.max_run_current_ma:

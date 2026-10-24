@@ -683,6 +683,7 @@ def make_driver(
     driver.stepper_oid = None
     driver.channel = 0
     driver.max_run_current_ma = 10_000
+    driver.mcu_bound_hooks = []
     driver.global_config = SimpleNamespace(debug=False)
 
     toolhead = MockToolhead(kinematics)

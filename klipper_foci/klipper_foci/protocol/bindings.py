@@ -240,6 +240,36 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         "foci_current_loop_filters",
         oid,
     )
+    serial.register_response(
+        driver.diagnostics.handle_resistance_run,
+        "foci_resistance_run",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.handle_resistance_axis,
+        "foci_resistance_axis",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_current_loop_run,
+        "foci_current_loop_run",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_current_loop_hold,
+        "foci_current_loop_hold",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_closed_loop_activation,
+        "foci_closed_loop_activation",
+        oid,
+    )
+    serial.register_response(
+        driver.diagnostics.active.handle_current_validation_axis,
+        "foci_current_validation_axis",
+        oid,
+    )
 
 
 def register_selftest_responses(serial, driver, oid: int) -> None:
@@ -255,7 +285,7 @@ def register_selftest_responses(serial, driver, oid: int) -> None:
     )
 
 
-def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
+def register_diagnostic_only_responses(serial, driver, oid: int) -> None:
     serial.register_response(
         driver.diagnostics.handle_current_step_result,
         "foci_current_step_result",
@@ -294,36 +324,6 @@ def register_active_diagnostic_responses(serial, driver, oid: int) -> None:
     serial.register_response(
         driver.diagnostics.handle_resistance_profile,
         "foci_resistance_profile",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.handle_resistance_run,
-        "foci_resistance_run",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.handle_resistance_axis,
-        "foci_resistance_axis",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_current_loop_run,
-        "foci_current_loop_run",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_current_loop_hold,
-        "foci_current_loop_hold",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_closed_loop_activation,
-        "foci_closed_loop_activation",
-        oid,
-    )
-    serial.register_response(
-        driver.diagnostics.active.handle_current_validation_axis,
-        "foci_current_validation_axis",
         oid,
     )
 

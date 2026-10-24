@@ -7,8 +7,8 @@ import pytest
 from klipper_foci.protocol import FociProtocol
 from klipper_foci.protocol.bindings import (
     MOTION_SCALE_REJECTION_NAMES,
-    register_active_diagnostic_responses,
     register_commissioning_responses,
+    register_diagnostic_only_responses,
     register_last_boot_diagnostic_response,
 )
 from klipper_foci.protocol.commands import FociMcuCommands
@@ -61,6 +61,99 @@ def test_bind_succeeds_against_dictionary_with_removed_feedforward_commands():
     commands.bind(driver, mcu, driver.oid)
 
     assert commands.set_accel_feedforward is not None
+
+
+DIAGNOSTIC_COMMAND_PREFIXES = (
+    "tmc_current_step_test ",
+    "tmc_current_vector_step_test ",
+    "tmc_current_torque_sample_test ",
+    "tmc_position_torque_offset_sample_test ",
+    "tmc_voltage_step_test ",
+    "tmc_resistance_test ",
+)
+DIAGNOSTIC_COMMAND_ATTRIBUTES = (
+    "current_step_test",
+    "current_vector_step_test",
+    "current_torque_sample_test",
+    "position_torque_offset_sample_test",
+    "voltage_step_test",
+    "resistance_test",
+)
+DIAGNOSTIC_ONLY_REPLIES = {
+    "foci_current_step_result",
+    "foci_current_vector_step_result",
+    "foci_current_torque_sample_pid_result",
+    "foci_current_torque_sample_result",
+    "foci_current_torque_sample_detail_result",
+    "foci_voltage_step_result",
+    "foci_voltage_step_detail_result",
+    "foci_resistance_profile",
+}
+COMMISSIONING_REPLIES = {
+    "foci_resistance_run",
+    "foci_resistance_axis",
+    "foci_current_loop_run",
+    "foci_current_loop_hold",
+    "foci_closed_loop_activation",
+    "foci_current_validation_axis",
+}
+
+
+def test_connect_succeeds_without_diagnostic_commands():
+    driver = make_driver()
+    mcu = DictionaryMCU(DIAGNOSTIC_COMMAND_PREFIXES)
+    commands = FociMcuCommands()
+
+    commands.bind(driver, mcu, driver.oid)
+
+    registered = {name for name, _oid in response_names(mcu)}
+    assert commands.diagnostic_commands_available is False
+    for attribute in DIAGNOSTIC_COMMAND_ATTRIBUTES:
+        assert getattr(commands, attribute) is None, attribute
+    assert registered >= COMMISSIONING_REPLIES
+    assert not DIAGNOSTIC_ONLY_REPLIES & registered
+
+
+def test_connect_with_diagnostic_commands_exposes_them():
+    driver = make_driver()
+    mcu = DictionaryMCU()
+    commands = FociMcuCommands()
+
+    commands.bind(driver, mcu, driver.oid)
+
+    assert commands.diagnostic_commands_available is True
+    for attribute in DIAGNOSTIC_COMMAND_ATTRIBUTES:
+        assert getattr(commands, attribute) is not None, attribute
+
+
+def test_diagnostic_only_responses_are_separate_from_commissioning_responses():
+    driver = make_driver()
+    serial = MockSerial()
+
+    register_diagnostic_only_responses(serial, driver, driver.oid)
+
+    registered = {name for name, _oid in response_names(serial)}
+    assert registered == DIAGNOSTIC_ONLY_REPLIES
+
+
+def test_mcu_bound_hooks_run_after_bind():
+    printer, _chips, sections = make_config_printer(
+        {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    calls = []
+    bound = driver.protocol.bind_mcu
+
+    def recording_bind(mcu, oid):
+        calls.append("bind")
+        return bound(mcu, oid)
+
+    driver.protocol.bind_mcu = recording_bind
+    driver.mcu_bound_hooks.append(lambda hooked: calls.append(("hook", hooked)))
+
+    driver._handle_mcu_identify()
+
+    assert calls == ["bind", ("hook", driver)]
 
 
 def response_names(mcu):
@@ -140,19 +233,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_selftest_done", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations
     assert ("foci_commission_detail", driver.oid) in registrations
-    assert ("foci_current_step_result", driver.oid) in registrations
-    assert ("foci_current_vector_step_result", driver.oid) in registrations
-    assert ("foci_current_torque_sample_result", driver.oid) in registrations
-    assert (
-        "foci_current_torque_sample_detail_result",
-        driver.oid,
-    ) in registrations
-    assert (
-        "foci_current_torque_sample_pid_result",
-        driver.oid,
-    ) in registrations
-    assert ("foci_voltage_step_result", driver.oid) in registrations
-    assert ("foci_resistance_profile", driver.oid) in registrations
+    assert not DIAGNOSTIC_ONLY_REPLIES & {name for name, _oid in registrations}
     assert ("foci_resistance_run", driver.oid) in registrations
     assert ("foci_resistance_axis", driver.oid) in registrations
     assert ("foci_closed_loop_activation", driver.oid) in registrations
@@ -405,7 +486,7 @@ def test_inductance_replies_are_not_active_diagnostic_responses():
     driver = make_driver()
     serial = MockSerial()
 
-    register_active_diagnostic_responses(serial, driver, driver.oid)
+    register_diagnostic_only_responses(serial, driver, driver.oid)
 
     registrations = response_names(serial)
     assert ("foci_inductance_run", driver.oid) not in registrations
@@ -417,7 +498,7 @@ def test_registers_current_loop_hold_reply():
     driver = make_driver()
     serial = MockSerial()
 
-    register_active_diagnostic_responses(serial, driver, driver.oid)
+    register_commissioning_responses(serial, driver, driver.oid)
 
     assert (
         driver.diagnostics.active.handle_current_loop_hold,
@@ -430,7 +511,7 @@ def test_registers_closed_loop_activation_reply():
     driver = make_driver()
     serial = MockSerial()
 
-    register_active_diagnostic_responses(serial, driver, driver.oid)
+    register_commissioning_responses(serial, driver, driver.oid)
 
     assert (
         driver.diagnostics.active.handle_closed_loop_activation,
