@@ -16,6 +16,7 @@ from tests.mocks import (
     CommandError,
     MockCartesianKinematics,
     MockCommand,
+    MockDictionaryError,
     MockMCU,
     MockSerial,
     make_config_driver,
@@ -40,7 +41,7 @@ class DictionaryMCU(MockMCU):
 
     def lookup_command(self, fmt, cq=None):
         if fmt.startswith(self.missing_prefixes):
-            raise KeyError(fmt)
+            raise MockDictionaryError(fmt)
         return super().lookup_command(fmt, cq=cq)
 
 
@@ -123,6 +124,19 @@ def test_partial_diagnostic_dictionary_lists_exactly_the_absent_commands():
 
     assert commands.diagnostic_commands_available is False
     assert commands.missing_diagnostic_commands == ("tmc_voltage_step_test", "tmc_resistance_test")
+
+
+def test_unrelated_binding_failure_is_not_reported_as_missing_diagnostics():
+    class BrokenMCU(MockMCU):
+        def lookup_command(self, fmt, cq=None):
+            if fmt.startswith("tmc_voltage_step_test "):
+                raise RuntimeError("binding defect")
+            return super().lookup_command(fmt, cq=cq)
+
+    driver = make_driver()
+
+    with pytest.raises(RuntimeError, match="binding defect"):
+        FociMcuCommands().bind(driver, BrokenMCU(), driver.oid)
 
 
 def test_connect_with_diagnostic_commands_exposes_them():

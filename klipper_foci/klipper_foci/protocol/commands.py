@@ -83,7 +83,7 @@ class FociMcuCommands:
             ),
             "resistance_test": "tmc_resistance_test oid=%c detail=%c",
         }
-        found = {name: _lookup_optional(mcu, fmt) for name, fmt in formats.items()}
+        found = {name: mcu.try_lookup_command(fmt) for name, fmt in formats.items()}
         self.missing_diagnostic_commands = tuple(
             formats[name].split()[0] for name, command in found.items() if command is None
         )
@@ -214,10 +214,3 @@ class FociMcuCommands:
             " peak_margin_delta_units=%u",
             oid=oid,
         )
-
-
-def _lookup_optional(mcu, fmt: str):
-    try:
-        return mcu.lookup_command(fmt)
-    except Exception:  # Klipper raises its own msgproto error type for unknown commands
-        return None

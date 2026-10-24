@@ -71,6 +71,10 @@ class CommandError(Exception):
     """Stand-in for Klipper's printer.command_error."""
 
 
+class MockDictionaryError(Exception):
+    pass
+
+
 class MockPrinter:
     """Minimal printer mock for FociDriver."""
 
@@ -475,6 +479,12 @@ class MockMCU:
     def lookup_command(self, _fmt, cq=None):
         self.command_formats.append(_fmt)
         return MockCommand()
+
+    def try_lookup_command(self, fmt):
+        try:
+            return self.lookup_command(fmt)
+        except MockDictionaryError:
+            return None
 
     def lookup_query_command(self, _send_fmt, _recv_fmt, oid=None):
         self.query_commands.append((_send_fmt, _recv_fmt, oid))

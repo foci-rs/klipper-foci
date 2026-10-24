@@ -3,7 +3,7 @@
 import unittest
 
 from klipper_foci.protocol.commands import FociMcuCommands
-from mocks import CommandError, MockGCmd, MockMCU, make_driver
+from mocks import CommandError, MockDictionaryError, MockGCmd, MockMCU, make_driver
 
 from klipper_foci_diagnostics import registry
 from klipper_foci_diagnostics.active import DiagnosticsActive, DiagnosticsUnavailableError
@@ -481,7 +481,7 @@ class _FirmwareMCU(MockMCU):
 
     def lookup_command(self, fmt, cq=None):
         if fmt.split()[0] in self.absent:
-            raise KeyError(fmt)
+            raise MockDictionaryError(fmt)
         return super().lookup_command(fmt, cq=cq)
 
 
