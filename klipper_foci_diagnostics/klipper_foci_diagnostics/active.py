@@ -7,7 +7,7 @@ from klipper_foci.diagnostics.active import CURRENT_STEP_AXIS_CODES, MAX_CURRENT
 
 
 class DiagnosticsUnavailableError(Exception):
-    """Marker for a diagnostic command the connected firmware does not provide."""
+    pass
 
 
 _error_types: dict[type, type] = {}
