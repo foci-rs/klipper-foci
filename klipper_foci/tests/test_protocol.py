@@ -507,7 +507,7 @@ def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
         assert registered[name] == handler, name
 
 
-def test_inductance_replies_are_not_active_diagnostic_responses():
+def test_diagnostic_only_registration_excludes_inductance_replies():
     driver = make_driver()
     serial = MockSerial()
 
