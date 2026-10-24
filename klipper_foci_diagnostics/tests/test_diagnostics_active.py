@@ -6,7 +6,7 @@ from klipper_foci.protocol.commands import FociMcuCommands
 from mocks import CommandError, MockDictionaryError, MockGCmd, MockMCU, make_driver
 
 from klipper_foci_diagnostics import registry
-from klipper_foci_diagnostics.active import DiagnosticsActive, DiagnosticsUnavailableError
+from klipper_foci_diagnostics.active import DiagnosticsActive
 
 ACTIVE_LOGGER = "klipper_foci.diagnostics.active"
 
@@ -498,7 +498,7 @@ class TestMissingDiagnosticsFeature(unittest.TestCase):
         active = DiagnosticsActive(d)
         for handler, args in TEST_GCODE_ARGS.items():
             with self.subTest(handler=handler):
-                with self.assertRaises(DiagnosticsUnavailableError) as ctx:
+                with self.assertRaises(CommandError) as ctx:
                     getattr(active, handler)(MockGCmd(args))
                 message = str(ctx.exception)
                 self.assertIn("diagnostics", message)

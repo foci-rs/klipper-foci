@@ -6,24 +6,11 @@ from klipper_foci.constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 from klipper_foci.diagnostics.active import CURRENT_STEP_AXIS_CODES, MAX_CURRENT_SAMPLE_DELAY_MS
 
 
-class DiagnosticsUnavailableError(Exception):
-    pass
-
-
-_error_types: dict[type, type] = {}
-
-
 def _unavailable_error(driver, missing: tuple[str, ...]) -> Exception:
-    message = (
+    return driver.printer.command_error(
         "firmware was built without the diagnostics feature; rebuild with --features "
         f"diagnostics (missing commands: {', '.join(missing)})"
     )
-    # Klipper only reports gcode.CommandError subclasses to the user; anything else is fatal.
-    base = type(driver.printer.command_error(message))
-    error_type = _error_types.setdefault(
-        base, type("DiagnosticsUnavailableError", (DiagnosticsUnavailableError, base), {})
-    )
-    return error_type(message)
 
 
 class DiagnosticsActive:
