@@ -51,12 +51,6 @@ class FociMcuCommands:
         self.set_accel_feedforward = None
         self.set_velocity_limit = None
         self.set_voltage_limit = None
-        self.current_step_test = None
-        self.current_vector_step_test = None
-        self.current_torque_sample_test = None
-        self.position_torque_offset_sample_test = None
-        self.voltage_step_test = None
-        self.resistance_test = None
         self.set_auto_calibrate_on_enable = None
         self.config_homing = None
         self.query_stall = None
