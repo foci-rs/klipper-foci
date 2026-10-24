@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+from klipper_foci.protocol.bindings import register_diagnostic_only_responses
 from klipper_foci.registry import GcodeCommandSpec
 
 from .active import DiagnosticsActive
 from .passive import DiagnosticsPassive
 
 
+def _register_replies_when_available(driver) -> None:
+    if driver.protocol.commands.diagnostic_commands_available:
+        register_diagnostic_only_responses(driver.mcu._serial, driver, driver.oid)
+
+
 def register(driver) -> tuple[GcodeCommandSpec, ...]:
     driver.diagnostics_active = DiagnosticsActive(driver)
     driver.diagnostics_passive = DiagnosticsPassive(driver)
+    driver.mcu_bound_hooks.append(_register_replies_when_available)
     return (
         GcodeCommandSpec(
             "FOCI_STEP_POSITION",

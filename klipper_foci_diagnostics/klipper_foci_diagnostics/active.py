@@ -6,14 +6,40 @@ from klipper_foci.constants import MIN_OPERATIONAL_VOLTAGE_LIMIT
 from klipper_foci.diagnostics.active import CURRENT_STEP_AXIS_CODES, MAX_CURRENT_SAMPLE_DELAY_MS
 
 
+class DiagnosticsUnavailableError(Exception):
+    """Marker for a diagnostic command the connected firmware does not provide."""
+
+
+_error_types: dict[type, type] = {}
+
+
+def _unavailable_error(driver, missing: tuple[str, ...]) -> Exception:
+    message = (
+        "firmware was built without the diagnostics feature; rebuild with --features "
+        f"diagnostics (missing commands: {', '.join(missing)})"
+    )
+    # Klipper only reports gcode.CommandError subclasses to the user; anything else is fatal.
+    base = type(driver.printer.command_error(message))
+    error_type = _error_types.setdefault(
+        base, type("DiagnosticsUnavailableError", (DiagnosticsUnavailableError, base), {})
+    )
+    return error_type(message)
+
+
 class DiagnosticsActive:
     """FOCI diagnostics that deliberately excite hardware."""
 
     def __init__(self, driver) -> None:
         self.driver = driver
 
+    def _require_diagnostic_commands(self) -> None:
+        commands = self.driver.protocol.commands
+        if not commands.diagnostic_commands_available:
+            raise _unavailable_error(self.driver, commands.missing_diagnostic_commands)
+
     def current_step_test(self, gcmd) -> None:
         """Run a bounded current-loop step diagnostic."""
+        self._require_diagnostic_commands()
         axis_name = gcmd.get("AXIS", "torque").lower()
         if axis_name not in CURRENT_STEP_AXIS_CODES:
             raise gcmd.error("AXIS must be torque or flux")
@@ -41,6 +67,7 @@ class DiagnosticsActive:
 
     def current_vector_step_test(self, gcmd) -> None:
         """Run a bounded current-vector step diagnostic."""
+        self._require_diagnostic_commands()
         torque_target = gcmd.get_int("TORQUE_TARGET", 0, minval=-1000, maxval=1000)
         flux_target = gcmd.get_int("FLUX_TARGET", 0, minval=-1000, maxval=1000)
         duration_ms = gcmd.get_int("DURATION_MS", 80, minval=20, maxval=200)
@@ -66,6 +93,7 @@ class DiagnosticsActive:
 
     def current_torque_sample_test(self, gcmd) -> None:
         """Run a bounded torque pulse and sample it before the dwell floor."""
+        self._require_diagnostic_commands()
         target = gcmd.get_int("TARGET", minval=-1000, maxval=1000)
         flux_target = gcmd.get_int("FLUX_TARGET", 0, minval=-1000, maxval=1000)
         sample_delay_ms = gcmd.get_int(
@@ -92,6 +120,7 @@ class DiagnosticsActive:
 
     def position_torque_offset_test(self, gcmd) -> None:
         """Run a bounded torque-offset sample while staying in position mode."""
+        self._require_diagnostic_commands()
         target = gcmd.get_int("TARGET", minval=-1000, maxval=1000)
         sample_delay_ms = gcmd.get_int(
             "SAMPLE_DELAY_MS", 2, minval=1, maxval=MAX_CURRENT_SAMPLE_DELAY_MS
@@ -115,6 +144,7 @@ class DiagnosticsActive:
 
     def voltage_step_test(self, gcmd) -> None:
         """Run a bounded open-loop voltage-vector pulse and sample it."""
+        self._require_diagnostic_commands()
         uq_ext = gcmd.get_int("UQ", minval=-1024, maxval=1024)
         ud_ext = gcmd.get_int("UD", 0, minval=-1024, maxval=1024)
         sample_delay_ms = gcmd.get_int(
@@ -140,6 +170,7 @@ class DiagnosticsActive:
         foci_resistance_profile/run/axis replies, which are displayed
         as reported with no host-side fitting or pass/fail evaluation.
         """
+        self._require_diagnostic_commands()
         detail = gcmd.get_int("DETAIL", 0, minval=0, maxval=255)
 
         self.driver.protocol.run_resistance_test(detail=detail)

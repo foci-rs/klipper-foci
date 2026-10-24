@@ -2,9 +2,11 @@
 
 import unittest
 
-from mocks import CommandError, MockGCmd, make_driver
+from klipper_foci.protocol.commands import FociMcuCommands
+from mocks import CommandError, MockGCmd, MockMCU, make_driver
 
-from klipper_foci_diagnostics.active import DiagnosticsActive
+from klipper_foci_diagnostics import registry
+from klipper_foci_diagnostics.active import DiagnosticsActive, DiagnosticsUnavailableError
 
 ACTIVE_LOGGER = "klipper_foci.diagnostics.active"
 
@@ -452,3 +454,99 @@ class TestFullDiagnosticChains(unittest.TestCase):
         out = log_ctx.records[-1].message
         self.assertIn("resistance run:", out)
         self.assertIn("selected_r_count_slope_milli=1042", out)
+
+
+DIAGNOSTIC_COMMANDS = (
+    "tmc_current_step_test",
+    "tmc_current_vector_step_test",
+    "tmc_current_torque_sample_test",
+    "tmc_position_torque_offset_sample_test",
+    "tmc_voltage_step_test",
+    "tmc_resistance_test",
+)
+TEST_GCODE_ARGS = {
+    "current_step_test": {"TARGET": 100},
+    "current_vector_step_test": {},
+    "current_torque_sample_test": {"TARGET": 100},
+    "position_torque_offset_test": {"TARGET": 100},
+    "voltage_step_test": {"UQ": 100},
+    "resistance_test": {},
+}
+
+
+class _FirmwareMCU(MockMCU):
+    def __init__(self, absent=()):
+        super().__init__()
+        self.absent = tuple(absent)
+
+    def lookup_command(self, fmt, cq=None):
+        if fmt.split()[0] in self.absent:
+            raise KeyError(fmt)
+        return super().lookup_command(fmt, cq=cq)
+
+
+def _driver_on_firmware(absent=()):
+    d = make_driver()
+    d.mcu = _FirmwareMCU(absent)
+    d.protocol.commands = FociMcuCommands()
+    d.protocol.bind_mcu(d.mcu, d.oid)
+    return d
+
+
+class TestMissingDiagnosticsFeature(unittest.TestCase):
+    def _assert_all_handlers_refuse(self, d, expected_missing):
+        active = DiagnosticsActive(d)
+        for handler, args in TEST_GCODE_ARGS.items():
+            with self.subTest(handler=handler):
+                with self.assertRaises(DiagnosticsUnavailableError) as ctx:
+                    getattr(active, handler)(MockGCmd(args))
+                message = str(ctx.exception)
+                self.assertIn("diagnostics", message)
+                self.assertIn("--features diagnostics", message)
+                for name in DIAGNOSTIC_COMMANDS:
+                    self.assertEqual(name in message, name in expected_missing, name)
+
+    def test_test_command_fails_naming_missing_feature(self):
+        d = _driver_on_firmware(absent=DIAGNOSTIC_COMMANDS)
+
+        self._assert_all_handlers_refuse(d, DIAGNOSTIC_COMMANDS)
+
+        for attribute in (
+            "current_step_test",
+            "voltage_step_test",
+            "resistance_test",
+        ):
+            self.assertIsNone(getattr(d.protocol.commands, attribute))
+
+    def test_partial_dictionary_names_missing_commands(self):
+        absent = ("tmc_voltage_step_test", "tmc_resistance_test")
+        d = _driver_on_firmware(absent=absent)
+
+        self._assert_all_handlers_refuse(d, absent)
+
+    def test_full_dictionary_registers_responses_once(self):
+        d = _driver_on_firmware()
+        registry.register(d)
+        self.assertEqual(len(d.mcu_bound_hooks), 1)
+
+        for hook in d.mcu_bound_hooks:
+            hook(d)
+
+        names = [name for _cb, name, _oid in d.mcu._serial.responses]
+        self.assertEqual(names.count("foci_current_step_result"), 1)
+        self.assertEqual(names.count("foci_resistance_profile"), 1)
+        gcmd = MockGCmd({"TARGET": 250})
+        d.diagnostics_active.current_step_test(gcmd)
+        self.assertEqual(
+            d.protocol.commands.current_step_test.last_args, [d.oid, 0, 250, 80, 12000]
+        )
+
+    def test_hook_registers_nothing_when_commands_are_missing(self):
+        d = _driver_on_firmware(absent=("tmc_resistance_test",))
+        registry.register(d)
+        before = len(d.mcu._serial.responses)
+
+        for hook in d.mcu_bound_hooks:
+            hook(d)
+
+        self.assertEqual(len(d.mcu._serial.responses), before)
