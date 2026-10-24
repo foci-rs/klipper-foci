@@ -18,6 +18,7 @@ class FociMcuCommands:
 
     def __init__(self) -> None:
         self.diagnostic_commands_available = False
+        self.missing_diagnostic_commands: tuple[str, ...] = ()
         self.current_step_test = None
         self.current_vector_step_test = None
         self.current_torque_sample_test = None
@@ -83,7 +84,10 @@ class FociMcuCommands:
             "resistance_test": "tmc_resistance_test oid=%c detail=%c",
         }
         found = {name: _lookup_optional(mcu, fmt) for name, fmt in formats.items()}
-        if any(command is None for command in found.values()):
+        self.missing_diagnostic_commands = tuple(
+            formats[name].split()[0] for name, command in found.items() if command is None
+        )
+        if self.missing_diagnostic_commands:
             return False
         for name, command in found.items():
             setattr(self, name, command)

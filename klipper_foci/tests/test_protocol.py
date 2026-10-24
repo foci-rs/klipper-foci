@@ -114,6 +114,17 @@ def test_connect_succeeds_without_diagnostic_commands():
     assert not DIAGNOSTIC_ONLY_REPLIES & registered
 
 
+def test_partial_diagnostic_dictionary_lists_exactly_the_absent_commands():
+    driver = make_driver()
+    mcu = DictionaryMCU(("tmc_voltage_step_test ", "tmc_resistance_test "))
+    commands = FociMcuCommands()
+
+    commands.bind(driver, mcu, driver.oid)
+
+    assert commands.diagnostic_commands_available is False
+    assert commands.missing_diagnostic_commands == ("tmc_voltage_step_test", "tmc_resistance_test")
+
+
 def test_connect_with_diagnostic_commands_exposes_them():
     driver = make_driver()
     mcu = DictionaryMCU()
