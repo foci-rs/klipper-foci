@@ -35,6 +35,14 @@ project's self-hosted package index, places the loader shim in the right
 directory, and registers the package with Moonraker's `update_manager` so
 the printer can self-update going forward.
 
+The active diagnostic commands also need firmware built with
+`--features diagnostics` (for example `cargo build -p ouroboros-fw --release
+--target thumbv7em-none-eabihf --features diagnostics`; use
+`-p openffboard-fw --target thumbv7em-none-eabi` for OpenFFBoard). On
+firmware built without it, the diagnostics package reports that the
+firmware was built without the diagnostics feature and names the missing
+commands.
+
 ### Manual install (development / troubleshooting)
 
 1. Install the packages you need into Klipper's virtual environment
