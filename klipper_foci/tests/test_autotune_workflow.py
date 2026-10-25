@@ -725,6 +725,39 @@ class TestAutotuneGates(unittest.TestCase):
             [ACTION_CODES["velocity_p_tune"], ACTION_CODES["position_p_tune"]],
         )
 
+    def test_bare_chain_carries_the_accepted_velocity_pair_into_the_position_tune(self):
+        """The re-home before the chained position tune preloads ``active_gains`` into
+        firmware, so the pair the robustness gate accepted must already be in it."""
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        before = dict(d.state.active_gains)
+        self.assertNotEqual(before["velocity_p"], SAMPLE_TUNE_RESULT["velocity_p"])
+        drive_dispatch_sequence(d, chain_steps("tune_result") + ["tune_result"])
+        recording_run_tune = d.protocol.run_tune
+        seen = []
+
+        def observing_run_tune(**kwargs):
+            gains = d.state.active_gains
+            seen.append((kwargs["action"], gains["velocity_p"], gains["velocity_i"]))
+            return recording_run_tune(**kwargs)
+
+        d.protocol.run_tune = observing_run_tune
+
+        d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(
+            seen[0],
+            (ACTION_CODES["velocity_p_tune"], before["velocity_p"], before["velocity_i"]),
+        )
+        self.assertEqual(
+            seen[-1],
+            (
+                ACTION_CODES["position_p_tune"],
+                SAMPLE_TUNE_RESULT["velocity_p"],
+                SAMPLE_TUNE_RESULT["velocity_i"],
+            ),
+        )
+
     def test_explicit_action_does_not_chain_position_tune(self):
         """An operator-specified ACTION must not trigger the default-path
         position-tune chain -- only the unspecified-ACTION production path
@@ -1740,13 +1773,15 @@ class TestAutotuneGates(unittest.TestCase):
     def test_chained_position_tune_failure_raises_and_does_not_persist(self):
         """A default-path chain where the velocity tune succeeds but the
         chained position-tune dispatch fails must report the whole command
-        as failed and must not persist any gains -- all-or-nothing, matching
-        today's standalone ACTION=position_p_tune failure behavior. The chip
-        already carries the new velocity gains at this point (PositionTune's
-        entry snapshot proves it), but host config/state is not updated."""
+        as failed and must not persist any gains to config -- all-or-nothing,
+        matching today's standalone ACTION=position_p_tune failure behavior.
+        The chip carries the accepted velocity pair at this point, so the
+        host's runtime ``active_gains`` track it, while the pre-tune snapshot
+        still records the gains the chain started from."""
         d = self._commissioned_driver()
         cfg = MockConfigFile()
         d.printer._objects["configfile"] = cfg
+        prior_gains = dict(d.state.active_gains)
 
         reactor = d.printer.get_reactor()
         dispatch_count = {"n": 0}
@@ -1769,6 +1804,9 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertNotIn((d.name, "pid_velocity_p"), cfg.values)
         self.assertNotIn((d.name, "pid_position_p"), cfg.values)
+        self.assertEqual(d.state.active_gains["velocity_p"], SAMPLE_TUNE_RESULT["velocity_p"])
+        self.assertEqual(d.state.active_gains["velocity_i"], SAMPLE_TUNE_RESULT["velocity_i"])
+        self.assertEqual(d.state.pre_tune_snapshot["active_gains"], prior_gains)
 
     def test_position_tune_evidence_is_shown_on_code_zero_failures(self):
         """Evidence must appear at every terminal-status raise site the

@@ -1162,6 +1162,7 @@ class AutotuneWorkflow:
 
             inner_warning_flags = readiness.inner_warning_flags
 
+            pre_tune_state = self._snapshot_pre_tune_state()
             self._reset_dispatch_state()
 
             request_fields = self._request_for_proportional_dispatch(
@@ -1272,6 +1273,8 @@ class AutotuneWorkflow:
                     self._evidence_by_direction("iae_median_qs"),
                     self._evidence_by_direction("dac_rms_median_q"),
                 )
+                self.driver.state.pre_tune_snapshot = pre_tune_state
+                self._carry_accepted_velocity_gains(self.result)
                 self._reset_dispatch_state()
                 self._synchronize_disarmed_workflow_terminal(toolhead)
                 outcome = self._run_one_dispatch(
@@ -1365,7 +1368,7 @@ class AutotuneWorkflow:
 
             tune_status = "tuned"
 
-            self.driver.state.pre_tune_snapshot = self._snapshot_pre_tune_state()
+            self.driver.state.pre_tune_snapshot = pre_tune_state
             active_gains = self.driver.state.active_gains
             # velocity_limit, position_i and the filter values no longer
             # arrive on the wire terminal (frame-budget split); this dispatch
@@ -1471,13 +1474,26 @@ class AutotuneWorkflow:
             self.driver.state.release()
 
     def _snapshot_pre_tune_state(self) -> dict:
-        """Capture the pre-tune state before acceptance overwrites active_gains."""
+        """Capture the state the chain started from, before any acceptance touches active_gains."""
         gains = self.driver.state.active_gains
         return {
             "active_gains": dict(gains) if gains is not None else None,
             "runtime_status": self.driver.state.runtime_status,
             "autotune_mode": self.driver.config.autotune_mode,
         }
+
+    def _carry_accepted_velocity_gains(self, result: dict) -> None:
+        """Put the robustness-accepted velocity pair into the gains the next enable preloads.
+
+        The chained position tune re-homes first, and homing preloads ``active_gains`` into
+        firmware; without this the stale pair would overwrite the accepted one on the chip and
+        the position tune would report and commit it.
+        """
+        gains = self.driver.state.active_gains
+        if gains is None:
+            return
+        gains["velocity_p"] = int(result["velocity_p"])
+        gains["velocity_i"] = int(result["velocity_i"])
 
     def _handle_robustness_verdict(self, gcmd) -> None:
         """Revert the deployed gain and config on a non-pass robustness verdict."""
