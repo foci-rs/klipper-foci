@@ -6,6 +6,7 @@ import pytest
 
 from klipper_foci.velocity_integral import (
     BREAKAWAY_DISCOVERY_SCHEMA_REVISION,
+    BREAKAWAY_TERMINAL_CAUSE_NAMES,
     TERMINAL_REST_REJECTION_AFTER_SUFFICIENCY,
     TERMINAL_REST_REJECTION_OWNER_SHIFT,
     VELOCITY_INTEGRAL_TERMINAL_SCHEMA_REVISION,
@@ -820,10 +821,12 @@ def feed_campaign_terminal(
     integral_digest=INTEGRAL_DIGEST,
     terminal_cause=None,
     error_code=0,
+    extra=None,
 ):
     low, high = integral_digest if accepted else (0, 0)
     assembler.handle_campaign_terminal(
         {
+            **(extra or {}),
             "oid": 0,
             "run_sequence": run_sequence,
             "evidence_sequence": 4,
@@ -1128,6 +1131,43 @@ def test_breakaway_campaign_terminal_confirmed_refusal_is_not_a_protocol_error()
     assert assembler.done
     assert assembler.accepted is False
     assert assembler.campaign_terminal["error_code"] == 11
+
+
+def test_campaign_terminal_accepts_cause_28():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_probe_result(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+
+    feed_campaign_terminal(
+        assembler,
+        accepted=False,
+        terminal_cause=28,
+        extra={"nominated_step_peak_permille": 0, "overshoot_excluded_rungs": 3},
+    )
+
+    assert assembler.done
+    assert assembler.campaign_terminal["terminal_cause"] == 28
+    assert assembler.campaign_terminal["overshoot_excluded_rungs"] == 3
+    assert BREAKAWAY_TERMINAL_CAUSE_NAMES[28] == "confirmation_no_damped_candidate"
+
+
+def test_campaign_terminal_without_the_new_fields_reads_them_as_zero():
+    assembler = BreakawayCampaignAssembler()
+    feed_probe_plan(assembler)
+    feed_probe_result(assembler)
+    feed_discovery_plan(assembler)
+    feed_discovery_terminal(assembler)
+    feed_confirmation_plan(assembler)
+    feed_confirmation_terminal(assembler, accepted=True)
+
+    feed_campaign_terminal(assembler, accepted=True)
+
+    assert assembler.done
+    assert assembler.campaign_terminal.get("nominated_step_peak_permille", 0) == 0
+    assert assembler.campaign_terminal.get("overshoot_excluded_rungs", 0) == 0
 
 
 def test_breakaway_campaign_terminal_accepted_requires_an_integral_digest():

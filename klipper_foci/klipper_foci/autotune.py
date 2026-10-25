@@ -45,7 +45,6 @@ from .robustness_reversal import (
 from .velocity_integral import (
     BREAKAWAY_PHASE_NAMES,
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
-    BREAKAWAY_TERMINAL_REMEDIATION,
     FLOOR_ORIGIN_NAMES,
     INTEGRAL_CAUSE_DISPATCH_NAMESPACE,
     INTEGRAL_CAUSE_NAMESPACE_NAMES,
@@ -55,6 +54,7 @@ from .velocity_integral import (
     BreakawayCampaignProtocolError,
     VelocityIntegralAssembler,
     VelocityIntegralProtocolError,
+    breakaway_terminal_remediation,
 )
 
 MODE_MAP: dict[str, int] = {
@@ -665,6 +665,13 @@ class AutotuneWorkflow:
             or int((campaign.confirmation_terminal or {}).get("has_safety_fault", 0))
         )
 
+    def _campaign_step_evidence(self) -> tuple[int, int]:
+        terminal = self.breakaway_campaign.campaign_terminal or {}
+        return (
+            int(terminal.get("nominated_step_peak_permille", 0)),
+            int(terminal.get("overshoot_excluded_rungs", 0)),
+        )
+
     def _format_breakaway_campaign_result(self) -> str:
         """Relay the firmware-authored breakaway campaign report verbatim."""
         campaign = self.breakaway_campaign
@@ -716,7 +723,7 @@ class AutotuneWorkflow:
                 f"{int(confirmation_terminal.get('max_relative_se_permille', 0))}pm required_SE="
                 f"{int(confirmation_terminal.get('required_relative_se_permille', 0))}pm"
             )
-        remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
+        remediation = breakaway_terminal_remediation(cause, terminal)
         if remediation:
             message += f"; remediation: {remediation}"
         return message
@@ -950,13 +957,15 @@ class AutotuneWorkflow:
                 with contextlib.suppress(Exception):
                     logging.info(
                         "foci-gain-search %s: candidate p=%d i=%d verdict=rejected cause=%s "
-                        "iae_median_qs=%s dac_rms_median_q=%s",
+                        "iae_median_qs=%s dac_rms_median_q=%s "
+                        "step_peak_permille=%d excluded_rungs=%d",
                         self.driver.name,
                         int(terminal.get("selected_p", 0)),
                         int(terminal.get("selected_i", 0)),
                         _robustness_reversal_cause_text(int(terminal.get("cause", 0))),
                         iae_by_direction,
                         dac_rms_by_direction,
+                        *self._campaign_step_evidence(),
                     )
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
                     self._inhibit_orchestrated_safety_fault(gcmd)
@@ -1027,7 +1036,7 @@ class AutotuneWorkflow:
             if not self.breakaway_campaign.accepted:
                 terminal = self.breakaway_campaign.campaign_terminal or {}
                 cause = int(terminal.get("terminal_cause", 0))
-                remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
+                remediation = breakaway_terminal_remediation(cause, terminal)
                 if remediation is None:
                     cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause)
                     remediation = (
@@ -1391,12 +1400,13 @@ class AutotuneWorkflow:
                 dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
             logging.info(
                 "foci-gain-search %s: candidate p=%d i=%d verdict=passed "
-                "iae_median_qs=%s dac_rms_median_q=%s",
+                "iae_median_qs=%s dac_rms_median_q=%s step_peak_permille=%d excluded_rungs=%d",
                 self.driver.name,
                 int(result["velocity_p"]),
                 int(result["velocity_i"]),
                 iae_by_direction,
                 dac_rms_by_direction,
+                *self._campaign_step_evidence(),
             )
         finally:
             self.driver.state.release()

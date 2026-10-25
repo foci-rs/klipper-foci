@@ -463,6 +463,7 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     25: "confirmation_internal_fault",
     26: "confirmation_integral_plan_refused",
     27: "confirmation_no_transition_capable_candidate",
+    28: "confirmation_no_damped_candidate",
 }
 
 BREAKAWAY_TERMINAL_REMEDIATION = {
@@ -499,7 +500,21 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
         "found no proportional gain safe to tune further (every band-admissible "
         "candidate exceeded the transition ceiling)"
     ),
+    28: (
+        "every band rung overshoots its step past the damping bound; the ladder is too "
+        "stiff for this plant (per-rung step peaks are on the trace stream)"
+    ),
 }
+
+
+def breakaway_terminal_remediation(cause: int, terminal: dict) -> str | None:
+    remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
+    if remediation is not None and cause == 28:
+        excluded = int(terminal.get("overshoot_excluded_rungs", 0))
+        noun = "rung" if excluded == 1 else "rungs"
+        remediation = remediation.replace("(per-rung", f"({excluded} {noun} excluded; per-rung")
+    return remediation
+
 
 FLOOR_ORIGIN_NAMES = {0: "predecessor", 1: "clamped_at_breakaway"}
 CEILING_BINDING_SOURCE_NAMES = {0: "current_limit", 1: "representability_clamp"}

@@ -4164,6 +4164,119 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertIn("transition ceiling", message)
         self.assertNotIn("no_transition_capable_candidate", message)
 
+    def test_cause_28_console_text_names_the_excluded_count(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_no_damped_candidate(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif not d.autotune.breakaway_campaign.done:
+                feed_breakaway_probe_and_discovery(d)
+                d.autotune.handle_breakaway_confirmation_plan(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 3,
+                        "plan_digest_low": BREAKAWAY_CONFIRMATION_DIGEST[0],
+                        "plan_digest_high": BREAKAWAY_CONFIRMATION_DIGEST[1],
+                        "prior_plan_digest_low": BREAKAWAY_DISCOVERY_DIGEST[0],
+                        "prior_plan_digest_high": BREAKAWAY_DISCOVERY_DIGEST[1],
+                        "family_size": 8,
+                        "observations_per_direction": 4,
+                        "nominated_p_raw": 400,
+                        "band_lower_percent": 70,
+                        "band_upper_percent": 80,
+                        "capture_profile": 0,
+                        "acceptance_rule": 0,
+                        "nominated_margin_percent_milli": 2_000,
+                    }
+                )
+                d.autotune.handle_breakaway_campaign_terminal(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 3,
+                        "phase": 1,
+                        "terminal_cause": 28,
+                        "accepted": 0,
+                        "integral_plan_digest_low": 0,
+                        "integral_plan_digest_high": 0,
+                        "error_code": 0,
+                        "nominated_step_peak_permille": 0,
+                        "overshoot_excluded_rungs": 2,
+                    }
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_no_damped_candidate
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("2 rungs excluded", message)
+        self.assertNotIn("28", message)
+        self.assertNotIn("no_damped_candidate", message)
+
+    def _seed_campaign_terminal_after_each_reset(self, d, terminal):
+        original_reset = d.autotune._reset_dispatch_state
+
+        def reset_and_seed():
+            original_reset()
+            d.autotune.breakaway_campaign.campaign_terminal = dict(terminal)
+
+        d.autotune._reset_dispatch_state = reset_and_seed
+
+    def test_gain_search_log_lines_carry_step_peak_and_excluded_count(self):
+        terminal = {"nominated_step_peak_permille": 1180, "overshoot_excluded_rungs": 2}
+
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        d.state.pre_tune_snapshot = None
+        d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: None
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=3)
+        self._seed_campaign_terminal_after_each_reset(d, terminal)
+        with self.assertLogs(level="INFO") as captured, self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+        rejected = [line for line in captured.output if "foci-gain-search" in line]
+        self.assertEqual(len(rejected), 1)
+        self.assertIn("step_peak_permille=1180 excluded_rungs=2", rejected[0])
+
+        d = self._commissioned_driver()
+        d.printer._objects["configfile"] = MockConfigFile()
+        self._seed_campaign_terminal_after_each_reset(d, terminal)
+        reactor = d.printer.get_reactor()
+        dispatch_count = {"n": 0}
+
+        def pause(deadline):
+            reactor._time = deadline
+            dispatch_count["n"] += 1
+            if dispatch_count["n"] == 1:
+                _feed_dispatch_terminal(d.autotune, "tune_result", SAMPLE_TUNE_RESULT)
+                for direction, iae, dac_rms in ((0, 9, 21), (1, -9, -21)):
+                    d.autotune.handle_robustness_cycle_evidence(
+                        {
+                            "payload": build_cycle_evidence_payload(
+                                direction=direction,
+                                iae_median_qs=iae,
+                                dac_rms_median_q=dac_rms,
+                            )
+                        }
+                    )
+            else:
+                _feed_dispatch_terminal(d.autotune, "tune_result", SAMPLE_POSITION_TUNE_RESULT)
+            return reactor._time
+
+        reactor.pause = pause
+        with self.assertLogs(level="INFO") as captured:
+            d.autotune.autotune(MockGCmd({}))
+        passed = [line for line in captured.output if "foci-gain-search" in line]
+        self.assertEqual(len(passed), 1)
+        self.assertIn("step_peak_permille=1180 excluded_rungs=2", passed[0])
+
     def test_discovery_internal_fault_raises_and_names_cause(self):
         """A done, not-accepted campaign with no safety fault raises a terminal
         error naming the rejection cause -- so a genuine discovery fault is
