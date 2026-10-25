@@ -349,6 +349,7 @@ class AutotuneWorkflow:
         self.velocity_integral_error: VelocityIntegralProtocolError | None = None
         self.breakaway_campaign = BreakawayCampaignAssembler()
         self.breakaway_campaign_error: BreakawayCampaignProtocolError | None = None
+        self.campaign_step_evidence: tuple[int, int] = (0, 0)
         self.robustness_reversal_terminal: dict | None = None
         self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
         self.robustness_cycle_evidence: dict[int, dict] = {}
@@ -503,6 +504,12 @@ class AutotuneWorkflow:
 
     def handle_breakaway_campaign_terminal(self, params: dict) -> None:
         self._handle_breakaway_campaign("handle_campaign_terminal", params)
+        terminal = self.breakaway_campaign.campaign_terminal
+        if terminal is not None:
+            self.campaign_step_evidence = (
+                int(terminal.get("nominated_step_peak_permille", 0)),
+                int(terminal.get("overshoot_excluded_rungs", 0)),
+            )
 
     def _request_for_proportional_dispatch(self, request_fields: dict) -> dict:
         """Reuse the exact retained encoding when the explicit request matches."""
@@ -663,13 +670,6 @@ class AutotuneWorkflow:
             int((campaign.probe_terminal or {}).get("has_safety_fault", 0))
             or int((campaign.discovery_terminal or {}).get("has_safety_fault", 0))
             or int((campaign.confirmation_terminal or {}).get("has_safety_fault", 0))
-        )
-
-    def _campaign_step_evidence(self) -> tuple[int, int]:
-        terminal = self.breakaway_campaign.campaign_terminal or {}
-        return (
-            int(terminal.get("nominated_step_peak_permille", 0)),
-            int(terminal.get("overshoot_excluded_rungs", 0)),
         )
 
     def _format_breakaway_campaign_result(self) -> str:
@@ -965,7 +965,7 @@ class AutotuneWorkflow:
                         _robustness_reversal_cause_text(int(terminal.get("cause", 0))),
                         iae_by_direction,
                         dac_rms_by_direction,
-                        *self._campaign_step_evidence(),
+                        *self.campaign_step_evidence,
                     )
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
                     self._inhibit_orchestrated_safety_fault(gcmd)
@@ -1062,6 +1062,7 @@ class AutotuneWorkflow:
 
     def autotune(self, gcmd) -> None:
         """Installed tuning after commissioning."""
+        self.campaign_step_evidence = (0, 0)
         action_param = gcmd.get("ACTION", None)
         try:
             action = parse_autotune_action(action_param)
@@ -1406,7 +1407,7 @@ class AutotuneWorkflow:
                 int(result["velocity_i"]),
                 iae_by_direction,
                 dac_rms_by_direction,
-                *self._campaign_step_evidence(),
+                *self.campaign_step_evidence,
             )
         finally:
             self.driver.state.release()

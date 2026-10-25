@@ -4221,14 +4221,22 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertNotIn("28", message)
         self.assertNotIn("no_damped_candidate", message)
 
-    def _seed_campaign_terminal_after_each_reset(self, d, terminal):
+    def _capture_campaign_terminal_before_each_reset(self, d, terminal):
         original_reset = d.autotune._reset_dispatch_state
+        delivered = {"done": False}
 
-        def reset_and_seed():
+        def deliver_then_reset():
+            if not delivered["done"]:
+                delivered["done"] = True
+                campaign = d.autotune.breakaway_campaign
+                campaign.handle_campaign_terminal = lambda params: setattr(
+                    campaign, "campaign_terminal", dict(terminal)
+                )
+                d.autotune.velocity_integral.workflow_plan = {"shape": 3}
+                d.autotune.handle_breakaway_campaign_terminal({})
             original_reset()
-            d.autotune.breakaway_campaign.campaign_terminal = dict(terminal)
 
-        d.autotune._reset_dispatch_state = reset_and_seed
+        d.autotune._reset_dispatch_state = deliver_then_reset
 
     def test_gain_search_log_lines_carry_step_peak_and_excluded_count(self):
         terminal = {"nominated_step_peak_permille": 1180, "overshoot_excluded_rungs": 2}
@@ -4238,7 +4246,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         d.state.pre_tune_snapshot = None
         d.homing.set_auto_calibrate_on_enable_allowed = lambda allowed: None
         drive_orchestrated_robustness_scenario(d, outcome=1, cause=3)
-        self._seed_campaign_terminal_after_each_reset(d, terminal)
+        self._capture_campaign_terminal_before_each_reset(d, terminal)
         with self.assertLogs(level="INFO") as captured, self.assertRaises(CommandError):
             d.autotune.autotune(MockGCmd({}))
         rejected = [line for line in captured.output if "foci-gain-search" in line]
@@ -4247,7 +4255,7 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
 
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        self._seed_campaign_terminal_after_each_reset(d, terminal)
+        self._capture_campaign_terminal_before_each_reset(d, terminal)
         reactor = d.printer.get_reactor()
         dispatch_count = {"n": 0}
 
