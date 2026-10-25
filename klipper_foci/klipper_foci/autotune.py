@@ -1238,8 +1238,6 @@ class AutotuneWorkflow:
                 if outcome == DispatchOutcome.TUNE_RESULT:
                     break
                 if outcome != DispatchOutcome.ROBUSTNESS_PEAK_REJECTED:
-                    # Defensive: the orchestrated dispatch raises for every
-                    # other non-pass terminal, so this is unreachable today.
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: robustness reversal after "
                         f"reproduced resume did not pass (outcome={outcome})"
