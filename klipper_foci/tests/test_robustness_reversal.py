@@ -5,12 +5,14 @@ import struct
 
 import pytest
 
+from klipper_foci.autotune import _format_peak_reject_phrase, _robustness_direction_text
 from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
     _CYCLE_EVIDENCE,
     _TERMINAL,
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
+    ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED,
     ROBUSTNESS_CAUSE_SAFETY_FAULT,
     ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES,
     ROBUSTNESS_CYCLES_PER_DIRECTION,
@@ -39,11 +41,12 @@ _DIRECTION_DEFAULTS = {
     "median_reconvergence_ms": 145,
     "max_reconvergence_ms": 210,
     "median_forward_settle_ms": 88,
-    "overshoot_peak_counts": 12,
+    "peak_rate_permille": 1_200,
     "valid_cycles": 5,
     "trip_count": 0,
     "retry_count": 1,
     "inconclusive": 0,
+    "peak_unscored": 0,
 }
 
 
@@ -54,11 +57,11 @@ def _direction_bytes(overrides: dict | None = None) -> bytes:
         fields["median_reconvergence_ms"],
         fields["max_reconvergence_ms"],
         fields["median_forward_settle_ms"],
-        fields["overshoot_peak_counts"],
+        fields["peak_rate_permille"],
         fields["valid_cycles"],
         fields["trip_count"],
         fields["retry_count"],
-        fields["inconclusive"],
+        fields["inconclusive"] | (fields["peak_unscored"] << 1),
     )
 
 
@@ -77,7 +80,7 @@ def build_terminal_payload(
     reverse=None,
     **shared_direction_overrides,
 ) -> bytes:
-    """Build a 51-byte schema-4 robustness-terminal payload for tests.
+    """Build a 51-byte schema-5 robustness-terminal payload for tests.
 
     `forward`/`reverse` override one direction only; any keyword also present
     in `_DIRECTION_DEFAULTS` (e.g. `valid_cycles`) is applied to both
@@ -110,7 +113,7 @@ def build_cycle_evidence_payload(
     tail_count=0,
     displaced_tail=None,
 ) -> bytes:
-    """Build a 51-byte schema-4 cycle-evidence payload for tests.
+    """Build a 51-byte schema-5 cycle-evidence payload for tests.
 
     `cycles` fills slots in order (each a `(reconvergence_ms, overshoot_counts,
     forward_settle_ms)` triple); any of the 5 slots left uncovered pack as the
@@ -184,7 +187,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
                 "median_reconvergence_ms": 120,
                 "max_reconvergence_ms": 180,
                 "median_forward_settle_ms": 70,
-                "overshoot_peak_counts": 9,
+                "peak_rate_permille": 1_090,
                 "valid_cycles": 5,
                 "trip_count": 1,
                 "retry_count": 2,
@@ -194,7 +197,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
                 "median_reconvergence_ms": 260,
                 "max_reconvergence_ms": 310,
                 "median_forward_settle_ms": 95,
-                "overshoot_peak_counts": 3,
+                "peak_rate_permille": 1_030,
                 "valid_cycles": 4,
                 "trip_count": 0,
                 "retry_count": 1,
@@ -207,7 +210,8 @@ def test_terminal_parse_decodes_per_direction_metrics():
     assert forward["median_reconvergence_ms"] == 120
     assert forward["max_reconvergence_ms"] == 180
     assert forward["median_forward_settle_ms"] == 70
-    assert forward["overshoot_peak_counts"] == 9
+    assert forward["peak_rate_permille"] == 1_090
+    assert forward["peak_unscored"] is False
     assert forward["valid_cycles"] == 5
     assert forward["trip_count"] == 1
     assert forward["retry_count"] == 2
@@ -216,7 +220,7 @@ def test_terminal_parse_decodes_per_direction_metrics():
     assert reverse["median_reconvergence_ms"] == 260
     assert reverse["max_reconvergence_ms"] == 310
     assert reverse["median_forward_settle_ms"] == 95
-    assert reverse["overshoot_peak_counts"] == 3
+    assert reverse["peak_rate_permille"] == 1_030
     assert reverse["valid_cycles"] == 4
     assert reverse["trip_count"] == 0
     assert reverse["retry_count"] == 1
@@ -232,8 +236,8 @@ def test_terminal_parse_decodes_plant_rate_and_iae_max():
     assert terminal["iae_max_q_qs"] == 8_400_000
 
 
-def test_cause_names_cover_firmware_values_zero_through_twenty_two():
-    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(23))
+def test_cause_names_cover_firmware_values_zero_through_twenty_three():
+    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(24))
     assert ROBUSTNESS_CAUSE_IAE_EXCEEDED == 3
     assert ROBUSTNESS_CAUSE_NAMES[ROBUSTNESS_CAUSE_IAE_EXCEEDED] == "iae_exceeded"
     assert ROBUSTNESS_CAUSE_NAMES[7] == "evidence_integrity"
@@ -283,7 +287,7 @@ def test_terminal_rejects_invalid_outcome():
 
 def test_terminal_rejects_invalid_cause():
     with pytest.raises(RobustnessReversalProtocolError, match="taxonomy"):
-        handle_and_return(build_terminal_payload(cause=23))
+        handle_and_return(build_terminal_payload(cause=24))
 
 
 def test_terminal_rejects_unsupported_schema():
@@ -491,7 +495,7 @@ def test_formatted_message_reports_direction_medians_and_overshoot():
             "median_reconvergence_ms": 150,
             "max_reconvergence_ms": 220,
             "median_forward_settle_ms": 30,
-            "overshoot_peak_counts": 14,
+            "peak_rate_permille": 1_140,
             "valid_cycles": 5,
         },
     )
@@ -504,7 +508,7 @@ def test_formatted_message_reports_direction_medians_and_overshoot():
     assert "dir0: median_reconvergence=150ms" in message
     assert "max_reconvergence=220ms" in message
     assert "median_forward_settle=30ms" in message
-    assert "overshoot_peak=14counts" in message
+    assert "peak=1.14x" in message
     assert "valid_cycles=5" in message
 
 
@@ -597,7 +601,7 @@ def test_autotune_reports_the_robustness_reversal_terminal(caplog):
                 "median_reconvergence_ms": 150,
                 "max_reconvergence_ms": 220,
                 "median_forward_settle_ms": 30,
-                "overshoot_peak_counts": 3,
+                "peak_rate_permille": 1_030,
                 "valid_cycles": 5,
             },
         )
@@ -687,3 +691,60 @@ def test_autotune_raises_on_robustness_reversal_transport_failure():
 
     with pytest.raises(CommandError, match="robustness reversal transport failure"):
         driver.autotune.autotune(gcmd)
+
+
+def test_terminal_schema_5_exposes_peak_rate_permille_and_unscored_flag():
+    terminal = handle_and_return(
+        build_terminal_payload(
+            forward={"peak_rate_permille": 1_530, "peak_unscored": 1, "inconclusive": 1},
+            reverse={"peak_rate_permille": 0},
+        )
+    )
+
+    forward, reverse = terminal["directions"]
+    assert terminal["schema_revision"] == 5
+    assert forward["peak_rate_permille"] == 1_530
+    assert forward["peak_unscored"] is True
+    assert forward["inconclusive"] is True
+    assert reverse["peak_rate_permille"] == 0
+    assert reverse["peak_unscored"] is False
+    assert reverse["inconclusive"] is False
+
+
+def test_terminal_schema_4_is_refused():
+    with pytest.raises(RobustnessReversalProtocolError, match="schema"):
+        handle_and_return(build_terminal_payload(schema_revision=4))
+
+
+def test_cause_23_is_named():
+    assert ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED == 23
+    assert ROBUSTNESS_CAUSE_NAMES[23] == "reversal_peak_exceeded"
+
+
+def test_peak_reject_renders_ratio_bound_and_p():
+    terminal = handle_and_return(
+        build_terminal_payload(
+            outcome=1,
+            cause=23,
+            selected_p=786,
+            forward={"peak_rate_permille": 1_530},
+            reverse={"peak_rate_permille": 1_100},
+        )
+    )
+
+    text = _format_peak_reject_phrase(terminal)
+
+    assert "1.53x" in text
+    assert "1.50x" in text
+    assert "P=786" in text
+    assert "23" not in text
+
+
+def test_direction_text_prints_the_peak_ratio_or_unscored():
+    scored = _robustness_direction_text(0, {"valid_cycles": 5, "peak_rate_permille": 1_530})
+    unscored = _robustness_direction_text(
+        1, {"valid_cycles": 5, "peak_rate_permille": 0, "peak_unscored": True}
+    )
+
+    assert "peak=1.53x" in scored
+    assert "peak=unscored" in unscored

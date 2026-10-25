@@ -29,6 +29,7 @@ from .report import humanize, report_detail, report_summary
 from .robustness_reversal import (
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
+    ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED,
     ROBUSTNESS_CAUSE_SAFETY_FAULT,
     ROBUSTNESS_OUTCOME_COMPLETE,
     ROBUSTNESS_OUTCOME_FAILED,
@@ -209,6 +210,22 @@ _ROBUSTNESS_REJECT_PHRASES = {
 }
 
 
+def _format_peak_reject_phrase(terminal: dict) -> str:
+    scored = [
+        int(direction.get("peak_rate_permille", 0))
+        for direction in terminal.get("directions") or ()
+        if int(direction.get("peak_rate_permille", 0)) > 0
+    ]
+    measured = max(scored, default=0)
+    bound = _ENVELOPE_PROPORTIONAL_NUM * 1000 // _ENVELOPE_PROPORTIONAL_DEN
+    return (
+        f"The most aggressive in-band candidate (P={int(terminal.get('selected_p', 0))} "
+        f"I={int(terminal.get('selected_i', 0))}) failed the robustness gate: "
+        f"reversal velocity peaked at {measured / 1000:.2f}x the leg target, above the "
+        f"{bound / 1000:.2f}x bound."
+    )
+
+
 def _format_robustness_reject_phrase(cause: int) -> str:
     if cause in _ROBUSTNESS_REJECT_PHRASES:
         return _ROBUSTNESS_REJECT_PHRASES[cause]
@@ -293,6 +310,13 @@ def _rest_rejection_owner_text(owner: str | None) -> str | None:
     return _REST_REJECTION_OWNER_TEXT.get(owner, owner)
 
 
+def _peak_text(direction: dict) -> str:
+    permille = int(direction.get("peak_rate_permille", 0))
+    if bool(direction.get("peak_unscored", False)) or permille == 0:
+        return "unscored"
+    return f"{permille / 1000:.2f}x"
+
+
 def _robustness_direction_text(index: int, direction: dict) -> str:
     """Render one robustness-reversal direction summary."""
     valid_cycles = int(direction.get("valid_cycles", 0))
@@ -308,7 +332,7 @@ def _robustness_direction_text(index: int, direction: dict) -> str:
         f"dir{index}: median_reconvergence={int(direction.get('median_reconvergence_ms', 0))}ms "
         f"max_reconvergence={int(direction.get('max_reconvergence_ms', 0))}ms "
         f"median_forward_settle={int(direction.get('median_forward_settle_ms', 0))}ms "
-        f"overshoot_peak={int(direction.get('overshoot_peak_counts', 0))}counts "
+        f"peak={_peak_text(direction)} "
         f"valid_cycles={valid_cycles} trip_count={trip_count} retries={retry_count} "
         f"inconclusive={inconclusive}"
     )
@@ -958,6 +982,17 @@ class AutotuneWorkflow:
                         f"measured IAE {measured} exceeds bound "
                         f"{int(terminal.get('iae_max_q_qs', 0))}. "
                         f"The plant cannot be robustly controlled within the response band."
+                    )
+                if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED:
+                    report_summary(
+                        gcmd,
+                        f"{self._summary_prefix()}: FAILED, no robust gain within the "
+                        "response band.",
+                    )
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: no robust gain within the response band. "
+                        f"{_format_peak_reject_phrase(terminal)} "
+                        "The plant cannot be robustly controlled within the response band."
                     )
                 cause = int(terminal.get("cause", 0))
                 raise gcmd.error(

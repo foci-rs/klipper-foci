@@ -1831,6 +1831,21 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(persisted, [])
         self.assertFalse(d.state.inhibited)
 
+    def test_first_bringup_peak_reject_raises_the_diagnostic(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = None
+        drive_orchestrated_robustness_scenario(d, outcome=1, cause=23)
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+
+        message = str(ctx.exception)
+        self.assertIn("1.20x", message)
+        self.assertIn("1.50x", message)
+        self.assertIn("P=1024", message)
+        self.assertNotIn("cause 23", message.lower())
+        self.assertNotIn("reversal_peak_exceeded", message)
+
     def test_orchestrated_reject_stale_snapshot_does_not_revert(self):
         """Same assertions with a deliberately stale pre_tune_snapshot present:
         the orchestrated branch must never consult it, so a snapshot left over

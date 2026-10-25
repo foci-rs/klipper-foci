@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-ROBUSTNESS_SCHEMA_REVISION = 4
+ROBUSTNESS_SCHEMA_REVISION = 5
 ROBUSTNESS_TERMINAL_REPLY_BYTES = 51
 ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES = 51
 ROBUSTNESS_CYCLES_PER_DIRECTION = 5
@@ -22,6 +22,7 @@ ROBUSTNESS_OUTCOME_NAMES = {
 
 ROBUSTNESS_CAUSE_IAE_EXCEEDED = 3
 ROBUSTNESS_CAUSE_SAFETY_FAULT = 6
+ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED = 23
 
 ROBUSTNESS_CAUSE_NAMES = {
     0: "pass",
@@ -47,6 +48,7 @@ ROBUSTNESS_CAUSE_NAMES = {
     20: "unexpected_state",
     21: "origin_recovery_fault",
     22: "dispatch_abort",
+    23: "reversal_peak_exceeded",
 }
 
 _HEADER = "<BIBBHHi"
@@ -54,6 +56,8 @@ _DIRECTION = "HHHHBBBB"
 _TERMINAL_TAIL = "qi"
 _TERMINAL = struct.Struct(_HEADER + _DIRECTION * 2 + _TERMINAL_TAIL)
 _DIRECTION_FIELD_COUNT = 8
+_FLAG_INCONCLUSIVE = 1 << 0
+_FLAG_PEAK_UNSCORED = 1 << 1
 
 _CYCLE_EVIDENCE_HEADER = "<BBiii"
 _CYCLE_FIELDS_PER_SLOT = 3
@@ -105,21 +109,22 @@ def _direction_from_fields(fields: tuple) -> dict:
         median_reconvergence_ms,
         max_reconvergence_ms,
         median_forward_settle_ms,
-        overshoot_peak_counts,
+        peak_rate_permille,
         valid_cycles,
         trip_count,
         retry_count,
-        inconclusive,
+        flags,
     ) = fields
     return {
         "median_reconvergence_ms": median_reconvergence_ms,
         "max_reconvergence_ms": max_reconvergence_ms,
         "median_forward_settle_ms": median_forward_settle_ms,
-        "overshoot_peak_counts": overshoot_peak_counts,
+        "peak_rate_permille": peak_rate_permille,
         "valid_cycles": valid_cycles,
         "trip_count": trip_count,
         "retry_count": retry_count,
-        "inconclusive": bool(inconclusive),
+        "inconclusive": bool(flags & _FLAG_INCONCLUSIVE),
+        "peak_unscored": bool(flags & _FLAG_PEAK_UNSCORED),
     }
 
 
