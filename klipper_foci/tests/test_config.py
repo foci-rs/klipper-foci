@@ -144,7 +144,7 @@ def test_diagnostics_active_and_passive_absent_with_core_only(monkeypatch):
     assert not hasattr(driver, "diagnostics_passive")
 
 
-def test_diagnostics_entry_point_registers_all_nine_commands(monkeypatch):
+def test_diagnostics_entry_point_registers_passive_commands_at_config_time(monkeypatch):
     from klipper_foci_diagnostics.registry import register as diagnostics_register
 
     monkeypatch.setattr(
@@ -161,12 +161,6 @@ def test_diagnostics_entry_point_registers_all_nine_commands(monkeypatch):
         "FOCI_STEP_POSITION": ("diagnostics_passive", "step_position"),
         "FOCI_STEPPER_STATS": ("diagnostics_passive", "stepper_stats"),
         "FOCI_STACK_WATERMARK": ("diagnostics_passive", "stack_watermark"),
-        "FOCI_CURRENT_STEP_TEST": ("diagnostics_active", "current_step_test"),
-        "FOCI_CURRENT_VECTOR_STEP_TEST": ("diagnostics_active", "current_vector_step_test"),
-        "FOCI_CURRENT_TORQUE_SAMPLE_TEST": ("diagnostics_active", "current_torque_sample_test"),
-        "FOCI_POSITION_TORQUE_OFFSET_TEST": ("diagnostics_active", "position_torque_offset_test"),
-        "FOCI_VOLTAGE_STEP_TEST": ("diagnostics_active", "voltage_step_test"),
-        "FOCI_RESISTANCE_TEST": ("diagnostics_active", "resistance_test"),
     }
     for command_name, (component_attr, handler_name) in expected.items():
         assert command_name in handlers_by_name
@@ -201,7 +195,8 @@ def test_diagnostics_alone_works(monkeypatch):
     make_config_driver(printer, sections, "foci stepper_x")
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
-    assert "FOCI_CURRENT_STEP_TEST" in registered_names
+    assert "FOCI_STEP_POSITION" in registered_names
+    assert "FOCI_CURRENT_STEP_TEST" not in registered_names
 
 
 def test_homing_events_register_homing_workflow_callbacks():

@@ -464,14 +464,6 @@ DIAGNOSTIC_COMMANDS = (
     "tmc_voltage_step_test",
     "tmc_resistance_test",
 )
-TEST_GCODE_ARGS = {
-    "current_step_test": {"TARGET": 100},
-    "current_vector_step_test": {},
-    "current_torque_sample_test": {"TARGET": 100},
-    "position_torque_offset_test": {"TARGET": 100},
-    "voltage_step_test": {"UQ": 100},
-    "resistance_test": {},
-}
 
 
 class _FirmwareMCU(MockMCU):
@@ -494,36 +486,6 @@ def _driver_on_firmware(absent=()):
 
 
 class TestMissingDiagnosticsFeature(unittest.TestCase):
-    def _assert_all_handlers_refuse(self, d, expected_missing):
-        active = DiagnosticsActive(d)
-        for handler, args in TEST_GCODE_ARGS.items():
-            with self.subTest(handler=handler):
-                with self.assertRaises(CommandError) as ctx:
-                    getattr(active, handler)(MockGCmd(args))
-                message = str(ctx.exception)
-                self.assertIn("diagnostics", message)
-                self.assertIn("--features diagnostics", message)
-                for name in DIAGNOSTIC_COMMANDS:
-                    self.assertEqual(name in message, name in expected_missing, name)
-
-    def test_test_command_fails_naming_missing_feature(self):
-        d = _driver_on_firmware(absent=DIAGNOSTIC_COMMANDS)
-
-        self._assert_all_handlers_refuse(d, DIAGNOSTIC_COMMANDS)
-
-        for attribute in (
-            "current_step_test",
-            "voltage_step_test",
-            "resistance_test",
-        ):
-            self.assertIsNone(getattr(d.protocol.commands, attribute))
-
-    def test_partial_dictionary_names_missing_commands(self):
-        absent = ("tmc_voltage_step_test", "tmc_resistance_test")
-        d = _driver_on_firmware(absent=absent)
-
-        self._assert_all_handlers_refuse(d, absent)
-
     def test_full_dictionary_registers_responses_once(self):
         d = _driver_on_firmware()
         registry.register(d)
@@ -550,3 +512,56 @@ class TestMissingDiagnosticsFeature(unittest.TestCase):
             hook(d)
 
         self.assertEqual(len(d.mcu._serial.responses), before)
+
+
+TEST_GCODE_COMMANDS = (
+    "FOCI_CURRENT_STEP_TEST",
+    "FOCI_CURRENT_VECTOR_STEP_TEST",
+    "FOCI_CURRENT_TORQUE_SAMPLE_TEST",
+    "FOCI_POSITION_TORQUE_OFFSET_TEST",
+    "FOCI_VOLTAGE_STEP_TEST",
+    "FOCI_RESISTANCE_TEST",
+)
+
+
+def _registered_gcode_names(driver):
+    gcode = driver.printer.lookup_object("gcode")
+    return [args[0] for args, _kwargs in gcode._mux_commands]
+
+
+class TestTestCommandsRegisterOnConnect(unittest.TestCase):
+    def _connect(self, absent=()):
+        d = _driver_on_firmware(absent=absent)
+        specs = registry.register(d)
+        for hook in d.mcu_bound_hooks:
+            hook(d)
+        return d, specs
+
+    def test_config_time_specs_leave_out_the_test_commands(self):
+        _d, specs = self._connect()
+
+        names = [spec.name for spec in specs]
+        self.assertIn("FOCI_STEP_POSITION", names)
+        for name in TEST_GCODE_COMMANDS:
+            self.assertNotIn(name, names)
+
+    def test_full_dictionary_registers_every_test_command_for_the_stepper(self):
+        d, _specs = self._connect()
+
+        gcode = d.printer.lookup_object("gcode")
+        registered = {args[0]: args[1:] for args, _kwargs in gcode._mux_commands}
+        for spec in registry.TEST_COMMAND_SPECS:
+            key, value, handler = registered[spec.name]
+            self.assertEqual((key, value), ("STEPPER", d.stepper_name), spec.name)
+            self.assertEqual(handler.__name__, spec.handler_name, spec.name)
+        self.assertEqual(set(registered), set(TEST_GCODE_COMMANDS))
+
+    def test_missing_commands_register_no_test_command_and_say_why(self):
+        absent = ("tmc_voltage_step_test", "tmc_resistance_test")
+        d, _specs = self._connect(absent=absent)
+
+        self.assertEqual(_registered_gcode_names(d), [])
+        message = d.printer.lookup_object("gcode")._responses[-1]
+        self.assertIn("--features diagnostics", message)
+        for name in DIAGNOSTIC_COMMANDS:
+            self.assertEqual(name in message, name in absent, name)

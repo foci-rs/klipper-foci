@@ -39,9 +39,9 @@ The active diagnostic commands also need firmware built with
 `--features diagnostics` (for example `cargo build -p ouroboros-fw --release
 --target thumbv7em-none-eabihf --features diagnostics`; use
 `-p openffboard-fw --target thumbv7em-none-eabi` for OpenFFBoard). On
-firmware built without it, the diagnostics package reports that the
-firmware was built without the diagnostics feature and names the missing
-commands.
+firmware built without it, the `FOCI_*_TEST` commands are not registered,
+and the diagnostics package logs one line at connect naming the missing
+firmware commands.
 
 ### Manual install (development / troubleshooting)
 
