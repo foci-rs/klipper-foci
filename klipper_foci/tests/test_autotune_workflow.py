@@ -1849,7 +1849,7 @@ class TestAutotuneGates(unittest.TestCase):
         )
         message = str(ctx.exception)
         self.assertIn("1.20x", message)
-        self.assertIn("1.50x", message)
+        self.assertIn("1.71x", message)
         self.assertIn("P=1024", message)
         self.assertNotIn("cause 23", message.lower())
         self.assertNotIn("reversal_peak_exceeded", message)

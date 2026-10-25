@@ -159,6 +159,17 @@ POSITION_TUNE_STEP_NAMES: dict[int, str] = {
 # Mirrors the firmware envelope and ceiling rule; change both together.
 _ENVELOPE_PROPORTIONAL_NUM = 3
 _ENVELOPE_PROPORTIONAL_DEN = 2
+_ROBUSTNESS_LEG_AMPLITUDE_PCT = 85
+_ROBUSTNESS_BAND_FRACTION_PCT = 5
+# Firmware's REVERSAL_PEAK_REJECT_PERMILLE: the outer-safety cap in leg-target units, less one
+# settle band.
+_CAP_PERMILLE_OF_LEG_TARGET = (
+    1000
+    * _ENVELOPE_PROPORTIONAL_NUM
+    * 100
+    // (_ENVELOPE_PROPORTIONAL_DEN * _ROBUSTNESS_LEG_AMPLITUDE_PCT)
+)
+_REVERSAL_PEAK_REJECT_PERMILLE = _CAP_PERMILLE_OF_LEG_TARGET - 10 * _ROBUSTNESS_BAND_FRACTION_PCT
 _ENVELOPE_ABSOLUTE_MARGIN_MREV_S = 2000
 _VELOCITY_CEILING_NUM = 4
 _VELOCITY_CEILING_DEN = 5
@@ -217,7 +228,7 @@ def _format_peak_reject_phrase(terminal: dict) -> str:
         if int(direction.get("peak_rate_permille", 0)) > 0
     ]
     measured = max(scored, default=0)
-    bound = _ENVELOPE_PROPORTIONAL_NUM * 1000 // _ENVELOPE_PROPORTIONAL_DEN
+    bound = _REVERSAL_PEAK_REJECT_PERMILLE
     return (
         f"The most aggressive in-band candidate (P={int(terminal.get('selected_p', 0))} "
         f"I={int(terminal.get('selected_i', 0))}) failed the robustness gate: "

@@ -5,7 +5,11 @@ import struct
 
 import pytest
 
-from klipper_foci.autotune import _format_peak_reject_phrase, _robustness_direction_text
+from klipper_foci.autotune import (
+    _REVERSAL_PEAK_REJECT_PERMILLE,
+    _format_peak_reject_phrase,
+    _robustness_direction_text,
+)
 from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
     _CYCLE_EVIDENCE,
@@ -727,17 +731,23 @@ def test_peak_reject_renders_ratio_bound_and_p():
             outcome=1,
             cause=23,
             selected_p=786,
-            forward={"peak_rate_permille": 1_530},
+            forward={"peak_rate_permille": 1_750},
             reverse={"peak_rate_permille": 1_100},
         )
     )
 
     text = _format_peak_reject_phrase(terminal)
 
-    assert "1.53x" in text
-    assert "1.50x" in text
+    assert "1.75x" in text
+    assert "1.71x" in text
     assert "P=786" in text
     assert "23" not in text
+
+
+def test_peak_reject_bound_is_one_settle_band_under_the_cap():
+    # Mirrors firmware's REVERSAL_PEAK_REJECT_PERMILLE: the cap in leg-target units
+    # (1.5 / 0.85) less one 5% settle band, floor integer arithmetic.
+    assert _REVERSAL_PEAK_REJECT_PERMILLE == 1714
 
 
 def test_direction_text_prints_the_peak_ratio_or_unscored():
