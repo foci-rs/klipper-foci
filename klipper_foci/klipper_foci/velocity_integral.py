@@ -509,7 +509,7 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
 
 def breakaway_terminal_remediation(cause: int, terminal: dict) -> str | None:
     remediation = BREAKAWAY_TERMINAL_REMEDIATION.get(cause)
-    if remediation is not None and cause == 28:
+    if cause == 28:
         excluded = int(terminal.get("overshoot_excluded_rungs", 0))
         noun = "rung" if excluded == 1 else "rungs"
         remediation = remediation.replace("(per-rung", f"({excluded} {noun} excluded; per-rung")
