@@ -43,6 +43,7 @@ from .robustness_reversal import (
     handle_terminal as parse_robustness_reversal_terminal,
 )
 from .velocity_integral import (
+    BREAKAWAY_CAUSE_NO_RUNG_BELOW_CEILING,
     BREAKAWAY_PHASE_NAMES,
     BREAKAWAY_TERMINAL_CAUSE_NAMES,
     FLOOR_ORIGIN_NAMES,
@@ -134,6 +135,10 @@ class DispatchOutcome(StrEnum):
     ROBUSTNESS_REVERSAL = "robustness_reversal"
     BREAKAWAY_CAMPAIGN = "breakaway_campaign"
     VELOCITY_INTEGRAL_INCOMPLETE = "velocity_integral_incomplete"
+    ROBUSTNESS_PEAK_REJECTED = "robustness_peak_rejected"
+
+
+AUTOTUNE_MAX_STEP_DOWNS = 2
 
 
 # Wire code 0 is reserved to mean "not applicable" and never appears here.
@@ -221,19 +226,24 @@ _ROBUSTNESS_REJECT_PHRASES = {
 }
 
 
-def _format_peak_reject_phrase(terminal: dict) -> str:
-    scored = [
-        int(direction.get("peak_rate_permille", 0))
-        for direction in terminal.get("directions") or ()
-        if int(direction.get("peak_rate_permille", 0)) > 0
-    ]
-    measured = max(scored, default=0)
+def _reversal_peak_permille(terminal: dict) -> int:
+    return max(
+        (
+            int(direction.get("peak_rate_permille", 0))
+            for direction in terminal.get("directions") or ()
+        ),
+        default=0,
+    )
+
+
+def _format_peak_reject_phrase(terminal: dict, rejected_rungs: list[int]) -> str:
+    measured = _reversal_peak_permille(terminal)
     bound = _REVERSAL_PEAK_REJECT_PERMILLE
+    rungs = ", ".join(str(p) for p in rejected_rungs)
     return (
-        f"The most aggressive in-band candidate (P={int(terminal.get('selected_p', 0))} "
-        f"I={int(terminal.get('selected_i', 0))}) failed the robustness gate: "
-        f"reversal velocity peaked at {measured / 1000:.2f}x the leg target, above the "
-        f"{bound / 1000:.2f}x bound."
+        f"P={rungs} all failed the robustness gate on the reversal peak: the last "
+        f"(P={int(terminal.get('selected_p', 0))} I={int(terminal.get('selected_i', 0))}) "
+        f"peaked at {measured / 1000:.2f}x the leg target, above the {bound / 1000:.2f}x bound."
     )
 
 
@@ -875,6 +885,7 @@ class AutotuneWorkflow:
         toolhead,
         safe_pose_move: str,
         orchestrated: bool = False,
+        step_down: int = 0,
     ) -> str:
         """Issue one firmware dispatch and wait for its terminal.
 
@@ -883,7 +894,10 @@ class AutotuneWorkflow:
         workflow finished via a plain velocity-integral evidence terminal instead. Any other
         workflow (robustness reversal or breakaway campaign) is
         fully handled inline -- including raising on fault -- and returns its own marker, since none
-        of those retry through a second dispatch.
+        of those retry through a second dispatch, except an orchestrated robustness reject on
+        the reversal peak: it returns ``ROBUSTNESS_PEAK_REJECTED`` with the terminal left in
+        ``robustness_reversal_terminal`` so the caller can step the nomination down. ``step_down``
+        is that caller's step count, recorded on the gain-search evidence line.
         """
         self._rehome_and_center(gcmd, toolhead, safe_pose_move)
         dispatch_fields = dict(request_fields, action=action_code)
@@ -969,7 +983,7 @@ class AutotuneWorkflow:
                     logging.info(
                         "foci-gain-search %s: candidate p=%d i=%d verdict=rejected cause=%s "
                         "iae_median_qs=%s dac_rms_median_q=%s "
-                        "step_peak_permille=%d excluded_rungs=%d",
+                        "step_peak_permille=%d excluded_rungs=%d step_down=%d below_p=%d",
                         self.driver.name,
                         int(terminal.get("selected_p", 0)),
                         int(terminal.get("selected_i", 0)),
@@ -977,6 +991,8 @@ class AutotuneWorkflow:
                         iae_by_direction,
                         dac_rms_by_direction,
                         *self.campaign_step_evidence,
+                        step_down,
+                        int(request_fields["nomination_p_below"]),
                     )
                 if int(terminal["outcome"]) == 3 and int(terminal["cause"]) == 6:
                     self._inhibit_orchestrated_safety_fault(gcmd)
@@ -1004,16 +1020,7 @@ class AutotuneWorkflow:
                         f"The plant cannot be robustly controlled within the response band."
                     )
                 if int(terminal.get("cause", 0)) == ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED:
-                    report_summary(
-                        gcmd,
-                        f"{self._summary_prefix()}: FAILED, no robust gain within the "
-                        "response band.",
-                    )
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: no robust gain within the response band. "
-                        f"{_format_peak_reject_phrase(terminal)} "
-                        "The plant cannot be robustly controlled within the response band."
-                    )
+                    return DispatchOutcome.ROBUSTNESS_PEAK_REJECTED
                 cause = int(terminal.get("cause", 0))
                 raise gcmd.error(
                     f"FOCI {self.driver.stepper_name}: FOCI_AUTOTUNE "
@@ -1047,6 +1054,11 @@ class AutotuneWorkflow:
             if not self.breakaway_campaign.accepted:
                 terminal = self.breakaway_campaign.campaign_terminal or {}
                 cause = int(terminal.get("terminal_cause", 0))
+                if cause == BREAKAWAY_CAUSE_NO_RUNG_BELOW_CEILING:
+                    raise gcmd.error(
+                        f"FOCI {self.driver.stepper_name}: no admissible rung below "
+                        f"P={int(request_fields['nomination_p_below'])}; existing gains retained."
+                    )
                 remediation = breakaway_terminal_remediation(cause, terminal)
                 if remediation is None:
                     cause_name = BREAKAWAY_TERMINAL_CAUSE_NAMES.get(cause)
@@ -1181,8 +1193,16 @@ class AutotuneWorkflow:
                 }
             )
 
-            outcome = self._run_one_dispatch(gcmd, action, request_fields, toolhead, safe_pose_move)
-            if outcome == "first_run_retained":
+            rejected_rungs: list[int] = []
+            for step_down in range(AUTOTUNE_MAX_STEP_DOWNS + 1):
+                if step_down:
+                    self._reset_dispatch_state()
+                    action = ACTION_CODES["velocity_p_tune"]
+                outcome = self._run_one_dispatch(
+                    gcmd, action, request_fields, toolhead, safe_pose_move, step_down=step_down
+                )
+                if outcome != "first_run_retained":
+                    break
                 self._reset_dispatch_state()
                 self.driver.commissioning.phase_label_override = (
                     "Confirming integral gain repeatability"
@@ -1194,33 +1214,58 @@ class AutotuneWorkflow:
                         request_fields,
                         toolhead,
                         safe_pose_move,
+                        step_down=step_down,
                     )
                 finally:
                     self.driver.commissioning.phase_label_override = None
-                if outcome == "repeatability_confirmed":
-                    self._reset_dispatch_state()
-                    outcome = self._run_one_dispatch(
-                        gcmd,
-                        ACTION_CODES["velocity_tune_check"],
-                        request_fields,
-                        toolhead,
-                        safe_pose_move,
-                        orchestrated=True,
-                    )
+                if outcome != "repeatability_confirmed":
                     if outcome != DispatchOutcome.TUNE_RESULT:
-                        # Defensive: the orchestrated dispatch above raises
-                        # for every non-pass terminal (ordinary reject and
-                        # safety fault alike), so this is unreachable today.
                         raise gcmd.error(
-                            f"FOCI {self.driver.name}: robustness reversal after "
-                            f"reproduced resume did not pass (outcome={outcome})"
+                            f"FOCI {self.driver.name}: velocity-integral resume did not "
+                            f"reproduce the accepted candidate (outcome={outcome})"
                         )
-                elif outcome != DispatchOutcome.TUNE_RESULT:
+                    break
+                self._reset_dispatch_state()
+                outcome = self._run_one_dispatch(
+                    gcmd,
+                    ACTION_CODES["velocity_tune_check"],
+                    request_fields,
+                    toolhead,
+                    safe_pose_move,
+                    orchestrated=True,
+                    step_down=step_down,
+                )
+                if outcome == DispatchOutcome.TUNE_RESULT:
+                    break
+                if outcome != DispatchOutcome.ROBUSTNESS_PEAK_REJECTED:
+                    # Defensive: the orchestrated dispatch raises for every
+                    # other non-pass terminal, so this is unreachable today.
                     raise gcmd.error(
-                        f"FOCI {self.driver.name}: velocity-integral resume did not reproduce "
-                        f"the accepted candidate (outcome={outcome})"
+                        f"FOCI {self.driver.name}: robustness reversal after "
+                        f"reproduced resume did not pass (outcome={outcome})"
                     )
-            elif outcome != DispatchOutcome.TUNE_RESULT:
+                terminal = self.robustness_reversal_terminal
+                rejected_rungs.append(int(terminal.get("selected_p", 0)))
+                if step_down == AUTOTUNE_MAX_STEP_DOWNS:
+                    report_summary(
+                        gcmd,
+                        f"{self._summary_prefix()}: FAILED, no robust gain within the "
+                        "response band.",
+                    )
+                    raise gcmd.error(
+                        f"FOCI {self.driver.name}: no robust gain within the response band. "
+                        f"{_format_peak_reject_phrase(terminal, rejected_rungs)} "
+                        "The plant cannot be robustly controlled within the response band."
+                    )
+                report_summary(
+                    gcmd,
+                    f"{self._summary_prefix()}: robustness rejected P={rejected_rungs[-1]}, "
+                    f"reversal peak {_reversal_peak_permille(terminal) / 1000:.2f}x; stepping "
+                    "down to the next admissible rung, "
+                    f"{step_down + 1} of {AUTOTUNE_MAX_STEP_DOWNS}",
+                )
+                request_fields["nomination_p_below"] = rejected_rungs[-1]
+            if outcome != DispatchOutcome.TUNE_RESULT:
                 return
 
             chained_velocity_evidence = None
@@ -1413,13 +1458,16 @@ class AutotuneWorkflow:
                 dac_rms_by_direction = self._evidence_by_direction("dac_rms_median_q")
             logging.info(
                 "foci-gain-search %s: candidate p=%d i=%d verdict=passed "
-                "iae_median_qs=%s dac_rms_median_q=%s step_peak_permille=%d excluded_rungs=%d",
+                "iae_median_qs=%s dac_rms_median_q=%s step_peak_permille=%d excluded_rungs=%d "
+                "step_down=%d below_p=%d",
                 self.driver.name,
                 int(result["velocity_p"]),
                 int(result["velocity_i"]),
                 iae_by_direction,
                 dac_rms_by_direction,
                 *self.campaign_step_evidence,
+                step_down,
+                int(request_fields["nomination_p_below"]),
             )
         finally:
             self.driver.state.release()

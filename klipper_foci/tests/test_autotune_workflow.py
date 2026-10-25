@@ -35,7 +35,7 @@ from tests.mocks import (
     MockPrintStats,
     make_driver,
 )
-from tests.test_robustness_reversal import build_cycle_evidence_payload
+from tests.test_robustness_reversal import build_cycle_evidence_payload, build_terminal_payload
 
 
 def test_feedforward_path_mask_decoding_pins_the_five_slot_table():
@@ -449,6 +449,71 @@ def drive_orchestrated_robustness_scenario(d, *, outcome, cause):
         return reactor._time
 
     reactor.pause = pause
+
+
+def drive_dispatch_sequence(d, steps):
+    """Feed one entry of ``steps`` per firmware dispatch and record every ``run_tune`` call.
+
+    A string entry goes through ``_feed_dispatch_terminal`` (with ``SAMPLE_TUNE_RESULT`` for
+    "tune_result"); a callable entry is called with the driver. Returns the list of keyword
+    arguments each ``run_tune`` received, in dispatch order.
+    """
+    reactor = d.printer.get_reactor()
+    previous_run_tune = d.protocol.run_tune
+    calls = []
+
+    def recording_run_tune(**kwargs):
+        calls.append(kwargs)
+        return previous_run_tune(**kwargs)
+
+    d.protocol.run_tune = recording_run_tune
+
+    def pause(deadline):
+        reactor._time = deadline
+        step = steps[len(calls) - 1]
+        if callable(step):
+            step(d)
+        else:
+            _feed_dispatch_terminal(d.autotune, step, SAMPLE_TUNE_RESULT)
+        return reactor._time
+
+    reactor.pause = pause
+    return calls
+
+
+def robustness_terminal_step(**payload_fields):
+    def feed(d):
+        d.autotune.handle_robustness_reversal_terminal(
+            {"payload": build_terminal_payload(**payload_fields)}
+        )
+
+    return feed
+
+
+def campaign_failed_step(terminal_cause):
+    def feed(d):
+        campaign = d.autotune.breakaway_campaign
+        campaign.done = True
+        campaign.accepted = False
+        campaign.campaign_terminal = {"terminal_cause": terminal_cause}
+        d.autotune.velocity_integral.done = True
+
+    return feed
+
+
+def chain_steps(final_step):
+    return ["breakaway_accepted_first_run_retained", "repeatability_confirmed", final_step]
+
+
+def peak_reject_chain(selected_p, peak_permille=1_750):
+    return chain_steps(
+        robustness_terminal_step(
+            outcome=1,
+            cause=23,
+            selected_p=selected_p,
+            forward={"peak_rate_permille": peak_permille},
+        )
+    )
 
 
 def feed_cycle_evidence_after_each_pause(d, *, iae_by_direction, dac_rms_by_direction):
@@ -1831,15 +1896,60 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertEqual(persisted, [])
         self.assertFalse(d.state.inhibited)
 
-    def test_first_bringup_peak_reject_raises_the_diagnostic(self):
-        d = self._commissioned_driver()
-        d.state.pre_tune_snapshot = None
-        drive_orchestrated_robustness_scenario(d, outcome=1, cause=23)
-        gcmd = MockGCmd({})
+    def _velocity_p_tune_ceilings(self, calls):
+        return [
+            call["nomination_p_below"]
+            for call in calls
+            if call["action"] == ACTION_CODES["velocity_p_tune"]
+        ]
 
-        with self.assertRaises(CommandError) as ctx:
+    def test_cause_23_steps_down_once_and_commits_the_lower_rung(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        calls = drive_dispatch_sequence(d, peak_reject_chain(896) + chain_steps("tune_result"))
+        gcmd = MockGCmd({"ACTION": "velocity_p_tune"})
+
+        with self.assertLogs(level="INFO") as captured:
             d.autotune.autotune(gcmd)
 
+        self.assertEqual(self._velocity_p_tune_ceilings(calls), [0, 896])
+        self.assertEqual(
+            [call["action"] for call in calls[3:]],
+            [
+                ACTION_CODES["velocity_p_tune"],
+                ACTION_CODES["velocity_i_tune"],
+                ACTION_CODES["velocity_tune_check"],
+            ],
+        )
+        self.assertEqual(cfg.values[(d.name, "pid_velocity_p")], "863")
+        self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
+        step_lines = [line for line in gcmd._responses if "stepping down" in line]
+        self.assertEqual(len(step_lines), 1)
+        self.assertIn("P=896", step_lines[0])
+        self.assertIn("1.75x", step_lines[0])
+        self.assertIn("1 of 2", step_lines[0])
+        self.assertNotIn("23", step_lines[0])
+        search = [line for line in captured.output if "foci-gain-search" in line]
+        self.assertEqual(len(search), 2)
+        self.assertIn("verdict=rejected", search[0])
+        self.assertIn("step_down=0 below_p=0", search[0])
+        self.assertIn("verdict=passed", search[1])
+        self.assertIn("step_down=1 below_p=896", search[1])
+
+    def test_cause_23_twice_then_hard_fails_naming_the_rungs(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = None
+        calls = drive_dispatch_sequence(
+            d, peak_reject_chain(896) + peak_reject_chain(841) + peak_reject_chain(786)
+        )
+        gcmd = MockGCmd({})
+
+        with self.assertLogs(level="INFO") as captured, self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertEqual(len(calls), 9)
+        self.assertEqual(self._velocity_p_tune_ceilings(calls), [0, 896, 841])
         self.assertTrue(
             any(
                 "FAILED, no robust gain within the response band" in response
@@ -1848,11 +1958,76 @@ class TestAutotuneGates(unittest.TestCase):
             f"missing FAILED summary: {gcmd._responses!r}",
         )
         message = str(ctx.exception)
-        self.assertIn("1.20x", message)
+        self.assertIn("P=896, 841, 786", message)
+        self.assertIn("reversal peak", message)
+        self.assertIn("1.75x", message)
         self.assertIn("1.71x", message)
-        self.assertIn("P=1024", message)
         self.assertNotIn("cause 23", message.lower())
         self.assertNotIn("reversal_peak_exceeded", message)
+        rejected = [line for line in captured.output if "verdict=rejected" in line]
+        self.assertEqual(len(rejected), 3)
+        for step_down, (line, below_p) in enumerate(zip(rejected, (0, 896, 841), strict=True)):
+            self.assertIn(f"step_down={step_down} below_p={below_p}", line)
+
+    def test_other_robustness_causes_do_not_step_down(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = None
+        calls = drive_dispatch_sequence(
+            d,
+            chain_steps(robustness_terminal_step(outcome=1, cause=3, selected_p=896))
+            + peak_reject_chain(841),
+        )
+        gcmd = MockGCmd({})
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        self.assertEqual(len(calls), 3)
+        self.assertIn("IAE", str(ctx.exception))
+        self.assertFalse(any("stepping down" in response for response in gcmd._responses))
+
+    def test_step_down_writes_nothing_before_a_pass(self):
+        d = self._commissioned_driver()
+        cfg = MockConfigFile()
+        d.printer._objects["configfile"] = cfg
+        d.state.pre_tune_snapshot = None
+        before_gains = dict(d.state.active_gains)
+        observed = []
+
+        def observing_run_tune(**kwargs):
+            if kwargs["nomination_p_below"]:
+                observed.append(
+                    (dict(cfg.values), d.state.pre_tune_snapshot, dict(d.state.active_gains))
+                )
+
+        d.protocol.run_tune = observing_run_tune
+        drive_dispatch_sequence(
+            d,
+            peak_reject_chain(896)
+            + chain_steps(robustness_terminal_step(outcome=1, cause=3, selected_p=841)),
+        )
+
+        with self.assertRaises(CommandError):
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(len(observed), 3)
+        for config_values, snapshot, gains in observed:
+            self.assertEqual(config_values, {})
+            self.assertIsNone(snapshot)
+            self.assertEqual(gains, before_gains)
+
+    def test_cause_29_during_a_step_down_ends_the_chain_with_the_ceiling(self):
+        d = self._commissioned_driver()
+        d.state.pre_tune_snapshot = None
+        calls = drive_dispatch_sequence(d, peak_reject_chain(896) + [campaign_failed_step(29)])
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({}))
+
+        self.assertEqual(len(calls), 4)
+        message = str(ctx.exception)
+        self.assertIn("below P=896", message)
+        self.assertNotIn("confirmation_no_rung_below_ceiling", message)
 
     def test_orchestrated_reject_stale_snapshot_does_not_revert(self):
         """Same assertions with a deliberately stale pre_tune_snapshot present:

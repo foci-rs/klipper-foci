@@ -736,8 +736,9 @@ def test_peak_reject_renders_ratio_bound_and_p():
         )
     )
 
-    text = _format_peak_reject_phrase(terminal)
+    text = _format_peak_reject_phrase(terminal, [896, 841, 786])
 
+    assert "P=896, 841, 786" in text
     assert "1.75x" in text
     assert "1.71x" in text
     assert "P=786" in text

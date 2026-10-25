@@ -437,6 +437,8 @@ INTEGRAL_TERMINAL_CAUSE_REMEDIATION = {
     ),
 }
 
+BREAKAWAY_CAUSE_NO_RUNG_BELOW_CEILING = 29
+
 BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     0: "none",
     1: "probe_no_repeatable_motion_at_authority",
