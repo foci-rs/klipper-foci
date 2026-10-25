@@ -291,6 +291,7 @@ class FociProtocol:
         max_duration_ms: int,
         homing_speed_mrev_s: int,
         max_accel_mrev_s2: int,
+        nomination_p_below: int = 0,
     ) -> None:
         self.commands.tune.send(
             [
@@ -312,6 +313,7 @@ class FociProtocol:
                 max_duration_ms,
                 homing_speed_mrev_s,
                 max_accel_mrev_s2,
+                nomination_p_below,
             ]
         )
 

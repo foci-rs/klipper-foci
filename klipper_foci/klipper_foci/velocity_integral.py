@@ -464,6 +464,7 @@ BREAKAWAY_TERMINAL_CAUSE_NAMES = {
     26: "confirmation_integral_plan_refused",
     27: "confirmation_no_transition_capable_candidate",
     28: "confirmation_no_damped_candidate",
+    29: "confirmation_no_rung_below_ceiling",
 }
 
 BREAKAWAY_TERMINAL_REMEDIATION = {
@@ -504,6 +505,7 @@ BREAKAWAY_TERMINAL_REMEDIATION = {
         "every band rung overshoots its step past the damping bound; the ladder is too "
         "stiff for this plant (per-rung step peaks are on the trace stream)"
     ),
+    29: "no admissible rung below the step-down ceiling",
 }
 
 

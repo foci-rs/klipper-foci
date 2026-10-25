@@ -3389,8 +3389,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
             ["G28 X Y", "G0 X60.000 Y60.000"],
         )
         self.assertEqual(
-            d.protocol.commands.tune.last_args[-10:],
-            [5000, 7500, 1, 1500, 250, 1250, 1250, 3000, 125, 200000],
+            d.protocol.commands.tune.last_args[-11:],
+            [5000, 7500, 1, 1500, 250, 1250, 1250, 3000, 125, 200000, 0],
         )
 
     def test_position_tune_sends_homing_speed_and_machine_accel(self):
@@ -3411,8 +3411,8 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         # 175 mm/s homing speed on a 40 mm/rev stepper -> 4375 mrev/s; the
         # mocked toolhead's 8000 mm/s^2 max_accel -> 200000 mrev/s^2.
         self.assertEqual(
-            d.protocol.commands.tune.last_args[-2:],
-            [4375, 200000],
+            d.protocol.commands.tune.last_args[-3:],
+            [4375, 200000, 0],
         )
 
     def test_accepted_with_warnings_still_reports_tuned(self):
@@ -4228,6 +4228,63 @@ class TestBreakawayCampaignWorkflow(unittest.TestCase):
         self.assertIn("2 rungs excluded", message)
         self.assertNotIn("28", message)
         self.assertNotIn("no_damped_candidate", message)
+
+    def test_cause_29_console_text_names_the_missing_rung(self):
+        d = self._commissioned_driver()
+        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
+        reactor = d.printer.get_reactor()
+
+        def pause_with_no_rung_below_ceiling(deadline):
+            reactor._time = deadline
+            if d.autotune.velocity_integral.workflow_plan is None:
+                feed_breakaway_workflow_plan(d, BREAKAWAY_RUN_SEQUENCE, 400_000)
+            elif not d.autotune.breakaway_campaign.done:
+                feed_breakaway_probe_and_discovery(d)
+                d.autotune.handle_breakaway_confirmation_plan(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 3,
+                        "plan_digest_low": BREAKAWAY_CONFIRMATION_DIGEST[0],
+                        "plan_digest_high": BREAKAWAY_CONFIRMATION_DIGEST[1],
+                        "prior_plan_digest_low": BREAKAWAY_DISCOVERY_DIGEST[0],
+                        "prior_plan_digest_high": BREAKAWAY_DISCOVERY_DIGEST[1],
+                        "family_size": 8,
+                        "observations_per_direction": 4,
+                        "nominated_p_raw": 400,
+                        "band_lower_percent": 70,
+                        "band_upper_percent": 80,
+                        "capture_profile": 0,
+                        "acceptance_rule": 0,
+                        "nominated_margin_percent_milli": 2_000,
+                    }
+                )
+                d.autotune.handle_breakaway_campaign_terminal(
+                    {
+                        "oid": 0,
+                        "run_sequence": BREAKAWAY_RUN_SEQUENCE,
+                        "evidence_sequence": 3,
+                        "phase": 1,
+                        "terminal_cause": 29,
+                        "accepted": 0,
+                        "integral_plan_digest_low": 0,
+                        "integral_plan_digest_high": 0,
+                        "error_code": 0,
+                        "nominated_step_peak_permille": 0,
+                        "overshoot_excluded_rungs": 2,
+                    }
+                )
+            return reactor._time
+
+        reactor.pause = pause_with_no_rung_below_ceiling
+
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(gcmd)
+
+        message = str(ctx.exception)
+        self.assertIn("no admissible rung below", message)
+        self.assertNotIn("29", message)
+        self.assertNotIn("no_rung_below_ceiling", message)
 
     def _capture_campaign_terminal_before_each_reset(self, d, terminal):
         original_reset = d.autotune._reset_dispatch_state

@@ -944,6 +944,7 @@ def test_run_tune_sends_planning_payload():
         3000,
         4375,
         200000,
+        0,
     ]
 
 
@@ -971,7 +972,35 @@ def test_run_tune_forwards_only_the_explicit_action_selector():
     )
 
     assert driver.protocol.commands.tune.last_args[1] == 2
-    assert len(driver.protocol.commands.tune.last_args) == 18
+    assert len(driver.protocol.commands.tune.last_args) == 19
+
+
+def test_run_tune_sends_the_nomination_ceiling_last_and_defaults_to_zero():
+    driver = make_driver()
+    kwargs = {
+        "profile_code": 1,
+        "mode_code": 2,
+        "inner_lambda": 1200,
+        "theta_e": 160,
+        "current_bw": 500,
+        "inner_warning_flags": 8,
+        "requested_velocity_mrev_s": 5000,
+        "machine_velocity_ceiling_mrev_s": 7500,
+        "requested_velocity_source": 1,
+        "max_stroke_travel_mrev": 1000,
+        "settle_travel_reserve_mrev": 250,
+        "negative_position_headroom_mrev": 1250,
+        "positive_position_headroom_mrev": 1250,
+        "max_duration_ms": 3000,
+        "homing_speed_mrev_s": 4375,
+        "max_accel_mrev_s2": 200000,
+    }
+
+    driver.protocol.run_tune(**kwargs)
+    assert driver.protocol.commands.tune.last_args[-2:] == [200000, 0]
+
+    driver.protocol.run_tune(**kwargs, nomination_p_below=321)
+    assert driver.protocol.commands.tune.last_args[-2:] == [200000, 321]
 
 
 def test_tune_command_matches_firmware_field_order_without_legacy_budget():
@@ -987,6 +1016,7 @@ def test_tune_command_matches_firmware_field_order_without_legacy_budget():
         " max_stroke_travel_mrev=%u settle_travel_reserve_mrev=%u"
         " negative_position_headroom_mrev=%u positive_position_headroom_mrev=%u"
         " max_duration_ms=%hu homing_speed_mrev_s=%u max_accel_mrev_s2=%u"
+        " nomination_p_below=%hu"
     ]
 
 
