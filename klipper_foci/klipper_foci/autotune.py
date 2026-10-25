@@ -848,10 +848,18 @@ class AutotuneWorkflow:
             raise gcmd.error(
                 f"FOCI {self.driver.stepper_name}: velocity integral response fault{detail_suffix}"
             )
+        candidate_i = (self.velocity_integral.terminal or {}).get("candidate_i")
+        if self.velocity_integral.outcome == "repeatability_confirmed" and candidate_i is None:
+            report_summary(
+                gcmd,
+                f"{self._summary_prefix()}: integral response target not reached: no rung "
+                "proved 98% response in both directions; no integral gain installed.",
+            )
+            self._retain_request_from_terminal(request_fields)
+            return self.velocity_integral.outcome
         phrase = _VELOCITY_INTEGRAL_SUCCESS_PHRASES.get(
             self.velocity_integral.outcome, humanize(self.velocity_integral.outcome)
         )
-        candidate_i = (self.velocity_integral.terminal or {}).get("candidate_i")
         suffix = f" (velocity_i={int(candidate_i)})" if candidate_i is not None else ""
         report_summary(gcmd, f"{self._summary_prefix()}: SUCCEEDED, {phrase}{suffix}.")
         self._retain_request_from_terminal(request_fields)
@@ -1225,6 +1233,8 @@ class AutotuneWorkflow:
                             f"FOCI {self.driver.name}: velocity-integral resume did not "
                             f"reproduce the accepted candidate (outcome={outcome})"
                         )
+                    break
+                if (self.velocity_integral.terminal or {}).get("candidate_i") is None:
                     break
                 self._reset_dispatch_state()
                 outcome = self._run_one_dispatch(

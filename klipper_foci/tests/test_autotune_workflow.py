@@ -370,12 +370,19 @@ def _feed_dispatch_terminal(workflow, terminal, tune_result=None):
         workflow.breakaway_campaign.done = True
         workflow.breakaway_campaign.accepted = True
         workflow.velocity_integral.outcome = "repeatability_confirmed"
-        workflow.velocity_integral.terminal = {"cause": 0}
+        workflow.velocity_integral.terminal = {"cause": 0, "candidate_i": 256}
+        workflow.velocity_integral.done = True
+        return
+    if terminal == "repeatability_confirmed_without_candidate":
+        workflow.velocity_integral.outcome = "repeatability_confirmed"
+        workflow.velocity_integral.terminal = {"cause": 0, "candidate_i": None}
         workflow.velocity_integral.done = True
         return
     outcome = "inconclusive" if terminal == "velocity_integral_inconclusive" else terminal
     workflow.velocity_integral.outcome = outcome
-    workflow.velocity_integral.terminal = {"cause": 0}
+    workflow.velocity_integral.terminal = (
+        {"cause": 0, "candidate_i": 256} if outcome == "repeatability_confirmed" else {"cause": 0}
+    )
     workflow.velocity_integral.done = True
 
 
@@ -3144,22 +3151,26 @@ class TestAutotuneGates(unittest.TestCase):
 
         self.assertTrue(any("velocity_i=512" in msg for msg in gcmd._responses), gcmd._responses)
 
-    def test_repeatability_confirmed_summary_omits_value_when_unavailable(self):
+    def test_repeatability_confirmed_without_candidate_reports_no_gain_and_stops(self):
         d = self._commissioned_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        gcmd = MockGCmd({"ACTION": "velocity_p_tune"})
+        events = []
+        d.protocol.run_tune = lambda **kw: events.append(("run_tune", kw["action"]))
         drive_two_dispatch_scenario(
             d,
             first_terminal="breakaway_accepted_first_run_retained",
-            second_terminal="breakaway_accepted_repeatability_confirmed",
-            third_terminal="tune_result",
-            tune_result=SAMPLE_TUNE_RESULT,
+            second_terminal="repeatability_confirmed_without_candidate",
         )
+        gcmd = MockGCmd({"ACTION": "velocity_p_tune"})
 
         d.autotune.autotune(gcmd)
 
-        confirmed_msg = next(msg for msg in gcmd._responses if "integral gain confirmed" in msg)
-        self.assertNotIn("velocity_i=", confirmed_msg)
+        self.assertTrue(any("no integral gain installed" in msg for msg in gcmd._responses))
+        self.assertFalse(any("integral gain confirmed" in msg for msg in gcmd._responses))
+        self.assertEqual(
+            [value for kind, value in events if kind == "run_tune"],
+            [ACTION_CODES["velocity_p_tune"], ACTION_CODES["velocity_i_tune"]],
+        )
 
     def test_tuned_summary_shows_the_gains_not_the_dead_status_echo(self):
         d = self._commissioned_driver()
