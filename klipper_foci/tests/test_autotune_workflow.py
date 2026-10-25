@@ -1093,6 +1093,51 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("reached 15300 mrev/s against ceiling 15000", message)
         self.assertNotIn("last rung:", message)
 
+    def _position_tune_conflict_with_enabled_corexy_pair(self, tune_result):
+        d = self._commissioned_driver(
+            kinematics=MockCoreXYKinematics([["stepper_x"], ["stepper_y"], ["stepper_z"]])
+        )
+        d.printer._objects["configfile"] = MockConfigFile()
+        toolhead = d.printer.lookup_object("toolhead")
+        stepper_enable = d.printer.lookup_object("stepper_enable")
+        x_enable = stepper_enable.lookup_enable("stepper_x")
+        y_enable = stepper_enable.lookup_enable("stepper_y")
+        x_enable.motor_enable(toolhead.get_last_move_time())
+        y_enable.motor_enable(toolhead.get_last_move_time())
+        drive_two_dispatch_scenario(
+            d,
+            first_terminal="tune_result",
+            second_terminal=None,
+            tune_result=tune_result,
+        )
+        with self.assertRaises(CommandError) as ctx:
+            d.autotune.autotune(MockGCmd({"ACTION": "position_p_tune"}))
+        return d, (x_enable, y_enable), str(ctx.exception)
+
+    def test_soft_failure_disables_the_pair_when_the_firmware_disarmed_the_motor(self):
+        d, enables, message = self._position_tune_conflict_with_enabled_corexy_pair(
+            {**SAMPLE_POSITION_TUNE_CEILING_CONFLICT_RESULT, "motor_disarmed": 1}
+        )
+        self.assertFalse(any(line.is_motor_enabled() for line in enables))
+        self.assertFalse(d.state.is_calibrated)
+        self.assertIn("motor disabled by firmware", message)
+        self.assertNotIn("motor holding", message)
+
+    def test_soft_failure_leaves_the_pair_holding_when_the_firmware_kept_the_motor_armed(self):
+        d, enables, message = self._position_tune_conflict_with_enabled_corexy_pair(
+            {**SAMPLE_POSITION_TUNE_CEILING_CONFLICT_RESULT, "motor_disarmed": 0}
+        )
+        self.assertTrue(all(line.is_motor_enabled() for line in enables))
+        self.assertTrue(d.state.is_calibrated)
+        self.assertIn("motor holding with entry gains", message)
+
+    def test_soft_failure_from_firmware_without_the_disarm_field_disables_the_pair(self):
+        d, enables, _message = self._position_tune_conflict_with_enabled_corexy_pair(
+            SAMPLE_POSITION_TUNE_CEILING_CONFLICT_RESULT
+        )
+        self.assertFalse(any(line.is_motor_enabled() for line in enables))
+        self.assertFalse(d.state.is_calibrated)
+
     def test_ceiling_accept_line_survives_missing_evidence(self):
         d = self._commissioned_driver()
         cfg = MockConfigFile()
@@ -2774,7 +2819,7 @@ class TestAutotuneGates(unittest.TestCase):
 
         def pause_and_report_soft_failure(deadline):
             reactor._time = deadline
-            d.autotune.handle_tune_result({"status": 43})
+            d.autotune.handle_tune_result({"status": 43, "motor_disarmed": 0})
             return reactor._time
 
         reactor.pause = pause_and_report_soft_failure

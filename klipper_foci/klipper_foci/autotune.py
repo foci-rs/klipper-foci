@@ -1213,6 +1213,19 @@ class AutotuneWorkflow:
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE safety fault: {error_name}"
                         f"{detail_suffix} (motor disabled by firmware){evidence}"
                     )
+                motor_disarmed = int(result.get("motor_disarmed", 1)) != 0
+                if motor_disarmed:
+                    self._disable_kinematic_motors(toolhead)
+                motor_state = (
+                    "motor disabled by firmware"
+                    if motor_disarmed
+                    else "motor holding with entry gains"
+                )
+                chained_motor_state = (
+                    "motor disabled by firmware"
+                    if motor_disarmed
+                    else "motor holding with the newly installed, unpersisted velocity gains"
+                )
                 position_tune_outcome_code = int(result.get("position_tune_outcome_code", 0))
                 if position_tune_outcome_code:
                     outcome_name = POSITION_TUNE_OUTCOME_NAMES.get(
@@ -1238,16 +1251,16 @@ class AutotuneWorkflow:
                         raise gcmd.error(
                             f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
                             f"{outcome_name} (velocity tune succeeded but was not persisted "
-                            f"because the chained position tune failed; motor holding with "
-                            f"the newly installed, unpersisted velocity gains){evidence}"
+                            f"because the chained position tune failed; "
+                            f"{chained_motor_state}){evidence}"
                         )
                     raise gcmd.error(
                         f"FOCI {self.driver.name}: FOCI_AUTOTUNE position tune failed: "
-                        f"{outcome_name} (motor holding with entry gains){evidence}"
+                        f"{outcome_name} ({motor_state}){evidence}"
                     )
                 raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name} (motor "
-                    f"holding with entry gains){evidence}"
+                    f"FOCI {self.driver.name}: FOCI_AUTOTUNE failed: {error_name} "
+                    f"({motor_state}){evidence}"
                 )
 
             tune_status = "tuned"
