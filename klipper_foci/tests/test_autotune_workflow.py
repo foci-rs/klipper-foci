@@ -1835,10 +1835,18 @@ class TestAutotuneGates(unittest.TestCase):
         d = self._commissioned_driver()
         d.state.pre_tune_snapshot = None
         drive_orchestrated_robustness_scenario(d, outcome=1, cause=23)
+        gcmd = MockGCmd({})
 
         with self.assertRaises(CommandError) as ctx:
-            d.autotune.autotune(MockGCmd({}))
+            d.autotune.autotune(gcmd)
 
+        self.assertTrue(
+            any(
+                "FAILED, no robust gain within the response band" in response
+                for response in gcmd._responses
+            ),
+            f"missing FAILED summary: {gcmd._responses!r}",
+        )
         message = str(ctx.exception)
         self.assertIn("1.20x", message)
         self.assertIn("1.50x", message)
