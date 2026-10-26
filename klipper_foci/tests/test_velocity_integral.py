@@ -40,7 +40,7 @@ def feed_workflow(assembler, shape=0, maximum_ms=70_000, nominal_ms=None):
 
 def feed_plan(
     assembler,
-    schema_revision=18,
+    schema_revision=19,
     *,
     positive_i=POSITIVE_I,
     nominal_workflow_ms=49_920,
@@ -180,7 +180,7 @@ def test_firmware_authored_durations_are_consumed_not_asserted():
     feed_workflow(assembler, shape=3, nominal_ms=470_573, maximum_ms=496_528)
     feed_plan(
         assembler,
-        schema_revision=18,
+        schema_revision=19,
         positive_i=COMBINED_Q4_12_POSITIVE_I,
         nominal_workflow_ms=999_999,
         maximum_workflow_ms=1_000_000,
@@ -243,9 +243,9 @@ def test_breakaway_schema_plan_is_accepted_under_a_resume_workflow():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=0, nominal_ms=49_920, maximum_ms=49_920)
 
-    feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)
+    feed_plan(assembler, schema_revision=19, positive_i=POSITIVE_I, joint_membership=0)
 
-    assert assembler.plan["schema_revision"] == 18
+    assert assembler.plan["schema_revision"] == 19
 
 
 @pytest.mark.parametrize("shape", (4,))
@@ -254,7 +254,7 @@ def test_breakaway_schema_plan_is_still_refused_under_any_other_workflow(shape):
     feed_workflow(assembler, shape=shape, nominal_ms=49_920, maximum_ms=49_920)
 
     with pytest.raises(VelocityIntegralProtocolError, match="requires breakaway"):
-        feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)
+        feed_plan(assembler, schema_revision=19, positive_i=POSITIVE_I, joint_membership=0)
 
 
 def test_mirrored_slot_order_flag_is_accepted():
@@ -290,13 +290,13 @@ def test_breakaway_integral_plan_assembles():
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
         assembler,
-        schema_revision=18,
+        schema_revision=19,
         positive_i=POSITIVE_I,
         fixed_p=1024,
         joint_membership=0,
     )
 
-    assert assembler.plan["schema_revision"] == 18
+    assert assembler.plan["schema_revision"] == 19
     assert assembler.plan["fixed_p"] == 1024
 
 
@@ -305,10 +305,10 @@ def test_breakaway_integral_plan_requires_breakaway_workflow():
     feed_workflow(assembler, shape=4, nominal_ms=20_000, maximum_ms=20_000)
 
     with pytest.raises(VelocityIntegralProtocolError, match="breakaway workflow"):
-        feed_plan(assembler, schema_revision=18, positive_i=POSITIVE_I, joint_membership=0)
+        feed_plan(assembler, schema_revision=19, positive_i=POSITIVE_I, joint_membership=0)
 
 
-@pytest.mark.parametrize("schema_revision", [2, 7, 13, 14, 17])
+@pytest.mark.parametrize("schema_revision", [2, 7, 13, 14, 17, 18])
 def test_plan_core_rejects_schemas_firmware_no_longer_sends(schema_revision):
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
@@ -465,7 +465,7 @@ def test_handle_terminal_rejects_failed_admission_shape_after_a_partial_plan():
             "proportional_digest_low": PROPORTIONAL_DIGEST & 0xFFFF_FFFF,
             "proportional_digest_high": PROPORTIONAL_DIGEST >> 32,
             "build_revision": 7,
-            "schema_revision": 18,
+            "schema_revision": 19,
             "channel": 0,
             "fixed_p": 1448,
         }
@@ -564,7 +564,7 @@ def test_handle_terminal_allows_complete_without_reproduction_for_breakaway_cont
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=18, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+        assembler, schema_revision=19, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
@@ -576,7 +576,7 @@ def test_handle_terminal_decodes_candidate_i_when_present():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=18, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+        assembler, schema_revision=19, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(
@@ -595,7 +595,7 @@ def test_handle_terminal_candidate_i_is_none_when_absent():
     assembler = VelocityIntegralAssembler()
     feed_workflow(assembler, shape=3, nominal_ms=20_000, maximum_ms=20_000)
     feed_plan(
-        assembler, schema_revision=18, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
+        assembler, schema_revision=19, positive_i=POSITIVE_I, fixed_p=1024, joint_membership=0
     )
 
     assembler.handle_terminal(_terminal_params(outcome=1, reproduction_available=0))
