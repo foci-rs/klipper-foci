@@ -136,6 +136,8 @@ COMMISSION_REASON_NAMES: dict[int, str] = {
     120: "current validation envelope unreachable",
     121: "current gain unrepresentable",
     122: "resistance bus voltage out of range",
+    123: "discovery velocity output reached the hard current limit",
+    124: "discovery current guard saw an actionable TMC status",
 }
 
 _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
@@ -163,6 +165,10 @@ _FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
     "on this bus voltage; choose a less stiff profile",
     122: "the measured supply voltage was outside the 18 to 60 volt range the resistance "
     "sweep supports; check the supply and the VM divider configuration",
+    123: "the velocity loop reached the hard current limit before any rung was in band; "
+    "raise the run current or lower the tuning velocity",
+    124: "the TMC4671 status word reported a PWM rail, circular limit or ADC clip while "
+    "discovery was running; the motor was disabled and needs re-enabling before a retry",
 }
 
 
@@ -179,7 +185,7 @@ TROUBLESHOOTING_DOC_LINKS: dict[int, str] = dict.fromkeys(
 
 RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31})
 
-HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17, 42})
+HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17, 42, 123, 124})
 
 INNER_WARNING_GAIN_FLOOR_SKIPPED = 1 << 7
 

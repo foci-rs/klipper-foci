@@ -1738,6 +1738,21 @@ def test_resistance_bus_voltage_out_of_range_is_a_named_failure():
     assert TROUBLESHOOTING_DOC_LINKS[122].endswith("resistance-identification.md")
 
 
+def test_discovery_stops_are_not_reported_as_safety_envelope_violations():
+    from klipper_foci.commissioning import (
+        format_commission_error_name,
+        operator_failure_phrase,
+    )
+
+    for code in (123, 124):
+        assert code in HARD_FAULT_CODES
+        assert "unknown" not in operator_failure_phrase(code)
+        assert "safety envelope" not in format_commission_error_name(code)
+    assert "run current" in operator_failure_phrase(123)
+    assert "tuning velocity" in operator_failure_phrase(123)
+    assert "status" in operator_failure_phrase(124)
+
+
 def test_breakaway_and_integral_phase_labels_avoid_internal_jargon():
     from klipper_foci._vocabulary_generated import PHASE_NAMES
 
