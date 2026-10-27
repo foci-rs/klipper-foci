@@ -8,11 +8,13 @@ import pytest
 from klipper_foci.autotune import (
     _REVERSAL_PEAK_REJECT_PERMILLE,
     _format_peak_reject_phrase,
+    _format_robustness_reject_phrase,
     _robustness_direction_text,
 )
 from klipper_foci.registers import REGISTERS
 from klipper_foci.robustness_reversal import (
     _CYCLE_EVIDENCE,
+    _LATE_TRACKING_EVIDENCE,
     _TERMINAL,
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
@@ -20,6 +22,7 @@ from klipper_foci.robustness_reversal import (
     ROBUSTNESS_CAUSE_SAFETY_FAULT,
     ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES,
     ROBUSTNESS_CYCLES_PER_DIRECTION,
+    ROBUSTNESS_LATE_TRACKING_EVIDENCE_REPLY_BYTES,
     ROBUSTNESS_OUTCOME_COMPLETE,
     ROBUSTNESS_OUTCOME_FAILED,
     ROBUSTNESS_OUTCOME_INCONCLUSIVE,
@@ -28,6 +31,7 @@ from klipper_foci.robustness_reversal import (
     ROBUSTNESS_TERMINAL_REPLY_BYTES,
     RobustnessReversalProtocolError,
     handle_cycle_evidence,
+    handle_late_tracking_evidence,
     handle_terminal,
 )
 from tests.mocks import (
@@ -84,7 +88,7 @@ def build_terminal_payload(
     reverse=None,
     **shared_direction_overrides,
 ) -> bytes:
-    """Build a 51-byte schema-5 robustness-terminal payload for tests.
+    """Build a 51-byte schema-6 robustness-terminal payload for tests.
 
     `forward`/`reverse` override one direction only; any keyword also present
     in `_DIRECTION_DEFAULTS` (e.g. `valid_cycles`) is applied to both
@@ -106,6 +110,35 @@ def build_terminal_payload(
     return header + _direction_bytes(forward_overrides) + _direction_bytes(reverse_overrides) + tail
 
 
+def build_late_tracking_payload(
+    *,
+    direction=0,
+    schema_revision=ROBUSTNESS_SCHEMA_REVISION,
+    slot=0,
+    flags=0b01,
+    ppm=12_000,
+    window_delta_counts=900,
+    window_elapsed_us=200_000,
+    window_start_us=1_000_000,
+    target_rate_q=5_000_000,
+    median_ppm=11_000,
+) -> bytes:
+    """Build a 32-byte schema-6 late-tracking evidence payload for tests."""
+    return struct.pack(
+        "<BBBBIiIIqI",
+        direction,
+        schema_revision,
+        slot,
+        flags,
+        ppm,
+        window_delta_counts,
+        window_elapsed_us,
+        window_start_us,
+        target_rate_q,
+        median_ppm,
+    )
+
+
 def build_cycle_evidence_payload(
     *,
     direction=0,
@@ -117,7 +150,7 @@ def build_cycle_evidence_payload(
     tail_count=0,
     displaced_tail=None,
 ) -> bytes:
-    """Build a 51-byte schema-5 cycle-evidence payload for tests.
+    """Build a 51-byte schema-6 cycle-evidence payload for tests.
 
     `cycles` fills slots in order (each a `(reconvergence_ms, overshoot_counts,
     forward_settle_ms)` triple); any of the 5 slots left uncovered pack as the
@@ -240,8 +273,9 @@ def test_terminal_parse_decodes_plant_rate_and_iae_max():
     assert terminal["iae_max_q_qs"] == 8_400_000
 
 
-def test_cause_names_cover_firmware_values_zero_through_twenty_three():
-    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(24))
+def test_cause_names_cover_firmware_values_with_cause_two_retired():
+    assert set(ROBUSTNESS_CAUSE_NAMES) == set(range(25)) - {2}
+    assert ROBUSTNESS_CAUSE_NAMES[24] == "late_tracking_exceeded"
     assert ROBUSTNESS_CAUSE_IAE_EXCEEDED == 3
     assert ROBUSTNESS_CAUSE_NAMES[ROBUSTNESS_CAUSE_IAE_EXCEEDED] == "iae_exceeded"
     assert ROBUSTNESS_CAUSE_NAMES[7] == "evidence_integrity"
@@ -291,12 +325,128 @@ def test_terminal_rejects_invalid_outcome():
 
 def test_terminal_rejects_invalid_cause():
     with pytest.raises(RobustnessReversalProtocolError, match="taxonomy"):
-        handle_and_return(build_terminal_payload(cause=24))
+        handle_and_return(build_terminal_payload(cause=25))
 
 
 def test_terminal_rejects_unsupported_schema():
     with pytest.raises(RobustnessReversalProtocolError, match="schema"):
         handle_and_return(build_terminal_payload(schema_revision=1))
+
+
+def test_cause_2_is_an_invalid_terminal_taxonomy():
+    with pytest.raises(RobustnessReversalProtocolError, match="taxonomy"):
+        handle_and_return(build_terminal_payload(cause=2))
+
+
+def test_schema_5_firmware_is_rejected_as_unsupported():
+    assert ROBUSTNESS_SCHEMA_REVISION == 6
+    with pytest.raises(RobustnessReversalProtocolError, match="schema"):
+        handle_and_return(build_terminal_payload(schema_revision=5))
+    with pytest.raises(RobustnessReversalProtocolError, match="schema"):
+        handle_cycle_evidence(
+            {"oid": 1, "payload": build_cycle_evidence_payload(schema_revision=5)}
+        )
+    with pytest.raises(RobustnessReversalProtocolError, match="schema"):
+        handle_late_tracking_evidence(
+            {"oid": 1, "payload": build_late_tracking_payload(schema_revision=5)}
+        )
+
+
+def test_late_tracking_wire_layout_is_thirty_two_bytes():
+    assert _LATE_TRACKING_EVIDENCE.size == ROBUSTNESS_LATE_TRACKING_EVIDENCE_REPLY_BYTES == 32
+    assert len(build_late_tracking_payload()) == 32
+
+
+def test_late_tracking_filled_payload_decodes_every_field():
+    evidence = handle_late_tracking_evidence(
+        {
+            "oid": 1,
+            "payload": build_late_tracking_payload(
+                direction=1,
+                slot=3,
+                flags=0b11,
+                ppm=51_234,
+                window_delta_counts=-1_200,
+                window_elapsed_us=250_000,
+                window_start_us=1_750_000,
+                target_rate_q=-123_456_789_012,
+                median_ppm=48_000,
+            ),
+        }
+    )
+
+    assert evidence == {
+        "direction": 1,
+        "slot": 3,
+        "filled": True,
+        "suffix_excluded": True,
+        "ppm": 51_234,
+        "window_delta_counts": -1_200,
+        "window_elapsed_us": 250_000,
+        "window_start_us": 1_750_000,
+        "target_rate_q": -123_456_789_012,
+        "median_ppm": 48_000,
+    }
+
+
+def test_late_tracking_unfilled_payload_has_zeroed_audit_fields():
+    evidence = handle_late_tracking_evidence(
+        {
+            "oid": 1,
+            "payload": build_late_tracking_payload(
+                slot=4,
+                flags=0,
+                ppm=0,
+                window_delta_counts=0,
+                window_elapsed_us=0,
+                window_start_us=0,
+                target_rate_q=777,
+                median_ppm=1_500,
+            ),
+        }
+    )
+
+    assert evidence["filled"] is False
+    assert evidence["suffix_excluded"] is False
+    assert evidence["ppm"] == evidence["window_elapsed_us"] == 0
+    assert evidence["target_rate_q"] == 777
+    assert evidence["median_ppm"] == 1_500
+
+
+def test_a_wrong_length_late_tracking_payload_is_a_protocol_error():
+    with pytest.raises(RobustnessReversalProtocolError, match="expected 32"):
+        handle_late_tracking_evidence({"oid": 1, "payload": build_late_tracking_payload()[:-1]})
+    with pytest.raises(RobustnessReversalProtocolError, match="missing"):
+        handle_late_tracking_evidence({"oid": 1})
+
+
+def test_late_tracking_rejects_invalid_direction_and_slot():
+    with pytest.raises(RobustnessReversalProtocolError, match="direction"):
+        handle_late_tracking_evidence(
+            {"oid": 1, "payload": build_late_tracking_payload(direction=2)}
+        )
+    with pytest.raises(RobustnessReversalProtocolError, match="slot"):
+        handle_late_tracking_evidence({"oid": 1, "payload": build_late_tracking_payload(slot=5)})
+
+
+def test_cause_24_reports_the_late_tracking_median_and_limit():
+    driver = make_driver()
+    for direction, median_ppm in ((0, 61_500), (1, 72_000)):
+        driver.autotune.handle_robustness_late_tracking_evidence(
+            {
+                "oid": driver.oid,
+                "payload": build_late_tracking_payload(direction=direction, median_ppm=median_ppm),
+            }
+        )
+
+    phrase = _format_robustness_reject_phrase(24, driver.autotune.robustness_late_tracking)
+
+    assert "late-tracking median 7.20%" in phrase
+    assert "5% limit (50,000 ppm)" in phrase
+
+
+def test_cause_24_without_evidence_still_names_the_limit():
+    assert "5% limit (50,000 ppm)" in _format_robustness_reject_phrase(24, {})
 
 
 def test_cycle_evidence_wire_layout_is_fifty_one_bytes():
@@ -422,12 +572,16 @@ def test_robustness_reply_handlers_are_registered():
     assert set(registrations) == {
         "foci_robustness_reversal_terminal",
         "foci_robustness_cycle_evidence",
+        "foci_robustness_late_tracking_evidence",
     }
     assert registrations["foci_robustness_reversal_terminal"] == (
         driver.autotune.handle_robustness_reversal_terminal
     )
     assert registrations["foci_robustness_cycle_evidence"] == (
         driver.autotune.handle_robustness_cycle_evidence
+    )
+    assert registrations["foci_robustness_late_tracking_evidence"] == (
+        driver.autotune.handle_robustness_late_tracking_evidence
     )
 
 
@@ -697,7 +851,7 @@ def test_autotune_raises_on_robustness_reversal_transport_failure():
         driver.autotune.autotune(gcmd)
 
 
-def test_terminal_schema_5_exposes_peak_rate_permille_and_unscored_flag():
+def test_terminal_schema_6_exposes_peak_rate_permille_and_unscored_flag():
     terminal = handle_and_return(
         build_terminal_payload(
             forward={"peak_rate_permille": 1_530, "peak_unscored": 1, "inconclusive": 1},
@@ -706,7 +860,7 @@ def test_terminal_schema_5_exposes_peak_rate_permille_and_unscored_flag():
     )
 
     forward, reverse = terminal["directions"]
-    assert terminal["schema_revision"] == 5
+    assert terminal["schema_revision"] == 6
     assert forward["peak_rate_permille"] == 1_530
     assert forward["peak_unscored"] is True
     assert forward["inconclusive"] is True

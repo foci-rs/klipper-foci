@@ -28,6 +28,7 @@ from .readiness import POLICY_UNAVAILABLE, resolve_autotune_readiness
 from .report import humanize, report_detail, report_summary
 from .robustness_reversal import (
     ROBUSTNESS_CAUSE_IAE_EXCEEDED,
+    ROBUSTNESS_CAUSE_LATE_TRACKING_EXCEEDED,
     ROBUSTNESS_CAUSE_NAMES,
     ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED,
     ROBUSTNESS_CAUSE_SAFETY_FAULT,
@@ -38,6 +39,9 @@ from .robustness_reversal import (
 )
 from .robustness_reversal import (
     handle_cycle_evidence as parse_robustness_cycle_evidence,
+)
+from .robustness_reversal import (
+    handle_late_tracking_evidence as parse_robustness_late_tracking_evidence,
 )
 from .robustness_reversal import (
     handle_terminal as parse_robustness_reversal_terminal,
@@ -247,7 +251,23 @@ def _format_peak_reject_phrase(terminal: dict, rejected_rungs: list[int]) -> str
     )
 
 
-def _format_robustness_reject_phrase(cause: int) -> str:
+_LATE_TRACKING_LIMIT_PPM = 50_000
+
+
+def _late_tracking_reject_phrase(late_tracking: dict) -> str:
+    limit = f"{_LATE_TRACKING_LIMIT_PPM // 10_000}% limit ({_LATE_TRACKING_LIMIT_PPM:,} ppm)"
+    medians = [int(slot.get("median_ppm", 0)) for slot in late_tracking.values()]
+    if not medians:
+        return f"robustness check failed, late-tracking median exceeded the {limit}"
+    return (
+        "robustness check failed, late-tracking median "
+        f"{max(medians) / 10_000:.2f}% exceeds the {limit}"
+    )
+
+
+def _format_robustness_reject_phrase(cause: int, late_tracking: dict | None = None) -> str:
+    if cause == ROBUSTNESS_CAUSE_LATE_TRACKING_EXCEEDED:
+        return _late_tracking_reject_phrase(late_tracking or {})
     if cause in _ROBUSTNESS_REJECT_PHRASES:
         return _ROBUSTNESS_REJECT_PHRASES[cause]
     cause_name = ROBUSTNESS_CAUSE_NAMES.get(cause, "unknown")
@@ -374,6 +394,7 @@ class AutotuneWorkflow:
         self.robustness_reversal_terminal: dict | None = None
         self.robustness_reversal_error: RobustnessReversalProtocolError | None = None
         self.robustness_cycle_evidence: dict[int, dict] = {}
+        self.robustness_late_tracking: dict[tuple[int, int], dict] = {}
         self.robustness_workflow_plan: dict | None = None
         self.position_tune_workflow_plan: dict | None = None
         self._proportional_candidate_request: dict | None = None
@@ -486,6 +507,17 @@ class AutotuneWorkflow:
             self.robustness_reversal_error = err
             return
         self.robustness_cycle_evidence[evidence["direction"]] = evidence
+
+    def handle_robustness_late_tracking_evidence(self, params: dict) -> None:
+        """Parse one firmware-authored robustness late-tracking window evidence reply."""
+        if self.robustness_reversal_error is not None:
+            return
+        try:
+            evidence = parse_robustness_late_tracking_evidence(params)
+        except RobustnessReversalProtocolError as err:
+            self.robustness_reversal_error = err
+            return
+        self.robustness_late_tracking[(evidence["direction"], evidence["slot"])] = evidence
 
     def _evidence_by_direction(self, key: str) -> list[int]:
         return [(self.robustness_cycle_evidence.get(index) or {}).get(key, 0) for index in (0, 1)]
@@ -827,6 +859,7 @@ class AutotuneWorkflow:
         self.robustness_reversal_terminal = None
         self.robustness_reversal_error = None
         self.robustness_cycle_evidence = {}
+        self.robustness_late_tracking = {}
         self.robustness_workflow_plan = None
         self.position_tune_workflow_plan = None
         self.tune_position_evidence_fragments = {}
@@ -1032,7 +1065,7 @@ class AutotuneWorkflow:
                 cause = int(terminal.get("cause", 0))
                 raise gcmd.error(
                     f"FOCI {self.driver.stepper_name}: FOCI_AUTOTUNE "
-                    f"{_format_robustness_reject_phrase(cause)}."
+                    f"{_format_robustness_reject_phrase(cause, self.robustness_late_tracking)}."
                 )
             if int(terminal.get("outcome", -1)) == 0:
                 report_summary(

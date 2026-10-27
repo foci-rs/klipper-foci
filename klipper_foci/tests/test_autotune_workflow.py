@@ -35,7 +35,11 @@ from tests.mocks import (
     MockPrintStats,
     make_driver,
 )
-from tests.test_robustness_reversal import build_cycle_evidence_payload, build_terminal_payload
+from tests.test_robustness_reversal import (
+    build_cycle_evidence_payload,
+    build_late_tracking_payload,
+    build_terminal_payload,
+)
 
 
 def test_feedforward_path_mask_decoding_pins_the_five_slot_table():
@@ -2732,6 +2736,28 @@ class TestAutotuneGates(unittest.TestCase):
         self.assertIn("passed", evidence_lines[0])
         self.assertIn("iae_median_qs=[9, -9]", evidence_lines[0])
         self.assertIn("dac_rms_median_q=[21, -21]", evidence_lines[0])
+
+    def test_a_full_campaign_assembles_ten_late_tracking_slots(self):
+        d = self._commissioned_driver()
+        for direction in (0, 1):
+            for slot in range(5):
+                d.autotune.handle_robustness_late_tracking_evidence(
+                    {
+                        "oid": d.oid,
+                        "payload": build_late_tracking_payload(
+                            direction=direction,
+                            slot=slot,
+                            flags=0 if slot == 4 else 1,
+                            ppm=1_000 * (direction * 5 + slot),
+                        ),
+                    }
+                )
+
+        slots = d.autotune.robustness_late_tracking
+        self.assertEqual(set(slots), {(dr, sl) for dr in (0, 1) for sl in range(5)})
+        self.assertEqual(slots[(1, 3)]["ppm"], 8_000)
+        self.assertFalse(slots[(0, 4)]["filled"])
+        self.assertIsNone(d.autotune.robustness_reversal_error)
 
     def test_persist_failure_does_not_log_passed_gain(self):
         d = self._commissioned_driver()

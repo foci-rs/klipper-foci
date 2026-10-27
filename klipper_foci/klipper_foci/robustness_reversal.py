@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import struct
 
-ROBUSTNESS_SCHEMA_REVISION = 5
+ROBUSTNESS_SCHEMA_REVISION = 6
 ROBUSTNESS_TERMINAL_REPLY_BYTES = 51
 ROBUSTNESS_CYCLE_EVIDENCE_REPLY_BYTES = 51
+ROBUSTNESS_LATE_TRACKING_EVIDENCE_REPLY_BYTES = 32
 ROBUSTNESS_CYCLES_PER_DIRECTION = 5
 
 ROBUSTNESS_OUTCOME_COMPLETE = 0
@@ -23,11 +24,11 @@ ROBUSTNESS_OUTCOME_NAMES = {
 ROBUSTNESS_CAUSE_IAE_EXCEEDED = 3
 ROBUSTNESS_CAUSE_SAFETY_FAULT = 6
 ROBUSTNESS_CAUSE_REVERSAL_PEAK_EXCEEDED = 23
+ROBUSTNESS_CAUSE_LATE_TRACKING_EXCEEDED = 24
 
 ROBUSTNESS_CAUSE_NAMES = {
     0: "pass",
     1: "reconvergence_time_exceeded",
-    2: "residual_exceeded",
     3: "iae_exceeded",
     4: "reconvergence_inconclusive",
     5: "no_accepted_candidate",
@@ -49,6 +50,7 @@ ROBUSTNESS_CAUSE_NAMES = {
     21: "origin_recovery_fault",
     22: "dispatch_abort",
     23: "reversal_peak_exceeded",
+    24: "late_tracking_exceeded",
 }
 
 _HEADER = "<BIBBHHi"
@@ -68,6 +70,10 @@ _CYCLE_EVIDENCE = struct.Struct(
     + "H" * _CYCLE_FIELDS_PER_SLOT
 )
 _CYCLE_SENTINEL = 0xFFFF
+
+_LATE_TRACKING_EVIDENCE = struct.Struct("<BBBBIiIIqI")
+_LATE_TRACKING_FLAG_FILLED = 1 << 0
+_LATE_TRACKING_FLAG_SUFFIX_EXCLUDED = 1 << 1
 
 
 class RobustnessReversalProtocolError(Exception):
@@ -218,4 +224,51 @@ def handle_cycle_evidence(params: dict) -> dict:
         "cycles": cycles,
         "tail_count": tail_count,
         "displaced_tail": _cycle_slot_or_none(displaced_tail_fields),
+    }
+
+
+def handle_late_tracking_evidence(params: dict) -> dict:
+    """Parse one compact robustness-reversal late-tracking window evidence reply."""
+    try:
+        payload = bytes(params["payload"])
+    except (KeyError, TypeError, ValueError) as err:
+        raise RobustnessReversalProtocolError(
+            "robustness late-tracking evidence payload is missing"
+        ) from err
+    if len(payload) != _LATE_TRACKING_EVIDENCE.size:
+        raise RobustnessReversalProtocolError(
+            f"robustness late-tracking evidence payload has {len(payload)} bytes, expected "
+            f"{int(_LATE_TRACKING_EVIDENCE.size)}"
+        )
+    (
+        direction,
+        schema,
+        slot,
+        flags,
+        ppm,
+        window_delta_counts,
+        window_elapsed_us,
+        window_start_us,
+        target_rate_q,
+        median_ppm,
+    ) = _LATE_TRACKING_EVIDENCE.unpack(payload)
+    if schema != ROBUSTNESS_SCHEMA_REVISION:
+        raise RobustnessReversalProtocolError(
+            "unsupported robustness late-tracking evidence schema"
+        )
+    if direction > 1:
+        raise RobustnessReversalProtocolError("invalid robustness late-tracking direction")
+    if slot >= ROBUSTNESS_CYCLES_PER_DIRECTION:
+        raise RobustnessReversalProtocolError("invalid robustness late-tracking slot")
+    return {
+        "direction": direction,
+        "slot": slot,
+        "filled": bool(flags & _LATE_TRACKING_FLAG_FILLED),
+        "suffix_excluded": bool(flags & _LATE_TRACKING_FLAG_SUFFIX_EXCLUDED),
+        "ppm": ppm,
+        "window_delta_counts": window_delta_counts,
+        "window_elapsed_us": window_elapsed_us,
+        "window_start_us": window_start_us,
+        "target_rate_q": target_rate_q,
+        "median_ppm": median_ppm,
     }
