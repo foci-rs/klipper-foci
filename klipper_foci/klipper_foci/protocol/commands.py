@@ -54,6 +54,7 @@ class FociMcuCommands:
         self.set_auto_calibrate_on_enable = None
         self.config_homing = None
         self.query_stall = None
+        self.set_trace_mode = None
 
     def _bind_diagnostic_commands(self, mcu) -> bool:
         formats = {
@@ -206,5 +207,10 @@ class FociMcuCommands:
             "foci_stall_result oid=%c latched=%c peak_error_units=%u"
             " trigger_tick=%u clamp_active=%c trigger_path=%c"
             " peak_margin_delta_units=%u",
+            oid=oid,
+        )
+        self.set_trace_mode = mcu.lookup_query_command(
+            "foci_set_trace_mode oid=%c mode=%c",
+            "foci_trace_mode_state oid=%c mode=%c",
             oid=oid,
         )

@@ -156,3 +156,8 @@ def test_discover_optional_specs_detects_collision_through_clear_and_reassign(mo
 
     with pytest.raises(ValueError, match="shared"):
         discover_optional_specs(seen_driver)
+
+
+def test_registry_lists_foci_trace_mode():
+    names = {spec.name for spec in GCODE_COMMANDS}
+    assert "FOCI_TRACE_MODE" in names

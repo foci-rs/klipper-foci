@@ -363,3 +363,50 @@ def test_controls_workflow_no_longer_has_rare_setters():
         "set_phase_advance",
     ):
         assert not hasattr(driver.controls, name)
+
+
+class TestTraceModeCommand(unittest.TestCase):
+    def test_sets_the_mode_and_reports_the_device_and_read_back(self):
+        d = make_driver()
+        command = d.protocol.commands.set_trace_mode
+        command.response = {"oid": d.oid, "mode": 1}
+        gcmd = MockGCmd({"MODE": "critical"})
+
+        d.controls.set_trace_mode(gcmd)
+
+        self.assertEqual(command.last_args, [d.oid, 1])
+        self.assertIn("critical", gcmd.last_info)
+        self.assertIn(d.mcu.get_name(), gcmd.last_info)
+
+    def test_accepts_upper_case_mode_names(self):
+        d = make_driver()
+        command = d.protocol.commands.set_trace_mode
+        command.response = {"oid": d.oid, "mode": 2}
+
+        d.controls.set_trace_mode(MockGCmd({"MODE": "DIAGNOSTIC"}))
+
+        self.assertEqual(command.last_args, [d.oid, 2])
+
+    def test_rejects_an_unknown_mode_before_sending(self):
+        d = make_driver()
+
+        with self.assertRaises(CommandError):
+            d.controls.set_trace_mode(MockGCmd({"MODE": "loud"}))
+
+        self.assertEqual(d.protocol.commands.set_trace_mode.call_count, 0)
+
+    def test_read_back_mismatch_is_an_error(self):
+        d = make_driver()
+        d.protocol.commands.set_trace_mode.response = {"oid": d.oid, "mode": 0}
+
+        with self.assertRaises(CommandError) as ctx:
+            d.controls.set_trace_mode(MockGCmd({"MODE": "diagnostic"}))
+
+        self.assertIn("diagnostic", str(ctx.exception))
+        self.assertIn("dormant", str(ctx.exception))
+
+    def test_missing_reply_is_an_error(self):
+        d = make_driver()
+
+        with self.assertRaises(CommandError):
+            d.controls.set_trace_mode(MockGCmd({"MODE": "critical"}))

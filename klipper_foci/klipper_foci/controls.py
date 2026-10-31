@@ -13,6 +13,7 @@ from .constants import (
     MIN_RAW_VOLTAGE_LIMIT,
     PID_GAIN_MAX_RAW,
 )
+from .protocol.facade import TRACE_MODES
 from .registers import format_i_gain, format_p_gain
 
 
@@ -130,6 +131,30 @@ class ControlsWorkflow:
             )
 
         gcmd.respond_info(f"FOCI {self.driver.name} filters set: {' '.join(applied)}")
+
+    def set_trace_mode(self, gcmd) -> None:
+        """Select the device-wide trace mode: `MODE=dormant|critical|diagnostic`.
+
+        The mode applies to the whole MCU, not only the addressed stepper. The
+        command fails if the mode the firmware reports back differs from the
+        request.
+        """
+        name = gcmd.get("MODE", "").lower()
+        if name not in TRACE_MODES:
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: MODE must be one of {', '.join(TRACE_MODES)}"
+            )
+        requested = TRACE_MODES[name]
+        actual = self.driver.protocol.set_trace_mode(requested)
+        if actual != requested:
+            actual_name = next((n for n, v in TRACE_MODES.items() if v == actual), str(actual))
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: requested trace mode {name} but firmware "
+                f"reports {actual_name}"
+            )
+        gcmd.respond_info(
+            f"FOCI {self.driver.name} trace mode set on {self.driver.mcu.get_name()}: {name}"
+        )
 
     def set_current(self, gcmd) -> None:
         """Set run current for live bringup debugging.

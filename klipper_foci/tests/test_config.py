@@ -170,7 +170,7 @@ def test_diagnostics_entry_point_registers_passive_commands_at_config_time(monke
     assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
-def test_core_alone_registers_exactly_twelve_commands(monkeypatch):
+def test_core_alone_registers_exactly_thirteen_commands(monkeypatch):
     monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
     printer, _chips, sections = make_config_printer(
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
@@ -179,7 +179,7 @@ def test_core_alone_registers_exactly_twelve_commands(monkeypatch):
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert registered_names == {spec.name for spec in GCODE_COMMANDS}
-    assert len(registered_names) == 12
+    assert len(registered_names) == 13
 
 
 def test_diagnostics_alone_works(monkeypatch):

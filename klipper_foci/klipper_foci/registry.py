@@ -75,6 +75,12 @@ GCODE_COMMANDS: tuple[GcodeCommandSpec, ...] = (
         "Set FOCI runtime biquad low-pass filters for bringup debugging",
     ),
     GcodeCommandSpec(
+        "FOCI_TRACE_MODE",
+        "controls",
+        "set_trace_mode",
+        "Select the FOCI device-wide trace mode (dormant, critical, diagnostic)",
+    ),
+    GcodeCommandSpec(
         "FOCI_SET_CURRENT",
         "controls",
         "set_current",

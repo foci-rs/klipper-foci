@@ -5,6 +5,8 @@ from __future__ import annotations
 from . import queries
 from .commands import FociMcuCommands
 
+TRACE_MODES = {"dormant": 0, "critical": 1, "diagnostic": 2}
+
 
 class FociProtocol:
     """Host protocol facade for low-level FOCI MCU communication."""
@@ -329,6 +331,13 @@ class FociProtocol:
         self.commands.config_homing.send(
             [self.driver.oid, homing_ma, stall_units, margin_units, persistence]
         )
+
+    def set_trace_mode(self, mode: int) -> int:
+        """Select the device-wide trace mode and return the mode the firmware read back."""
+        response = self.commands.set_trace_mode.send([self.driver.oid, mode])
+        if response is None:
+            raise self.driver.printer.command_error("FOCI trace mode set returned no data")
+        return int(response["mode"])
 
     def query_stall(self) -> dict[str, int]:
         response = self.commands.query_stall.send([self.driver.oid])
