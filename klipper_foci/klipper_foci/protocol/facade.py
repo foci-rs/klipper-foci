@@ -5,8 +5,6 @@ from __future__ import annotations
 from . import queries
 from .commands import FociMcuCommands
 
-TRACE_MODES = {"dormant": 0, "critical": 1, "diagnostic": 2}
-
 
 class FociProtocol:
     """Host protocol facade for low-level FOCI MCU communication."""

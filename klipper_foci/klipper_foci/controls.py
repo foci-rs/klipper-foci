@@ -12,8 +12,8 @@ from .constants import (
     MAX_DIAGNOSTIC_VOLTAGE_LIMIT,
     MIN_RAW_VOLTAGE_LIMIT,
     PID_GAIN_MAX_RAW,
+    TRACE_MODES,
 )
-from .protocol.facade import TRACE_MODES
 from .registers import format_i_gain, format_p_gain
 
 
