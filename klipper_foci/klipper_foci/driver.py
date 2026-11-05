@@ -282,7 +282,3 @@ class FociDriver:
             f"\naccumulated_scale_error=0 instantaneous_error_bound={error_bound} "
             f"position_units\nconfigured rotation_distance={parsed.rotation_distance:g}"
         )
-        gcode.respond_info(
-            f"[foci {self.stepper_name}] rollout warning: remove legacy hand compensation and "
-            f"compare rotation_distance with the actual transmission before enabling motion"
-        )

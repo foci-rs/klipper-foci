@@ -1116,7 +1116,7 @@ def test_handle_connect_supports_common_power_of_two_microsteps_without_warning(
     assert "does not match" not in output
 
 
-def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
+def test_handle_connect_reports_exact_ldo_mapping():
     printer, _chips, sections, _config = make_foci_config(
         stepper_values={
             "microsteps": 16,
@@ -1137,8 +1137,6 @@ def test_handle_connect_reports_exact_ldo_mapping_and_rollout_warning():
         "accumulated_scale_error=0 instantaneous_error_bound=8 position_units"
     ) in output
     assert "rotation_distance=40" in output
-    assert "remove legacy hand compensation" in output
-    assert "compare rotation_distance with the actual transmission before enabling motion" in output
 
 
 def test_stall_units_use_distance_per_motor_revolution_with_gear_ratio():
