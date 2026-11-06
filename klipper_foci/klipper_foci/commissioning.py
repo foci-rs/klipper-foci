@@ -16,6 +16,12 @@ from .report import report_detail, report_summary
 
 log = logging.getLogger(__name__)
 
+LEGACY_COMMISSION_GAIN_FIELDS: dict[str, str] = {
+    "fallback_velocity_p": "velocity_p",
+    "fallback_velocity_i": "velocity_i",
+    "fallback_position_p": "position_p",
+}
+
 COMMISSION_REASON_NAMES: dict[int, str] = {
     1: "motor already enabled",
     2: "no current detected",
@@ -626,10 +632,17 @@ class CommissioningWorkflow:
         elif phase_id == 0 and status != 0:
             self.error_code = status
 
-    def handle_commission_result(self, params: dict) -> None:
-        """Handle foci_commission_result from firmware."""
+    def handle_commission_done(self, params: dict) -> None:
+        """Handle foci_commission_done from firmware."""
         self.result = params
         self.done = True
+
+    def handle_commission_result(self, params: dict) -> None:
+        """Handle foci_commission_result from firmware that predates foci_commission_done."""
+        result = {
+            LEGACY_COMMISSION_GAIN_FIELDS.get(name, name): value for name, value in params.items()
+        }
+        self.handle_commission_done(result)
 
     def handle_commission_detail(self, params: dict) -> None:
         """Collect structured commissioning diagnostic detail."""
@@ -865,9 +878,9 @@ class CommissioningWorkflow:
                 "flux_i": result["flux_i"],
                 "torque_p": result["torque_p"],
                 "torque_i": result["torque_i"],
-                "velocity_p": result["fallback_velocity_p"],
-                "velocity_i": result["fallback_velocity_i"],
-                "position_p": result["fallback_position_p"],
+                "velocity_p": result["velocity_p"],
+                "velocity_i": result["velocity_i"],
+                "position_p": result["position_p"],
                 "position_i": 0,
                 "velocity_limit": self._commissioned_velocity_limit(),
                 "velocity_filter_hz": result.get("velocity_filter_hz", 0),
@@ -979,9 +992,9 @@ class CommissioningWorkflow:
         configfile.set(self.driver.name, "pid_flux_i", f"{int(result['flux_i'])}")
         configfile.set(self.driver.name, "pid_torque_p", f"{int(result['torque_p'])}")
         configfile.set(self.driver.name, "pid_torque_i", f"{int(result['torque_i'])}")
-        configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['fallback_velocity_p'])}")
-        configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['fallback_velocity_i'])}")
-        configfile.set(self.driver.name, "pid_position_p", f"{int(result['fallback_position_p'])}")
+        configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['velocity_p'])}")
+        configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['velocity_i'])}")
+        configfile.set(self.driver.name, "pid_position_p", f"{int(result['position_p'])}")
         configfile.set(self.driver.name, "pid_position_i", "0")
         configfile.set(
             self.driver.name, "pid_velocity_limit", f"{int(self._commissioned_velocity_limit())}"

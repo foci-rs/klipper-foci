@@ -313,6 +313,8 @@ def test_same_mcu_dual_channel_response_handlers_use_distinct_oids():
     driver_y._handle_mcu_identify()
 
     response_oids = {(name, oid) for _callback, name, oid in driver_x.mcu._serial.responses}
+    assert ("foci_commission_done", 10) in response_oids
+    assert ("foci_commission_done", 12) in response_oids
     assert ("foci_commission_result", 10) in response_oids
     assert ("foci_commission_result", 12) in response_oids
 

@@ -787,7 +787,7 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
     reply.update(
         flux_i=configured_i["flux_i"],
         torque_i=configured_i["torque_i"],
-        fallback_velocity_i=configured_i["velocity_i"],
+        velocity_i=configured_i["velocity_i"],
     )
     driver.commissioning.persist_commission_results(reply, "balanced")
     assert sink.values[(driver.name, "pid_flux_i")] == str(configured_i["flux_i"])

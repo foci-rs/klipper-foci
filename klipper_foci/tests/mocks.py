@@ -57,9 +57,9 @@ def complete_commission_result():
     result = SAMPLE_COMMISSION_RESULT.copy()
     result.update(
         {
-            "fallback_velocity_p": 1152,
-            "fallback_velocity_i": 0,
-            "fallback_position_p": 640,
+            "velocity_p": 1152,
+            "velocity_i": 0,
+            "position_p": 640,
             "inner_warning_flags": 0,
         }
     )

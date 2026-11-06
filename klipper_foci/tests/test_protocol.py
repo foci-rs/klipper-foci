@@ -238,6 +238,7 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_dump_done", driver.oid) in registrations
     assert ("foci_calibrate_result", driver.oid) in registrations
     assert ("foci_commission_phase", driver.oid) in registrations
+    assert ("foci_commission_done", driver.oid) in registrations
     assert ("foci_commission_result", driver.oid) in registrations
     assert ("foci_selftest_result", driver.oid) in registrations
     assert ("foci_selftest_done", driver.oid) in registrations
