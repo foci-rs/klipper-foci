@@ -333,7 +333,7 @@ def test_format_commission_detail_encoder_direction_result():
 def test_format_commission_detail_encoder_alignment_result():
     line = format_commission_detail(
         {
-            "phase": 16,
+            "phase": 9,
             "code": 1,
             "status": 1,
             "value0": 1,

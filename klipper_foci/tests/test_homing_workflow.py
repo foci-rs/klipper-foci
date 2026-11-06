@@ -121,7 +121,7 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         def send_calibrate(_args):
             d.commissioning.handle_commission_detail(
                 {
-                    "phase": 17,
+                    "phase": 10,
                     "code": 1,
                     "status": 3,
                     "value0": 0,

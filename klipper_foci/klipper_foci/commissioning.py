@@ -361,13 +361,13 @@ def format_commission_detail(detail: dict) -> str:
             f"{phase_name}: encoder direction bounds (accepted={int(min_counts)}.."
             f"{int(max_counts)} counts, pole_pairs={int(value2)})"
         )
-    if detail["phase"] == 16 and code == 1:
+    if detail["phase"] == 9 and code == 1:
         status = "FAIL" if detail["status"] else "PASS"
         return (
             f"{phase_name}: alignment movement {status} (movement={int(value0)}, min={int(value1)}"
             f", stability={int(value2)})"
         )
-    if detail["phase"] == 17 and code == 1:
+    if detail["phase"] == 10 and code == 1:
         kind = "runaway" if detail["status"] == 2 else "drift"
         position_1 = value0 if value0 < 0x8000_0000 else value0 - 0x1_0000_0000
         position_2 = value1 if value1 < 0x8000_0000 else value1 - 0x1_0000_0000

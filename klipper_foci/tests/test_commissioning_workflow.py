@@ -460,7 +460,7 @@ def test_phase_progress_is_debug_only_during_selftest(caplog):
     d.global_config.debug = True
     d.state.active_label = "selftest"
     with caplog.at_level("INFO", logger="klipper_foci.commissioning"):
-        for phase_id in (1, 2, 3, 4, 5, 16):
+        for phase_id in (1, 2, 3, 4, 5, 9):
             d.commissioning.handle_commission_phase({"phase": phase_id, "status": 0})
     gcode = d.printer.lookup_object("gcode")
     assert gcode._responses == []
@@ -843,7 +843,7 @@ class TestChipResetDetected(unittest.TestCase):
 
         def drive_chip_reset(_args):
             d.commissioning.error_code = 18
-            d.commissioning.last_phase_id = 17
+            d.commissioning.last_phase_id = 10
 
         d.protocol.commands.commission.send = drive_chip_reset
 
@@ -948,27 +948,15 @@ class TestCommissioningStateTransitions(unittest.TestCase):
 
 class TestNameMaps(unittest.TestCase):
     def test_all_phase_ids_have_names(self):
-        """Every live `CommissionPhase` wire code should have a name.
+        """Every live `CommissionPhase` wire code has a name and the codes have no gaps.
 
-        Code 20 (fixed-gain amplitude validation) is retired. Codes 9-15 are
-        permanently retired (the removed `MechanicalId`,
-        `VelocityTune`, `VelocityValidate` and the pre-renumber outer block) and
-        must not appear. Codes 22-25 are likewise retired (the removed
-        `PositionTune`, `FilterTune`, `Commit`, `OuterDone`) and must not appear.
+        Codes 1-11 are the whole vocabulary; code 0 is the host's miss sentinel and
+        must not appear.
         """
-        live_codes = {1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 21}
-        for phase_id in live_codes:
-            self.assertIn(
-                phase_id,
-                PHASE_NAMES,
-                f"CommissionPhase wire code {phase_id} missing from PHASE_NAMES",
-            )
-        for retired_id in (9, 10, 11, 12, 13, 14, 15, 22, 23, 24, 25):
-            self.assertNotIn(
-                retired_id,
-                PHASE_NAMES,
-                f"retired wire code {retired_id} must not be reused in PHASE_NAMES",
-            )
+        self.assertEqual(sorted(PHASE_NAMES), list(range(1, 12)))
+        self.assertEqual(PHASE_NAMES[9], "Encoder alignment")
+        self.assertEqual(PHASE_NAMES[10], "Closed-loop entry")
+        self.assertEqual(PHASE_NAMES[11], "Gain floor measurement")
 
     def test_hard_fault_codes_are_subset_of_error_names(self):
         for code in HARD_FAULT_CODES:

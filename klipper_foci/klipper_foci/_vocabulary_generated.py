@@ -9,29 +9,7 @@ PHASE_NAMES: dict[int, str] = {
     6: "Current tune",
     7: "Current validation",
     8: "Inner done",
-    18: "Finding proportional gain (velocity)",
-    19: "Finding integral gain (velocity)",
-    21: "Verifying gain under reversal/standstill",
-    16: "Encoder alignment",
-    17: "Closed-loop entry",
-    26: "Gain floor measurement",
-    27: "Position tune",
+    9: "Encoder alignment",
+    10: "Closed-loop entry",
+    11: "Gain floor measurement",
 }
-
-BREAKAWAY_PHASE_NAMES: dict[int, str] = {
-    0: "breakaway_probe",
-    1: "proportional_response_discovery",
-    2: "proportional_band_confirmation",
-}
-
-ACTION_CODES: dict[str, int] = {
-    "velocity_p_tune": 7,
-    "velocity_i_tune": 8,
-    "velocity_tune_check": 9,
-    "position_p_tune": 10,
-}
-
-SHAPE_RESUME = 0
-SHAPE_BREAKAWAY_SEEDED = 3
-SHAPE_ROBUSTNESS_REVERSAL = 4
-SHAPE_POSITION_TUNE = 5
