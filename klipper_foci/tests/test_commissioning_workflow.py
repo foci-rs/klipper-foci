@@ -301,8 +301,53 @@ def test_commission_without_configured_velocity_limit_persists_firmware_default(
     driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
 
     assert driver.state.active_gains["velocity_limit"] == 500_000
-    assert configfile.values[(driver.name, "commissioned_velocity_limit")] == "500000"
-    assert configfile.values[(driver.name, "autotune_status")] == "commissioned"
+    assert configfile.values[(driver.name, "pid_velocity_limit")] == "500000"
+    assert configfile.values[(driver.name, "commissioning_status")] == "commissioned"
+
+
+def test_commission_success_stages_commissioning_state_and_outer_gains_only():
+    driver = make_driver()
+    configfile = MockConfigFile()
+    driver.printer._objects["configfile"] = configfile
+    driver.settings.pid_velocity_limit = 120_000
+    result = complete_commission_result()
+    result.update(fallback_velocity_p=1100, fallback_velocity_i=48, fallback_position_p=600)
+
+    def drive_success(_args):
+        driver.commissioning.result = result
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_success
+    driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    staged = {key: value for (_section, key), value in configfile.values.items()}
+    assert all(section == driver.name for section, _key in configfile.values)
+    assert staged["commissioning_status"] == "commissioned"
+    assert staged["commissioning_profile"] == "balanced"
+    assert staged["pid_velocity_p"] == "1100"
+    assert staged["pid_velocity_i"] == "48"
+    assert staged["pid_position_p"] == "600"
+    assert staged["pid_position_i"] == "0"
+    assert staged["pid_velocity_limit"] == "120000"
+    assert not [key for key in staged if key.startswith(("commissioned_", "autotune_"))]
+
+
+def test_commission_success_replaces_previously_pasted_outer_gains():
+    driver = make_driver()
+    configfile = MockConfigFile()
+    driver.printer._objects["configfile"] = configfile
+    configfile.set(driver.name, "pid_velocity_p", "1408")
+    configfile.set(driver.name, "pid_position_p", "704")
+
+    def drive_success(_args):
+        driver.commissioning.result = complete_commission_result()
+        driver.commissioning.done = True
+
+    driver.protocol.commands.commission.send = drive_success
+    driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert configfile.values[(driver.name, "pid_velocity_p")] == "1152"
+    assert configfile.values[(driver.name, "pid_position_p")] == "640"
 
 
 def test_commission_start_clears_stale_timing_cache():
@@ -1000,9 +1045,9 @@ class CommissionModelSurfacingTests(unittest.TestCase):
             configfile.values[(driver.name, "identified_tau_e_us")],
             str(1234567 * 1000 // 2500),
         )
-        self.assertEqual(configfile.values[(driver.name, "commissioned_position_i")], "0")
+        self.assertEqual(configfile.values[(driver.name, "pid_position_i")], "0")
         self.assertEqual(
-            configfile.values[(driver.name, "commissioned_velocity_limit")],
+            configfile.values[(driver.name, "pid_velocity_limit")],
             str(int(driver.settings.pid_velocity_limit)),
         )
         self.assertEqual(

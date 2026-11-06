@@ -174,7 +174,7 @@ class RegisterDumpWorkflow:
             },
         )
         sync_summary, sync_warnings = self._compare_live_to_host(live_gains, active_gains)
-        persisted_status = config.autotune_status or "uncommissioned"
+        persisted_status = config.commissioning_status or "uncommissioned"
 
         rule = "=" * 64
         lines = [
@@ -187,15 +187,18 @@ class RegisterDumpWorkflow:
             *sync_warnings,
         ]
 
-        lines.append(self._section_header("Autotune status"))
-        lines.append(self._kv("autotune_status", self._display_value(config.autotune_status)))
+        lines.append(self._section_header("Commissioning status"))
+        lines.append(
+            self._kv("commissioning_status", self._display_value(config.commissioning_status))
+        )
         lines.append(self._kv("runtime_status", self._display_value(state.runtime_status)))
         lines.append(self._kv("active_gains_present", "yes" if active_gains is not None else "no"))
-        lines.append(self._kv("autotune_profile", self._display_value(config.autotune_profile)))
-        lines.append(self._kv("autotune_mode", self._display_value(config.autotune_mode)))
+        lines.append(
+            self._kv("commissioning_profile", self._display_value(config.commissioning_profile))
+        )
         if persisted_status != state.runtime_status:
             lines.append(
-                f"WARNING: autotune_status/runtime_status divergence persisted="
+                f"WARNING: commissioning_status/runtime_status divergence persisted="
                 f"{persisted_status} validated={state.runtime_status}"
             )
 

@@ -984,26 +984,12 @@ class CommissioningWorkflow:
         configfile.set(self.driver.name, "pid_flux_i", f"{int(result['flux_i'])}")
         configfile.set(self.driver.name, "pid_torque_p", f"{int(result['torque_p'])}")
         configfile.set(self.driver.name, "pid_torque_i", f"{int(result['torque_i'])}")
+        configfile.set(self.driver.name, "pid_velocity_p", f"{int(result['fallback_velocity_p'])}")
+        configfile.set(self.driver.name, "pid_velocity_i", f"{int(result['fallback_velocity_i'])}")
+        configfile.set(self.driver.name, "pid_position_p", f"{int(result['fallback_position_p'])}")
+        configfile.set(self.driver.name, "pid_position_i", "0")
         configfile.set(
-            self.driver.name,
-            "commissioned_velocity_p",
-            f"{int(result['fallback_velocity_p'])}",
-        )
-        configfile.set(
-            self.driver.name,
-            "commissioned_velocity_i",
-            f"{int(result['fallback_velocity_i'])}",
-        )
-        configfile.set(
-            self.driver.name,
-            "commissioned_position_p",
-            f"{int(result['fallback_position_p'])}",
-        )
-        configfile.set(self.driver.name, "commissioned_position_i", "0")
-        configfile.set(
-            self.driver.name,
-            "commissioned_velocity_limit",
-            f"{int(self._commissioned_velocity_limit())}",
+            self.driver.name, "pid_velocity_limit", f"{int(self._commissioned_velocity_limit())}"
         )
         configfile.set(
             self.driver.name,
@@ -1037,8 +1023,8 @@ class CommissioningWorkflow:
         self._persist_resistance_identification(configfile, result)
         self._persist_inductance_identification(configfile, result)
         self._persist_current_loop_identification(configfile, result)
-        configfile.set(self.driver.name, "autotune_profile", profile_name)
-        configfile.set(self.driver.name, "autotune_status", "commissioned")
+        configfile.set(self.driver.name, "commissioning_profile", profile_name)
+        configfile.set(self.driver.name, "commissioning_status", "commissioned")
 
     RESISTANCE_RESULT_KEYS: tuple[tuple[str, str], ...] = (
         ("resistance_selected_count_slope_milli", "identified_r_count_slope_milli"),

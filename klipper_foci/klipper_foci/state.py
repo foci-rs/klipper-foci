@@ -7,11 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 CalibrationResponse = Mapping[str, int]
-RuntimeStatus = Literal[
-    "uncommissioned",
-    "commissioned",
-    "tuned",
-]
+RuntimeStatus = Literal["uncommissioned", "commissioned"]
 
 
 class CalibrationCompletion(Protocol):

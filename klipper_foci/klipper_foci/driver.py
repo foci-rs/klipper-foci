@@ -167,11 +167,23 @@ class FociDriver:
         validation = validate_runtime_config(self.config)
         self.state.runtime_status = validation.runtime_status
         self.state.active_gains = validation.active_gains
-        active_gains = validation.active_gains
 
-        pid_gains, position_gains, velocity_limit, filter_hz = self._resolve_startup_gains(
-            settings, active_gains
-        )
+        pid_gains = None
+        if settings.pid_flux_p is not None:
+            pid_gains = (
+                settings.pid_flux_p,
+                settings.pid_flux_i,
+                settings.pid_torque_p,
+                settings.pid_torque_i,
+            )
+        position_gains = None
+        if settings.pid_position_p is not None:
+            position_gains = (
+                settings.pid_position_p,
+                settings.pid_position_i,
+                settings.pid_velocity_p,
+                settings.pid_velocity_i,
+            )
         self.protocol.configure_startup(
             current_ma=run_ma,
             voltage_limit=settings.voltage_limit,
@@ -180,13 +192,16 @@ class FociDriver:
             planner_steps_per_rev=parsed.planner_steps_per_rev,
             encoder_reversed=parsed.encoder_reversed,
             pid_gains=pid_gains,
-            filter_hz=filter_hz,
+            filter_hz={
+                name: getattr(settings, f"{name}_filter_hz")
+                for name in ("velocity", "torque", "position", "flux")
+            },
             position_gains=position_gains,
             velocity_feedforward=(
                 settings.velocity_feedforward,
                 gain_to_permille(settings.velocity_feedforward_gain),
             ),
-            velocity_limit=velocity_limit,
+            velocity_limit=settings.pid_velocity_limit,
             homing=(
                 round(parsed.homing_current * 1000.0),
                 stall_ceiling_units(parsed),
@@ -196,55 +211,6 @@ class FociDriver:
         )
         self._report_motion_scale_mapping()
         self.homing.apply_initial_state()
-
-    @staticmethod
-    def _resolve_startup_gains(
-        settings: FociControlSettings,
-        active_gains: dict[str, int | None] | None,
-    ) -> tuple[
-        tuple[int, int, int, int] | None,
-        tuple[int, int, int, int] | None,
-        int | None,
-        dict[str, int | None],
-    ]:
-        """Resolve the single connect-time send, preferring saved gains over config."""
-        flux_p = active_gains["flux_p"] if active_gains is not None else settings.pid_flux_p
-        pid_gains = None
-        if flux_p is not None:
-            pid_gains = (
-                flux_p,
-                active_gains["flux_i"] if active_gains is not None else settings.pid_flux_i,
-                active_gains["torque_p"] if active_gains is not None else settings.pid_torque_p,
-                active_gains["torque_i"] if active_gains is not None else settings.pid_torque_i,
-            )
-
-        position_gains = None
-        if active_gains is not None and active_gains.get("velocity_p") is not None:
-            position_gains = (
-                active_gains["position_p"],
-                active_gains["position_i"],
-                active_gains["velocity_p"],
-                active_gains["velocity_i"],
-            )
-        elif settings.pid_position_p is not None:
-            position_gains = (
-                settings.pid_position_p,
-                settings.pid_position_i,
-                settings.pid_velocity_p,
-                settings.pid_velocity_i,
-            )
-
-        if active_gains is not None and active_gains.get("velocity_limit"):
-            velocity_limit = active_gains["velocity_limit"]
-        else:
-            velocity_limit = settings.pid_velocity_limit
-
-        filter_hz: dict[str, int | None] = {}
-        for name in ("velocity", "torque", "position", "flux"):
-            value = active_gains.get(f"{name}_filter_hz") if active_gains is not None else None
-            filter_hz[name] = value if value is not None else getattr(settings, f"{name}_filter_hz")
-
-        return pid_gains, position_gains, velocity_limit, filter_hz
 
     def _report_motion_scale_mapping(self) -> None:
         """Explain the deterministic startup mapping without overriding firmware."""

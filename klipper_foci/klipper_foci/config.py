@@ -30,6 +30,28 @@ DEFAULT_STALL_MARGIN_MM = 0.15
 DEFAULT_STALL_PERSISTENCE_TICKS = 3
 MAX_STALL_PERSISTENCE_TICKS = 255
 POSITION_UNITS_PER_REV = 65536
+COMMISSIONED_STATUS = "commissioned"
+LEGACY_CONFIG_KEYS: tuple[str, ...] = (
+    "autotune_status",
+    "autotune_profile",
+    "autotune_mode",
+    "autotune_probed_velocity_mrev_s",
+    "autotune_d_eq_q",
+    "autotune_confidence_q",
+    "autotune_band_lower_percent",
+    "autotune_band_upper_percent",
+    "autotune_band_position_q",
+    "autotune_position_bound_units",
+    "autotune_position_homing_peak_units",
+    "autotune_position_motion_cruise_units",
+    "autotune_position_velocity_ceiling_reached",
+    "autotune_position_peak_velocity_mrev_s",
+    "commissioned_velocity_p",
+    "commissioned_velocity_i",
+    "commissioned_position_p",
+    "commissioned_position_i",
+    "commissioned_velocity_limit",
+)
 
 
 def gain_to_permille(gain: float) -> int:
@@ -77,11 +99,6 @@ class FociDriverConfig:
     accel_feedforward_accel_gain: int
     accel_feedforward_decel_gain: int
     pid_velocity_limit: int | None
-    commissioned_velocity_p: int | None
-    commissioned_velocity_i: int | None
-    commissioned_position_p: int | None
-    commissioned_position_i: int | None
-    commissioned_velocity_limit: int | None
     identified_r_count_milli: int | None
     identified_lambda_us: int | None
     identified_theta_e_us: int | None
@@ -97,20 +114,8 @@ class FociDriverConfig:
     identified_current_retry_budget_exhausted: int | None
     identified_current_failure_reason: int | None
     identified_r_count_slope_milli: int | None
-    autotune_profile: str | None
-    autotune_mode: str | None
-    autotune_status: str | None
-    autotune_probed_velocity_mrev_s: int | None
-    autotune_d_eq_q: int | None
-    autotune_confidence_q: int | None
-    autotune_band_lower_percent: int | None
-    autotune_band_upper_percent: int | None
-    autotune_band_position_q: int | None
-    autotune_position_bound_units: int | None
-    autotune_position_homing_peak_units: int | None
-    autotune_position_motion_cruise_units: int | None
-    autotune_position_velocity_ceiling_reached: int | None
-    autotune_position_peak_velocity_mrev_s: int | None
+    commissioning_profile: str | None
+    commissioning_status: str | None
 
 
 @dataclass
@@ -180,6 +185,21 @@ def _filter_hz(config, section_name, option, max_hz):
             f"{section_name}]"
         )
     return value
+
+
+def _drain_legacy_keys(config, section_name) -> None:
+    """Read and discard every retired option so Klipper's unused-option check passes.
+
+    The values are never interpreted. One warning names the keys found.
+    """
+    found = [key for key in LEGACY_CONFIG_KEYS if config.get(key, None) is not None]
+    if found:
+        logging.warning(
+            "FOCI %s: ignoring legacy config keys no longer used: %s. Delete them from "
+            "printer.cfg and the SAVE_CONFIG block, then re-run FOCI_SETUP.",
+            section_name,
+            ", ".join(found),
+        )
 
 
 def parse_driver_config(config) -> FociDriverConfig:
@@ -264,22 +284,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     )
     pid_velocity_limit = config.getint("pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF)
 
-    commissioned_velocity_p = config.getint(
-        "commissioned_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    commissioned_velocity_i = config.getint(
-        "commissioned_velocity_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    commissioned_position_p = config.getint(
-        "commissioned_position_p", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    commissioned_position_i = config.getint(
-        "commissioned_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW
-    )
-    commissioned_velocity_limit = config.getint(
-        "commissioned_velocity_limit", None, minval=1, maxval=0x7FFFFFFF
-    )
-
     identified_r_count_milli = config.getint("identified_r_count_milli", None, minval=0)
     identified_lambda_us = config.getint("identified_lambda_us", None, minval=0)
     identified_theta_e_us = config.getint("identified_theta_e_us", None, minval=0)
@@ -311,36 +315,9 @@ def parse_driver_config(config) -> FociDriverConfig:
 
     identified_r_count_slope_milli = config.getint("identified_r_count_slope_milli", None)
 
-    autotune_profile = config.get("autotune_profile", None)
-    autotune_mode = config.get("autotune_mode", None)
-    autotune_status = config.get("autotune_status", None)
-    autotune_probed_velocity_mrev_s = config.getint(
-        "autotune_probed_velocity_mrev_s", None, minval=0
-    )
-    autotune_d_eq_q = config.getint("autotune_d_eq_q", None)
-    autotune_confidence_q = config.getint("autotune_confidence_q", None, minval=0, maxval=0xFFFF)
-    autotune_band_lower_percent = config.getint(
-        "autotune_band_lower_percent", None, minval=0, maxval=100
-    )
-    autotune_band_upper_percent = config.getint(
-        "autotune_band_upper_percent", None, minval=0, maxval=100
-    )
-    autotune_band_position_q = config.getint(
-        "autotune_band_position_q", None, minval=0, maxval=0xFFFF
-    )
-    autotune_position_bound_units = config.getint("autotune_position_bound_units", None, minval=0)
-    autotune_position_homing_peak_units = config.getint(
-        "autotune_position_homing_peak_units", None, minval=0
-    )
-    autotune_position_motion_cruise_units = config.getint(
-        "autotune_position_motion_cruise_units", None, minval=0
-    )
-    autotune_position_velocity_ceiling_reached = config.getint(
-        "autotune_position_velocity_ceiling_reached", None, minval=0, maxval=1
-    )
-    autotune_position_peak_velocity_mrev_s = config.getint(
-        "autotune_position_peak_velocity_mrev_s", None, minval=0, maxval=0xFFFF
-    )
+    commissioning_profile = config.get("commissioning_profile", None)
+    commissioning_status = config.get("commissioning_status", None)
+    _drain_legacy_keys(config, name)
 
     if not config.has_section(stepper_name):
         raise config.error(f"[{name}] cannot find stepper section for '{stepper_name}'")
@@ -418,11 +395,6 @@ def parse_driver_config(config) -> FociDriverConfig:
         accel_feedforward_accel_gain=1000,
         accel_feedforward_decel_gain=1000,
         pid_velocity_limit=pid_velocity_limit,
-        commissioned_velocity_p=commissioned_velocity_p,
-        commissioned_velocity_i=commissioned_velocity_i,
-        commissioned_position_p=commissioned_position_p,
-        commissioned_position_i=commissioned_position_i,
-        commissioned_velocity_limit=commissioned_velocity_limit,
         identified_r_count_milli=identified_r_count_milli,
         identified_lambda_us=identified_lambda_us,
         identified_theta_e_us=identified_theta_e_us,
@@ -438,20 +410,8 @@ def parse_driver_config(config) -> FociDriverConfig:
         identified_current_retry_budget_exhausted=(identified_current_retry_budget_exhausted),
         identified_current_failure_reason=identified_current_failure_reason,
         identified_r_count_slope_milli=identified_r_count_slope_milli,
-        autotune_profile=autotune_profile,
-        autotune_mode=autotune_mode,
-        autotune_status=autotune_status,
-        autotune_probed_velocity_mrev_s=autotune_probed_velocity_mrev_s,
-        autotune_d_eq_q=autotune_d_eq_q,
-        autotune_confidence_q=autotune_confidence_q,
-        autotune_band_lower_percent=autotune_band_lower_percent,
-        autotune_band_upper_percent=autotune_band_upper_percent,
-        autotune_band_position_q=autotune_band_position_q,
-        autotune_position_bound_units=autotune_position_bound_units,
-        autotune_position_homing_peak_units=autotune_position_homing_peak_units,
-        autotune_position_motion_cruise_units=autotune_position_motion_cruise_units,
-        autotune_position_velocity_ceiling_reached=autotune_position_velocity_ceiling_reached,
-        autotune_position_peak_velocity_mrev_s=autotune_position_peak_velocity_mrev_s,
+        commissioning_profile=commissioning_profile,
+        commissioning_status=commissioning_status,
     )
 
     ceiling_units = stall_ceiling_units(driver_config)
@@ -482,54 +442,38 @@ def stall_margin_units(config: FociDriverConfig) -> int:
 
 def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult:
     """Validate persisted config and build active gains/runtime status."""
-    status = config.autotune_status
+    status = config.commissioning_status
     if status is None:
         return RuntimeValidationResult("uncommissioned", None)
 
-    valid_statuses = ("commissioned", "tuned")
-    if status not in valid_statuses:
+    if status != COMMISSIONED_STATUS:
         logging.warning(
-            "FOCI %s: unknown autotune_status='%s' (expected one of: %s). "
+            "FOCI %s: unknown commissioning_status='%s' (expected: %s). "
             "Motor cannot be enabled until FOCI_SETUP is run.",
             config.name,
             status,
-            ", ".join(valid_statuses),
+            COMMISSIONED_STATUS,
         )
         return RuntimeValidationResult("uncommissioned", None)
 
-    required_base = [
+    required = [
         ("pid_flux_p", config.pid_flux_p),
         ("pid_flux_i", config.pid_flux_i),
         ("pid_torque_p", config.pid_torque_p),
         ("pid_torque_i", config.pid_torque_i),
+        ("pid_velocity_p", config.pid_velocity_p),
+        ("pid_velocity_i", config.pid_velocity_i),
+        ("pid_position_p", config.pid_position_p),
+        ("pid_position_i", config.pid_position_i),
+        ("pid_velocity_limit", config.pid_velocity_limit),
         ("identified_lambda_us", config.identified_lambda_us),
         ("identified_theta_e_us", config.identified_theta_e_us),
         ("identified_bandwidth_hz", config.identified_bandwidth_hz),
     ]
-    missing = [name for name, value in required_base if value is None]
-
-    if status == "commissioned":
-        commissioned_fields = [
-            ("commissioned_velocity_p", config.commissioned_velocity_p),
-            ("commissioned_velocity_i", config.commissioned_velocity_i),
-            ("commissioned_position_p", config.commissioned_position_p),
-            ("commissioned_position_i", config.commissioned_position_i),
-            ("commissioned_velocity_limit", config.commissioned_velocity_limit),
-        ]
-        missing.extend(name for name, value in commissioned_fields if value is None)
-    elif status == "tuned":
-        tuned_fields = [
-            ("pid_velocity_p", config.pid_velocity_p),
-            ("pid_velocity_i", config.pid_velocity_i),
-            ("pid_velocity_limit", config.pid_velocity_limit),
-            ("pid_position_p", config.pid_position_p),
-            ("pid_position_i", config.pid_position_i),
-        ]
-        missing.extend(name for name, value in tuned_fields if value is None)
-
+    missing = [name for name, value in required if value is None]
     if missing:
         logging.warning(
-            "FOCI %s: autotune_status='%s' but missing required fields: %s. "
+            "FOCI %s: commissioning_status='%s' but missing required fields: %s. "
             "Motor cannot be enabled until FOCI_SETUP is run.",
             config.name,
             status,
@@ -537,42 +481,25 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
         )
         return RuntimeValidationResult("uncommissioned", None)
 
-    if status == "commissioned":
-        active_gains = {
-            "flux_p": config.pid_flux_p,
-            "flux_i": config.pid_flux_i,
-            "torque_p": config.pid_torque_p,
-            "torque_i": config.pid_torque_i,
-            "velocity_p": config.commissioned_velocity_p,
-            "velocity_i": config.commissioned_velocity_i,
-            "position_p": config.commissioned_position_p,
-            "position_i": config.commissioned_position_i,
-            "velocity_limit": config.commissioned_velocity_limit,
-            "velocity_filter_hz": config.velocity_filter_hz,
-            "torque_filter_hz": config.torque_filter_hz,
-            "position_filter_hz": config.position_filter_hz,
-            "flux_filter_hz": config.flux_filter_hz,
-        }
-    else:
-        active_gains = {
-            "flux_p": config.pid_flux_p,
-            "flux_i": config.pid_flux_i,
-            "torque_p": config.pid_torque_p,
-            "torque_i": config.pid_torque_i,
-            "velocity_p": config.pid_velocity_p,
-            "velocity_i": config.pid_velocity_i,
-            "position_p": config.pid_position_p,
-            "position_i": config.pid_position_i,
-            "velocity_limit": config.pid_velocity_limit,
-            "velocity_filter_hz": config.velocity_filter_hz,
-            "torque_filter_hz": config.torque_filter_hz,
-            "position_filter_hz": config.position_filter_hz,
-            "flux_filter_hz": config.flux_filter_hz,
-        }
+    active_gains = {
+        "flux_p": config.pid_flux_p,
+        "flux_i": config.pid_flux_i,
+        "torque_p": config.pid_torque_p,
+        "torque_i": config.pid_torque_i,
+        "velocity_p": config.pid_velocity_p,
+        "velocity_i": config.pid_velocity_i,
+        "position_p": config.pid_position_p,
+        "position_i": config.pid_position_i,
+        "velocity_limit": config.pid_velocity_limit,
+        "velocity_filter_hz": config.velocity_filter_hz,
+        "torque_filter_hz": config.torque_filter_hz,
+        "position_filter_hz": config.position_filter_hz,
+        "flux_filter_hz": config.flux_filter_hz,
+    }
 
     logging.info(
         "FOCI %s: loaded config, status=%s, active gains ready",
         config.name,
         status,
     )
-    return RuntimeValidationResult(status, active_gains)
+    return RuntimeValidationResult("commissioned", active_gains)

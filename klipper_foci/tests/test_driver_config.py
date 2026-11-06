@@ -64,11 +64,6 @@ CONFIG_FIELD_NAMES = {
     "accel_feedforward_accel_gain",
     "accel_feedforward_decel_gain",
     "pid_velocity_limit",
-    "commissioned_velocity_p",
-    "commissioned_velocity_i",
-    "commissioned_position_p",
-    "commissioned_position_i",
-    "commissioned_velocity_limit",
     "identified_r_count_milli",
     "identified_lambda_us",
     "identified_theta_e_us",
@@ -84,20 +79,8 @@ CONFIG_FIELD_NAMES = {
     "identified_current_retry_budget_exhausted",
     "identified_current_failure_reason",
     "identified_r_count_slope_milli",
-    "autotune_profile",
-    "autotune_mode",
-    "autotune_status",
-    "autotune_probed_velocity_mrev_s",
-    "autotune_d_eq_q",
-    "autotune_confidence_q",
-    "autotune_band_lower_percent",
-    "autotune_band_upper_percent",
-    "autotune_band_position_q",
-    "autotune_position_bound_units",
-    "autotune_position_homing_peak_units",
-    "autotune_position_motion_cruise_units",
-    "autotune_position_velocity_ceiling_reached",
-    "autotune_position_peak_velocity_mrev_s",
+    "commissioning_profile",
+    "commissioning_status",
 }
 
 
@@ -328,11 +311,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "velocity_feedforward": True,
             "velocity_feedforward_gain": 7,
             "pid_velocity_limit": 500000,
-            "commissioned_velocity_p": 1100,
-            "commissioned_velocity_i": 48,
-            "commissioned_position_p": 600,
-            "commissioned_position_i": 64,
-            "commissioned_velocity_limit": 300000,
             "identified_r_count_milli": 1700,
             "identified_lambda_us": 12,
             "identified_theta_e_us": 160,
@@ -347,9 +325,8 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
             "identified_current_gains_tier": 2,
             "identified_current_retry_budget_exhausted": 0,
             "identified_current_failure_reason": 0,
-            "autotune_profile": "balanced",
-            "autotune_mode": "nominal",
-            "autotune_status": "commissioned",
+            "commissioning_profile": "balanced",
+            "commissioning_status": "commissioned",
         },
     )
 
@@ -367,8 +344,6 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.accel_feedforward_accel_gain == 1000
     assert parsed.accel_feedforward_decel_gain == 1000
     assert parsed.pid_velocity_limit == 500000
-    assert parsed.commissioned_velocity_p == 1100
-    assert parsed.commissioned_position_i == 64
     assert parsed.identified_r_count_milli == 1700
     assert parsed.identified_theta_source == 1
     assert parsed.identified_tau_e_us == 730
@@ -380,9 +355,8 @@ def test_parse_driver_config_preserves_persisted_and_tuning_fields():
     assert parsed.identified_current_gains_tier == 2
     assert parsed.identified_current_retry_budget_exhausted == 0
     assert parsed.identified_current_failure_reason == 0
-    assert parsed.autotune_profile == "balanced"
-    assert parsed.autotune_mode == "nominal"
-    assert parsed.autotune_status == "commissioned"
+    assert parsed.commissioning_profile == "balanced"
+    assert parsed.commissioning_status == "commissioned"
 
 
 def test_gain_default_and_maxval_and_retired_key():
@@ -636,6 +610,102 @@ def test_persisted_band_fields_and_theta_e_us_keep_value_and_type_on_reload():
     assert isinstance(config.identified_bandwidth_hz, int)
 
 
+COMMISSIONED_VALUES = {
+    "commissioning_status": "commissioned",
+    "commissioning_profile": "balanced",
+    "pid_flux_p": 256,
+    "pid_flux_i": 416,
+    "pid_torque_p": 257,
+    "pid_torque_i": 432,
+    "identified_lambda_us": 12,
+    "identified_theta_e_us": 160,
+    "identified_bandwidth_hz": 1600,
+    "pid_velocity_p": 1100,
+    "pid_velocity_i": 48,
+    "pid_position_p": 600,
+    "pid_position_i": 64,
+    "pid_velocity_limit": 300000,
+}
+
+LEGACY_AUTOTUNE_KEYS = (
+    "autotune_status",
+    "autotune_profile",
+    "autotune_mode",
+    "autotune_probed_velocity_mrev_s",
+    "autotune_d_eq_q",
+    "autotune_confidence_q",
+    "autotune_band_lower_percent",
+    "autotune_band_upper_percent",
+    "autotune_band_position_q",
+    "autotune_position_bound_units",
+    "autotune_position_homing_peak_units",
+    "autotune_position_motion_cruise_units",
+    "autotune_position_velocity_ceiling_reached",
+    "autotune_position_peak_velocity_mrev_s",
+)
+
+LEGACY_COMMISSIONED_KEYS = (
+    "commissioned_velocity_p",
+    "commissioned_velocity_i",
+    "commissioned_position_p",
+    "commissioned_position_i",
+    "commissioned_velocity_limit",
+)
+
+# The [foci stepper_x] options a pre-change FOCI_SETUP wrote into the SAVE_CONFIG block.
+PRE_CHANGE_SAVE_CONFIG_BLOCK = {
+    "pid_flux_p": "256",
+    "pid_flux_i": "416",
+    "pid_torque_p": "257",
+    "pid_torque_i": "432",
+    "commissioned_velocity_p": "1152",
+    "commissioned_velocity_i": "0",
+    "commissioned_position_p": "640",
+    "commissioned_position_i": "0",
+    "commissioned_velocity_limit": "500000",
+    "identified_r_count_milli": "1706",
+    "identified_lambda_us": "0",
+    "identified_theta_e_us": "160",
+    "identified_theta_source": "1",
+    "identified_bandwidth_hz": "1600",
+    "identified_tau_e_us": "729",
+    "identified_inner_warning_flags": "0",
+    "identified_r_count_slope_milli": "1042",
+    "identified_l_source": "1",
+    "identified_l_reactance_count_ratio_milli": "8600",
+    "identified_l_saliency_status": "1",
+    "identified_current_gains_source": "1",
+    "identified_current_gains_tier": "2",
+    "identified_current_retry_budget_exhausted": "0",
+    "identified_current_failure_reason": "0",
+    "autotune_profile": "balanced",
+    "autotune_status": "commissioned",
+}
+
+# The exact text foci-tune's config_block::render produces for velocity_p=1408, velocity_i=48,
+# position_p=704, position_i=0 and the four filters at a 25 kHz PWM.
+FOCI_TUNE_CONFIG_BLOCK = """[foci stepper_x]
+pid_velocity_p: 1408     # 5.500 Q8.8
+pid_velocity_i: 48       # 2.9 Hz corner at 25 kHz PWM
+pid_position_p: 704      # 2.750 Q8.8
+pid_position_i: 0
+velocity_filter_hz: 150
+torque_filter_hz: 0
+position_filter_hz: 300
+flux_filter_hz: 0
+"""
+
+
+def parse_pasted_block(text):
+    """Parse a pasted printer.cfg block the way Klipper's config parser reads option lines."""
+    values = {}
+    for raw_line in text.splitlines()[1:]:
+        entry = raw_line.split("#", 1)[0].strip()
+        key, value = entry.split(":", 1)
+        values[key.strip()] = value.strip()
+    return values
+
+
 def test_newly_commissioned_config_without_ringing_validates():
     """A config built from the trimmed post-change commission result validates.
 
@@ -644,50 +714,16 @@ def test_newly_commissioned_config_without_ringing_validates():
     status must still validate on the remaining required fields alone.
     """
     result = validate_runtime_config(
-        parsed_config_with(
-            {
-                "autotune_status": "commissioned",
-                "pid_flux_p": 256,
-                "pid_flux_i": 416,
-                "pid_torque_p": 257,
-                "pid_torque_i": 432,
-                "identified_lambda_us": 12,
-                "identified_theta_e_us": 160,
-                "identified_bandwidth_hz": 1600,
-                "identified_tau_e_us": 730,
-                "commissioned_velocity_p": 1100,
-                "commissioned_velocity_i": 48,
-                "commissioned_position_p": 600,
-                "commissioned_position_i": 0,
-                "commissioned_velocity_limit": 500000,
-            }
-        )
+        parsed_config_with({**COMMISSIONED_VALUES, "identified_tau_e_us": 730})
     )
 
     assert result.runtime_status == "commissioned"
     assert result.active_gains is not None
 
 
-def test_validate_runtime_config_returns_commissioned_active_gains():
+def test_validate_runtime_config_returns_commissioned_active_gains_from_pid_keys():
     result = validate_runtime_config(
-        parsed_config_with(
-            {
-                "autotune_status": "commissioned",
-                "pid_flux_p": 256,
-                "pid_flux_i": 416,
-                "pid_torque_p": 257,
-                "pid_torque_i": 432,
-                "identified_lambda_us": 12,
-                "identified_theta_e_us": 160,
-                "identified_bandwidth_hz": 1600,
-                "commissioned_velocity_p": 1100,
-                "commissioned_velocity_i": 48,
-                "commissioned_position_p": 600,
-                "commissioned_position_i": 64,
-                "commissioned_velocity_limit": 300000,
-                "position_filter_hz": 200,
-            }
-        )
+        parsed_config_with({**COMMISSIONED_VALUES, "position_filter_hz": 200})
     )
 
     assert result.runtime_status == "commissioned"
@@ -717,19 +753,11 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
     }
     parsed = parsed_config_with(
         {
-            "autotune_status": "commissioned",
-            "pid_flux_p": 256,
+            **COMMISSIONED_VALUES,
             "pid_flux_i": configured_i["flux_i"],
-            "pid_torque_p": 257,
             "pid_torque_i": configured_i["torque_i"],
-            "identified_lambda_us": 12,
-            "identified_theta_e_us": 160,
-            "identified_bandwidth_hz": 1600,
-            "commissioned_velocity_p": 1100,
-            "commissioned_velocity_i": configured_i["velocity_i"],
-            "commissioned_position_p": 600,
-            "commissioned_position_i": configured_i["position_i"],
-            "commissioned_velocity_limit": 300000,
+            "pid_velocity_i": configured_i["velocity_i"],
+            "pid_position_i": configured_i["position_i"],
         }
     )
     validation = validate_runtime_config(parsed)
@@ -773,31 +801,13 @@ def test_q4_12_i_values_remain_exact_through_host_lifecycle():
     driver.commissioning.persist_commission_results(reply, "balanced")
     assert sink.values[(driver.name, "pid_flux_i")] == str(configured_i["flux_i"])
     assert sink.values[(driver.name, "pid_torque_i")] == str(configured_i["torque_i"])
-    assert sink.values[(driver.name, "commissioned_velocity_i")] == str(configured_i["velocity_i"])
-    assert sink.values[(driver.name, "commissioned_position_i")] == "0"
+    assert sink.values[(driver.name, "pid_velocity_i")] == str(configured_i["velocity_i"])
+    assert sink.values[(driver.name, "pid_position_i")] == "0"
 
 
 def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable():
     result = validate_runtime_config(
-        parsed_config_with(
-            {
-                "autotune_status": "commissioned",
-                "pid_flux_p": 256,
-                "pid_flux_i": 416,
-                "pid_torque_p": 257,
-                "pid_torque_i": 432,
-                "identified_lambda_us": 12,
-                "identified_theta_e_us": 160,
-                "identified_bandwidth_hz": 1600,
-                "commissioned_velocity_p": 1100,
-                "commissioned_velocity_i": 48,
-                "commissioned_position_p": 600,
-                "commissioned_position_i": 64,
-                "commissioned_velocity_limit": 300000,
-                "torque_filter_hz": 0,
-                "flux_filter_hz": 0,
-            }
-        )
+        parsed_config_with({**COMMISSIONED_VALUES, "torque_filter_hz": 0, "flux_filter_hz": 0})
     )
 
     assert result.runtime_status == "commissioned"
@@ -805,58 +815,33 @@ def test_validate_runtime_config_preserves_explicit_zero_current_filter_disable(
     assert result.active_gains["flux_filter_hz"] == 0
 
 
-def test_validate_runtime_config_returns_tuned_active_gains():
+def test_validate_runtime_config_warns_for_unknown_status(caplog):
     result = validate_runtime_config(
-        parsed_config_with(
-            {
-                "autotune_status": "tuned",
-                "pid_flux_p": 256,
-                "pid_flux_i": 416,
-                "pid_torque_p": 257,
-                "pid_torque_i": 432,
-                "identified_lambda_us": 12,
-                "identified_theta_e_us": 160,
-                "identified_bandwidth_hz": 1600,
-                "pid_velocity_p": 1100,
-                "pid_velocity_i": 48,
-                "pid_position_p": 600,
-                "pid_position_i": 64,
-                "pid_velocity_limit": 300000,
-                "flux_filter_hz": 100,
-            }
-        )
+        parsed_config_with({**COMMISSIONED_VALUES, "commissioning_status": "unsafe"})
     )
 
-    assert result.runtime_status == "tuned"
-    assert result.active_gains == {
-        "flux_p": 256,
-        "flux_i": 416,
-        "torque_p": 257,
-        "torque_i": 432,
-        "velocity_p": 1100,
-        "velocity_i": 48,
-        "position_p": 600,
-        "position_i": 64,
-        "velocity_limit": 300000,
-        "velocity_filter_hz": None,
-        "torque_filter_hz": None,
-        "position_filter_hz": None,
-        "flux_filter_hz": 100,
+    assert_uncommissioned(result)
+    assert "unknown commissioning_status='unsafe'" in caplog.text
+
+
+@pytest.mark.parametrize("legacy_status", ["commissioned", "tuned"])
+def test_legacy_autotune_status_never_counts_as_a_commissioning_state(legacy_status):
+    values = {
+        key: value for key, value in COMMISSIONED_VALUES.items() if "commissioning" not in key
     }
 
-
-def test_validate_runtime_config_warns_for_unknown_status(caplog):
-    result = validate_runtime_config(parsed_config_with({"autotune_status": "unsafe"}))
+    result = validate_runtime_config(
+        parsed_config_with({**values, "autotune_status": legacy_status})
+    )
 
     assert_uncommissioned(result)
-    assert "unknown autotune_status='unsafe'" in caplog.text
 
 
-def test_validate_runtime_config_warns_for_missing_required_fields(caplog):
+def test_validate_runtime_config_warns_for_missing_inner_and_identified_fields(caplog):
     result = validate_runtime_config(
         parsed_config_with(
             {
-                "autotune_status": "commissioned",
+                "commissioning_status": "commissioned",
                 "pid_flux_p": 256,
                 "pid_flux_i": 416,
                 "pid_torque_p": 257,
@@ -868,27 +853,32 @@ def test_validate_runtime_config_warns_for_missing_required_fields(caplog):
     assert_uncommissioned(result)
     assert "missing required fields" in caplog.text
     assert "identified_lambda_us" in caplog.text
-    assert "commissioned_velocity_p" in caplog.text
+    assert "pid_velocity_p" in caplog.text
+
+
+def test_commissioned_config_without_velocity_limit_is_uncommissioned(caplog):
+    values = {k: v for k, v in COMMISSIONED_VALUES.items() if k != "pid_velocity_limit"}
+
+    result = validate_runtime_config(parsed_config_with(values))
+
+    assert_uncommissioned(result)
+    assert "missing required fields: pid_velocity_limit" in caplog.text
+
+
+def test_commissioned_config_without_any_outer_gain_is_uncommissioned(caplog):
+    outer_keys = ("pid_velocity_p", "pid_velocity_i", "pid_position_p", "pid_position_i")
+    values = {k: v for k, v in COMMISSIONED_VALUES.items() if k not in outer_keys}
+
+    result = validate_runtime_config(parsed_config_with(values))
+
+    assert_uncommissioned(result)
+    assert "missing required fields" in caplog.text
+    for key in outer_keys:
+        assert key in caplog.text
 
 
 def test_handle_connect_installs_validation_result():
-    _printer, _chips, sections, config = make_foci_config(
-        foci_values={
-            "autotune_status": "commissioned",
-            "pid_flux_p": 256,
-            "pid_flux_i": 416,
-            "pid_torque_p": 257,
-            "pid_torque_i": 432,
-            "identified_lambda_us": 12,
-            "identified_theta_e_us": 160,
-            "identified_bandwidth_hz": 25,
-            "commissioned_velocity_p": 1100,
-            "commissioned_velocity_i": 48,
-            "commissioned_position_p": 600,
-            "commissioned_position_i": 64,
-            "commissioned_velocity_limit": 300000,
-        }
-    )
+    _printer, _chips, sections, config = make_foci_config(foci_values=COMMISSIONED_VALUES)
     driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
     driver._handle_mcu_identify()
 
@@ -898,35 +888,85 @@ def test_handle_connect_installs_validation_result():
     assert driver.state.active_gains["velocity_p"] == 1100
 
 
-_CONNECT_SAVED_GAINS_DIFFER_FROM_CFG = {
-    "autotune_status": "commissioned",
-    "pid_flux_p": 256,
-    "pid_flux_i": 416,
-    "pid_torque_p": 257,
-    "pid_torque_i": 432,
-    "identified_lambda_us": 12,
-    "identified_theta_e_us": 160,
-    "identified_bandwidth_hz": 1600,
-    "commissioned_velocity_p": 1100,
-    "commissioned_velocity_i": 48,
-    "commissioned_position_p": 600,
-    "commissioned_position_i": 64,
-    "commissioned_velocity_limit": 300000,
-    "pid_position_p": 111,
-    "pid_position_i": 22,
-    "pid_velocity_p": 33,
-    "pid_velocity_i": 44,
-    "pid_velocity_limit": 5000,
+def test_pre_change_save_config_block_loads_uncommissioned_and_ignores_commissioned_gains(
+    caplog,
+):
+    printer, _chips, sections, config = make_foci_config(foci_values=PRE_CHANGE_SAVE_CONFIG_BLOCK)
+    parse_driver_config(config)
+    assert config.unused_options() == []
+    caplog.clear()
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert driver.state.runtime_status == "uncommissioned"
+    assert driver.state.active_gains is None
+    cmds = driver.protocol.commands
+    assert cmds.set_position_gains.call_count == 0
+    assert cmds.set_velocity_limit.call_count == 0
+    legacy_warnings = [r for r in caplog.records if "legacy" in r.getMessage()]
+    assert len(legacy_warnings) == 1
+    message = legacy_warnings[0].getMessage()
+    assert legacy_warnings[0].levelname == "WARNING"
+    for key in ("autotune_profile", "autotune_status", *LEGACY_COMMISSIONED_KEYS):
+        assert key in message
+    assert "FOCI_SETUP" in message
+
+
+def test_every_legacy_key_is_read_and_discarded_without_interpretation():
+    legacy = dict.fromkeys((*LEGACY_AUTOTUNE_KEYS, *LEGACY_COMMISSIONED_KEYS), "not-a-number")
+    _printer, _chips, _sections, config = make_foci_config(foci_values=legacy)
+
+    parsed = parse_driver_config(config)
+
+    assert config.unused_options() == []
+    assert parsed.commissioning_status is None
+    assert parsed.commissioning_profile is None
+    assert parsed.pid_velocity_p is None
+    assert parsed.pid_velocity_limit is None
+
+
+def test_clean_config_logs_no_legacy_warning(caplog):
+    parsed_config_with(COMMISSIONED_VALUES)
+
+    assert "legacy" not in caplog.text
+
+
+def test_foci_tune_block_over_commissioned_config_becomes_the_active_gains():
+    pasted = parse_pasted_block(FOCI_TUNE_CONFIG_BLOCK)
+    _printer, _chips, sections, config = make_foci_config(
+        foci_values={**COMMISSIONED_VALUES, **pasted}
+    )
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+
+    driver._handle_connect()
+
+    assert driver.state.runtime_status == "commissioned"
+    assert driver.state.active_gains["velocity_p"] == 1408
+    assert driver.state.active_gains["velocity_i"] == 48
+    assert driver.state.active_gains["position_p"] == 704
+    assert driver.state.active_gains["position_i"] == 0
+    assert driver.state.active_gains["velocity_filter_hz"] == 150
+    assert driver.state.active_gains["position_filter_hz"] == 300
+    assert driver.state.active_gains["velocity_limit"] == 300000
+    cmds = driver.protocol.commands
+    assert cmds.set_position_gains.last_args == [10, 704, 0, 1408, 48]
+    assert cmds.set_velocity_filter.last_args == [10, 150]
+    assert cmds.set_position_filter.last_args == [10, 300]
+
+
+_CONNECT_SAVED_GAINS = {
+    **COMMISSIONED_VALUES,
     "position_filter_hz": 200,
     "voltage_limit": 16000,
 }
 
 
 def test_handle_connect_sends_each_command_once_with_saved_gains():
-    """Saved commissioned gains differ from printer.cfg: single send, active gains win."""
-    _printer, _chips, sections, config = make_foci_config(
-        foci_values=_CONNECT_SAVED_GAINS_DIFFER_FROM_CFG
-    )
+    """A commissioned config sends each startup command once, with its pid values."""
+    _printer, _chips, sections, config = make_foci_config(foci_values=_CONNECT_SAVED_GAINS)
     driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
     driver._handle_mcu_identify()
 

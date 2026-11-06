@@ -539,9 +539,8 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
             "identified_bandwidth_hz": 0,
             "identified_tau_e_us": 1154,
             "identified_inner_warning_flags": 36,
-            "autotune_profile": "conservative",
-            "autotune_mode": "nominal",
-            "autotune_status": "commissioned",
+            "commissioning_profile": "conservative",
+            "commissioning_status": "commissioned",
         }
     )
 
@@ -551,77 +550,8 @@ def test_saved_commission_and_tune_fields_are_accepted_on_restart():
     assert driver.config.identified_tau_e_us == 1154
     assert not hasattr(driver.config, "identified_j_eff")
     assert not hasattr(driver.config, "identified_b_eff")
-    assert driver.config.autotune_profile == "conservative"
-    assert driver.config.autotune_mode == "nominal"
-    assert driver.config.autotune_status == "commissioned"
-
-
-def test_config_reads_optional_provenance():
-    printer, _chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        }
-    )
-    sections["foci stepper_x"].update(
-        {
-            "autotune_status": "tuned",
-            "autotune_probed_velocity_mrev_s": "5366",
-            "autotune_d_eq_q": "1234",
-            "autotune_confidence_q": "5000",
-            "autotune_band_lower_percent": "70",
-            "autotune_band_upper_percent": "80",
-            "autotune_band_position_q": "3000",
-            "autotune_position_bound_units": "409",
-            "autotune_position_homing_peak_units": "300",
-            "autotune_position_motion_cruise_units": "210",
-            "autotune_position_velocity_ceiling_reached": "1",
-            "autotune_position_peak_velocity_mrev_s": "15210",
-        }
-    )
-
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-
-    assert driver.config.autotune_probed_velocity_mrev_s == 5366
-    assert driver.config.autotune_d_eq_q == 1234
-    assert driver.config.autotune_confidence_q == 5000
-    assert driver.config.autotune_band_lower_percent == 70
-    assert driver.config.autotune_band_upper_percent == 80
-    assert driver.config.autotune_band_position_q == 3000
-    assert driver.config.autotune_position_bound_units == 409
-    assert driver.config.autotune_position_homing_peak_units == 300
-    assert driver.config.autotune_position_motion_cruise_units == 210
-    assert driver.config.autotune_position_velocity_ceiling_reached == 1
-    assert driver.config.autotune_position_peak_velocity_mrev_s == 15210
-
-
-def test_config_provenance_defaults_to_none_when_absent():
-    printer, _chips, sections = make_config_printer(
-        {
-            "stepper_x": {
-                "step_pin": "foci:STEP0",
-                "dir_pin": "foci:DIR0",
-                "oid": 10,
-            },
-        }
-    )
-
-    driver = make_config_driver(printer, sections, "foci stepper_x")
-
-    assert driver.config.autotune_probed_velocity_mrev_s is None
-    assert driver.config.autotune_d_eq_q is None
-    assert driver.config.autotune_confidence_q is None
-    assert driver.config.autotune_band_lower_percent is None
-    assert driver.config.autotune_band_upper_percent is None
-    assert driver.config.autotune_band_position_q is None
-    assert driver.config.autotune_position_bound_units is None
-    assert driver.config.autotune_position_homing_peak_units is None
-    assert driver.config.autotune_position_motion_cruise_units is None
-    assert driver.config.autotune_position_velocity_ceiling_reached is None
-    assert driver.config.autotune_position_peak_velocity_mrev_s is None
+    assert driver.config.commissioning_profile == "conservative"
+    assert driver.config.commissioning_status == "commissioned"
 
 
 def test_saved_resistance_identification_fields_are_accepted_on_restart():

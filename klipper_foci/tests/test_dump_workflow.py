@@ -63,11 +63,10 @@ def _install_dump_response(driver, values=None, stall_result=None):
 
 def _seed_tuning_state(driver):
     driver.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
-    driver.state.runtime_status = "tuned"
+    driver.state.runtime_status = "commissioned"
 
-    driver.config.autotune_status = "tuned"
-    driver.config.autotune_profile = "conservative"
-    driver.config.autotune_mode = "outer"
+    driver.config.commissioning_status = "commissioned"
+    driver.config.commissioning_profile = "conservative"
 
     driver.config.pid_flux_p = 256
     driver.config.pid_flux_i = 416
@@ -78,12 +77,6 @@ def _seed_tuning_state(driver):
     driver.config.pid_position_p = 640
     driver.config.pid_position_i = 0
     driver.config.pid_velocity_limit = 500000
-
-    driver.config.commissioned_velocity_p = 1152
-    driver.config.commissioned_velocity_i = 0
-    driver.config.commissioned_position_p = 640
-    driver.config.commissioned_position_i = 0
-    driver.config.commissioned_velocity_limit = 500000
 
     driver.config.identified_r_count_milli = 3002
     driver.config.identified_lambda_us = 0
@@ -300,14 +293,37 @@ def test_tuning_flag_appends_banner_verdict_and_status():
     assert calls == ["dump_registers"]
     assert "tuning analysis" in output
     verdict = kv(output, "verdict")
-    assert "tuned (persisted) / tuned (runtime)" in verdict
+    assert "commissioned (persisted) / commissioned (runtime)" in verdict
     assert "live registers match host active gains" in verdict
-    status = section(output, "Autotune status")
-    assert kv(status, "autotune_status") == "tuned"
-    assert kv(status, "runtime_status") == "tuned"
+    status = section(output, "Commissioning status")
+    assert kv(status, "commissioning_status") == "commissioned"
+    assert kv(status, "runtime_status") == "commissioned"
     assert kv(status, "active_gains_present") == "yes"
-    assert kv(status, "autotune_profile") == "conservative"
-    assert kv(status, "autotune_mode") == "outer"
+    assert kv(status, "commissioning_profile") == "conservative"
+    assert "autotune" not in status
+
+
+def test_tuning_flag_shows_no_profile_for_a_legacy_only_autotune_profile():
+    printer, _chips, sections = make_config_printer(
+        {
+            "stepper_x": {
+                "step_pin": "foci:STEP0",
+                "dir_pin": "foci:DIR0",
+                "oid": 10,
+            },
+        }
+    )
+    sections["foci stepper_x"].update(
+        {"autotune_profile": "conservative", "autotune_status": "commissioned"}
+    )
+    driver = make_config_driver(printer, sections, "foci stepper_x")
+
+    output, _calls = _run_dump(driver, {"TUNING": "1"})
+
+    status = section(output, "Commissioning status")
+    assert kv(status, "commissioning_status") == "(unset)"
+    assert kv(status, "commissioning_profile") == "(unset)"
+    assert "conservative" not in output
 
 
 def test_tuning_key_value_lines_always_separate_key_from_value():
@@ -317,7 +333,7 @@ def test_tuning_key_value_lines_always_separate_key_from_value():
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
     for title in (
-        "Autotune status",
+        "Commissioning status",
         "Readiness",
         "Identified model (count-space, not physical units)",
     ):
@@ -330,7 +346,7 @@ def test_tuning_analysis_sections_come_in_order():
     d.state.active_gains = SAMPLE_ACTIVE_GAINS
     text = "\n".join(d.dump._format_tuning_analysis())
     titles = (
-        "Autotune status",
+        "Commissioning status",
         "Readiness",
         "Gains",
         "Identified model (count-space, not physical units)",
@@ -355,7 +371,7 @@ def test_tuning_gains_table_shows_live_config_and_active_once():
     assert re.fullmatch(
         r"velocity_limit\s+500000\s+500000\s+500000", table_row(gains, "velocity_limit")
     )
-    assert "commissioned" not in output
+    assert "commissioned_" not in output
     assert "live.flux_p" not in output
     assert kv(gains, "filters_hz") == "velocity=0 torque=0 position=200 flux=0"
 
@@ -789,14 +805,14 @@ def test_tuning_mismatch_warning_includes_live_and_host_values():
 def test_tuning_flags_persisted_and_validated_status_divergence():
     driver = make_driver()
     _seed_tuning_state(driver)
-    driver.config.autotune_status = "commissioned"
+    driver.config.commissioning_status = "commissioned"
     driver.state.runtime_status = "uncommissioned"
     driver.state.active_gains = None
 
     output, _calls = _run_dump(driver, {"TUNING": "1"})
 
     assert (
-        "WARNING: autotune_status/runtime_status divergence "
+        "WARNING: commissioning_status/runtime_status divergence "
         "persisted=commissioned validated=uncommissioned"
     ) in output
 

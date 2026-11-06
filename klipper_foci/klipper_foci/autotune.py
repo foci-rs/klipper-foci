@@ -1522,7 +1522,6 @@ class AutotuneWorkflow:
         return {
             "active_gains": dict(gains) if gains is not None else None,
             "runtime_status": self.driver.state.runtime_status,
-            "autotune_mode": self.driver.config.autotune_mode,
         }
 
     def _carry_accepted_velocity_gains(self, result: dict) -> None:
@@ -1623,8 +1622,6 @@ class AutotuneWorkflow:
                 value = gains.get(gain_key)
                 if value is not None:
                     configfile.set(self.driver.name, config_key, f"{int(value)}")
-        if snapshot.get("autotune_mode") is not None:
-            configfile.set(self.driver.name, "autotune_mode", snapshot["autotune_mode"])
         configfile.set(self.driver.name, "autotune_status", snapshot["runtime_status"])
 
     def _revert_runtime_and_config(self, snapshot: dict) -> None:

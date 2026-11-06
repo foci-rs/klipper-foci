@@ -3,6 +3,7 @@
 import contextlib
 import unittest
 
+from klipper_foci.config import FociControlSettings
 from klipper_foci.registers import REGISTERS
 from tests.mocks import (
     SAMPLE_ACTIVE_GAINS,
@@ -301,7 +302,7 @@ class TestHomingStateTransitions(unittest.TestCase):
         self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 
         d = make_driver()
-        d.config.autotune_status = "commissioned"
+        d.config.commissioning_status = "commissioned"
         d.config.pid_flux_p = 100
         d.config.pid_flux_i = 200
         d.config.pid_torque_p = 300
@@ -309,11 +310,12 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.config.identified_lambda_us = 1200
         d.config.identified_theta_e_us = 100
         d.config.identified_bandwidth_hz = 500
-        d.config.commissioned_velocity_p = 1100
-        d.config.commissioned_velocity_i = 0
-        d.config.commissioned_position_p = 700
-        d.config.commissioned_position_i = 0
-        d.config.commissioned_velocity_limit = 50_000
+        d.config.pid_velocity_p = 1100
+        d.config.pid_velocity_i = 0
+        d.config.pid_position_p = 700
+        d.config.pid_position_i = 0
+        d.config.pid_velocity_limit = 50_000
+        d.settings = FociControlSettings.from_config(d.config)
         d._handle_connect()
         self.assertEqual(d.protocol.commands.set_pid_gains.last_args, [d.oid, 100, 200, 300, 400])
         self.assertEqual(
@@ -326,7 +328,7 @@ class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_keeps_auto_calibrate_closed_while_inhibited(self):
         d = make_driver()
         d.state.inhibited = True
-        d.config.autotune_status = "commissioned"
+        d.config.commissioning_status = "commissioned"
         d.config.pid_flux_p = 100
         d.config.pid_flux_i = 200
         d.config.pid_torque_p = 300
@@ -334,11 +336,12 @@ class TestHomingStateTransitions(unittest.TestCase):
         d.config.identified_lambda_us = 1200
         d.config.identified_theta_e_us = 100
         d.config.identified_bandwidth_hz = 500
-        d.config.commissioned_velocity_p = 1100
-        d.config.commissioned_velocity_i = 0
-        d.config.commissioned_position_p = 700
-        d.config.commissioned_position_i = 0
-        d.config.commissioned_velocity_limit = 50_000
+        d.config.pid_velocity_p = 1100
+        d.config.pid_velocity_i = 0
+        d.config.pid_position_p = 700
+        d.config.pid_position_i = 0
+        d.config.pid_velocity_limit = 50_000
+        d.settings = FociControlSettings.from_config(d.config)
         d._handle_connect()
         self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 

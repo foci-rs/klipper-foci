@@ -2829,7 +2829,6 @@ class TestAutotuneGates(unittest.TestCase):
             f"{int(SAMPLE_ACTIVE_GAINS['position_filter_hz'])}",
         )
         self.assertEqual(cfg.values[(d.name, "autotune_status")], "tuned")
-        self.assertEqual(cfg.values[(d.name, "autotune_mode")], "balanced")
         self.assertTrue(any("retained the pre-tune gain" in m for m in gcmd._responses))
 
     def test_reject_first_tune_errors_and_reverts_to_commissioned(self):
@@ -3607,7 +3606,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
     def test_tune_captures_pre_tune_snapshot_before_overwrite(self):
         d = self._ready_driver()
         d.printer._objects["configfile"] = MockConfigFile()
-        d.config.autotune_mode = None
         prior_gains = d.state.active_gains.copy()
         self._finish_tune_on_next_pause(d, {"velocity_p": 863, "velocity_i": 12})
         gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
@@ -3616,7 +3614,6 @@ class TestAutotuneReadinessAdmission(unittest.TestCase):
         self.assertIsNotNone(snap)
         self.assertEqual(snap["active_gains"], prior_gains)
         self.assertEqual(snap["runtime_status"], "commissioned")
-        self.assertIsNone(snap["autotune_mode"])
         self.assertNotEqual(d.state.active_gains, prior_gains)
 
     def test_autotune_moves_to_safe_pose_and_sends_budget(self):
