@@ -41,7 +41,6 @@ class FociMcuCommands:
         self.set_pid_gains = None
         self.commission = None
         self.commission_cancel = None
-        self.tune = None
         self.set_velocity_filter = None
         self.set_torque_filter = None
         self.set_position_filter = None
@@ -161,16 +160,6 @@ class FociMcuCommands:
         )
         self.commission = mcu.lookup_command("foci_commission oid=%c profile=%c")
         self.commission_cancel = mcu.lookup_command("foci_commission_cancel oid=%c")
-        self.tune = mcu.lookup_command(
-            "foci_tune oid=%c action=%c profile=%c mode=%c"
-            " inner_lambda=%u theta_e=%u current_bw=%u"
-            " inner_warning_flags=%c requested_velocity_mrev_s=%u"
-            " machine_velocity_ceiling_mrev_s=%u requested_velocity_source=%c"
-            " max_stroke_travel_mrev=%u settle_travel_reserve_mrev=%u"
-            " negative_position_headroom_mrev=%u positive_position_headroom_mrev=%u"
-            " max_duration_ms=%hu homing_speed_mrev_s=%u max_accel_mrev_s2=%u"
-            " nomination_p_below=%hu"
-        )
         register_commissioning_responses(mcu._serial, driver, oid)
         self.set_velocity_filter = mcu.lookup_command(
             "tmc_set_velocity_filter oid=%c filter_hz=%hu"

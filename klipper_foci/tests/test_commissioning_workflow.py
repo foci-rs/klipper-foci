@@ -365,14 +365,6 @@ def test_commission_start_clears_stale_timing_cache():
     assert driver.commissioning.timing_by_method == {}
 
 
-def test_phase_progress_uses_the_active_label_not_hardcoded_autotune():
-    d = make_driver()
-    d.state.active_label = "autotune"
-    d.commissioning.handle_commission_phase({"phase": 2, "status": 0})
-    gcode = d.printer.lookup_object("gcode")
-    assert gcode._responses[-1] == "FOCI manual_stepper stepper_x autotune: Coil check"
-
-
 def test_phase_progress_says_setup_during_foci_setup():
     d = make_driver()
     d.state.active_label = "setup"

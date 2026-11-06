@@ -271,52 +271,6 @@ class FociProtocol:
     def run_commission_cancel(self) -> None:
         self.commands.commission_cancel.send([self.driver.oid])
 
-    def run_tune(
-        self,
-        *,
-        action: int = 0,
-        profile_code: int,
-        mode_code: int,
-        inner_lambda: int,
-        theta_e: int,
-        current_bw: int,
-        inner_warning_flags: int,
-        requested_velocity_mrev_s: int,
-        machine_velocity_ceiling_mrev_s: int,
-        requested_velocity_source: int,
-        max_stroke_travel_mrev: int,
-        settle_travel_reserve_mrev: int,
-        negative_position_headroom_mrev: int,
-        positive_position_headroom_mrev: int,
-        max_duration_ms: int,
-        homing_speed_mrev_s: int,
-        max_accel_mrev_s2: int,
-        nomination_p_below: int = 0,
-    ) -> None:
-        self.commands.tune.send(
-            [
-                self.driver.oid,
-                action,
-                profile_code,
-                mode_code,
-                inner_lambda,
-                theta_e,
-                current_bw,
-                inner_warning_flags,
-                requested_velocity_mrev_s,
-                machine_velocity_ceiling_mrev_s,
-                requested_velocity_source,
-                max_stroke_travel_mrev,
-                settle_travel_reserve_mrev,
-                negative_position_headroom_mrev,
-                positive_position_headroom_mrev,
-                max_duration_ms,
-                homing_speed_mrev_s,
-                max_accel_mrev_s2,
-                nomination_p_below,
-            ]
-        )
-
     def run_selftest(self) -> None:
         self.commands.selftest.send([self.driver.oid])
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from klipper_foci.autotune import AutotuneWorkflow
 from klipper_foci.commissioning import CommissioningWorkflow
 from klipper_foci.config import FociControlSettings, parse_driver_config
 from klipper_foci.controls import ControlsWorkflow
@@ -712,7 +711,6 @@ def make_driver(
     driver.homing = HomingWorkflow(driver)
     driver.commissioning = CommissioningWorkflow(driver)
     driver.selftest = SelftestWorkflow(driver)
-    driver.autotune = AutotuneWorkflow(driver)
     driver.diagnostics = DiagnosticsWorkflow(driver)
 
     driver.mcu = MockMCU(

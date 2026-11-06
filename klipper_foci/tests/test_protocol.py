@@ -216,7 +216,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert commands.set_motion_scale is not None
     assert commands.calibrate is not None
     assert commands.commission is not None
-    assert commands.tune is not None
     assert commands.selftest is not None
     assert commands.dump_registers is not None
     assert commands.stack_watermark is not None
@@ -240,20 +239,6 @@ def test_bind_mcu_looks_up_commands_and_registers_responses():
     assert ("foci_calibrate_result", driver.oid) in registrations
     assert ("foci_commission_phase", driver.oid) in registrations
     assert ("foci_commission_result", driver.oid) in registrations
-    assert ("foci_tune_result", driver.oid) in registrations
-    assert ("foci_outer_safety_fault", driver.oid) in registrations
-    for name in (
-        "foci_commissioning_workflow_plan",
-        "foci_velocity_integral_plan_core",
-        "foci_velocity_integral_plan_geometry",
-        "foci_velocity_integral_plan_authority",
-        "foci_velocity_integral_plan_timing",
-        "foci_velocity_integral_plan_travel",
-        "foci_velocity_integral_plan_recovery",
-        "foci_velocity_integral_plan_rung",
-        "foci_velocity_integral_terminal",
-    ):
-        assert (name, driver.oid) in registrations
     assert ("foci_selftest_result", driver.oid) in registrations
     assert ("foci_selftest_done", driver.oid) in registrations
     assert ("foci_stepper_event", None) in registrations
@@ -281,32 +266,6 @@ def test_bind_mcu_registers_only_the_last_boot_diagnostic_response():
     assert ("foci_last_panic", driver.oid) not in registrations
 
 
-def test_last_boot_diagnostic_labels_interrupted_breakaway_without_a_fault(caplog):
-    driver = make_driver()
-    mcu = MockMCU()
-    driver.protocol = FociProtocol(driver)
-    driver.protocol.bind_mcu(mcu, driver.oid)
-
-    response_callback(mcu, "foci_last_boot_diagnostic")(
-        {
-            "oid": driver.oid,
-            "fault_kind": 0,
-            "line": 0,
-            "pc": 0,
-            "file_hash": 0,
-            "breakaway_checkpoint": 5,
-            "breakaway_interrupted": 1,
-        }
-    )
-
-    assert "FOCI board" in caplog.text
-    assert "interrupted breakaway campaign" in caplog.text
-    assert "checkpoint=5" in caplog.text
-    assert "stepper_x" not in caplog.text
-    assert "panic" not in caplog.text
-    assert "fault" not in caplog.text
-
-
 @pytest.mark.parametrize(
     ("fault_kind", "fault_name"),
     ((1, "rust_panic"), (2, "hard_fault")),
@@ -324,8 +283,6 @@ def test_last_boot_diagnostic_preserves_fault_labels_and_context(caplog, fault_k
             "line": 321,
             "pc": 0x12345678,
             "file_hash": 0x90ABCDEF,
-            "breakaway_checkpoint": 0,
-            "breakaway_interrupted": 0,
         }
     )
 
@@ -333,34 +290,6 @@ def test_last_boot_diagnostic_preserves_fault_labels_and_context(caplog, fault_k
     assert "line=321" in caplog.text
     assert "pc=0x12345678" in caplog.text
     assert "file_hash=0x90abcdef" in caplog.text
-    assert "FOCI board" in caplog.text
-    assert "stepper_x" not in caplog.text
-
-
-def test_last_boot_diagnostic_preserves_fault_and_interruption_context(caplog):
-    driver = make_driver()
-    mcu = MockMCU()
-    driver.protocol = FociProtocol(driver)
-    driver.protocol.bind_mcu(mcu, driver.oid)
-
-    response_callback(mcu, "foci_last_boot_diagnostic")(
-        {
-            "oid": driver.oid,
-            "fault_kind": 2,
-            "line": 654,
-            "pc": 0x87654321,
-            "file_hash": 0xFEDCBA09,
-            "breakaway_checkpoint": 4,
-            "breakaway_interrupted": 1,
-        }
-    )
-
-    assert "hard_fault" in caplog.text
-    assert "line=654" in caplog.text
-    assert "pc=0x87654321" in caplog.text
-    assert "file_hash=0xfedcba09" in caplog.text
-    assert "interrupted breakaway campaign" in caplog.text
-    assert "checkpoint=4" in caplog.text
     assert "FOCI board" in caplog.text
     assert "stepper_x" not in caplog.text
 
@@ -383,8 +312,6 @@ def test_last_boot_diagnostic_is_board_scoped_for_reversed_oid_order(caplog):
         "line": 987,
         "pc": 0x10203040,
         "file_hash": 0x50607080,
-        "breakaway_checkpoint": 6,
-        "breakaway_interrupted": 1,
     }
 
     callbacks[1]({"oid": 1, **recovered})
@@ -394,14 +321,12 @@ def test_last_boot_diagnostic_is_board_scoped_for_reversed_oid_order(caplog):
     oid_0_messages = [record.getMessage() for record in caplog.records]
 
     assert oid_1_messages == oid_0_messages
-    assert len(oid_0_messages) == 2
+    assert len(oid_0_messages) == 1
     assert all("FOCI board" in message for message in oid_0_messages)
     assert "rust_panic" in oid_0_messages[0]
     assert "line=987" in oid_0_messages[0]
     assert "pc=0x10203040" in oid_0_messages[0]
     assert "file_hash=0x50607080" in oid_0_messages[0]
-    assert "interrupted breakaway campaign" in oid_0_messages[1]
-    assert "checkpoint=6" in oid_0_messages[1]
     assert "stepper_x" not in caplog.text
     assert "stepper_y" not in caplog.text
 
@@ -462,49 +387,6 @@ def test_commissioning_registers_timing_reply():
     register_commissioning_responses(serial, driver, driver.oid)
 
     assert ("foci_commission_timing", driver.oid) in response_names(serial)
-
-
-def test_breakaway_replies_are_registered_and_routed_to_their_handlers():
-    """All 16 `FociBreakaway*` replies (replies.rs) must reach a live MCU's
-    handler, mirroring the sibling `foci_velocity_integral_*` registrations
-    exactly."""
-    driver = make_driver()
-    serial = MockSerial()
-
-    register_commissioning_responses(serial, driver, driver.oid)
-
-    registered = {name: callback for callback, name, oid in serial.responses if oid == driver.oid}
-    expected = {
-        "foci_breakaway_probe_plan": driver.autotune.handle_breakaway_probe_plan,
-        "foci_breakaway_probe_result": driver.autotune.handle_breakaway_probe_result,
-        "foci_breakaway_probe_terminal": (driver.autotune.handle_breakaway_probe_terminal),
-        "foci_breakaway_discovery_plan_identity": (
-            driver.autotune.handle_breakaway_discovery_plan_identity
-        ),
-        "foci_breakaway_discovery_plan_geometry": (
-            driver.autotune.handle_breakaway_discovery_plan_geometry
-        ),
-        "foci_breakaway_ceiling_source": (
-            driver.autotune.handle_breakaway_discovery_ceiling_source
-        ),
-        "foci_breakaway_rung_zero_diagnostic": (
-            driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic
-        ),
-        "foci_breakaway_discovery_terminal": (driver.autotune.handle_breakaway_discovery_terminal),
-        "foci_breakaway_confirmation_plan": (driver.autotune.handle_breakaway_confirmation_plan),
-        "foci_breakaway_confirmation_terminal_identity": (
-            driver.autotune.handle_breakaway_confirmation_terminal_identity
-        ),
-        "foci_breakaway_confirmation_terminal_masks": (
-            driver.autotune.handle_breakaway_confirmation_terminal_masks
-        ),
-        "foci_breakaway_campaign_terminal": (driver.autotune.handle_breakaway_campaign_terminal),
-    }
-
-    assert len(expected) == 12
-    assert set(expected) <= set(registered)
-    for name, handler in expected.items():
-        assert registered[name] == handler, name
 
 
 def test_diagnostic_only_registration_excludes_inductance_replies():
@@ -1009,121 +891,26 @@ def test_run_commission_cancel_sends_the_command():
     assert commands.commission_cancel.last_args == [driver.oid]
 
 
-def test_run_tune_sends_planning_payload():
+def test_host_binds_no_outer_tuning_command_or_replies():
     driver = make_driver()
+    mcu = MockMCU()
+    driver.protocol = FociProtocol(driver)
 
-    driver.protocol.run_tune(
-        profile_code=1,
-        mode_code=2,
-        inner_lambda=1200,
-        theta_e=160,
-        current_bw=500,
-        inner_warning_flags=8,
-        requested_velocity_mrev_s=5000,
-        machine_velocity_ceiling_mrev_s=7500,
-        requested_velocity_source=1,
-        max_stroke_travel_mrev=1000,
-        settle_travel_reserve_mrev=250,
-        negative_position_headroom_mrev=1250,
-        positive_position_headroom_mrev=1250,
-        max_duration_ms=3000,
-        homing_speed_mrev_s=4375,
-        max_accel_mrev_s2=200000,
+    driver.protocol.bind_mcu(mcu, driver.oid)
+
+    assert not hasattr(driver.protocol, "run_tune")
+    assert not hasattr(driver.protocol.commands, "tune")
+    assert not [fmt for fmt in mcu.command_formats if fmt.startswith("foci_tune ")]
+    outer_reply_prefixes = (
+        "foci_tune_",
+        "foci_outer_",
+        "foci_velocity_integral_",
+        "foci_robustness_",
+        "foci_breakaway_",
+        "foci_commissioning_workflow_plan",
     )
-
-    assert driver.protocol.commands.tune.last_args == [
-        driver.oid,
-        0,
-        1,
-        2,
-        1200,
-        160,
-        500,
-        8,
-        5000,
-        7500,
-        1,
-        1000,
-        250,
-        1250,
-        1250,
-        3000,
-        4375,
-        200000,
-        0,
-    ]
-
-
-def test_run_tune_forwards_only_the_explicit_action_selector():
-    driver = make_driver()
-
-    driver.protocol.run_tune(
-        action=2,
-        profile_code=1,
-        mode_code=2,
-        inner_lambda=1200,
-        theta_e=160,
-        current_bw=500,
-        inner_warning_flags=8,
-        requested_velocity_mrev_s=5000,
-        machine_velocity_ceiling_mrev_s=7500,
-        requested_velocity_source=1,
-        max_stroke_travel_mrev=1000,
-        settle_travel_reserve_mrev=250,
-        negative_position_headroom_mrev=1250,
-        positive_position_headroom_mrev=1250,
-        max_duration_ms=3000,
-        homing_speed_mrev_s=4375,
-        max_accel_mrev_s2=200000,
-    )
-
-    assert driver.protocol.commands.tune.last_args[1] == 2
-    assert len(driver.protocol.commands.tune.last_args) == 19
-
-
-def test_run_tune_sends_the_nomination_ceiling_last_and_defaults_to_zero():
-    driver = make_driver()
-    kwargs = {
-        "profile_code": 1,
-        "mode_code": 2,
-        "inner_lambda": 1200,
-        "theta_e": 160,
-        "current_bw": 500,
-        "inner_warning_flags": 8,
-        "requested_velocity_mrev_s": 5000,
-        "machine_velocity_ceiling_mrev_s": 7500,
-        "requested_velocity_source": 1,
-        "max_stroke_travel_mrev": 1000,
-        "settle_travel_reserve_mrev": 250,
-        "negative_position_headroom_mrev": 1250,
-        "positive_position_headroom_mrev": 1250,
-        "max_duration_ms": 3000,
-        "homing_speed_mrev_s": 4375,
-        "max_accel_mrev_s2": 200000,
-    }
-
-    driver.protocol.run_tune(**kwargs)
-    assert driver.protocol.commands.tune.last_args[-2:] == [200000, 0]
-
-    driver.protocol.run_tune(**kwargs, nomination_p_below=321)
-    assert driver.protocol.commands.tune.last_args[-2:] == [200000, 321]
-
-
-def test_tune_command_matches_firmware_field_order_without_legacy_budget():
-    driver = make_driver()
-
-    formats = [fmt for fmt in driver.mcu.command_formats if fmt.startswith("foci_tune ")]
-
-    assert formats == [
-        "foci_tune oid=%c action=%c profile=%c mode=%c"
-        " inner_lambda=%u theta_e=%u current_bw=%u"
-        " inner_warning_flags=%c requested_velocity_mrev_s=%u"
-        " machine_velocity_ceiling_mrev_s=%u requested_velocity_source=%c"
-        " max_stroke_travel_mrev=%u settle_travel_reserve_mrev=%u"
-        " negative_position_headroom_mrev=%u positive_position_headroom_mrev=%u"
-        " max_duration_ms=%hu homing_speed_mrev_s=%u max_accel_mrev_s2=%u"
-        " nomination_p_below=%hu"
-    ]
+    registered = {name for name, _oid in response_names(mcu)}
+    assert not {name for name in registered if name.startswith(outer_reply_prefixes)}
 
 
 def test_preload_active_gains_sends_existing_payloads():
@@ -1173,7 +960,6 @@ def test_mock_driver_exposes_protocol_commands_without_driver_command_aliases():
         "set_current_cmd",
         "calibrate_cmd",
         "commission_cmd",
-        "tune_cmd",
         "selftest_cmd",
         "dump_cmd",
         "current_step_test_cmd",

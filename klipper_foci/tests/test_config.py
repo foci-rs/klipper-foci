@@ -169,7 +169,7 @@ def test_diagnostics_entry_point_registers_passive_commands_at_config_time(monke
     assert len(handlers_by_name) == len(GCODE_COMMANDS) + len(expected)
 
 
-def test_core_alone_registers_exactly_thirteen_commands(monkeypatch):
+def test_core_alone_registers_exactly_twelve_commands(monkeypatch):
     monkeypatch.setattr("klipper_foci.registry.entry_points", lambda *, group: [])
     printer, _chips, sections = make_config_printer(
         {"stepper_x": {"step_pin": "foci:STEP0", "dir_pin": "foci:DIR0", "oid": 10}},
@@ -178,7 +178,7 @@ def test_core_alone_registers_exactly_thirteen_commands(monkeypatch):
     gcode = printer.lookup_object("gcode")
     registered_names = {args[0] for args, _kwargs in gcode._mux_commands}
     assert registered_names == {spec.name for spec in GCODE_COMMANDS}
-    assert len(registered_names) == 13
+    assert len(registered_names) == 12
 
 
 def test_diagnostics_alone_works(monkeypatch):
@@ -237,13 +237,15 @@ def test_selftest_registers_selftest_workflow_handler():
     assert handler.__self__.__class__.__name__ == "SelftestWorkflow"
 
 
-def test_autotune_registers_autotune_workflow_handler():
+def test_foci_autotune_is_not_registered_and_help_lists_no_autotune_command():
     printer = build_driver_with_mode()
     gcode = printer.lookup_object("gcode")
 
-    handler = next(args[3] for args, _kwargs in gcode._mux_commands if args[0] == "FOCI_AUTOTUNE")
-
-    assert handler.__self__.__class__.__name__ == "AutotuneWorkflow"
+    assert "FOCI_AUTOTUNE" not in registered_command_names(printer)
+    assert "FOCI_AUTOTUNE" not in {spec.name for spec in GCODE_COMMANDS}
+    help_texts = [kwargs["desc"] for _args, kwargs in gcode._mux_commands]
+    assert help_texts
+    assert not [text for text in help_texts if "autotune" in text.lower()]
 
 
 def test_foci_driver_no_longer_exposes_gcode_command_methods():

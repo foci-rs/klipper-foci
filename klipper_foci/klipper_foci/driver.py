@@ -7,7 +7,6 @@
 
 from collections.abc import Callable
 
-from .autotune import AutotuneWorkflow
 from .commissioning import (
     CommissioningWorkflow,
 )
@@ -61,7 +60,6 @@ class FociDriver:
         self.virtual_endstop = FociVirtualEndstop(self)
         self.commissioning = CommissioningWorkflow(self)
         self.selftest = SelftestWorkflow(self)
-        self.autotune = AutotuneWorkflow(self)
         self.diagnostics = DiagnosticsWorkflow(self)
 
         gcode = self.printer.lookup_object("gcode")

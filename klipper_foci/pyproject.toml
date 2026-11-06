@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "klipper-foci"
 dynamic = ["version"]
-description = "FOCI Klipper host extras: commissioning, autotune, core tuning"
+description = "FOCI Klipper host extras: commissioning, gain controls, diagnostics"
 requires-python = ">=3.11"
 
 [tool.hatch.version]

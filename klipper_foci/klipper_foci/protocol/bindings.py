@@ -56,12 +56,10 @@ _LAST_BOOT_FAULT_KIND_NAMES = {1: "rust_panic", 2: "hard_fault"}
 
 
 def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
-    """Log a previous-boot fault or interrupted breakaway campaign."""
+    """Log a previous-boot fault."""
 
     def handle_last_boot_diagnostic(params: dict) -> None:
         fault_kind = params.get("fault_kind", 0)
-        breakaway_interrupted = params.get("breakaway_interrupted", 0) != 0
-        checkpoint = params.get("breakaway_checkpoint", 0)
 
         if fault_kind != 0:
             fault_name = _LAST_BOOT_FAULT_KIND_NAMES.get(fault_kind, f"unknown({fault_kind})")
@@ -71,11 +69,6 @@ def register_last_boot_diagnostic_response(serial, driver, oid: int) -> None:
                 params.get("line"),
                 params.get("pc", 0),
                 params.get("file_hash", 0),
-            )
-        if breakaway_interrupted:
-            logging.error(
-                "FOCI board recovered interrupted breakaway campaign: checkpoint=%s",
-                checkpoint,
             )
 
     serial.register_response(handle_last_boot_diagnostic, "foci_last_boot_diagnostic", oid)
@@ -90,105 +83,6 @@ def register_homing_responses(serial, driver, oid: int) -> None:
 
 
 def register_commissioning_responses(serial, driver, oid: int) -> None:
-    for callback, name in (
-        (
-            driver.autotune.handle_commissioning_workflow_plan,
-            "foci_commissioning_workflow_plan",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_core,
-            "foci_velocity_integral_plan_core",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_geometry,
-            "foci_velocity_integral_plan_geometry",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_authority,
-            "foci_velocity_integral_plan_authority",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_timing,
-            "foci_velocity_integral_plan_timing",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_travel,
-            "foci_velocity_integral_plan_travel",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_recovery,
-            "foci_velocity_integral_plan_recovery",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_plan_rung,
-            "foci_velocity_integral_plan_rung",
-        ),
-        (
-            driver.autotune.handle_velocity_integral_terminal,
-            "foci_velocity_integral_terminal",
-        ),
-        (
-            driver.autotune.handle_robustness_cycle_evidence,
-            "foci_robustness_cycle_evidence",
-        ),
-        (
-            driver.autotune.handle_robustness_late_tracking_evidence,
-            "foci_robustness_late_tracking_evidence",
-        ),
-        (
-            driver.autotune.handle_robustness_reversal_terminal,
-            "foci_robustness_reversal_terminal",
-        ),
-        (
-            driver.autotune.handle_breakaway_probe_plan,
-            "foci_breakaway_probe_plan",
-        ),
-        (
-            driver.autotune.handle_breakaway_probe_result,
-            "foci_breakaway_probe_result",
-        ),
-        (
-            driver.autotune.handle_breakaway_probe_terminal,
-            "foci_breakaway_probe_terminal",
-        ),
-        (
-            driver.autotune.handle_breakaway_discovery_plan_identity,
-            "foci_breakaway_discovery_plan_identity",
-        ),
-        (
-            driver.autotune.handle_breakaway_discovery_plan_geometry,
-            "foci_breakaway_discovery_plan_geometry",
-        ),
-        (
-            driver.autotune.handle_breakaway_discovery_ceiling_source,
-            "foci_breakaway_ceiling_source",
-        ),
-        (
-            driver.autotune.handle_breakaway_discovery_rung_zero_diagnostic,
-            "foci_breakaway_rung_zero_diagnostic",
-        ),
-        (
-            driver.autotune.handle_breakaway_discovery_terminal,
-            "foci_breakaway_discovery_terminal",
-        ),
-        (
-            driver.autotune.handle_breakaway_confirmation_plan,
-            "foci_breakaway_confirmation_plan",
-        ),
-        (
-            driver.autotune.handle_breakaway_confirmation_terminal_identity,
-            "foci_breakaway_confirmation_terminal_identity",
-        ),
-        (
-            driver.autotune.handle_breakaway_confirmation_terminal_masks,
-            "foci_breakaway_confirmation_terminal_masks",
-        ),
-        (
-            driver.autotune.handle_breakaway_campaign_terminal,
-            "foci_breakaway_campaign_terminal",
-        ),
-    ):
-        serial.register_response(callback, name, oid)
     serial.register_response(
         driver.commissioning.handle_commission_phase,
         "foci_commission_phase",
@@ -197,21 +91,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
     serial.register_response(
         driver.commissioning.handle_commission_result,
         "foci_commission_result",
-        oid,
-    )
-    serial.register_response(
-        driver.autotune.handle_tune_position_evidence,
-        "foci_tune_position_evidence",
-        oid,
-    )
-    serial.register_response(
-        driver.autotune.handle_tune_result,
-        "foci_tune_result",
-        oid,
-    )
-    serial.register_response(
-        driver.autotune.handle_outer_safety_fault,
-        "foci_outer_safety_fault",
         oid,
     )
     serial.register_response(

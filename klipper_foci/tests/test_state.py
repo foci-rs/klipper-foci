@@ -18,7 +18,7 @@ def test_try_acquire_fails_when_already_held():
 
 def test_release_clears_active_label():
     state = FociRuntimeState()
-    state.try_acquire("autotune")
+    state.try_acquire("setup")
     state.release()
     assert state.operation_lock is False
     assert state.active_label is None
@@ -26,7 +26,7 @@ def test_release_clears_active_label():
 
 def test_reacquire_after_release_can_change_label():
     state = FociRuntimeState()
-    state.try_acquire("autotune")
+    state.try_acquire("setup")
     state.release()
-    state.try_acquire("autotune")
-    assert state.active_label == "autotune"
+    state.try_acquire("selftest")
+    assert state.active_label == "selftest"

@@ -605,13 +605,6 @@ class TestCommandHomingInvalidation(unittest.TestCase):
             d.commissioning.commission(gcmd)
         self.assertIsNotNone(kin._cleared_axes)
 
-    def test_autotune_invalidates_homing(self):
-        d, kin = self._driver_with_cartesian()
-        gcmd = MockGCmd({"PROFILE": "balanced", "MODE": "nominal"})
-        with contextlib.suppress(CommandError, AttributeError, TypeError):
-            d.autotune.autotune(gcmd)
-        self.assertIsNotNone(kin._cleared_axes)
-
     def test_selftest_invalidates_homing(self):
         d, kin = self._driver_with_cartesian()
         with contextlib.suppress(CommandError, AttributeError, TypeError):
