@@ -576,31 +576,3 @@ def validate_runtime_config(config: FociDriverConfig) -> RuntimeValidationResult
         status,
     )
     return RuntimeValidationResult(status, active_gains)
-
-
-AUTOTUNE_STALENESS_MARGIN_PERCENT = 10
-
-
-def velocity_mm_s_to_mrev_s(velocity_mm_s: float, rotation_distance_mm: float) -> float:
-    """Convert a printer-space linear velocity (mm/s) to motor mrev/s."""
-    return (velocity_mm_s / rotation_distance_mm) * 1000.0
-
-
-def check_autotune_staleness(config: FociDriverConfig, operating_velocity_mm_s: float) -> None:
-    """Warn when the configured operating velocity outruns the probed tune.
-
-    Advisory only: it never raises. Silent when the driver has no recorded probe velocity.
-    """
-    probed_mrev_s = config.autotune_probed_velocity_mrev_s
-    if probed_mrev_s is None:
-        return
-    operating_mrev_s = velocity_mm_s_to_mrev_s(operating_velocity_mm_s, config.rotation_distance)
-    threshold_mrev_s = probed_mrev_s * (100 + AUTOTUNE_STALENESS_MARGIN_PERCENT) / 100.0
-    if operating_mrev_s > threshold_mrev_s:
-        logging.warning(
-            "FOCI %s: tuned below operating range (probed up to %dmrev_s, operating at "
-            "%.0fmrev_s); re-run FOCI_AUTOTUNE to retune for the current velocity",
-            config.name,
-            probed_mrev_s,
-            operating_mrev_s,
-        )

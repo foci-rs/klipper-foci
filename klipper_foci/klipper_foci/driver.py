@@ -13,7 +13,6 @@ from .commissioning import (
 )
 from .config import (
     FociControlSettings,
-    check_autotune_staleness,
     gain_to_permille,
     parse_driver_config,
     stall_ceiling_units,
@@ -196,7 +195,6 @@ class FociDriver:
             ),
         )
         self._report_motion_scale_mapping()
-        self._warn_if_tuned_below_operating_range()
         self.homing.apply_initial_state()
 
     @staticmethod
@@ -247,23 +245,6 @@ class FociDriver:
             filter_hz[name] = value if value is not None else getattr(settings, f"{name}_filter_hz")
 
         return pid_gains, position_gains, velocity_limit, filter_hz
-
-    def _warn_if_tuned_below_operating_range(self) -> None:
-        """Compare the configured operating velocity against the probed tune.
-
-        Advisory only: this runs inside a ``klippy:connect`` handler, where Klipper's connect
-        dispatcher treats any raised exception as a fatal "Internal error during connect" and aborts
-        startup.
-        """
-        toolhead = self.printer.lookup_object("toolhead", None)
-        if toolhead is None:
-            return
-        try:
-            status = toolhead.get_status(toolhead.get_last_move_time())
-            operating_velocity_mm_s = float(status["max_velocity"])
-        except (KeyError, TypeError, ValueError, AttributeError):
-            return
-        check_autotune_staleness(self.config, operating_velocity_mm_s)
 
     def _report_motion_scale_mapping(self) -> None:
         """Explain the deterministic startup mapping without overriding firmware."""
