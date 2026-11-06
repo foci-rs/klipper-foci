@@ -334,7 +334,6 @@ def test_tuning_key_value_lines_always_separate_key_from_value():
 
     for title in (
         "Commissioning status",
-        "Readiness",
         "Identified model (count-space, not physical units)",
     ):
         for line in section(output, title).strip().splitlines():
@@ -347,7 +346,6 @@ def test_tuning_analysis_sections_come_in_order():
     text = "\n".join(d.dump._format_tuning_analysis())
     titles = (
         "Commissioning status",
-        "Readiness",
         "Gains",
         "Identified model (count-space, not physical units)",
     )
@@ -388,67 +386,6 @@ def test_tuning_gains_table_marks_absent_active_gains():
     )
     assert "filters_hz" not in output
     assert "host active gains unavailable" in kv(output, "verdict")
-
-
-def test_tuning_flag_appends_autotune_readiness_report():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.state.is_calibrated = True
-    driver.state.runtime_status = "commissioned"
-    driver.config.identified_bandwidth_hz = 1600
-    driver.config.identified_inner_warning_flags = 0
-    driver.config.identified_l_source = 1
-    driver.config.identified_l_reactance_count_ratio_milli = 8600
-    driver.config.identified_l_saliency_status = 1
-    driver.config.identified_r_count_slope_milli = 1042
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    readiness = section(output, "Readiness")
-    assert "FOCI foci" not in output
-    assert kv(readiness, "result") == "ready"
-    assert kv(readiness, "installed_tuning_policy") == "normal"
-    assert kv(readiness, "blockers") == "none"
-    assert kv(readiness, "warnings") == "none"
-    assert "current_loop_gains" in kv(readiness, "trusted_inputs")
-    assert "current_bandwidth" in kv(readiness, "trusted_inputs")
-    assert kv(readiness, "unavailable_inputs") == "none"
-    assert "ready" in kv(output, "verdict")
-
-
-def test_tuning_readiness_blocks_live_current_gain_mismatch():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.config.identified_bandwidth_hz = 1600
-    values = {
-        REGISTERS["PID_FLUX_P_FLUX_I"]: (257 << 16) | 416,
-    }
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"}, values)
-
-    readiness = section(output, "Readiness")
-    assert kv(readiness, "result") == "blocked"
-    assert kv(readiness, "installed_tuning_policy") == "unavailable"
-    assert kv(readiness, "warnings").startswith("inner confidence:")
-    assert kv(readiness, "unavailable_inputs") == "none"
-    assert "live current-loop gain flux_p mismatch live=257 host=256" in output
-
-
-def test_tuning_readiness_reports_unavailable_inputs_line():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.state.is_calibrated = True
-    driver.state.runtime_status = "commissioned"
-    driver.config.identified_l_source = 0
-    driver.config.identified_l_reactance_count_ratio_milli = None
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    readiness = section(output, "Readiness")
-    assert kv(readiness, "result") == "ready_with_warnings"
-    assert kv(readiness, "blockers") == "none"
-    assert kv(readiness, "warnings").startswith("inner confidence:")
-    assert kv(readiness, "unavailable_inputs") == "average_inductance"
 
 
 def test_tuning_flag_reports_identified_model_in_count_space():

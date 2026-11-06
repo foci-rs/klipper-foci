@@ -604,7 +604,6 @@ class CommissioningWorkflow:
         self.error_code = 0
         self.details: list[dict] = []
         self.timing_by_method: dict[int, dict] = {}
-        self.phase_label_override: str | None = None
 
     def clear_details(self) -> None:
         """Clear structured commissioning diagnostic details."""
@@ -616,9 +615,7 @@ class CommissioningWorkflow:
         status = params.get("status", 0)
         if phase_id > 0 and status == 0:
             self.last_phase_id = phase_id
-            phase_name = self.phase_label_override or PHASE_NAMES.get(
-                phase_id, f"Phase {int(phase_id)}"
-            )
+            phase_name = PHASE_NAMES.get(phase_id, f"Phase {int(phase_id)}")
             gcode = self.driver.printer.lookup_object("gcode")
             active_label = self.driver.state.active_label or "commissioning"
             message = f"FOCI {self.driver.stepper_name} {active_label}: {phase_name}"
@@ -863,7 +860,6 @@ class CommissioningWorkflow:
             self.driver.state.inhibited = False
             self.driver.state.last_commission_failure = None
             self.driver.homing.set_auto_calibrate_on_enable_allowed(True)
-            self.driver.state.commissioned_result = result
             self.driver.state.active_gains = {
                 "flux_p": result["flux_p"],
                 "flux_i": result["flux_i"],
@@ -945,7 +941,6 @@ class CommissioningWorkflow:
     def on_commission_failure(self, failure: str | None = None) -> None:
         """Handle commissioning failure state transitions."""
         self.driver.state.is_calibrated = False
-        self.driver.state.commissioned_result = None
         self.driver.state.active_gains = None
         self.driver.state.runtime_status = "uncommissioned"
         self.driver.state.inhibited = True

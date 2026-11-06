@@ -874,13 +874,11 @@ class TestCommissioningStateTransitions(unittest.TestCase):
         d = make_driver()
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         d.state.runtime_status = "commissioned"
-        d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
         d.state.is_calibrated = True
         d.commissioning.on_commission_failure()
         self.assertTrue(d.state.inhibited)
         self.assertIsNone(d.state.active_gains)
         self.assertEqual(d.state.runtime_status, "uncommissioned")
-        self.assertIsNone(d.state.commissioned_result)
         self.assertFalse(d.state.is_calibrated)
         self.assertEqual(d.protocol.commands.set_auto_calibrate_on_enable.last_args, [d.oid, 0])
 
@@ -1788,18 +1786,3 @@ def test_discovery_stops_are_not_reported_as_safety_envelope_violations():
     assert "run current" in operator_failure_phrase(123)
     assert "tuning velocity" in operator_failure_phrase(123)
     assert "status" in operator_failure_phrase(124)
-
-
-def test_breakaway_and_integral_phase_labels_avoid_internal_jargon():
-    from klipper_foci._vocabulary_generated import PHASE_NAMES
-
-    for label in (PHASE_NAMES[18], PHASE_NAMES[19], PHASE_NAMES[21]):
-        assert "breakaway" not in label.lower()
-        assert "acquisition" not in label.lower()
-
-    assert "characterization" not in PHASE_NAMES[19].lower()
-    assert "integral" in PHASE_NAMES[19].lower()
-
-    assert "robustness gate" not in PHASE_NAMES[21].lower()
-    assert "reversal" in PHASE_NAMES[21].lower()
-    assert "standstill" in PHASE_NAMES[21].lower()

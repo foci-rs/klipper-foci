@@ -581,14 +581,12 @@ def test_validate_runtime_config_returns_uncommissioned_for_absent_status():
     assert_uncommissioned(result)
 
 
-def test_persisted_band_fields_and_theta_e_us_keep_value_and_type_on_reload():
-    """Band fields and theta_e_us survive a persist/reload round trip.
+def test_persisted_identified_values_keep_value_and_type_on_reload():
+    """theta_e_us and bandwidth_hz survive a persist/reload round trip.
 
     ``persist_commission_results`` writes these as decimal strings (the
     ``configfile.set`` convention); parsing them back must recover the same
-    int value and type the firmware originally reported, since a tune
-    request built later reads them straight off ``driver.config`` whenever
-    ``commissioned_result`` is unavailable (e.g. after a Klipper restart).
+    int value and type the firmware originally reported.
     """
     config = parsed_config_with(
         {

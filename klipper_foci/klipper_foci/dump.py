@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .commissioning import CURRENT_LOOP_FAILURE_REASON_NAMES
-from .readiness import readiness_fields, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
     DUMP_NAME_WIDTH,
@@ -167,12 +166,6 @@ class RegisterDumpWorkflow:
         state = self.driver.state
         active_gains = state.active_gains
         live_gains = self._live_gain_values()
-        readiness = resolve_autotune_readiness(
-            self.driver,
-            live_current_gains={
-                name: live_gains.get(name) for name in ("flux_p", "flux_i", "torque_p", "torque_i")
-            },
-        )
         sync_summary, sync_warnings = self._compare_live_to_host(live_gains, active_gains)
         persisted_status = config.commissioning_status or "uncommissioned"
 
@@ -183,7 +176,7 @@ class RegisterDumpWorkflow:
             f"FOCI {self.driver.stepper_name} tuning analysis",
             rule,
             f"verdict: {persisted_status} (persisted) / {state.runtime_status} (runtime)"
-            f" | readiness: {readiness.result} | {sync_summary}",
+            f" | {sync_summary}",
             *sync_warnings,
         ]
 
@@ -201,9 +194,6 @@ class RegisterDumpWorkflow:
                 f"WARNING: commissioning_status/runtime_status divergence persisted="
                 f"{persisted_status} validated={state.runtime_status}"
             )
-
-        lines.append(self._section_header("Readiness"))
-        lines.extend(self._kv(name, value) for name, value in readiness_fields(readiness))
 
         lines.append(self._section_header("Gains"))
         lines.extend(self._format_gain_table(live_gains, active_gains))

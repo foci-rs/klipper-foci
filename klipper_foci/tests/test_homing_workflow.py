@@ -577,22 +577,6 @@ class TestCommandHomingInvalidation(unittest.TestCase):
         d.state.is_calibrated = True
         d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
         d.state.runtime_status = "commissioned"
-        d.state.commissioned_result = SAMPLE_COMMISSION_RESULT.copy()
-        d.state.commissioned_result.update(
-            {
-                "tau_e_us": 730,
-                "inner_warning_flags": 0,
-                "bandwidth_hz": 1600,
-                "current_gains_source": 1,
-                "current_gains_tier": 1,
-                "current_retry_budget_exhausted": 0,
-                "current_failure_reason": 0,
-                "inductance_source": 1,
-                "inductance_reactance_count_ratio_milli": 8600,
-                "inductance_saliency_status": 1,
-                "resistance_selected_count_slope_milli": 1042,
-            }
-        )
         self._install_live_dump(d)
         return d, kin
 
