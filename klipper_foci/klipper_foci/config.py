@@ -160,18 +160,12 @@ class RuntimeValidationResult:
     active_gains: dict[str, int | None] | None
 
 
-def _validate_complete_group(config, section_name, label, values) -> None:
+def _validate_complete_inner_pid_group(config, section_name, values) -> None:
     present = [value for value in values if value is not None]
     if present and len(present) != len(values):
-        if label == "inner_pid":
-            raise config.error(
-                f"PID gains must be set as a complete group (pid_flux_p, pid_flux_i, "
-                f"pid_torque_p, pid_torque_i). Found {len(present)} of 4 in [{section_name}]"
-            )
         raise config.error(
-            f"pid_position_p/i and pid_velocity_p/i must be set together (pid_position_p, "
-            f"pid_position_i, pid_velocity_p, pid_velocity_i). Found {len(present)} of 4 in ["
-            f"{section_name}]"
+            f"PID gains must be set as a complete group (pid_flux_p, pid_flux_i, "
+            f"pid_torque_p, pid_torque_i). Found {len(present)} of 4 in [{section_name}]"
         )
 
 
@@ -255,11 +249,8 @@ def parse_driver_config(config) -> FociDriverConfig:
     pid_flux_i = config.getint("pid_flux_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_torque_p = config.getint("pid_torque_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_torque_i = config.getint("pid_torque_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
-    _validate_complete_group(
-        config,
-        name,
-        "inner_pid",
-        [pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i],
+    _validate_complete_inner_pid_group(
+        config, name, [pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i]
     )
 
     velocity_filter_hz = _filter_hz(config, name, "velocity_filter_hz", MOTION_FILTER_MAX_HZ)
@@ -271,12 +262,6 @@ def parse_driver_config(config) -> FociDriverConfig:
     pid_position_i = config.getint("pid_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_velocity_p = config.getint("pid_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_velocity_i = config.getint("pid_velocity_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
-    _validate_complete_group(
-        config,
-        name,
-        "position_velocity_pid",
-        [pid_position_p, pid_position_i, pid_velocity_p, pid_velocity_i],
-    )
 
     velocity_feedforward = config.getboolean("velocity_feedforward", False)
     velocity_feedforward_gain = config.getfloat(

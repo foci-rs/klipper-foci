@@ -177,7 +177,12 @@ class FociDriver:
                 settings.pid_torque_i,
             )
         position_gains = None
-        if settings.pid_position_p is not None:
+        if None not in (
+            settings.pid_position_p,
+            settings.pid_position_i,
+            settings.pid_velocity_p,
+            settings.pid_velocity_i,
+        ):
             position_gains = (
                 settings.pid_position_p,
                 settings.pid_position_i,

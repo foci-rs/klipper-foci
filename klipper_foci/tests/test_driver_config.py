@@ -502,13 +502,6 @@ def test_parse_driver_config_rejects_incomplete_inner_pid_group():
         parse_driver_config(config)
 
 
-def test_parse_driver_config_rejects_incomplete_position_velocity_pid_group():
-    _printer, _chips, _sections, config = make_foci_config(foci_values={"pid_position_p": 600})
-
-    with pytest.raises(CommandError, match="must be set together"):
-        parse_driver_config(config)
-
-
 def test_parse_driver_config_rejects_missing_linked_stepper_section():
     printer, _chips, sections, _config = make_foci_config()
     del sections["stepper_x"]
@@ -875,6 +868,38 @@ def test_commissioned_config_without_any_outer_gain_is_uncommissioned(caplog):
     assert "missing required fields" in caplog.text
     for key in outer_keys:
         assert key in caplog.text
+
+
+OUTER_PID_KEYS = (
+    "pid_velocity_p",
+    "pid_velocity_i",
+    "pid_position_p",
+    "pid_position_i",
+    "pid_velocity_limit",
+)
+
+
+@pytest.mark.parametrize("missing_key", OUTER_PID_KEYS)
+def test_commissioned_config_missing_one_outer_key_loads_uncommissioned_without_crash(
+    missing_key, caplog
+):
+    values = {k: v for k, v in COMMISSIONED_VALUES.items() if k != missing_key}
+    _printer, _chips, sections, config = make_foci_config(foci_values=values)
+    driver = make_config_driver(config.get_printer(), sections, "foci stepper_x")
+    driver._handle_mcu_identify()
+    caplog.clear()
+
+    driver._handle_connect()
+
+    assert driver.state.runtime_status == "uncommissioned"
+    assert driver.state.active_gains is None
+    assert f"missing required fields: {missing_key}." in caplog.text
+    assert "Motor cannot be enabled until FOCI_SETUP is run" in caplog.text
+    cmds = driver.protocol.commands
+    if missing_key == "pid_velocity_limit":
+        assert cmds.set_velocity_limit.call_count == 0
+    else:
+        assert cmds.set_position_gains.call_count == 0
 
 
 def test_handle_connect_installs_validation_result():
