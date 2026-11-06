@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .commissioning import CURRENT_LOOP_FAILURE_REASON_NAMES
-from .config import POSITION_UNITS_PER_REV
 from .readiness import readiness_fields, resolve_autotune_readiness
 from .registers import (
     DUMP_GROUPS,
@@ -86,12 +85,6 @@ CLOSED_LOOP_ACTIVATION_STATUS_NAMES: dict[int, str] = {
 
 CURRENT_VALIDATION_AXIS_FLUX = 0x01
 CURRENT_VALIDATION_AXIS_TORQUE = 0x02
-
-POSITION_TUNE_FIELDS: tuple[tuple[str, str], ...] = (
-    ("autotune_position_bound_units", "bound"),
-    ("autotune_position_homing_peak_units", "homing_peak"),
-    ("autotune_position_motion_cruise_units", "motion_cruise"),
-)
 
 COMPARE_GAIN_FIELDS: tuple[str, ...] = tuple(
     field_name for field_name, _reg_name in LIVE_GAIN_FIELDS
@@ -215,11 +208,6 @@ class RegisterDumpWorkflow:
         lines.append(self._section_header("Identified model (count-space, not physical units)"))
         lines.extend(self._format_identified_model())
 
-        lines.append(self._section_header("Velocity tune provenance"))
-        lines.append(self._format_velocity_tune_provenance())
-        lines.append(self._section_header("Position tune provenance"))
-        lines.append(self._format_position_tune_provenance(config))
-
         last_current_loop = self.driver.diagnostics.active.last_current_loop_evidence(
             self.driver.oid
         )
@@ -327,21 +315,6 @@ class RegisterDumpWorkflow:
             ),
             self._kv("current_loop", current_loop),
         ]
-
-    def _format_velocity_tune_provenance(self) -> str:
-        config = self.driver.config
-        show = self._display_value
-        probed = config.autotune_probed_velocity_mrev_s
-        probed_text = show(probed) if probed is None else f"{probed} ({probed / 1000:.3f} rev/s)"
-        lower = config.autotune_band_lower_percent
-        upper = config.autotune_band_upper_percent
-        band_text = "(unset)" if lower is None or upper is None else f"{lower}..{upper}%"
-        return (
-            f"probed_velocity_mrev_s={probed_text} band={band_text}"
-            f" d_eq_q={show(config.autotune_d_eq_q)}"
-            f" confidence_q={show(config.autotune_confidence_q)}"
-            f" band_position_q={show(config.autotune_band_position_q)}"
-        )
 
     def _coded(self, value: int | None, labels: dict[int, str]) -> str:
         if value is None:
@@ -661,26 +634,6 @@ class RegisterDumpWorkflow:
 
     def _format_pair(self, name: str, value: object | None) -> str:
         return f"  {name:34} = {self._display_value(value)}"
-
-    def _format_position_tune_provenance(self, config) -> str:
-        values = {name: getattr(config, field) for field, name in POSITION_TUNE_FIELDS}
-        if all(value is None for value in values.values()):
-            return "not run (bound, homing peak, motion cruise all unset)"
-        rotation_distance = config.rotation_distance
-        parts = []
-        for name, value in values.items():
-            if value is None:
-                parts.append(f"{name}=(unset)")
-                continue
-            mm = value / POSITION_UNITS_PER_REV * rotation_distance
-            parts.append(f"{name}={int(value)}u ({mm:.3f}mm)")
-        ceiling = config.autotune_position_velocity_ceiling_reached
-        peak = config.autotune_position_peak_velocity_mrev_s
-        if ceiling is not None:
-            parts.append(f"ceiling_reached={'yes' if ceiling else 'no'}")
-        if peak is not None:
-            parts.append(f"peak_velocity={int(peak)}mrev_s")
-        return " ".join(parts)
 
     def _format_hold_pair(self, name: str, value: object | None) -> str:
         return f"  {name:32} = {self._display_value(value)}"

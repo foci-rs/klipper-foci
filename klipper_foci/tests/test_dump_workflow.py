@@ -334,8 +334,6 @@ def test_tuning_analysis_sections_come_in_order():
         "Readiness",
         "Gains",
         "Identified model (count-space, not physical units)",
-        "Velocity tune provenance",
-        "Position tune provenance",
     )
     indexes = [text.index(f"---------- {title} ----------") for title in titles]
     assert indexes == sorted(indexes)
@@ -453,65 +451,6 @@ def test_tuning_flag_reports_identified_model_in_count_space():
     assert kv(model, "inductance") == (
         "l_source=1 l_reactance_count_ratio_milli=8600 l_saliency_status=1"
     )
-
-
-def test_tuning_flag_appends_velocity_tune_provenance():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.config.autotune_probed_velocity_mrev_s = 5366
-    driver.config.autotune_d_eq_q = 1234
-    driver.config.autotune_confidence_q = 5000
-    driver.config.autotune_band_lower_percent = 70
-    driver.config.autotune_band_upper_percent = 80
-    driver.config.autotune_band_position_q = 3000
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    line = section(output, "Velocity tune provenance").strip()
-    assert line == (
-        "probed_velocity_mrev_s=5366 (5.366 rev/s) band=70..80% d_eq_q=1234 "
-        "confidence_q=5000 band_position_q=3000"
-    )
-
-
-def test_tuning_flag_appends_position_tune_provenance():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.config.autotune_position_bound_units = 409
-    driver.config.autotune_position_homing_peak_units = 300
-    driver.config.autotune_position_motion_cruise_units = 210
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    line = section(output, "Position tune provenance").strip()
-    assert line == "bound=409u (0.250mm) homing_peak=300u (0.183mm) motion_cruise=210u (0.128mm)"
-
-
-def test_tuning_flag_appends_the_ceiling_flag_and_peak_velocity():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.config.autotune_position_bound_units = 409
-    driver.config.autotune_position_homing_peak_units = 300
-    driver.config.autotune_position_motion_cruise_units = 1042
-    driver.config.autotune_position_velocity_ceiling_reached = 1
-    driver.config.autotune_position_peak_velocity_mrev_s = 15210
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    line = section(output, "Position tune provenance").strip()
-    assert line.endswith("ceiling_reached=yes peak_velocity=15210mrev_s")
-
-
-def test_tuning_flag_reports_position_tune_not_run_when_unset():
-    driver = make_driver()
-    _seed_tuning_state(driver)
-    driver.config.autotune_position_bound_units = None
-    driver.config.autotune_position_homing_peak_units = None
-    driver.config.autotune_position_motion_cruise_units = None
-
-    output, _calls = _run_dump(driver, {"TUNING": "1"})
-
-    assert section(output, "Position tune provenance").strip().startswith("not run")
 
 
 def test_tuning_flag_separates_persisted_and_last_inductance_evidence():
