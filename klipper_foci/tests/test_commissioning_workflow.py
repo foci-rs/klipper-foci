@@ -339,14 +339,7 @@ COMMISSION_DONE_REPLY_FORMAT = (
     "timing_summary=%u"
 )
 
-LEGACY_COMMISSION_RESULT_REPLY_FORMAT = (
-    "foci_commission_result oid=%c status=%c r_count_milli=%u l_count_micro=%u flux_p=%hu "
-    "flux_i=%hu torque_p=%hu torque_i=%hu lambda_us=%u theta_e_us=%u theta_source=%c "
-    "bandwidth_hz=%hu fallback_velocity_p=%hu fallback_velocity_i=%hu fallback_position_p=%hu "
-    "inner_warning_flags=%c timing_summary=%u"
-)
-
-COMMISSION_REPLY_VALUES = {
+COMMISSION_DONE_REPLY_VALUES = {
     "oid": 3,
     "status": 0,
     "r_count_milli": 1706,
@@ -359,52 +352,34 @@ COMMISSION_REPLY_VALUES = {
     "theta_e_us": 160,
     "theta_source": 1,
     "bandwidth_hz": 0,
+    "velocity_p": 1100,
+    "velocity_i": 48,
+    "position_p": 600,
     "inner_warning_flags": 0,
     "timing_summary": 0,
 }
 
 
-def captured_commission_reply(reply_format: str, gains: dict[str, int]) -> dict:
-    """Build the params Klipper delivers for a captured commissioning reply format."""
-    message_name, *fields = (token.partition("=")[0] for token in reply_format.split())
-    values = {**COMMISSION_REPLY_VALUES, **gains}
-    assert sorted(fields) == sorted(values)
-    return {"#name": message_name, **{field: values[field] for field in fields}}
+def captured_commission_done_reply() -> dict:
+    """Build the params Klipper delivers for the captured foci_commission_done format."""
+    message_name, *fields = (
+        token.partition("=")[0] for token in COMMISSION_DONE_REPLY_FORMAT.split()
+    )
+    assert sorted(fields) == sorted(COMMISSION_DONE_REPLY_VALUES)
+    return {
+        "#name": message_name,
+        **{field: COMMISSION_DONE_REPLY_VALUES[field] for field in fields},
+    }
 
 
-@pytest.mark.parametrize(
-    ("handler_name", "reply"),
-    [
-        pytest.param(
-            "handle_commission_done",
-            captured_commission_reply(
-                COMMISSION_DONE_REPLY_FORMAT,
-                {"velocity_p": 1100, "velocity_i": 48, "position_p": 600},
-            ),
-            id="foci_commission_done",
-        ),
-        pytest.param(
-            "handle_commission_result",
-            captured_commission_reply(
-                LEGACY_COMMISSION_RESULT_REPLY_FORMAT,
-                {
-                    "fallback_velocity_p": 1100,
-                    "fallback_velocity_i": 48,
-                    "fallback_position_p": 600,
-                },
-            ),
-            id="legacy_foci_commission_result",
-        ),
-    ],
-)
-def test_commission_reply_spellings_persist_the_same_pid_gains(handler_name, reply):
+def test_commission_done_reply_persists_its_gains_as_pid_keys():
     driver = make_driver()
     configfile = MockConfigFile()
     driver.printer._objects["configfile"] = configfile
     driver.settings.pid_velocity_limit = 120_000
 
     def drive_reply(_args):
-        getattr(driver.commissioning, handler_name)(dict(reply))
+        driver.commissioning.handle_commission_done(captured_commission_done_reply())
 
     driver.protocol.commands.commission.send = drive_reply
     driver.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
@@ -415,12 +390,9 @@ def test_commission_reply_spellings_persist_the_same_pid_gains(handler_name, rep
     assert staged["pid_position_p"] == "600"
     assert staged["pid_position_i"] == "0"
     assert staged["pid_velocity_limit"] == "120000"
-    assert {name: driver.state.active_gains[name] for name in ("velocity_p", "velocity_i")} == {
-        "velocity_p": 1100,
-        "velocity_i": 48,
-    }
+    assert driver.state.active_gains["velocity_p"] == 1100
+    assert driver.state.active_gains["velocity_i"] == 48
     assert driver.state.active_gains["position_p"] == 600
-    assert not [name for name in driver.commissioning.result if name.startswith("fallback_")]
 
 
 def test_commission_success_replaces_previously_pasted_outer_gains():
@@ -1165,7 +1137,7 @@ class CommissionResistanceReplyFoldingTests(unittest.TestCase):
     """Verify commission-stream resistance replies get folded into result.
 
     W1 made firmware emit foci_resistance_run + two foci_resistance_axis
-    replies during FOCI_SETUP, just before foci_commission_result.
+    replies during FOCI_SETUP, just before foci_commission_done.
     These tests drive that exact reply sequence through the host's
     response handlers and confirm the values end up persisted via
     persist_commission_results, with axis0/axis1 correctly routed by

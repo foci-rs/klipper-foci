@@ -94,11 +94,6 @@ def register_commissioning_responses(serial, driver, oid: int) -> None:
         oid,
     )
     serial.register_response(
-        driver.commissioning.handle_commission_result,
-        "foci_commission_result",
-        oid,
-    )
-    serial.register_response(
         driver.commissioning.handle_commission_detail,
         "foci_commission_detail",
         oid,

@@ -16,12 +16,6 @@ from .report import report_detail, report_summary
 
 log = logging.getLogger(__name__)
 
-LEGACY_COMMISSION_GAIN_FIELDS: dict[str, str] = {
-    "fallback_velocity_p": "velocity_p",
-    "fallback_velocity_i": "velocity_i",
-    "fallback_position_p": "position_p",
-}
-
 COMMISSION_REASON_NAMES: dict[int, str] = {
     1: "motor already enabled",
     2: "no current detected",
@@ -637,13 +631,6 @@ class CommissioningWorkflow:
         self.result = params
         self.done = True
 
-    def handle_commission_result(self, params: dict) -> None:
-        """Handle foci_commission_result from firmware that predates foci_commission_done."""
-        result = {
-            LEGACY_COMMISSION_GAIN_FIELDS.get(name, name): value for name, value in params.items()
-        }
-        self.handle_commission_done(result)
-
     def handle_commission_detail(self, params: dict) -> None:
         """Collect structured commissioning diagnostic detail."""
         self.details.append(
@@ -817,7 +804,7 @@ class CommissioningWorkflow:
             result = self.result
             # W1 firmware emits foci_resistance_run + two
             # foci_resistance_axis replies during FOCI_SETUP, just
-            # before foci_commission_result. The diagnostics handlers
+            # before foci_commission_done. The diagnostics handlers
             # cache those reply values (keyed by oid); fold them into the
             # result dict now so persist_commission_results' presence-gated
             # resistance block sees them below. pop_resistance_cache always
