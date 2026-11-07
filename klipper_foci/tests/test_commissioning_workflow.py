@@ -7,11 +7,14 @@ from typing import ClassVar
 import pytest
 
 from klipper_foci import commissioning
+from klipper_foci._vocabulary_generated import HARD_FAULT_CODES
 from klipper_foci.commissioning import (
     COMMISSION_REASON_NAMES,
     ELECTRICAL_ID_DETAIL_NAMES,
-    HARD_FAULT_CODES,
     PHASE_NAMES,
+    RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES,
+    TIMING_REJECTION_ERROR_CODES,
+    TROUBLESHOOTING_DOC_LINKS,
     CommissioningWorkflow,
     format_commission_error_name,
     format_current_loop_failure_summary,
@@ -28,6 +31,17 @@ from tests.mocks import (
     make_config_printer,
     make_driver,
 )
+
+
+def test_hand_written_code_groups_only_name_codes_the_vocabulary_defines():
+    groups = {
+        "TROUBLESHOOTING_DOC_LINKS": set(TROUBLESHOOTING_DOC_LINKS),
+        "RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES": set(RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES),
+        "HARD_FAULT_CODES": set(HARD_FAULT_CODES),
+        "TIMING_REJECTION_ERROR_CODES": set(TIMING_REJECTION_ERROR_CODES.values()),
+    }
+    for name, codes in groups.items():
+        assert codes <= set(COMMISSION_REASON_NAMES), f"{name} names an undefined code"
 
 
 def test_sustained_hold_failure_has_operator_label_and_is_hard_fault():

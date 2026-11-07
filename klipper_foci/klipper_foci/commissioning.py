@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from ._vocabulary_generated import PHASE_NAMES
+from ._vocabulary_generated import (
+    COMMISSION_REASON_NAMES,
+    FAILURE_PHRASES,
+    PHASE_NAMES,
+)
 from .constants import (
     COMMISSION_CANCEL_GRACE_PERIOD_S,
     ELECTRICAL_ID_WAIT_TIMEOUT_S,
@@ -16,166 +20,11 @@ from .report import report_detail, report_summary
 
 log = logging.getLogger(__name__)
 
-COMMISSION_REASON_NAMES: dict[int, str] = {
-    1: "motor already enabled",
-    2: "no current detected",
-    3: "SPI communication error",
-    4: "ADC calibration fault",
-    5: "coil connectivity fault",
-    6: "phase wiring fault",
-    7: "encoder fault",
-    8: "electrical identification failed",
-    9: "current validation failed",
-    10: "mechanical identification failed",
-    11: "velocity validation failed",
-    12: "position tune failed",
-    13: "encoder not aligned",
-    14: "shutdown requested",
-    15: "commissioning already running",
-    16: "command queue full",
-    17: "safety envelope violation",
-    18: "CHIP_RESET_DETECTED (TMC4671 lost state, re-commission required)",
-    19: "resistance identification failed",
-    20: "resistance ADC not ready",
-    21: "resistance diagnostic not armed",
-    22: "resistance wrong power stage",
-    23: "resistance insufficient linear points",
-    24: "resistance thermal drift",
-    25: "resistance electrical axis mismatch",
-    26: "resistance high fit residual",
-    27: "resistance invalid motor type",
-    28: "resistance peak current exceeded",
-    29: "resistance unsupported profile",
-    30: "resistance parameter out of bounds",
-    31: "resistance measurement envelope unsupported",
-    32: "inductance open-loop velocity timeout",
-    33: "inductance AC capture rejected",
-    34: "inductance encoder motion during AC capture",
-    35: "inductance capture window incomplete",
-    36: "inductance realized frequency out of range",
-    37: "inductance quadrature current too low",
-    38: "inductance missing resistance evidence",
-    39: "inductance reactance calculation invalid",
-    40: "inductance drift calculation invalid",
-    42: "sustained hold validation failed",
-    43: "closed-loop entry stability failed",
-    44: "electrical model had no usable samples",
-    45: "electrical model scale rounded to zero",
-    46: "electrical theta too large for measured tau",
-    47: "invalid_schedule",
-    48: "resistance_timing",
-    49: "resistance_timeout",
-    50: "inductance_timing",
-    51: "delay_timing",
-    52: "velocity sweep analysis overrun",
-    53: "velocity rest not confirmed",
-    54: "invalid current limit",
-    55: "evidence buffer full",
-    56: "rung index out of range",
-    57: "frozen plan input changed mid-campaign",
-    58: "rung-origin recovery planning failed",
-    59: "encoder domain invalid",
-    60: "missing capture state",
-    61: "search grid invalid",
-    62: "target rate invalid",
-    63: "zero-elapsed encoder sample",
-    64: "campaign plan could not be constructed",
-    65: "velocity-integral authority denied",
-    66: "discovery selected no in-band ladder",
-    67: "sampling grid period is zero",
-    68: "grid deadline advanced before it was due",
-    69: "grid deadline arithmetic overflowed",
-    70: "safety primitive already open",
-    71: "primitive start timestamp is in the future",
-    72: "origin recovery start offset mismatch",
-    73: "resistance nonpositive slope (reversed current polarity or sign error)",
-    74: "cancelled",
-    75: "safe-state cleanup incomplete",
-    76: "inductance current envelope exceeded",
-    79: "pid gain invalid",
-    80: "malformed interval",
-    81: "missing rate table entry",
-    82: "mismatched observation",
-    83: "elapsed time conversion invalid",
-    84: "velocity envelope ceiling zero",
-    85: "velocity envelope exceeds ceiling",
-    86: "safety timing gap invalid",
-    87: "net displacement overflow",
-    88: "capture timing: time moved backwards or violated poll ordering",
-    89: "capture timing: deadline or interval arithmetic overflowed",
-    90: "capture timing: sample-start lateness exceeded one quarter period",
-    91: "capture timing: sample service exceeded one requested period",
-    92: "capture timing: missed more sample slots than permitted",
-    93: "capture timing: too many consecutive missed sample slots",
-    94: "capture timing: SPI time exceeded poll wall time",
-    95: "capture timing: telemetry counter or duration saturated",
-    96: "capture timing: timestamp offset out of range",
-    97: "capture buffer desync (internal invariant violation)",
-    98: "velocity confidence estimation failed",
-    99: "velocity rate calculation failed",
-    100: "velocity conversion invalid",
-    101: "velocity disturbance calculation failed",
-    102: "velocity block geometry invalid",
-    103: "velocity interval invalid",
-    104: "velocity lag-one evaluation failed",
-    105: "velocity analysis poll failed",
-    106: "velocity unexpected poll variant",
-    107: "velocity wrong direction",
-    108: "velocity invalid evidence",
-    109: "velocity integral plan invalid",
-    110: "gain floor insufficient linear points",
-    111: "gain floor non-positive slope",
-    112: "gain floor current fit rejected (legacy, not produced by current firmware)",
-    113: "gain floor insufficient coverage",
-    114: "gain floor peak current exceeded",
-    115: "gain floor motion envelope exceeded",
-    116: "gain floor velocity gain unrepresentable",
-    117: "gain floor position gain unrepresentable",
-    118: "gain floor step overshoot",
-    119: "coil check current envelope exceeded",
-    120: "current validation envelope unreachable",
-    121: "current gain unrepresentable",
-    122: "resistance bus voltage out of range",
-    123: "discovery velocity output reached the hard current limit",
-    124: "discovery current guard saw an actionable TMC status",
-}
-
-_FAILURE_PHRASE_OVERRIDES: dict[int, str] = {
-    18: "the TMC4671 lost its calibration state and needs to be re-commissioned",
-    47: "an invalid measurement schedule",
-    48: "a resistance-measurement timing fault",
-    49: "a resistance-measurement timeout",
-    50: "an inductance-measurement timing fault",
-    51: "a measurement delay timing fault",
-    73: "a resistance measurement with reversed current polarity or a sign error",
-    97: "an internal capture-buffer synchronization fault",
-    110: "not enough clean position samples during the gain-floor measurement to fit a response",
-    111: "the gain-floor measurement showed zero, negative, or wrong-direction acceleration",
-    112: "legacy code from older firmware: the gain floor had no usable current-loop bandwidth",
-    113: "the gain-floor measurement missed a sample deadline before it could finish",
-    114: "motor current exceeded its safety limit during the gain-floor measurement",
-    115: "the motor moved further than allowed during the gain-floor measurement",
-    116: "the computed gain-floor velocity gain is outside the range the firmware can represent",
-    117: "the computed gain-floor position gain is outside the range the firmware can represent",
-    118: "the current loop overshot the gain-floor torque step; "
-    "the selected profile's current-loop bandwidth is too high for this motor",
-    120: "the selected profile's current-loop bandwidth needs more run current than this motor "
-    "is configured for; raise the run current or choose a less stiff profile",
-    121: "this motor's inductance is too high for the selected profile's current-loop bandwidth "
-    "on this bus voltage; choose a less stiff profile",
-    122: "the measured supply voltage was outside the 18 to 60 volt range the resistance "
-    "sweep supports; check the supply and the VM divider configuration",
-    123: "the velocity loop reached the hard current limit before any rung was in band; "
-    "raise the run current or lower the tuning velocity",
-    124: "the TMC4671 status word reported a PWM rail, circular limit or ADC clip while "
-    "discovery was running; the motor was disabled and needs re-enabling before a retry",
-}
-
 
 def operator_failure_phrase(code: int) -> str:
     """Console-safe FAILED phrase for a COMMISSION_REASON_NAMES code."""
-    if code in _FAILURE_PHRASE_OVERRIDES:
-        return _FAILURE_PHRASE_OVERRIDES[code]
+    if code in FAILURE_PHRASES:
+        return FAILURE_PHRASES[code]
     return COMMISSION_REASON_NAMES.get(code, f"unknown error {int(code)}")
 
 
@@ -184,8 +33,6 @@ TROUBLESHOOTING_DOC_LINKS: dict[int, str] = dict.fromkeys(
 )
 
 RESISTANCE_MEASUREMENT_UNSUPPORTED_CODES: frozenset[int] = frozenset({23, 28, 31})
-
-HARD_FAULT_CODES: frozenset[int] = frozenset({3, 9, 14, 17, 42, 123, 124})
 
 INNER_WARNING_GAIN_FLOOR_SKIPPED = 1 << 7
 
