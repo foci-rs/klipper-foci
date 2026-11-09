@@ -605,133 +605,13 @@ class CommissioningWorkflow:
         if not self.driver.state.try_acquire("setup"):
             raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         try:
-            toolhead = self.driver.printer.lookup_object("toolhead")
-            toolhead.wait_moves()
-
-            stepper_enable = self.driver.printer.lookup_object("stepper_enable")
-            enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
-            if enable_line.is_motor_enabled():
-                enable_line.motor_disable(toolhead.get_last_move_time())
-                toolhead.wait_moves()
-
-            self.driver.state.is_calibrated = False
-            self.driver.homing.invalidate_homing()
-
-            self.done = False
-            self.result = None
-            self.error_code = 0
-            self.last_phase_id = None
-            self.clear_details()
-            self.clear_timing_evidence()
-
-            # Clear any resistance-reply cache left over from a standalone
-            # FOCI_RESISTANCE_TEST run before this commission's firmware
-            # stream can emit its own foci_resistance_run/axis replies.
-            # The cache is otherwise only cleared at commission exit
-            # (success via pop_resistance_cache, failure/timeout via
-            # clear_resistance_cache below), so without this start-of-run
-            # clear a full standalone run+axis0+axis1 entry could survive
-            # to pre-populate this commission's cache. If this commission
-            # then delivered only a partial set of replies (e.g. run+axis0,
-            # axis1 dropped), handle_resistance_axis would overwrite only
-            # the received axis, leaving the stale axis1 in place; the
-            # all-or-nothing pop_resistance_cache would see run+axis0+
-            # axis1 all "present" (axis1 stale) and fold/persist a result
-            # blending data from two unrelated runs.
-            self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
-            self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
-            self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
-
+            toolhead, enable_line = self._prepare_for_commission()
             self.driver.protocol.run_commission(profile_code)
 
             reactor = self.driver.printer.get_reactor()
-            eventtime = reactor.monotonic()
-            timeout = eventtime + ELECTRICAL_ID_WAIT_TIMEOUT_S
-            while not self.done:
-                eventtime = reactor.pause(eventtime + 0.1)
-                if eventtime > timeout:
-                    self.cancel_and_await_quiescence(reactor, lambda: self.done, eventtime)
-                    self.on_commission_failure()
-                    self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
-                    self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
-                    self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
-                    report_summary(
-                        gcmd,
-                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED, timed out waiting "
-                        "for the commissioning firmware.",
-                    )
-                    raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP timed out")
-                if self.error_code != 0:
-                    error_name = self.format_commission_failure(self.error_code)
-                    if self.error_code == 18:
-                        self.handle_chip_reset_detected()
-                    else:
-                        self.on_commission_failure(error_name)
-                    self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
-                    self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
-                    self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
-                    phase_name = PHASE_NAMES.get(self.last_phase_id or 0, "unknown")
-                    if self.details:
-                        detail_lines = [
-                            f"FOCI {self.driver.stepper_name} commissioning diagnostics:"
-                        ]
-                        detail_lines.extend(
-                            f"  {format_commission_detail(detail)}" for detail in self.details
-                        )
-                        report_detail(log, self.driver.global_config.debug, "\n".join(detail_lines))
-                    if self.last_phase_id == 4 and _encoder_direction_sweep_failed(self.details):
-                        phrase = format_encoder_direction_failure(self.details)
-                    else:
-                        phrase = operator_failure_phrase(self.error_code)
-                    report_summary(
-                        gcmd,
-                        f"FOCI_SETUP {self.driver.stepper_name}: FAILED, {phrase}.",
-                    )
-                    raise gcmd.error(
-                        f"FOCI {self.driver.name}: FOCI_SETUP failed at {phase_name}: {error_name}"
-                    )
+            self._await_commission_done(gcmd, reactor)
 
-            result = self.result
-            # W1 firmware emits foci_resistance_run + two
-            # foci_resistance_axis replies during FOCI_SETUP, just
-            # before foci_commission_done. The diagnostics handlers
-            # cache those reply values (keyed by oid); fold them into the
-            # result dict now so persist_commission_results' presence-gated
-            # resistance block sees them below. pop_resistance_cache always
-            # clears the per-oid cache entry here, and is all-or-nothing:
-            # it only returns folded values when run + axis0 + axis1 are
-            # all cached, so a commission that completed before every
-            # resistance reply arrived folds in nothing rather than a
-            # partial set. The two early-exit failure paths above
-            # (timeout, mid-phase error) clear the cache directly via
-            # clear_resistance_cache since they return before reaching
-            # here; together these guarantee no stale or partial
-            # resistance cache entry ever survives past this method.
-            result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
-            result.update(self.driver.diagnostics.active.pop_inductance_cache(self.driver.oid))
-            result.update(self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid))
-            try:
-                result["commission_timing"] = self.consume_timing_evidence(
-                    result.get("timing_summary", 0)
-                )
-            except ValueError as error:
-                # This branch only runs once the firmware itself reported success,
-                # meaning closed-loop entry already armed the motor directly
-                # through the commissioning backend, bypassing EnableLine. Sync
-                # EnableLine to that armed state before disabling, or its own
-                # is_enabled bookkeeping (still False) makes motor_disable() a
-                # no-op and no command ever reaches the MCU.
-                self.driver.homing.sync_enable_line_armed()
-                enable_line.motor_disable(toolhead.get_last_move_time())
-                toolhead.wait_moves()
-                self.on_commission_failure(str(error))
-                report_summary(
-                    gcmd,
-                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED, timing evidence was rejected.",
-                )
-                raise gcmd.error(
-                    f"FOCI {self.driver.name}: FOCI_SETUP timing evidence rejected: {error}"
-                ) from error
+            result = self._fold_commission_result(gcmd, enable_line, toolhead)
             status = result.get("status", 255)
             if status > 1:
                 error_name = self.format_commission_failure(status)
@@ -746,75 +626,206 @@ class CommissioningWorkflow:
                 )
                 raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP failed: {error_name}")
 
-            self.driver.state.is_calibrated = True
-            self.driver.state.inhibited = False
-            self.driver.state.last_commission_failure = None
-            self.driver.homing.set_auto_calibrate_on_enable_allowed(True)
-            self.driver.state.active_gains = {
-                "flux_p": result["flux_p"],
-                "flux_i": result["flux_i"],
-                "torque_p": result["torque_p"],
-                "torque_i": result["torque_i"],
-                "velocity_p": result["velocity_p"],
-                "velocity_i": result["velocity_i"],
-                "position_p": result["position_p"],
-                "position_i": 0,
-                "velocity_limit": self._commissioned_velocity_limit(),
-                "velocity_filter_hz": result.get("velocity_filter_hz", 0),
-                "torque_filter_hz": result.get(
-                    "current_torque_filter_hz",
-                    self.driver.settings.torque_filter_hz,
-                ),
-                "position_filter_hz": result.get("position_filter_hz", 0),
-                "flux_filter_hz": result.get(
-                    "current_flux_filter_hz",
-                    self.driver.settings.flux_filter_hz,
-                ),
-            }
-            self.driver.state.runtime_status = "commissioned"
+            self._apply_commissioned_gains(result)
             enable_line.motor_enable(toolhead.get_last_move_time())
 
             self.persist_commission_results(result, profile_name)
-
-            report_summary(
-                gcmd,
-                f"FOCI_SETUP {self.driver.stepper_name}: SUCCEEDED, resistance/inductance "
-                "identified, current gains applied.",
-            )
-            status_str = "accepted" if status == 0 else "accepted with warnings"
-            theta_src = "measured" if result.get("theta_source", 1) == 0 else "config"
-            report_detail(
-                log,
-                self.driver.global_config.debug,
-                f"FOCI {self.driver.name} commissioned ({status_str}): r_count_milli="
-                f"{int(result['r_count_milli'])} l_count_micro={int(result['l_count_micro'])} "
-                f"bandwidth_hz={int(result.get('bandwidth_hz', 0))} current_candidate_attempt="
-                f"{int(result.get('current_candidate_attempt', 0))} theta_e_us="
-                f"{int(result['theta_e_us'])} theta_src={theta_src}",
-            )
-            flags = result.get("inner_warning_flags", 0)
-            if flags & INNER_WARNING_GAIN_FLOOR_SKIPPED:
-                report_summary(
-                    gcmd,
-                    f"FOCI {self.driver.name} warning: gain floor skipped, outer gains are "
-                    "the built-in defaults, not measured from this motor.",
-                )
-            if flags:
-                report_detail(
-                    log,
-                    self.driver.global_config.debug,
-                    f"FOCI {self.driver.name} inner confidence: "
-                    f"{format_inner_warning_flags(flags)}",
-                )
-            for method, evidence in result["commission_timing"].items():
-                report_detail(
-                    log,
-                    self.driver.global_config.debug,
-                    format_timing_evidence(TIMING_METHOD_NAMES[method], evidence),
-                )
+            self._report_commission_success(gcmd, result, status)
         finally:
             self.clear_timing_evidence()
             self.driver.state.release()
+
+    def _clear_reply_caches(self) -> None:
+        self.driver.diagnostics.clear_resistance_cache(self.driver.oid)
+        self.driver.diagnostics.active.clear_inductance_cache(self.driver.oid)
+        self.driver.diagnostics.active.clear_current_loop_cache(self.driver.oid)
+
+    def _prepare_for_commission(self):
+        toolhead = self.driver.printer.lookup_object("toolhead")
+        toolhead.wait_moves()
+
+        stepper_enable = self.driver.printer.lookup_object("stepper_enable")
+        enable_line = stepper_enable.lookup_enable(self.driver.stepper_name)
+        if enable_line.is_motor_enabled():
+            enable_line.motor_disable(toolhead.get_last_move_time())
+            toolhead.wait_moves()
+
+        self.driver.state.is_calibrated = False
+        self.driver.homing.invalidate_homing()
+
+        self.done = False
+        self.result = None
+        self.error_code = 0
+        self.last_phase_id = None
+        self.clear_details()
+        self.clear_timing_evidence()
+
+        # Clear any resistance-reply cache left over from a standalone
+        # FOCI_RESISTANCE_TEST run before this commission's firmware
+        # stream can emit its own foci_resistance_run/axis replies.
+        # The cache is otherwise only cleared at commission exit
+        # (success via pop_resistance_cache, failure/timeout via
+        # clear_resistance_cache below), so without this start-of-run
+        # clear a full standalone run+axis0+axis1 entry could survive
+        # to pre-populate this commission's cache. If this commission
+        # then delivered only a partial set of replies (e.g. run+axis0,
+        # axis1 dropped), handle_resistance_axis would overwrite only
+        # the received axis, leaving the stale axis1 in place; the
+        # all-or-nothing pop_resistance_cache would see run+axis0+
+        # axis1 all "present" (axis1 stale) and fold/persist a result
+        # blending data from two unrelated runs.
+        self._clear_reply_caches()
+        return toolhead, enable_line
+
+    def _await_commission_done(self, gcmd, reactor) -> None:
+        eventtime = reactor.monotonic()
+        timeout = eventtime + ELECTRICAL_ID_WAIT_TIMEOUT_S
+        while not self.done:
+            eventtime = reactor.pause(eventtime + 0.1)
+            if eventtime > timeout:
+                self.cancel_and_await_quiescence(reactor, lambda: self.done, eventtime)
+                self.on_commission_failure()
+                self._clear_reply_caches()
+                report_summary(
+                    gcmd,
+                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED, timed out waiting "
+                    "for the commissioning firmware.",
+                )
+                raise gcmd.error(f"FOCI {self.driver.name}: FOCI_SETUP timed out")
+            if self.error_code != 0:
+                error_name = self.format_commission_failure(self.error_code)
+                if self.error_code == 18:
+                    self.handle_chip_reset_detected()
+                else:
+                    self.on_commission_failure(error_name)
+                self._clear_reply_caches()
+                phase_name = PHASE_NAMES.get(self.last_phase_id or 0, "unknown")
+                if self.details:
+                    detail_lines = [f"FOCI {self.driver.stepper_name} commissioning diagnostics:"]
+                    detail_lines.extend(
+                        f"  {format_commission_detail(detail)}" for detail in self.details
+                    )
+                    report_detail(log, self.driver.global_config.debug, "\n".join(detail_lines))
+                if self.last_phase_id == 4 and _encoder_direction_sweep_failed(self.details):
+                    phrase = format_encoder_direction_failure(self.details)
+                else:
+                    phrase = operator_failure_phrase(self.error_code)
+                report_summary(
+                    gcmd,
+                    f"FOCI_SETUP {self.driver.stepper_name}: FAILED, {phrase}.",
+                )
+                raise gcmd.error(
+                    f"FOCI {self.driver.name}: FOCI_SETUP failed at {phase_name}: {error_name}"
+                )
+
+    def _fold_commission_result(self, gcmd, enable_line, toolhead) -> dict:
+        result = self.result
+        # W1 firmware emits foci_resistance_run + two
+        # foci_resistance_axis replies during FOCI_SETUP, just
+        # before foci_commission_done. The diagnostics handlers
+        # cache those reply values (keyed by oid); fold them into the
+        # result dict now so persist_commission_results' presence-gated
+        # resistance block sees them below. pop_resistance_cache always
+        # clears the per-oid cache entry here, and is all-or-nothing:
+        # it only returns folded values when run + axis0 + axis1 are
+        # all cached, so a commission that completed before every
+        # resistance reply arrived folds in nothing rather than a
+        # partial set. The two early-exit failure paths above
+        # (timeout, mid-phase error) clear the cache directly via
+        # clear_resistance_cache since they return before reaching
+        # here; together these guarantee no stale or partial
+        # resistance cache entry ever survives past this method.
+        result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
+        result.update(self.driver.diagnostics.active.pop_inductance_cache(self.driver.oid))
+        result.update(self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid))
+        try:
+            result["commission_timing"] = self.consume_timing_evidence(
+                result.get("timing_summary", 0)
+            )
+        except ValueError as error:
+            # This branch only runs once the firmware itself reported success,
+            # meaning closed-loop entry already armed the motor directly
+            # through the commissioning backend, bypassing EnableLine. Sync
+            # EnableLine to that armed state before disabling, or its own
+            # is_enabled bookkeeping (still False) makes motor_disable() a
+            # no-op and no command ever reaches the MCU.
+            self.driver.homing.sync_enable_line_armed()
+            enable_line.motor_disable(toolhead.get_last_move_time())
+            toolhead.wait_moves()
+            self.on_commission_failure(str(error))
+            report_summary(
+                gcmd,
+                f"FOCI_SETUP {self.driver.stepper_name}: FAILED, timing evidence was rejected.",
+            )
+            raise gcmd.error(
+                f"FOCI {self.driver.name}: FOCI_SETUP timing evidence rejected: {error}"
+            ) from error
+        return result
+
+    def _apply_commissioned_gains(self, result: dict) -> None:
+        self.driver.state.is_calibrated = True
+        self.driver.state.inhibited = False
+        self.driver.state.last_commission_failure = None
+        self.driver.homing.set_auto_calibrate_on_enable_allowed(True)
+        self.driver.state.active_gains = {
+            "flux_p": result["flux_p"],
+            "flux_i": result["flux_i"],
+            "torque_p": result["torque_p"],
+            "torque_i": result["torque_i"],
+            "velocity_p": result["velocity_p"],
+            "velocity_i": result["velocity_i"],
+            "position_p": result["position_p"],
+            "position_i": 0,
+            "velocity_limit": self._commissioned_velocity_limit(),
+            "velocity_filter_hz": result.get("velocity_filter_hz", 0),
+            "torque_filter_hz": result.get(
+                "current_torque_filter_hz",
+                self.driver.settings.torque_filter_hz,
+            ),
+            "position_filter_hz": result.get("position_filter_hz", 0),
+            "flux_filter_hz": result.get(
+                "current_flux_filter_hz",
+                self.driver.settings.flux_filter_hz,
+            ),
+        }
+        self.driver.state.runtime_status = "commissioned"
+
+    def _report_commission_success(self, gcmd, result: dict, status: int) -> None:
+        report_summary(
+            gcmd,
+            f"FOCI_SETUP {self.driver.stepper_name}: SUCCEEDED, resistance/inductance "
+            "identified, current gains applied.",
+        )
+        status_str = "accepted" if status == 0 else "accepted with warnings"
+        theta_src = "measured" if result.get("theta_source", 1) == 0 else "config"
+        report_detail(
+            log,
+            self.driver.global_config.debug,
+            f"FOCI {self.driver.name} commissioned ({status_str}): r_count_milli="
+            f"{int(result['r_count_milli'])} l_count_micro={int(result['l_count_micro'])} "
+            f"bandwidth_hz={int(result.get('bandwidth_hz', 0))} current_candidate_attempt="
+            f"{int(result.get('current_candidate_attempt', 0))} theta_e_us="
+            f"{int(result['theta_e_us'])} theta_src={theta_src}",
+        )
+        flags = result.get("inner_warning_flags", 0)
+        if flags & INNER_WARNING_GAIN_FLOOR_SKIPPED:
+            report_summary(
+                gcmd,
+                f"FOCI {self.driver.name} warning: gain floor skipped, outer gains are "
+                "the built-in defaults, not measured from this motor.",
+            )
+        if flags:
+            report_detail(
+                log,
+                self.driver.global_config.debug,
+                f"FOCI {self.driver.name} inner confidence: {format_inner_warning_flags(flags)}",
+            )
+        for method, evidence in result["commission_timing"].items():
+            report_detail(
+                log,
+                self.driver.global_config.debug,
+                format_timing_evidence(TIMING_METHOD_NAMES[method], evidence),
+            )
 
     def format_commission_failure(self, status: int) -> str:
         """Format a commission terminal status with cached subordinate evidence."""
