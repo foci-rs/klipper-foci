@@ -784,6 +784,133 @@ def test_commission_terminal_status_failure_prints_failed_summary():
     assert gcmd.last_info == ("FOCI_SETUP manual_stepper stepper_x: FAILED, encoder fault.")
 
 
+def seed_reply_caches(driver):
+    driver.diagnostics.active.resistance_cache[driver.oid] = {"run": {"stale": 1}}
+    driver.diagnostics.active.inductance_cache[driver.oid] = {"run": {"stale": 1}}
+    driver.diagnostics.active.current_loop_cache[driver.oid] = {"stale": 1}
+
+
+def assert_commission_cleaned_up(driver):
+    assert driver.oid not in driver.diagnostics.active.resistance_cache
+    assert driver.oid not in driver.diagnostics.active.inductance_cache
+    assert driver.oid not in driver.diagnostics.active.current_loop_cache
+    assert driver.commissioning.timing_by_method == {}
+    assert not driver.state.operation_lock
+
+
+def test_commission_timeout_clears_reply_caches():
+    d = make_driver()
+    d.printer._objects["reactor"] = MockReactor()
+
+    def never_finish(_args):
+        seed_reply_caches(d)
+        d.commissioning.timing_by_method = {0: {"status": 1}}
+
+    d.protocol.commands.commission.send = never_finish
+    with pytest.raises(CommandError, match="timed out"):
+        d.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert_commission_cleaned_up(d)
+    assert d.state.inhibited
+
+
+def test_commission_mid_phase_error_clears_reply_caches():
+    d = make_driver()
+
+    def drive_failure(_args):
+        seed_reply_caches(d)
+        d.commissioning.timing_by_method = {0: {"status": 1}}
+        d.commissioning.error_code = 19
+        d.commissioning.last_phase_id = 5
+
+    d.protocol.commands.commission.send = drive_failure
+    with pytest.raises(CommandError, match="FOCI_SETUP failed at"):
+        d.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert_commission_cleaned_up(d)
+    assert d.state.inhibited
+
+
+def test_commission_chip_reset_clears_reply_caches():
+    d = make_driver()
+
+    def drive_chip_reset(_args):
+        seed_reply_caches(d)
+        d.commissioning.timing_by_method = {0: {"status": 1}}
+        d.commissioning.error_code = 18
+        d.commissioning.last_phase_id = 10
+
+    d.protocol.commands.commission.send = drive_chip_reset
+    with pytest.raises(CommandError, match="CHIP_RESET_DETECTED"):
+        d.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert_commission_cleaned_up(d)
+    assert not d.state.inhibited
+
+
+def test_commission_terminal_status_failure_clears_reply_caches():
+    d = make_driver()
+    result = complete_commission_result()
+    result["status"] = 7
+
+    def drive_terminal_failure(_args):
+        seed_reply_caches(d)
+        d.commissioning.result = result
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_terminal_failure
+    with pytest.raises(CommandError, match="encoder fault"):
+        d.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert_commission_cleaned_up(d)
+    assert d.state.inhibited
+    assert d.state.active_gains is None
+
+
+def test_commission_terminal_chip_reset_status_does_not_inhibit_retry():
+    d = make_driver()
+    result = complete_commission_result()
+    result["status"] = 18
+
+    def drive_terminal_chip_reset(_args):
+        seed_reply_caches(d)
+        d.commissioning.result = result
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_terminal_chip_reset
+    with pytest.raises(CommandError, match="CHIP_RESET_DETECTED"):
+        d.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert_commission_cleaned_up(d)
+    assert not d.state.inhibited
+    assert not d.state.is_calibrated
+
+
+def test_commission_timing_evidence_rejected_disables_motor():
+    d = make_driver()
+    result = complete_commission_result()
+    result["timing_summary"] = 2 << 4 | 1 << 6
+    enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+
+    def drive_rejected_timing(_args):
+        seed_reply_caches(d)
+        d.commissioning.handle_commission_timing(
+            timing_reply(method=2, status=2, requested_period_us=160)
+        )
+        d.commissioning.result = result
+        d.commissioning.done = True
+
+    d.protocol.commands.commission.send = drive_rejected_timing
+    with pytest.raises(CommandError, match="timing evidence rejected"):
+        d.commissioning.commission(MockGCmd({"PROFILE": "balanced"}))
+
+    assert_commission_cleaned_up(d)
+    assert not enable_line.is_motor_enabled()
+    assert enable_line.real_disable_count == 1
+    assert d.state.inhibited
+    assert d.state.active_gains is None
+
+
 class TestChipResetDetected(unittest.TestCase):
     """Verify host recovery when firmware reports CHIP_RESET_DETECTED."""
 
