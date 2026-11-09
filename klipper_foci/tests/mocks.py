@@ -755,3 +755,29 @@ def make_driver(
         driver.protocol.bind_mcu(driver.mcu, driver.oid)
 
     return driver
+
+
+class MockConfigFile:
+    def __init__(self):
+        self.values = {}
+
+    def set(self, section, key, value):
+        self.values[(section, key)] = value
+
+
+def timing_reply(method=0, status=1, **overrides):
+    reply = {
+        "oid": 1,
+        "method": method,
+        "status": status,
+        "requested_period_us": 5000,
+        "valid_samples": 8,
+        "missed_samples": 0,
+        "max_consecutive_misses": 0,
+        "max_lateness_us": 12,
+        "max_interval_us": 5012,
+        "max_poll_wall_us": 20,
+        "max_spi_wall_us": 8,
+    }
+    reply.update(overrides)
+    return reply
