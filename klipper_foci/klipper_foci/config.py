@@ -196,12 +196,84 @@ def _drain_legacy_keys(config, section_name) -> None:
         )
 
 
-def parse_driver_config(config) -> FociDriverConfig:
-    """Parse one ``[foci <stepper>]`` config section."""
-    name = config.get_name()
-    stepper_name = " ".join(name.split()[1:])
-    printer = config.get_printer()
+@dataclass(frozen=True)
+class _CurrentAndEncoder:
+    run_current: float
+    encoder_ppr: int
+    voltage_limit: int
+    encoder_reversed: bool
+    homing_current: float
 
+
+@dataclass(frozen=True)
+class _StallSettings:
+    stall_ceiling_mm: float
+    stall_margin_mm: float
+    stall_persistence: int
+
+
+@dataclass(frozen=True)
+class _InnerPidGains:
+    pid_flux_p: int | None
+    pid_flux_i: int | None
+    pid_torque_p: int | None
+    pid_torque_i: int | None
+
+
+@dataclass(frozen=True)
+class _Filters:
+    velocity_filter_hz: int | None
+    torque_filter_hz: int | None
+    position_filter_hz: int | None
+    flux_filter_hz: int | None
+
+
+@dataclass(frozen=True)
+class _OuterPidGains:
+    pid_position_p: int | None
+    pid_position_i: int | None
+    pid_velocity_p: int | None
+    pid_velocity_i: int | None
+    velocity_feedforward: bool
+    velocity_feedforward_gain: float
+    pid_velocity_limit: int | None
+
+
+@dataclass(frozen=True)
+class _IdentifiedValues:
+    identified_r_count_milli: int | None
+    identified_lambda_us: int | None
+    identified_theta_e_us: int | None
+    identified_theta_source: int | None
+    identified_bandwidth_hz: int | None
+    identified_tau_e_us: int | None
+    identified_inner_warning_flags: int | None
+    identified_l_source: int | None
+    identified_l_reactance_count_ratio_milli: int | None
+    identified_l_saliency_status: int | None
+    identified_current_gains_source: int | None
+    identified_current_gains_tier: int | None
+    identified_current_retry_budget_exhausted: int | None
+    identified_current_failure_reason: int | None
+    identified_r_count_slope_milli: int | None
+    commissioning_profile: str | None
+    commissioning_status: str | None
+
+
+@dataclass(frozen=True)
+class _StepperGeometry:
+    rotation_distance: float
+    homing_speed_mm_s: float
+    microsteps: int
+    full_steps: int
+    planner_steps_per_rev: int
+    step_pin_name: str
+    mcu: object
+    channel: int
+
+
+def _parse_current_and_encoder(config) -> _CurrentAndEncoder:
+    name = config.get_name()
     run_current = config.getfloat("run_current", above=0.0)
     encoder_ppr = config.getint("encoder_ppr", minval=1)
     if encoder_ppr > MAX_ENCODER_PPR:
@@ -227,6 +299,17 @@ def parse_driver_config(config) -> FociDriverConfig:
             f"{HOMING_CURRENT_MARGIN_AMPS:.3f} below run_current {run_current:.3f} "
             "(omit homing_current to disable the homing clamp)"
         )
+    return _CurrentAndEncoder(
+        run_current=run_current,
+        encoder_ppr=encoder_ppr,
+        voltage_limit=voltage_limit,
+        encoder_reversed=encoder_reversed,
+        homing_current=homing_current,
+    )
+
+
+def _parse_stall_settings(config) -> _StallSettings:
+    name = config.get_name()
     stall_ceiling_mm = config.getfloat("stall_ceiling_mm", DEFAULT_STALL_CEILING_MM, above=0.0)
     stall_margin_mm = config.getfloat("stall_margin_mm", DEFAULT_STALL_MARGIN_MM, above=0.0)
     if stall_margin_mm >= stall_ceiling_mm:
@@ -244,20 +327,39 @@ def parse_driver_config(config) -> FociDriverConfig:
         minval=1,
         maxval=MAX_STALL_PERSISTENCE_TICKS,
     )
+    return _StallSettings(
+        stall_ceiling_mm=stall_ceiling_mm,
+        stall_margin_mm=stall_margin_mm,
+        stall_persistence=stall_persistence,
+    )
 
+
+def _parse_inner_pid_gains(config) -> _InnerPidGains:
     pid_flux_p = config.getint("pid_flux_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_flux_i = config.getint("pid_flux_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_torque_p = config.getint("pid_torque_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_torque_i = config.getint("pid_torque_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     _validate_complete_inner_pid_group(
-        config, name, [pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i]
+        config, config.get_name(), [pid_flux_p, pid_flux_i, pid_torque_p, pid_torque_i]
+    )
+    return _InnerPidGains(
+        pid_flux_p=pid_flux_p,
+        pid_flux_i=pid_flux_i,
+        pid_torque_p=pid_torque_p,
+        pid_torque_i=pid_torque_i,
     )
 
-    velocity_filter_hz = _filter_hz(config, name, "velocity_filter_hz", MOTION_FILTER_MAX_HZ)
-    torque_filter_hz = _filter_hz(config, name, "torque_filter_hz", CURRENT_FILTER_MAX_HZ)
-    position_filter_hz = _filter_hz(config, name, "position_filter_hz", MOTION_FILTER_MAX_HZ)
-    flux_filter_hz = _filter_hz(config, name, "flux_filter_hz", CURRENT_FILTER_MAX_HZ)
 
+def _parse_filters(config, name) -> _Filters:
+    return _Filters(
+        velocity_filter_hz=_filter_hz(config, name, "velocity_filter_hz", MOTION_FILTER_MAX_HZ),
+        torque_filter_hz=_filter_hz(config, name, "torque_filter_hz", CURRENT_FILTER_MAX_HZ),
+        position_filter_hz=_filter_hz(config, name, "position_filter_hz", MOTION_FILTER_MAX_HZ),
+        flux_filter_hz=_filter_hz(config, name, "flux_filter_hz", CURRENT_FILTER_MAX_HZ),
+    )
+
+
+def _parse_outer_pid_gains(config) -> _OuterPidGains:
     pid_position_p = config.getint("pid_position_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_position_i = config.getint("pid_position_i", None, minval=0, maxval=PID_GAIN_MAX_RAW)
     pid_velocity_p = config.getint("pid_velocity_p", None, minval=0, maxval=PID_GAIN_MAX_RAW)
@@ -268,7 +370,18 @@ def parse_driver_config(config) -> FociDriverConfig:
         "velocity_feedforward_gain", 1.0, minval=0.0, maxval=8.0
     )
     pid_velocity_limit = config.getint("pid_velocity_limit", None, minval=1, maxval=0x7FFFFFFF)
+    return _OuterPidGains(
+        pid_position_p=pid_position_p,
+        pid_position_i=pid_position_i,
+        pid_velocity_p=pid_velocity_p,
+        pid_velocity_i=pid_velocity_i,
+        velocity_feedforward=velocity_feedforward,
+        velocity_feedforward_gain=velocity_feedforward_gain,
+        pid_velocity_limit=pid_velocity_limit,
+    )
 
+
+def _parse_identified_values(config) -> _IdentifiedValues:
     identified_r_count_milli = config.getint("identified_r_count_milli", None, minval=0)
     identified_lambda_us = config.getint("identified_lambda_us", None, minval=0)
     identified_theta_e_us = config.getint("identified_theta_e_us", None, minval=0)
@@ -302,8 +415,32 @@ def parse_driver_config(config) -> FociDriverConfig:
 
     commissioning_profile = config.get("commissioning_profile", None)
     commissioning_status = config.get("commissioning_status", None)
-    _drain_legacy_keys(config, name)
+    _drain_legacy_keys(config, config.get_name())
+    return _IdentifiedValues(
+        identified_r_count_milli=identified_r_count_milli,
+        identified_lambda_us=identified_lambda_us,
+        identified_theta_e_us=identified_theta_e_us,
+        identified_theta_source=identified_theta_source,
+        identified_bandwidth_hz=identified_bandwidth_hz,
+        identified_tau_e_us=identified_tau_e_us,
+        identified_inner_warning_flags=identified_inner_warning_flags,
+        identified_l_source=identified_l_source,
+        identified_l_reactance_count_ratio_milli=identified_l_reactance_count_ratio_milli,
+        identified_l_saliency_status=identified_l_saliency_status,
+        identified_current_gains_source=identified_current_gains_source,
+        identified_current_gains_tier=identified_current_gains_tier,
+        identified_current_retry_budget_exhausted=identified_current_retry_budget_exhausted,
+        identified_current_failure_reason=identified_current_failure_reason,
+        identified_r_count_slope_milli=identified_r_count_slope_milli,
+        commissioning_profile=commissioning_profile,
+        commissioning_status=commissioning_status,
+    )
 
+
+def _parse_stepper_geometry(
+    config, stepper_name, stall_ceiling_mm, stall_margin_mm
+) -> _StepperGeometry:
+    name = config.get_name()
     if not config.has_section(stepper_name):
         raise config.error(f"[{name}] cannot find stepper section for '{stepper_name}'")
     stepper_config = config.getsection(stepper_name)
@@ -334,7 +471,7 @@ def parse_driver_config(config) -> FociDriverConfig:
             f"microsteps={int(microsteps)}) must be in 1..16777216"
         )
     step_pin = stepper_config.get("step_pin")
-    ppins = printer.lookup_object("pins")
+    ppins = config.get_printer().lookup_object("pins")
     pin_params = ppins.parse_pin(step_pin, can_invert=True)
     step_pin_name = pin_params["pin"]
     if step_pin_name not in STEP_PINS:
@@ -342,18 +479,7 @@ def parse_driver_config(config) -> FociDriverConfig:
             f"[{name}] step_pin '{step_pin_name}' is not a FOCI STEP pin (expected one of: "
             f"{', '.join(sorted(STEP_PINS))})"
         )
-
-    driver_config = FociDriverConfig(
-        name=name,
-        stepper_name=stepper_name,
-        run_current=run_current,
-        encoder_ppr=encoder_ppr,
-        voltage_limit=voltage_limit,
-        encoder_reversed=encoder_reversed,
-        homing_current=homing_current,
-        stall_ceiling_mm=stall_ceiling_mm,
-        stall_margin_mm=stall_margin_mm,
-        stall_persistence=stall_persistence,
+    return _StepperGeometry(
         rotation_distance=rotation_distance,
         homing_speed_mm_s=homing_speed_mm_s,
         microsteps=microsteps,
@@ -362,52 +488,49 @@ def parse_driver_config(config) -> FociDriverConfig:
         step_pin_name=step_pin_name,
         mcu=pin_params["chip"],
         channel=STEP_PINS[step_pin_name],
-        pid_flux_p=pid_flux_p,
-        pid_flux_i=pid_flux_i,
-        pid_torque_p=pid_torque_p,
-        pid_torque_i=pid_torque_i,
-        velocity_filter_hz=velocity_filter_hz,
-        torque_filter_hz=torque_filter_hz,
-        position_filter_hz=position_filter_hz,
-        flux_filter_hz=flux_filter_hz,
-        pid_position_p=pid_position_p,
-        pid_position_i=pid_position_i,
-        pid_velocity_p=pid_velocity_p,
-        pid_velocity_i=pid_velocity_i,
-        velocity_feedforward=velocity_feedforward,
-        velocity_feedforward_gain=velocity_feedforward_gain,
+    )
+
+
+def parse_driver_config(config) -> FociDriverConfig:
+    """Parse one ``[foci <stepper>]`` config section."""
+    name = config.get_name()
+    stepper_name = " ".join(name.split()[1:])
+
+    current_and_encoder = _parse_current_and_encoder(config)
+    stall = _parse_stall_settings(config)
+    inner_gains = _parse_inner_pid_gains(config)
+    filters = _parse_filters(config, name)
+    outer_gains = _parse_outer_pid_gains(config)
+    identified = _parse_identified_values(config)
+    geometry = _parse_stepper_geometry(
+        config, stepper_name, stall.stall_ceiling_mm, stall.stall_margin_mm
+    )
+
+    driver_config = FociDriverConfig(
+        name=name,
+        stepper_name=stepper_name,
+        **vars(current_and_encoder),
+        **vars(stall),
+        **vars(geometry),
+        **vars(inner_gains),
+        **vars(filters),
+        **vars(outer_gains),
         accel_feedforward=False,
         accel_feedforward_accel_gain=1000,
         accel_feedforward_decel_gain=1000,
-        pid_velocity_limit=pid_velocity_limit,
-        identified_r_count_milli=identified_r_count_milli,
-        identified_lambda_us=identified_lambda_us,
-        identified_theta_e_us=identified_theta_e_us,
-        identified_theta_source=identified_theta_source,
-        identified_bandwidth_hz=identified_bandwidth_hz,
-        identified_tau_e_us=identified_tau_e_us,
-        identified_inner_warning_flags=identified_inner_warning_flags,
-        identified_l_source=identified_l_source,
-        identified_l_reactance_count_ratio_milli=(identified_l_reactance_count_ratio_milli),
-        identified_l_saliency_status=identified_l_saliency_status,
-        identified_current_gains_source=identified_current_gains_source,
-        identified_current_gains_tier=identified_current_gains_tier,
-        identified_current_retry_budget_exhausted=(identified_current_retry_budget_exhausted),
-        identified_current_failure_reason=identified_current_failure_reason,
-        identified_r_count_slope_milli=identified_r_count_slope_milli,
-        commissioning_profile=commissioning_profile,
-        commissioning_status=commissioning_status,
+        **vars(identified),
     )
 
     ceiling_units = stall_ceiling_units(driver_config)
     margin_units = stall_margin_units(driver_config)
     if margin_units >= ceiling_units:
         raise config.error(
-            f"stall_margin_mm {stall_margin_mm:.4f} in [{name}] rounds to {margin_units} "
-            f"position units, which is not less than stall_ceiling_mm {stall_ceiling_mm:.4f} "
-            f"rounding to {ceiling_units} position units (rotation_distance="
-            f"{rotation_distance:.3f}); the firmware compares the rounded unit values, so "
-            "increase the gap between stall_margin_mm and stall_ceiling_mm"
+            f"stall_margin_mm {stall.stall_margin_mm:.4f} in [{name}] rounds to {margin_units} "
+            f"position units, which is not less than stall_ceiling_mm "
+            f"{stall.stall_ceiling_mm:.4f} rounding to {ceiling_units} position units "
+            f"(rotation_distance={geometry.rotation_distance:.3f}); the firmware compares the "
+            "rounded unit values, so increase the gap between stall_margin_mm and "
+            "stall_ceiling_mm"
         )
 
     return driver_config
