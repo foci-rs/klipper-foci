@@ -247,6 +247,124 @@ class TestEnsureCalibratedGates(unittest.TestCase):
         self.assertFalse(d.state.is_calibrated)
 
 
+class _ScriptedCompletion:
+    """Completion whose successive wait() calls return scripted results."""
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.deadlines = []
+
+    def wait(self, deadline):
+        self.deadlines.append(deadline)
+        return self._results.pop(0)
+
+
+def _script_waits(d, *results):
+    completion = _ScriptedCompletion(results)
+    d.printer.get_reactor().completion = lambda: completion
+    return completion
+
+
+class TestEnsureCalibratedOutcomes(unittest.TestCase):
+    def _driver(self):
+        d = make_driver()
+        d.state.active_gains = SAMPLE_ACTIVE_GAINS.copy()
+        return d
+
+    def test_timeout_sends_cancel_then_waits_grace_period(self):
+        d = self._driver()
+        completion = _script_waits(d, None, {"oid": d.oid, "status": 0})
+
+        d.homing.ensure_calibrated()
+
+        self.assertEqual(d.protocol.commands.calibrate.call_count, 1)
+        self.assertEqual(d.protocol.commands.commission_cancel.call_count, 1)
+        self.assertEqual(len(completion.deadlines), 2)
+        self.assertTrue(d.state.is_calibrated)
+        self.assertFalse(d.state.operation_lock)
+        self.assertIsNone(d.state.calibration_completion)
+
+    def test_timeout_after_grace_raises_and_releases_lock(self):
+        d = self._driver()
+        _script_waits(d, None, None)
+
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+
+        self.assertIn("calibration timed out", str(ctx.exception))
+        self.assertEqual(d.protocol.commands.commission_cancel.call_count, 1)
+        self.assertFalse(d.state.is_calibrated)
+        self.assertFalse(d.state.operation_lock)
+        self.assertIsNone(d.state.calibration_completion)
+
+    def test_status_5_marks_calibrated_and_syncs_enable_line(self):
+        d = self._driver()
+        d.printer.get_reactor().completion_result = {"oid": d.oid, "status": 5}
+
+        d.homing.ensure_calibrated()
+
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+        self.assertTrue(d.state.is_calibrated)
+        self.assertTrue(enable_line.is_motor_enabled())
+        self.assertFalse(d.state.operation_lock)
+
+    def test_status_5_without_sync_leaves_enable_line_alone(self):
+        d = self._driver()
+        d.printer.get_reactor().completion_result = {"oid": d.oid, "status": 5}
+
+        d.homing.ensure_calibrated(sync_enable_line=False)
+
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+        self.assertTrue(d.state.is_calibrated)
+        self.assertFalse(enable_line.is_motor_enabled())
+
+    def test_success_without_sync_leaves_enable_line_alone(self):
+        d = self._driver()
+        d.printer.get_reactor().completion_result = {"oid": d.oid, "status": 0}
+
+        d.homing.ensure_calibrated(sync_enable_line=False)
+
+        enable_line = d.printer.lookup_object("stepper_enable").lookup_enable(d.stepper_name)
+        self.assertTrue(d.state.is_calibrated)
+        self.assertFalse(enable_line.is_motor_enabled())
+
+    def test_failure_status_reports_formatted_message_and_releases_lock(self):
+        d = self._driver()
+        d.printer.get_reactor().completion_result = {"oid": d.oid, "status": 8}
+
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+
+        expected = f"FOCI {d.name} calibration failed: {d.homing.format_calibration_status(8)}"
+        self.assertEqual(str(ctx.exception), expected)
+        self.assertFalse(d.state.is_calibrated)
+        self.assertFalse(d.state.operation_lock)
+
+    def test_chip_reset_status_triggers_chip_reset_handling(self):
+        d = self._driver()
+        d.printer.get_reactor().completion_result = {"oid": d.oid, "status": 2}
+        resets = []
+        d.commissioning.handle_chip_reset_detected = lambda: resets.append(True)
+
+        with self.assertRaises(CommandError) as ctx:
+            d.homing.ensure_calibrated()
+
+        self.assertEqual(resets, [True])
+        self.assertIn(d.homing.format_calibration_status(2), str(ctx.exception))
+        self.assertFalse(d.state.operation_lock)
+
+    def test_other_failure_status_does_not_trigger_chip_reset_handling(self):
+        d = self._driver()
+        d.printer.get_reactor().completion_result = {"oid": d.oid, "status": 8}
+        resets = []
+        d.commissioning.handle_chip_reset_detected = lambda: resets.append(True)
+
+        with self.assertRaises(CommandError):
+            d.homing.ensure_calibrated()
+
+        self.assertEqual(resets, [])
+
+
 class TestHomingStateTransitions(unittest.TestCase):
     def test_connect_delegates_initial_homing_state(self):
         d = make_driver()
