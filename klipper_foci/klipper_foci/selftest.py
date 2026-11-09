@@ -83,37 +83,52 @@ class SelftestWorkflow:
         if not self.driver.state.try_acquire("selftest"):
             raise gcmd.error(f"FOCI {self.driver.name}: another FOCI operation is in progress")
         try:
-            self.driver.homing.invalidate_homing()
-
-            reactor = self.driver.printer.get_reactor()
-            self.results = []
-            self.complete = False
-            self.status = 0
-            self.driver.commissioning.clear_details()
-
-            report_summary(
-                gcmd,
-                f"FOCI {self.driver.stepper_name} selftest: running, can take up to 30s...",
-            )
-            self.driver.protocol.run_selftest()
-
-            deadline = reactor.monotonic() + ELECTRICAL_ID_WAIT_TIMEOUT_S
-            while not self.complete:
-                if reactor.monotonic() > deadline:
-                    self.driver.commissioning.cancel_and_await_quiescence(
-                        reactor, lambda: self.complete, reactor.monotonic()
-                    )
-                    raise self.driver.printer.command_error(
-                        f"FOCI {self.driver.stepper_name}: selftest timed out"
-                    )
-                reactor.pause(reactor.monotonic() + 0.05)
+            reactor = self._start_run(gcmd)
+            self._wait_for_completion(reactor)
         finally:
             self.driver.state.release()
 
+        stage_lines = self._format_stage_lines()
+        for line in stage_lines:
+            report_summary(gcmd, line)
+        self._log_report(stage_lines)
+        self._report_outcome(gcmd)
+        self._raise_if_failed()
+
+    def _start_run(self, gcmd):
+        """Reset per-run state, announce the run and dispatch the firmware self-test."""
+        self.driver.homing.invalidate_homing()
+
+        reactor = self.driver.printer.get_reactor()
+        self.results = []
+        self.complete = False
+        self.status = 0
+        self.driver.commissioning.clear_details()
+
+        report_summary(
+            gcmd,
+            f"FOCI {self.driver.stepper_name} selftest: running, can take up to 30s...",
+        )
+        self.driver.protocol.run_selftest()
+        return reactor
+
+    def _wait_for_completion(self, reactor) -> None:
+        """Poll until the firmware signals completion, cancelling on timeout."""
+        deadline = reactor.monotonic() + ELECTRICAL_ID_WAIT_TIMEOUT_S
+        while not self.complete:
+            if reactor.monotonic() > deadline:
+                self.driver.commissioning.cancel_and_await_quiescence(
+                    reactor, lambda: self.complete, reactor.monotonic()
+                )
+                raise self.driver.printer.command_error(
+                    f"FOCI {self.driver.stepper_name}: selftest timed out"
+                )
+            reactor.pause(reactor.monotonic() + 0.05)
+
+    def _format_stage_lines(self) -> list[str]:
+        """Format one report line per collected stage result."""
         status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
         stage_lines = []
-        passed = 0
-        total = len(self.results)
         for result in self.results:
             stage_id = result["stage"]
             stage_status = result["status"]
@@ -123,12 +138,10 @@ class SelftestWorkflow:
             detail = format_selftest_value(stage_id, stage_status, stage_value)
             dots = "." * max(1, 35 - len(name))
             stage_lines.append(f"  {name} {dots} {status_str}{detail}")
-            if stage_status == 0:
-                passed += 1
+        return stage_lines
 
-        for line in stage_lines:
-            report_summary(gcmd, line)
-
+    def _log_report(self, stage_lines: list[str]) -> None:
+        """Log the stage lines followed by any commissioning diagnostics."""
         lines = list(stage_lines)
         if self.driver.commissioning.details:
             lines.append("Diagnostics:")
@@ -137,11 +150,13 @@ class SelftestWorkflow:
 
         report_detail(log, self.driver.global_config.debug, "\n".join(lines))
 
+    def _report_outcome(self, gcmd) -> None:
+        """Emit the SUCCEEDED or FAILED summary line."""
         if self.status == 0:
             report_summary(
                 gcmd,
                 f"FOCI_SELFTEST {self.driver.stepper_name}: SUCCEEDED, all "
-                f"{int(total)} stages passed.",
+                f"{len(self.results)} stages passed.",
             )
         else:
             last_phase_detail_reason = None
@@ -153,6 +168,8 @@ class SelftestWorkflow:
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
             report_summary(gcmd, f"FOCI_SELFTEST {self.driver.stepper_name}: FAILED, {err}.")
 
+    def _raise_if_failed(self) -> None:
+        """Raise a command error naming the failure reason when the run failed."""
         if self.status != 0:
             err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)
