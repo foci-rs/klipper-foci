@@ -165,11 +165,9 @@ def _decode_i16_pair(packed: int) -> tuple[int, int]:
     return _signed_u16(high), _signed_u16(low)
 
 
-def format_commission_detail(detail: dict) -> str:
-    """Format one structured commissioning diagnostic detail."""
-    phase_name = PHASE_NAMES.get(detail["phase"], f"Phase {int(detail['phase'])}")
+def _format_phase_scoped_detail(detail: dict, phase_name: str) -> str | None:
+    """Format details whose shape depends on the phase; None when no phase-scoped shape applies."""
     code = detail["code"]
-    name = ELECTRICAL_ID_DETAIL_NAMES.get(code, f"diagnostic {int(code)}")
     value0 = detail["value0"]
     value1 = detail["value1"]
     value2 = detail["value2"]
@@ -222,6 +220,81 @@ def format_commission_detail(detail: dict) -> str:
             f"{phase_name}: {kind} FAIL (position_1={int(position_1)}, "
             f"position_2={int(position_2)}, drift={int(value2)})"
         )
+    return None
+
+
+def _format_inductance_reject_detail(
+    phase_name: str, name: str, value0: int, value1: int, value2: int
+) -> str:
+    """Format a rejected inductance AC capture, decoding value2 by reject reason."""
+    reason = INDUCTANCE_CAPTURE_REJECT_REASON_NAMES.get(value0, f"reason {int(value0)}")
+    if value0 in (1, 2):
+        previous_phi, current_phi = _decode_u16_pair(value2)
+        return (
+            f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, previous_phi="
+            f"{int(previous_phi)}, current_phi={int(current_phi)})"
+        )
+    if value0 in (3, 4, 5, 6):
+        id_count, iq_count = _decode_i16_pair(value2)
+        return (
+            f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, id={int(id_count)}"
+            f", iq={int(iq_count)})"
+        )
+    if value0 == 7:
+        previous_elapsed_us, current_elapsed_us = _decode_u16_pair(value2)
+        return (
+            f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, "
+            f"previous_elapsed_us={int(previous_elapsed_us)}, current_elapsed_us="
+            f"{int(current_elapsed_us)})"
+        )
+    return f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, aux={int(value2)})"
+
+
+def _format_timing_detail(
+    phase_name: str, code: int, value0: int, value1: int, value2: int
+) -> str | None:
+    """Format capture timing details (codes 34-39); None for any other code."""
+    if code in (34, 36, 38):
+        method = (code - 34) // 2
+        method_name = TIMING_METHOD_NAMES.get(method, f"method {int(method)}")
+        valid_samples, requested_period_us = _decode_u16_pair(value0)
+        missed_samples = value1 & 0xFFFF
+        max_consecutive_misses = (value1 >> 16) & 0xFF
+        status_code = (value1 >> 24) & 0x7F
+        status_name = TIMING_STATUS_NAMES.get(status_code, f"unknown({int(status_code)})")
+        overflowed = ", overflowed" if (value1 >> 31) & 0x1 else ""
+        return (
+            f"{phase_name}: {method_name} capture timing: status={status_name} "
+            f"period_us={int(requested_period_us)} valid={int(valid_samples)} "
+            f"missed={int(missed_samples)} max_consecutive_misses={int(max_consecutive_misses)} "
+            f"max_lateness_us={int(value2)}{overflowed}"
+        )
+    if code in (35, 37, 39):
+        method = (code - 35) // 2
+        method_name = TIMING_METHOD_NAMES.get(method, f"method {int(method)}")
+        return (
+            f"{phase_name}: {method_name} capture timing (cont.): max_interval_us={int(value0)} "
+            f"max_poll_wall_us={int(value1)} max_spi_wall_us={int(value2)}"
+        )
+    return None
+
+
+def _format_generic_detail(
+    phase_name: str, name: str, value0: int, value1: int, value2: int
+) -> str:
+    """Format an unrecognised diagnostic, listing raw values only when any is non-zero."""
+    if value0 or value1 or value2:
+        return (
+            f"{phase_name}: {name} (value0={int(value0)}, value1={int(value1)}, value2="
+            f"{int(value2)})"
+        )
+    return f"{phase_name}: {name}"
+
+
+def _format_code_detail(
+    phase_name: str, name: str, code: int, value0: int, value1: int, value2: int
+) -> str:
+    """Format details keyed by code alone, falling back to the generic shape."""
     if code == 1:
         return (
             f"{phase_name}: {name} (voltage_count={int(value0)}, legacy_didt_cycles={int(value1)}, "
@@ -258,53 +331,11 @@ def format_commission_detail(detail: dict) -> str:
             f"{int(value1)}, samples={int(value2)})"
         )
     if code == 33:
-        reason = INDUCTANCE_CAPTURE_REJECT_REASON_NAMES.get(value0, f"reason {int(value0)}")
-        if value0 in (1, 2):
-            previous_phi, current_phi = _decode_u16_pair(value2)
-            return (
-                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, previous_phi="
-                f"{int(previous_phi)}, current_phi={int(current_phi)})"
-            )
-        if value0 in (3, 4, 5, 6):
-            id_count, iq_count = _decode_i16_pair(value2)
-            return (
-                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, id={int(id_count)}"
-                f", iq={int(iq_count)})"
-            )
-        if value0 == 7:
-            previous_elapsed_us, current_elapsed_us = _decode_u16_pair(value2)
-            return (
-                f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, "
-                f"previous_elapsed_us={int(previous_elapsed_us)}, current_elapsed_us="
-                f"{int(current_elapsed_us)})"
-            )
-        return f"{phase_name}: {name} (reason={reason}, samples={int(value1)}, aux={int(value2)})"
+        return _format_inductance_reject_detail(phase_name, name, value0, value1, value2)
     if code == 41:
         return (
             f"{phase_name}: {name} (status_flags_or=0x{int(value0):08x}, "
             f"entry_mask=0x{int(value1):02x})"
-        )
-    if code in (34, 36, 38):
-        method = (code - 34) // 2
-        method_name = TIMING_METHOD_NAMES.get(method, f"method {int(method)}")
-        valid_samples, requested_period_us = _decode_u16_pair(value0)
-        missed_samples = value1 & 0xFFFF
-        max_consecutive_misses = (value1 >> 16) & 0xFF
-        status_code = (value1 >> 24) & 0x7F
-        status_name = TIMING_STATUS_NAMES.get(status_code, f"unknown({int(status_code)})")
-        overflowed = ", overflowed" if (value1 >> 31) & 0x1 else ""
-        return (
-            f"{phase_name}: {method_name} capture timing: status={status_name} "
-            f"period_us={int(requested_period_us)} valid={int(valid_samples)} "
-            f"missed={int(missed_samples)} max_consecutive_misses={int(max_consecutive_misses)} "
-            f"max_lateness_us={int(value2)}{overflowed}"
-        )
-    if code in (35, 37, 39):
-        method = (code - 35) // 2
-        method_name = TIMING_METHOD_NAMES.get(method, f"method {int(method)}")
-        return (
-            f"{phase_name}: {method_name} capture timing (cont.): max_interval_us={int(value0)} "
-            f"max_poll_wall_us={int(value1)} max_spi_wall_us={int(value2)}"
         )
     if code in (23, 24):
         return f"{phase_name}: {name} (r_count_milli={int(value0)}, limit={int(value1)})"
@@ -312,12 +343,24 @@ def format_commission_detail(detail: dict) -> str:
         return f"{phase_name}: {name} (l_count_micro={int(value0)})"
     if code == 29:
         return f"{phase_name}: {name} (theta_us={int(value0)}, tau_us={int(value1)})"
-    if value0 or value1 or value2:
-        return (
-            f"{phase_name}: {name} (value0={int(value0)}, value1={int(value1)}, value2="
-            f"{int(value2)})"
-        )
-    return f"{phase_name}: {name}"
+    return _format_generic_detail(phase_name, name, value0, value1, value2)
+
+
+def format_commission_detail(detail: dict) -> str:
+    """Format one structured commissioning diagnostic detail."""
+    phase_name = PHASE_NAMES.get(detail["phase"], f"Phase {int(detail['phase'])}")
+    code = detail["code"]
+    name = ELECTRICAL_ID_DETAIL_NAMES.get(code, f"diagnostic {int(code)}")
+    value0 = detail["value0"]
+    value1 = detail["value1"]
+    value2 = detail["value2"]
+    phase_scoped = _format_phase_scoped_detail(detail, phase_name)
+    if phase_scoped is not None:
+        return phase_scoped
+    timing = _format_timing_detail(phase_name, code, value0, value1, value2)
+    if timing is not None:
+        return timing
+    return _format_code_detail(phase_name, name, code, value0, value1, value2)
 
 
 def _encoder_direction_sweep_failed(details: list[dict]) -> bool:
