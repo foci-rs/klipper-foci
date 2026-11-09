@@ -229,6 +229,25 @@ class HomingWorkflow:
                 an EnableLine enable callback, which is about to take its own
                 enable reference.
         """
+        reactor = self.driver.printer.get_reactor()
+        if self._check_calibration_preconditions(reactor):
+            return
+        try:
+            self.apply_active_gains_to_firmware()
+            self.driver.commissioning.clear_details()
+
+            params = self._run_calibration_request(reactor)
+            self._finish_calibration(params, sync_enable_line)
+        finally:
+            self.driver.state.release()
+
+    def _check_calibration_preconditions(self, reactor) -> bool:
+        """Validate that calibration may run and take the homing operation lock.
+
+        Returns:
+            True when the motor is already calibrated and nothing more is needed.
+            False when the caller now holds the lock and must run calibration.
+        """
         if self.driver.state.inhibited:
             detail = ""
             if self.driver.state.last_commission_failure:
@@ -238,12 +257,11 @@ class HomingWorkflow:
                 f"Retry FOCI_SETUP or restart Klipper.{detail}"
             )
         if self.driver.state.is_calibrated:
-            return
+            return True
         if self.driver.state.active_gains is None:
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: no commissioned gains available. Run FOCI_SETUP first."
             )
-        reactor = self.driver.printer.get_reactor()
         if getattr(reactor, "_prevent_pause_count", 0):
             # Klipper's motion flush handler enables steppers lazily (e.g. after
             # SET_KINEMATIC_POSITION marks an axis homed without enabling it) from
@@ -262,65 +280,76 @@ class HomingWorkflow:
             raise self.driver.printer.command_error(
                 f"FOCI {self.driver.name}: another FOCI operation is in progress"
             )
-        try:
-            self.apply_active_gains_to_firmware()
-            self.driver.commissioning.clear_details()
+        return False
 
-            self.driver.state.calibration_completion = reactor.completion()
-            t_start = reactor.monotonic()
-            self.set_auto_calibrate_on_enable_allowed(True)
-            self.driver.protocol.run_calibration()
-            params = self.driver.state.calibration_completion.wait(t_start + 5.0)
-            if params is None:
-                self.driver.protocol.run_commission_cancel()
-                grace_deadline = reactor.monotonic() + COMMISSION_CANCEL_GRACE_PERIOD_S
-                params = self.driver.state.calibration_completion.wait(grace_deadline)
-            t_elapsed = reactor.monotonic() - t_start
-            self.driver.state.calibration_completion = None
+    def _run_calibration_request(self, reactor) -> dict:
+        """Send the calibrate command and wait for the reply.
 
-            logging.info(
-                "FOCI %s: calibrate response after %.3fs: %s",
-                self.driver.name,
-                t_elapsed,
-                params,
+        On timeout, cancels the request and waits one grace period for a late reply.
+
+        Returns:
+            The calibrate reply parameters.
+
+        Raises:
+            command_error: When neither wait produced a reply.
+        """
+        self.driver.state.calibration_completion = reactor.completion()
+        t_start = reactor.monotonic()
+        self.set_auto_calibrate_on_enable_allowed(True)
+        self.driver.protocol.run_calibration()
+        params = self.driver.state.calibration_completion.wait(t_start + 5.0)
+        if params is None:
+            self.driver.protocol.run_commission_cancel()
+            grace_deadline = reactor.monotonic() + COMMISSION_CANCEL_GRACE_PERIOD_S
+            params = self.driver.state.calibration_completion.wait(grace_deadline)
+        t_elapsed = reactor.monotonic() - t_start
+        self.driver.state.calibration_completion = None
+
+        logging.info(
+            "FOCI %s: calibrate response after %.3fs: %s",
+            self.driver.name,
+            t_elapsed,
+            params,
+        )
+
+        if params is None:
+            raise self.driver.printer.command_error(
+                f"FOCI {self.driver.name}: calibration timed out (no response from firmware)"
             )
+        return params
 
-            if params is None:
-                raise self.driver.printer.command_error(
-                    f"FOCI {self.driver.name}: calibration timed out (no response from firmware)"
-                )
-            status = params.get("status", 255)
-            if status == 5:
-                self.driver.state.is_calibrated = True
-                if sync_enable_line:
-                    self.sync_enable_line_armed()
-                logging.info(
-                    "FOCI %s: already calibrated (firmware auto-cal)",
-                    self.driver.name,
-                )
-                self._report_calibration_details()
-                return
-            if status != 0:
-                msg = self.format_calibration_status(status)
-                if status == 2:
-                    self.driver.commissioning.handle_chip_reset_detected()
-                self._report_calibration_details()
-                raise self.driver.printer.command_error(
-                    f"FOCI {self.driver.name} calibration failed: {msg}"
-                )
-            self._report_calibration_details()
+    def _finish_calibration(self, params: dict, sync_enable_line: bool) -> None:
+        """Apply the calibrate reply: mark calibrated on success or raise on failure."""
+        status = params.get("status", 255)
+        if status == 5:
             self.driver.state.is_calibrated = True
             if sync_enable_line:
                 self.sync_enable_line_armed()
             logging.info(
-                "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
+                "FOCI %s: already calibrated (firmware auto-cal)",
                 self.driver.name,
-                params.get("adc_i0", 0),
-                params.get("adc_i1", 0),
-                params.get("encoder_count", 0),
             )
-        finally:
-            self.driver.state.release()
+            self._report_calibration_details()
+            return
+        if status != 0:
+            msg = self.format_calibration_status(status)
+            if status == 2:
+                self.driver.commissioning.handle_chip_reset_detected()
+            self._report_calibration_details()
+            raise self.driver.printer.command_error(
+                f"FOCI {self.driver.name} calibration failed: {msg}"
+            )
+        self._report_calibration_details()
+        self.driver.state.is_calibrated = True
+        if sync_enable_line:
+            self.sync_enable_line_armed()
+        logging.info(
+            "FOCI %s calibrated: ADC I0=%d I1=%d encoder=%d",
+            self.driver.name,
+            params.get("adc_i0", 0),
+            params.get("adc_i1", 0),
+            params.get("encoder_count", 0),
+        )
 
     def handle_home_rails_begin(self, homing_state, rails) -> None:
         """Ensure calibration before homing any axis driven by this stepper."""
