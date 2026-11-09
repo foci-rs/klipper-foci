@@ -664,8 +664,9 @@ class CommissioningWorkflow:
         # FOCI_RESISTANCE_TEST run before this commission's firmware
         # stream can emit its own foci_resistance_run/axis replies.
         # The cache is otherwise only cleared at commission exit
-        # (success via pop_resistance_cache, failure/timeout via
-        # clear_resistance_cache below), so without this start-of-run
+        # (success via pop_resistance_cache in _fold_commission_result,
+        # failure/timeout via _clear_reply_caches in
+        # _await_commission_done), so without this start-of-run
         # clear a full standalone run+axis0+axis1 entry could survive
         # to pre-populate this commission's cache. If this commission
         # then delivered only a partial set of replies (e.g. run+axis0,
@@ -725,16 +726,18 @@ class CommissioningWorkflow:
         # before foci_commission_done. The diagnostics handlers
         # cache those reply values (keyed by oid); fold them into the
         # result dict now so persist_commission_results' presence-gated
-        # resistance block sees them below. pop_resistance_cache always
+        # resistance block sees them when commission() calls it after
+        # this method. pop_resistance_cache always
         # clears the per-oid cache entry here, and is all-or-nothing:
         # it only returns folded values when run + axis0 + axis1 are
         # all cached, so a commission that completed before every
         # resistance reply arrived folds in nothing rather than a
-        # partial set. The two early-exit failure paths above
-        # (timeout, mid-phase error) clear the cache directly via
-        # clear_resistance_cache since they return before reaching
-        # here; together these guarantee no stale or partial
-        # resistance cache entry ever survives past this method.
+        # partial set. The two early-exit failure paths in
+        # _await_commission_done (timeout, mid-phase error) clear the
+        # cache via _clear_reply_caches since they raise before
+        # commission() reaches this method; together these guarantee
+        # no stale or partial resistance cache entry ever survives
+        # past commission().
         result.update(self.driver.diagnostics.pop_resistance_cache(self.driver.oid))
         result.update(self.driver.diagnostics.active.pop_inductance_cache(self.driver.oid))
         result.update(self.driver.diagnostics.active.pop_current_loop_cache(self.driver.oid))
