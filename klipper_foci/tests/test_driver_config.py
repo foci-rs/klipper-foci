@@ -1321,3 +1321,109 @@ def test_mock_getfloat_does_not_validate_absent_default():
     config = MockConfig(printer=None, sections={"section": {}}, name="section")
     assert config.getfloat("missing_key", 0.0, above=0.0) == 0.0
     assert config.getint("missing_int_key", 0, minval=1) == 0
+
+
+def _parse_with_foci_values(foci_values, stepper_values=None):
+    _printer, _chips, _sections, config = make_foci_config(
+        stepper_values=stepper_values or {"rotation_distance": 40.0},
+        foci_values={"run_current": 2.3, **foci_values},
+    )
+    return parse_driver_config(config)
+
+
+def test_parse_driver_config_rejects_encoder_ppr_above_bound_with_exact_message():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"encoder_ppr": 0x4000_0000})
+
+    assert str(excinfo.value) == (
+        "encoder_ppr 1073741824 in [foci stepper_x] is outside 1..1073741823"
+    )
+
+
+def test_parse_driver_config_rejects_homing_current_inside_run_current_margin():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"homing_current": "2.26"})
+
+    assert str(excinfo.value) == (
+        "homing_current 2.260 in [foci stepper_x] must be at least 0.050 below "
+        "run_current 2.300 (omit homing_current to disable the homing clamp)"
+    )
+
+
+def test_parse_driver_config_rejects_stall_margin_not_below_ceiling():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"stall_ceiling_mm": "0.5", "stall_margin_mm": "0.5"})
+
+    assert str(excinfo.value) == (
+        "stall_margin_mm 0.500 in [foci stepper_x] must be less than stall_ceiling_mm 0.500"
+    )
+
+
+def test_parse_driver_config_rejects_removed_stall_distance():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"stall_distance": "0.5"})
+
+    assert str(excinfo.value) == (
+        "[foci stepper_x] stall_distance is removed; use stall_ceiling_mm and "
+        "stall_margin_mm instead"
+    )
+
+
+def test_parse_driver_config_rejects_stall_ceiling_above_quarter_rotation_distance():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"stall_ceiling_mm": "10.1"})
+
+    assert str(excinfo.value) == (
+        "stall_ceiling_mm 10.100 in [foci stepper_x] must be at most a quarter of "
+        "rotation_distance (10.000)"
+    )
+
+
+def test_parse_driver_config_rejects_stall_units_that_collapse_after_rounding():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"stall_ceiling_mm": "0.1501", "stall_margin_mm": "0.15"})
+
+    assert str(excinfo.value) == (
+        "stall_margin_mm 0.1500 in [foci stepper_x] rounds to 246 position units, which is "
+        "not less than stall_ceiling_mm 0.1501 rounding to 246 position units "
+        "(rotation_distance=40.000); the firmware compares the rounded unit values, so "
+        "increase the gap between stall_margin_mm and stall_ceiling_mm"
+    )
+
+
+def test_parse_driver_config_rejects_planner_steps_with_exact_message():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values(
+            {}, stepper_values={"microsteps": 0, "full_steps_per_rotation": 200}
+        )
+
+    assert str(excinfo.value) == (
+        "[foci stepper_x] stepper stepper_x planner_steps_per_rev=0 "
+        "(full_steps_per_rotation=200 * microsteps=0) must be in 1..16777216"
+    )
+
+
+def test_parse_driver_config_reports_first_of_two_simultaneous_faults():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"encoder_ppr": 0x4000_0000, "homing_current": "2.3"})
+
+    assert "encoder_ppr" in str(excinfo.value)
+    assert "homing_current" not in str(excinfo.value)
+
+
+def test_parse_driver_config_reports_stall_fault_before_stepper_geometry_fault():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values(
+            {"stall_distance": "0.5"},
+            stepper_values={"microsteps": 0, "full_steps_per_rotation": 200},
+        )
+
+    assert "stall_distance is removed" in str(excinfo.value)
+
+
+def test_parse_driver_config_reports_current_fault_before_stall_fault():
+    with pytest.raises(CommandError) as excinfo:
+        _parse_with_foci_values({"homing_current": "2.3", "stall_distance": "0.5"})
+
+    assert "homing_current" in str(excinfo.value)
+    assert "stall_distance" not in str(excinfo.value)
