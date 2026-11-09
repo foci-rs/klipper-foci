@@ -96,7 +96,6 @@ class SelftestWorkflow:
         self._raise_if_failed()
 
     def _start_run(self, gcmd):
-        """Reset per-run state, announce the run and dispatch the firmware self-test."""
         self.driver.homing.invalidate_homing()
 
         reactor = self.driver.printer.get_reactor()
@@ -113,7 +112,6 @@ class SelftestWorkflow:
         return reactor
 
     def _wait_for_completion(self, reactor) -> None:
-        """Poll until the firmware signals completion, cancelling on timeout."""
         deadline = reactor.monotonic() + ELECTRICAL_ID_WAIT_TIMEOUT_S
         while not self.complete:
             if reactor.monotonic() > deadline:
@@ -126,7 +124,6 @@ class SelftestWorkflow:
             reactor.pause(reactor.monotonic() + 0.05)
 
     def _format_stage_lines(self) -> list[str]:
-        """Format one report line per collected stage result."""
         status_names = {0: "PASS", 1: "FAIL", 2: "SKIP"}
         stage_lines = []
         for result in self.results:
@@ -141,7 +138,6 @@ class SelftestWorkflow:
         return stage_lines
 
     def _log_report(self, stage_lines: list[str]) -> None:
-        """Log the stage lines followed by any commissioning diagnostics."""
         lines = list(stage_lines)
         if self.driver.commissioning.details:
             lines.append("Diagnostics:")
@@ -151,7 +147,6 @@ class SelftestWorkflow:
         report_detail(log, self.driver.global_config.debug, "\n".join(lines))
 
     def _report_outcome(self, gcmd) -> None:
-        """Emit the SUCCEEDED or FAILED summary line."""
         if self.status == 0:
             report_summary(
                 gcmd,
@@ -169,7 +164,6 @@ class SelftestWorkflow:
             report_summary(gcmd, f"FOCI_SELFTEST {self.driver.stepper_name}: FAILED, {err}.")
 
     def _raise_if_failed(self) -> None:
-        """Raise a command error naming the failure reason when the run failed."""
         if self.status != 0:
             err = COMMISSION_REASON_NAMES.get(self.status, f"unknown error {int(self.status)}")
             self.driver.commissioning.maybe_clear_calibration_for_chip_reset(self.status)

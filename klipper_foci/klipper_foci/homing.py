@@ -319,7 +319,6 @@ class HomingWorkflow:
         return params
 
     def _finish_calibration(self, params: dict, sync_enable_line: bool) -> None:
-        """Apply the calibrate reply: mark calibrated on success or raise on failure."""
         status = params.get("status", 255)
         if status == 5:
             self.driver.state.is_calibrated = True

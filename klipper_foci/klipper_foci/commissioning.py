@@ -282,7 +282,6 @@ def _format_timing_detail(
 def _format_generic_detail(
     phase_name: str, name: str, value0: int, value1: int, value2: int
 ) -> str:
-    """Format an unrecognised diagnostic, listing raw values only when any is non-zero."""
     if value0 or value1 or value2:
         return (
             f"{phase_name}: {name} (value0={int(value0)}, value1={int(value1)}, value2="
@@ -294,7 +293,6 @@ def _format_generic_detail(
 def _format_code_detail(
     phase_name: str, name: str, code: int, value0: int, value1: int, value2: int
 ) -> str:
-    """Format details keyed by code alone, falling back to the generic shape."""
     if code == 1:
         return (
             f"{phase_name}: {name} (voltage_count={int(value0)}, legacy_didt_cycles={int(value1)}, "
