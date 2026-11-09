@@ -74,16 +74,8 @@ def test_step_position_diagnostic_leaves_non_inverted_raw_position_unchanged():
     assert "delta_mm=1.250" in gcmd.last_info
 
 
-def test_stepper_stats_keeps_derived_keys():
-    """Derived fields dropped from the wire must still be printed.
-
-    The exec-stats reply keeps only the fields the firmware cannot derive
-    host-side; `stepper_stats()` must still print every key the
-    FOCI_STEPPER_STATS line printed before the trim, computed from
-    `planner_steps_per_rev`/`encoder_ppr` and the MCU's `CLOCK_FREQ`
-    (84 MHz here, from `mocks.py::make_driver`'s default constants).
-    It must also print the `oversize_frame_drops` counter.
-    """
+def run_stepper_stats():
+    """Run `stepper_stats()` against canned replies; return the driver and gcmd."""
     driver = make_driver(stepper_name="stepper_x")
     driver.oid = 10
     driver.protocol.commands.stepper_stats = MockCommand(
@@ -144,13 +136,31 @@ def test_stepper_stats_keeps_derived_keys():
     )
     gcmd = MockGCmd()
     passive = DiagnosticsPassive(driver)
-
     passive.stepper_stats(gcmd)
+    return driver, gcmd
+
+
+def test_stepper_stats_queries_every_stats_command():
+    driver, _gcmd = run_stepper_stats()
 
     assert driver.protocol.commands.stepper_stats.last_args == [10]
     assert driver.protocol.commands.stepper_exec_stats.last_args == [10]
     assert driver.protocol.commands.stepper_timing_stats.last_args == [10]
     assert driver.protocol.commands.stepper_stop_stats.last_args == [10]
+
+
+def test_stepper_stats_keeps_derived_keys():
+    """Derived fields dropped from the wire must still be printed.
+
+    The exec-stats reply keeps only the fields the firmware cannot derive
+    host-side; `stepper_stats()` must still print every key the
+    FOCI_STEPPER_STATS line printed before the trim, computed from
+    `planner_steps_per_rev`/`encoder_ppr` and the MCU's `CLOCK_FREQ`
+    (84 MHz here, from `mocks.py::make_driver`'s default constants).
+    It must also print the `oversize_frame_drops` counter.
+    """
+    _driver, gcmd = run_stepper_stats()
+
     assert "FOCI_STEPPER_STATS stepper_x:" in gcmd.last_info
     assert "channel=0" in gcmd.last_info
     assert "position=-26360" in gcmd.last_info
@@ -172,6 +182,11 @@ def test_stepper_stats_keeps_derived_keys():
     assert "dir_setup_ticks=8" in gcmd.last_info
     assert "waveform_worst_case_ticks=24" in gcmd.last_info
     assert "fatal_lateness_ticks=84000" in gcmd.last_info
+
+
+def test_stepper_stats_prints_timing_keys():
+    _driver, gcmd = run_stepper_stats()
+
     assert "activation_count=2" in gcmd.last_info
     assert "last_activation_clock=123456" in gcmd.last_info
     assert "first_load_now=123584" in gcmd.last_info
@@ -181,6 +196,11 @@ def test_stepper_stats_keeps_derived_keys():
     assert "first_load_compare_delay_ticks=416" in gcmd.last_info
     assert "first_step_clock=124002" in gcmd.last_info
     assert "first_step_delay_ticks=546" in gcmd.last_info
+
+
+def test_stepper_stats_prints_stop_and_queue_keys():
+    _driver, gcmd = run_stepper_stats()
+
     assert "discarded_segments=2" in gcmd.last_info
     assert "discarded_steps=500" in gcmd.last_info
     assert "queue_empty_count=0" in gcmd.last_info
