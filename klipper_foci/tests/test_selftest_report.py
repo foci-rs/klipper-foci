@@ -4,6 +4,7 @@ import logging
 
 import pytest
 
+from klipper_foci._vocabulary_generated import COMMISSION_REASON_NAMES
 from klipper_foci.commissioning import format_commission_detail
 from klipper_foci.selftest import SELFTEST_STAGES, format_selftest_value
 from tests.mocks import CommandError, MockCommand, MockGCmd, make_driver
@@ -709,3 +710,118 @@ def test_cmd_selftest_failure_prints_failed_summary_and_still_raises():
     assert gcmd._responses[-1] == (
         "FOCI_SELFTEST manual_stepper stepper_x: FAILED, ADC calibration fault."
     )
+
+
+def _stub_selftest_stream(d, results, status, details=()):
+    d.protocol.commands.selftest = MockCommand()
+
+    def drive_stream(_args):
+        for detail in details:
+            d.commissioning.handle_commission_detail(detail)
+        for result in results:
+            d.selftest.handle_selftest_result(result)
+        d.selftest.handle_selftest_done({"status": status})
+
+    d.protocol.commands.selftest.send = drive_stream
+
+
+def test_selftest_refuses_when_another_operation_holds_the_lock():
+    d = make_driver()
+    assert d.state.try_acquire("setup")
+    gcmd = MockGCmd()
+
+    with pytest.raises(CommandError) as excinfo:
+        d.selftest.selftest(gcmd)
+
+    assert str(excinfo.value) == (
+        "FOCI foci manual_stepper stepper_x: another FOCI operation is in progress"
+    )
+    assert gcmd._responses == []
+    assert d.state.active_label == "setup"
+
+
+def test_selftest_timeout_cancels_commissioning_and_releases_lock():
+    d = make_driver()
+    d.protocol.commands.selftest = MockCommand()
+    cancels = []
+    d.protocol.run_commission_cancel = lambda: cancels.append(True)
+    gcmd = MockGCmd()
+
+    with pytest.raises(CommandError) as excinfo:
+        d.selftest.selftest(gcmd)
+
+    assert str(excinfo.value) == "FOCI manual_stepper stepper_x: selftest timed out"
+    assert cancels == [True]
+    assert d.state.operation_lock is False
+    assert gcmd._responses == [
+        "FOCI manual_stepper stepper_x selftest: running, can take up to 30s..."
+    ]
+
+
+def test_selftest_reports_exact_stage_lines_for_known_and_unknown_stages():
+    d = make_driver()
+    _stub_selftest_stream(
+        d,
+        [
+            {"stage": 2, "status": 0, "value": 0xFFFF},
+            {"stage": 9, "status": 2, "value": 7},
+            {"stage": 5, "status": 7, "value": 3},
+        ],
+        0,
+    )
+    gcmd = MockGCmd()
+
+    d.selftest.selftest(gcmd)
+
+    assert gcmd._responses[1:] == [
+        "  Motor coil A " + "." * 23 + " PASS (current=-1)",
+        "  Stage 9 " + "." * 28 + " SKIP (raw=7)",
+        "  Encoder " + "." * 28 + " ? (delta=3)",
+        "FOCI_SELFTEST manual_stepper stepper_x: SUCCEEDED, all 3 stages passed.",
+    ]
+
+
+def test_selftest_failure_raises_named_reason_and_releases_lock():
+    d = make_driver()
+    _stub_selftest_stream(d, [{"stage": 1, "status": 1, "value": 0}], 4)
+
+    with pytest.raises(CommandError) as excinfo:
+        d.selftest.selftest(MockGCmd())
+
+    assert str(excinfo.value) == (
+        f"FOCI manual_stepper stepper_x: selftest failed: {COMMISSION_REASON_NAMES[4]}"
+    )
+    assert d.state.operation_lock is False
+
+
+def test_selftest_encoder_direction_failure_uses_sweep_phrase():
+    d = make_driver()
+    sweep_failure = {
+        "phase": 4,
+        "code": 2,
+        "status": 1,
+        "value0": 0,
+        "value1": 0,
+        "value2": 0,
+    }
+    _stub_selftest_stream(d, [{"stage": 6, "status": 1, "value": 0}], 4, [sweep_failure])
+    gcmd = MockGCmd()
+
+    with pytest.raises(CommandError):
+        d.selftest.selftest(gcmd)
+
+    assert gcmd._responses[-1] == (
+        "FOCI_SELFTEST manual_stepper stepper_x: FAILED, "
+        "encoder direction sweep didn't move as expected."
+    )
+
+
+def test_selftest_chip_reset_failure_clears_calibration():
+    d = make_driver()
+    d.state.is_calibrated = True
+    _stub_selftest_stream(d, [{"stage": 1, "status": 1, "value": 0}], 18)
+
+    with pytest.raises(CommandError):
+        d.selftest.selftest(MockGCmd())
+
+    assert d.state.is_calibrated is False
